@@ -54,8 +54,8 @@ class QwenImageModel:
 
         with gr.Row():
             self.dit = gr.Textbox(
-                label="DiT Checkpoint Path",
-                placeholder="Path to DiT checkpoint",
+                label="DiT (Base Model) Checkpoint Path",
+                placeholder="Path to DiT base model checkpoint (qwen_image_bf16.safetensors)",
                 value=self.config.get("dit", ""),
             )
 
@@ -115,15 +115,15 @@ class QwenImageModel:
         with gr.Row():
             self.timestep_sampling = gr.Dropdown(
                 label="Timestep Sampling Method",
-                info="'shift' recommended for Qwen Image, 'qwen_shift' uses dynamic shift",
-                choices=["shift", "qwen_shift", "uniform", "sigmoid"],
+                info="'shift' uses fixed discrete_flow_shift value. 'qwen_shift' calculates dynamic shift based on image resolution (ignores discrete_flow_shift parameter)",
+                choices=["shift", "qwen_shift", "uniform", "sigmoid", "logsnr", "qinglong_flux", "qinglong_qwen"],
                 value=self.config.get("timestep_sampling", "shift"),
                 interactive=True,
             )
 
             self.discrete_flow_shift = gr.Number(
                 label="Discrete Flow Shift",
-                info="Qwen Image uses 3.0 (lower than other models), qwen_shift ignores this",
+                info="⚠️ Only used with 'shift' method. Qwen Image optimal: 3.0. 'qwen_shift' automatically calculates dynamic shift (0.5-0.9) based on image resolution",
                 value=self.config.get("discrete_flow_shift", 3.0),
                 step=0.1,
                 interactive=True,
@@ -166,6 +166,7 @@ class QwenImageModel:
         with gr.Row():
             self.show_timesteps = gr.Dropdown(
                 label="Show Timesteps",
+                info="Visualization mode for timestep debugging. 'image' saves visual plots, 'console' prints to terminal. Leave empty for no visualization",
                 choices=["image", "console"],
                 allow_custom_value=True,
                 value=self.config.get("show_timesteps", None),
@@ -405,12 +406,28 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
 
 
 def train_qwen_image_model(headless, print_only, parameters):
-    run_cmd = [rf"uv", "run", "accelerate", "launch"]
+    import sys
+    
+    # Use Python directly instead of uv for better compatibility
+    python_cmd = sys.executable
+    run_cmd = [python_cmd, "-m", "accelerate", "launch"]
 
     param_dict = dict(parameters)
     
+    # Validate required parameters before starting
+    if not param_dict.get("dataset_config"):
+        raise ValueError("❌ Dataset config file is required for training. Please specify a path to your dataset configuration TOML file.")
+    if not param_dict.get("vae"):
+        raise ValueError("❌ VAE checkpoint path is required for training. Please download and specify the VAE model path (diffusion_pytorch_model.safetensors from Qwen/Qwen-Image).")
+    if not param_dict.get("dit"):
+        raise ValueError("❌ DiT checkpoint path is required for training. Please download and specify the DiT model path (qwen_image_bf16.safetensors from Comfy-Org/Qwen-Image_ComfyUI).")
+    if not param_dict.get("output_dir"):
+        raise ValueError("❌ Output directory is required. Please specify where to save your trained LoRA model.")
+    if not param_dict.get("output_name"):
+        raise ValueError("❌ Output name is required. Please specify a name for your trained LoRA model.")
+    
     # Cache latents using Qwen Image specific script
-    run_cache_latent_cmd = ["uv", "run", "./musubi-tuner/qwen_image_cache_latents.py",
+    run_cache_latent_cmd = [python_cmd, "./musubi-tuner/qwen_image_cache_latents.py",
                             "--dataset_config", str(param_dict.get("dataset_config")),
                             "--vae", str(param_dict.get("vae"))
     ]
@@ -437,11 +454,21 @@ def train_qwen_image_model(headless, print_only, parameters):
 
     log.info(f"Executing command: {run_cache_latent_cmd}")
     log.info("Caching latents...")
-    subprocess.run(run_cache_latent_cmd, env=setup_environment())
-    log.debug("Latent caching completed.")
+    try:
+        result = subprocess.run(run_cache_latent_cmd, env=setup_environment(), 
+                               capture_output=True, text=True, check=True)
+        log.debug("Latent caching completed.")
+    except subprocess.CalledProcessError as e:
+        log.error(f"Latent caching failed with return code {e.returncode}")
+        log.error(f"Error output: {e.stderr}")
+        raise RuntimeError(f"Latent caching failed: {e.stderr}")
+    except FileNotFoundError as e:
+        log.error(f"Command not found: {e}")
+        log.error("Please ensure Python is installed and accessible in your PATH")
+        raise RuntimeError(f"Python executable not found: {python_cmd}")
     
     # Cache text encoder outputs using Qwen Image specific script
-    run_cache_teo_cmd = ["uv", "run", "./musubi-tuner/qwen_image_cache_text_encoder_outputs.py",
+    run_cache_teo_cmd = [python_cmd, "./musubi-tuner/qwen_image_cache_text_encoder_outputs.py",
                             "--dataset_config", str(param_dict.get("dataset_config"))
     ]
     
@@ -472,8 +499,17 @@ def train_qwen_image_model(headless, print_only, parameters):
 
     log.info(f"Executing command: {run_cache_teo_cmd}")
     log.info("Caching text encoder outputs...")
-    subprocess.run(run_cache_teo_cmd, env=setup_environment())
-    log.debug("Text encoder output caching completed.")
+    try:
+        result = subprocess.run(run_cache_teo_cmd, env=setup_environment(),
+                               capture_output=True, text=True, check=True)
+        log.debug("Text encoder output caching completed.")
+    except subprocess.CalledProcessError as e:
+        log.error(f"Text encoder caching failed with return code {e.returncode}")
+        log.error(f"Error output: {e.stderr}")
+        raise RuntimeError(f"Text encoder caching failed: {e.stderr}")
+    except FileNotFoundError as e:
+        log.error(f"Command not found: {e}")
+        raise RuntimeError(f"Python executable not found: {python_cmd}")
 
     # Setup accelerate launch command
     run_cmd = AccelerateLaunch.run_cmd(
@@ -493,7 +529,7 @@ def train_qwen_image_model(headless, print_only, parameters):
     )
 
     # Use Qwen Image specific training script
-    run_cmd.append(rf"{scriptdir}/musubi-tuner/qwen_image_train_network.py")
+    run_cmd.append(f"{scriptdir}/musubi-tuner/qwen_image_train_network.py")
 
     if print_only:
         print_command_and_toml(run_cmd, "")
@@ -533,7 +569,7 @@ def train_qwen_image_model(headless, print_only, parameters):
         )
         
         run_cmd.append("--config_file")
-        run_cmd.append(rf"{file_path}")
+        run_cmd.append(f"{file_path}")
 
         run_cmd_params = {
             "additional_parameters": param_dict.get("additional_parameters"),
@@ -565,31 +601,31 @@ class QwenImageTrainingSettings:
         with gr.Row():
             self.sdpa = gr.Checkbox(
                 label="Use SDPA for CrossAttention",
-                info="SDPA is recommended for Qwen Image (faster than others)",
+                info="✅ RECOMMENDED for Qwen Image. PyTorch's Scaled Dot Product Attention - fastest and most memory efficient",
                 value=self.config.get("sdpa", True),
             )
 
             self.flash_attn = gr.Checkbox(
-                label="FlashAttention",
-                info="Use FlashAttention for CrossAttention (use split_attn if enabled)",
+                label="Use FlashAttention for CrossAttention",
+                info="Memory-efficient attention implementation. Requires FlashAttention library. Enable split_attn if using this",
                 value=self.config.get("flash_attn", False),
             )
 
             self.sage_attn = gr.Checkbox(
-                label="SageAttention",
-                info="Use SageAttention for CrossAttention (use split_attn if enabled)",
+                label="Use SageAttention for CrossAttention",
+                info="Alternative attention implementation. Requires SageAttention library. Enable split_attn if using this",
                 value=self.config.get("sage_attn", False),
             )
 
             self.xformers = gr.Checkbox(
-                label="xformers",
-                info="Use xformers for CrossAttention (use split_attn if enabled)",
+                label="Use xformers for CrossAttention",
+                info="Memory-efficient attention from xformers library. Enable split_attn if using this",
                 value=self.config.get("xformers", False),
             )
 
             self.split_attn = gr.Checkbox(
                 label="Split Attention",
-                info="REQUIRED if using anything other than SDPA (reduces memory)",
+                info="⚠️ REQUIRED if using FlashAttention/SageAttention/xformers. Splits attention computation to reduce memory usage",
                 value=self.config.get("split_attn", False),
             )
 
@@ -732,25 +768,30 @@ class QwenImageTrainingSettings:
         with gr.Row():
             self.ddp_timeout = gr.Number(
                 label="DDP Timeout (minutes)",
-                info="DDP timeout in minutes",
+                info="Distributed training timeout in minutes. Increase if training crashes on multi-GPU setups. Leave empty for default (30min)",
                 value=self.config.get("ddp_timeout", None),
+                minimum=1,
+                maximum=1440,
                 step=1,
                 interactive=True,
             )
 
             self.ddp_gradient_as_bucket_view = gr.Checkbox(
                 label="DDP Gradient as Bucket View",
+                info="Optimization for distributed training. May improve performance but can cause instability in some cases",
                 value=self.config.get("ddp_gradient_as_bucket_view", False),
             )
 
             self.ddp_static_graph = gr.Checkbox(
                 label="DDP Static Graph",
+                info="Enables static graph optimization for distributed training. May improve performance if model architecture doesn't change",
                 value=self.config.get("ddp_static_graph", False),
             )
 
         with gr.Row():
             self.show_timesteps = gr.Dropdown(
                 label="Show Timesteps",
+                info="Debug timestep distribution. 'image' saves visual plots, 'console' prints to terminal. Leave empty for no visualization",
                 choices=["image", "console"],
                 allow_custom_value=True,
                 value=self.config.get("show_timesteps", None),
@@ -767,10 +808,11 @@ class QwenImageOptimizerSettings:
 
     def initialize_ui_components(self) -> None:
         with gr.Row():
-            self.optimizer_type = gr.Textbox(
+            self.optimizer_type = gr.Dropdown(
                 label="Optimizer Type",
-                info="adamw8bit recommended for Qwen Image training",
-                placeholder="adamw8bit (recommended)",
+                info="adamw8bit recommended for Qwen Image training (memory efficient)",
+                choices=["adamw8bit", "AdamW", "AdaFactor", "bitsandbytes.optim.AdEMAMix8bit", "bitsandbytes.optim.PagedAdEMAMix8bit"],
+                allow_custom_value=True,
                 value=self.config.get("optimizer_type", "adamw8bit"),
             )
 
@@ -817,6 +859,7 @@ class QwenImageOptimizerSettings:
         with gr.Row():
             self.lr_decay_steps = gr.Number(
                 label="LR Decay Steps",
+                info="Number of steps to decay learning rate (0 for no decay, or ratio <1 for percentage of total steps)",
                 value=self.config.get("lr_decay_steps", 0),
                 step=1,
                 interactive=True,
@@ -857,6 +900,7 @@ class QwenImageOptimizerSettings:
 
             self.lr_scheduler_type = gr.Textbox(
                 label="Custom Scheduler Module",
+                info="Full path to custom scheduler class (e.g., 'torch.optim.lr_scheduler.CosineAnnealingLR'). Leave empty to use built-in schedulers",
                 value=self.config.get("lr_scheduler_type", ""),
             )
 
@@ -917,8 +961,10 @@ class QwenImageNetworkSettings:
 
             self.network_dropout = gr.Number(
                 label="Network Dropout",
-                info="Dropout rate (None for no dropout)",
-                value=self.config.get("network_dropout", None),
+                info="Dropout rate for regularization. 0.0 = no dropout, 0.1 = 10% dropout. Helps prevent overfitting",
+                value=self.config.get("network_dropout", 0.0),
+                minimum=0.0,
+                maximum=1.0,
                 step=0.01,
                 interactive=True,
             )
@@ -945,23 +991,27 @@ class QwenImageNetworkSettings:
 
             self.scale_weight_norms = gr.Number(
                 label="Scale Weight Norms",
-                info="Scale weights to prevent exploding gradients",
-                value=self.config.get("scale_weight_norms", None),
+                info="Scale weights to prevent exploding gradients. 0.0 = disabled, 1.0 = good starting point",
+                value=self.config.get("scale_weight_norms", 0.0),
+                minimum=0.0,
                 step=0.1,
                 interactive=True,
             )
 
         with gr.Row():
             self.base_weights = gr.Textbox(
-                label="Base Weights",
-                placeholder="LoRA weights to merge before training",
+                label="LoRA Base Weights",
+                info="Path to pre-existing LoRA weights to merge into model before training. Useful for fine-tuning existing LoRAs",
+                placeholder="Path to LoRA .safetensors file (optional)",
                 value=self.config.get("base_weights", ""),
             )
 
             self.base_weights_multiplier = gr.Number(
                 label="Base Weights Multiplier",
-                info="Multiplier for base weights",
-                value=self.config.get("base_weights_multiplier", None),
+                info="Strength multiplier for base weights (1.0 = full strength, 0.5 = half strength). Only used if base_weights is specified",
+                value=self.config.get("base_weights_multiplier", 1.0),
+                minimum=0.0,
+                maximum=2.0,
                 step=0.1,
                 interactive=True,
             )
@@ -1014,8 +1064,9 @@ class QwenImageSaveLoadSettings:
         with gr.Row():
             self.save_last_n_epochs = gr.Number(
                 label="Save Last N Epochs",
-                info="Keep only last N epoch checkpoints",
+                info="Keep only last N epoch checkpoints (removes older ones). Example: 3 = keep only last 3 checkpoints. Leave empty to keep all",
                 value=self.config.get("save_last_n_epochs", None),
+                minimum=1,
                 step=1,
                 interactive=True,
             )
@@ -1044,14 +1095,14 @@ class QwenImageSaveLoadSettings:
 
         with gr.Row():
             self.save_state = gr.Checkbox(
-                label="Save State",
-                info="Save optimizer states with checkpoints",
+                label="Save Optimizer States with Checkpoints",
+                info="Saves complete training state (optimizer, scheduler) for exact resume. Increases file size significantly but allows perfect training continuation",
                 value=self.config.get("save_state", False),
             )
 
             self.save_state_on_train_end = gr.Checkbox(
-                label="Save State on Train End",
-                info="Save state at end of training",
+                label="Save State on Training End",
+                info="Save complete training state when training finishes, even if 'Save Optimizer States' is disabled. Useful for resuming training later",
                 value=self.config.get("save_state_on_train_end", False),
             )
 
@@ -1089,12 +1140,14 @@ class QwenImageLatentCaching:
 
         with gr.Row():
             self.caching_latent_skip_existing = gr.Checkbox(
-                label="Skip Existing",
+                label="Skip Existing Cache Files",
+                info="Skip caching if cache files already exist. Disable to force re-caching all files",
                 value=self.config.get("caching_latent_skip_existing", True),
             )
 
             self.caching_latent_keep_cache = gr.Checkbox(
-                label="Keep Cache",
+                label="Keep Cache Files",
+                info="Keep cached latent files after training. Recommended to enable for faster re-training with same dataset",
                 value=self.config.get("caching_latent_keep_cache", True),
             )
 
@@ -1102,6 +1155,7 @@ class QwenImageLatentCaching:
         with gr.Row():
             self.caching_latent_debug_mode = gr.Dropdown(
                 label="Debug Mode",
+                info="Debug visualization for latent caching. 'image' saves debug images, 'console' prints debug info, 'video' for video models. Leave empty for no debugging",
                 choices=["image", "console", "video"],
                 allow_custom_value=True,
                 value=self.config.get("caching_latent_debug_mode", None),
@@ -1210,11 +1264,21 @@ def qwen_image_lora_tab(
                             config.config.get("fp8_vl") == True)
         
         if is_using_defaults:
-            config_status = "✅ **Qwen Image optimal defaults loaded**"
+            config_status = """
+            ✅ **Qwen Image Optimal Defaults Active**
+            
+            **Key Optimizations Applied:**
+            - Discrete Flow Shift: 3.0 (optimal for Qwen Image)
+            - Optimizer: adamw8bit (memory efficient, recommended)
+            - Learning Rate: 1e-4 (higher than default, per Qwen examples)
+            - Mixed Precision: bf16 (strongly recommended)
+            - SDPA Attention: Enabled (fastest for Qwen Image)
+            - Gradient Checkpointing: Enabled (memory savings)
+            """
         elif hasattr(config, 'config') and config.config:
-            config_status = "📄 **Custom configuration loaded**"
+            config_status = "📄 **Custom configuration loaded** - You may want to verify optimal settings are applied"
         else:
-            config_status = "⚠️ **No configuration**"
+            config_status = "⚠️ **No configuration** - Default values will be used"
         
         gr.Markdown(config_status)
         configuration = ConfigurationFile(headless=headless, config=config)
@@ -1245,7 +1309,8 @@ def qwen_image_lora_tab(
     with gr.Accordion("Training Settings", open=True, elem_classes="preset_background"):
         trainingSettings = QwenImageTrainingSettings(headless=headless, config=config)
 
-    with gr.Accordion("Advanced Settings", open=True, elem_classes="samples_background"):
+    with gr.Accordion("Advanced Settings", open=False, elem_classes="samples_background"):
+        gr.Markdown("**Additional Parameters**: Add custom training parameters as key=value pairs (e.g., `custom_param=value`). These will be appended to the training command.")
         advanced_training = AdvancedTraining(
             headless=headless, training_type="lora", config=config
         )

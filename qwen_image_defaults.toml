@@ -16,7 +16,7 @@ weighting_scheme = "none"
 logit_mean = 0.0
 logit_std = 1.0
 mode_scale = 1.29
-show_timesteps = null
+show_timesteps = ""
 
 # Training Settings
 sdpa = true
@@ -52,24 +52,24 @@ network_weights = ""
 network_module = "networks.lora_qwen_image"
 network_dim = 32
 network_alpha = 1.0
-network_dropout = null
+network_dropout = 0.0
 network_args = ""
 training_comment = ""
 dim_from_weights = false
-scale_weight_norms = null
+scale_weight_norms = 0.0
 base_weights = ""
-base_weights_multiplier = null
+base_weights_multiplier = 1.0
 
 # Save/Load Settings
 output_dir = ""
 output_name = ""
 resume = ""
 save_every_n_epochs = 1
-save_every_n_steps = null
-save_last_n_epochs = null
-save_last_n_epochs_state = null
-save_last_n_steps = null
-save_last_n_steps_state = null
+save_every_n_steps = 0
+save_last_n_epochs = 0
+save_last_n_epochs_state = 0
+save_last_n_steps = 0
+save_last_n_steps_state = 0
 save_state = false
 save_state_on_train_end = false
 
@@ -79,10 +79,10 @@ caching_latent_batch_size = 4
 caching_latent_num_workers = 8
 caching_latent_skip_existing = true
 caching_latent_keep_cache = true
-caching_latent_debug_mode = null
+caching_latent_debug_mode = ""
 caching_latent_console_width = 80
 caching_latent_console_back = ""
-caching_latent_console_num_images = null
+caching_latent_console_num_images = 0
 
 # Caching Settings - Text Encoder
 caching_teo_text_encoder = ""
@@ -98,7 +98,7 @@ mixed_precision = "bf16"
 
 # Logging Settings
 logging_dir = ""
-log_with = null
+log_with = ""
 log_prefix = ""
 log_tracker_name = ""
 wandb_run_name = ""
@@ -107,13 +107,13 @@ wandb_api_key = ""
 log_config = false
 
 # DDP Settings
-ddp_timeout = null
+ddp_timeout = 0
 ddp_gradient_as_bucket_view = false
 ddp_static_graph = false
 
 # Sample Generation
-sample_every_n_steps = null
-sample_every_n_epochs = null
+sample_every_n_steps = 0
+sample_every_n_epochs = 0
 sample_at_first = false
 sample_prompts = ""
 
