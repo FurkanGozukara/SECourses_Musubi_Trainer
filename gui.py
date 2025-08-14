@@ -72,7 +72,7 @@ def UI(**kwargs):
         "server_name": kwargs.get("listen"),
         "auth": (kwargs["username"], kwargs["password"]) if kwargs.get("username") and kwargs.get("password") else None,
         "server_port": kwargs.get("server_port", 0) if kwargs.get("server_port", 0) > 0 else None,
-        "inbrowser": kwargs.get("inbrowser", False),
+        "inbrowser": kwargs.get("inbrowser", True),
         "share": False if kwargs.get("do_not_share", False) else kwargs.get("share", False),
         "root_path": kwargs.get("root_path", None),
         "debug": kwargs.get("debug", False),
@@ -93,7 +93,7 @@ def initialize_arg_parser():
     parser.add_argument("--username", type=str, default="", help="Username for authentication")
     parser.add_argument("--password", type=str, default="", help="Password for authentication")
     parser.add_argument("--server_port", type=int, default=0, help="Port to run the server listener on")
-    parser.add_argument("--inbrowser", action="store_true", help="Open in browser")
+    parser.add_argument("--inbrowser", action="store_true", default=True, help="Open in browser")
     parser.add_argument("--share", action="store_true", help="Share the gradio UI")
     parser.add_argument("--headless", action="store_true", help="Is the server headless")
     parser.add_argument("--language", type=str, default=None, help="Set custom language")
