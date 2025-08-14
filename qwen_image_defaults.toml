@@ -12,7 +12,11 @@ dit_dtype = "bfloat16"  # HARDCODED: Must be bfloat16 for Qwen Image
 fp8_vl = true  # RECOMMENDED: Saves ~8GB VRAM with minimal quality loss
 fp8_base = false  # Optional: FP8 for DiT model, saves ~12GB VRAM
 fp8_scaled = false  # REQUIRED when fp8_base=true, better quality than standard FP8
-blocks_to_swap = 0  # 0 = disabled. 16=save ~8GB VRAM, 45=save ~30GB VRAM (requires 64GB+ RAM)
+blocks_to_swap = 0             # 0 = disabled. 16=save ~8GB VRAM, 45=save ~30GB VRAM (requires 64GB+ RAM)
+
+# Additional Model Settings  
+guidance_scale = 1.0          # Classifier-free guidance scale. 1.0 = default, higher = stronger prompt adherence
+img_in_txt_in_offloading = false  # Memory optimization for mixed image-text inputs
 
 # Flow Matching Settings
 timestep_sampling = "shift"
@@ -36,7 +40,8 @@ sdpa = true
 flash_attn = false
 sage_attn = false
 xformers = false
-split_attn = false
+flash3 = false               # EXPERIMENTAL: FlashAttention 3, not confirmed to work with Qwen Image
+split_attn = false           # REQUIRED if using flash_attn/sage_attn/xformers/flash3
 max_train_steps = 1600
 max_train_epochs = 16
 max_data_loader_n_workers = 2

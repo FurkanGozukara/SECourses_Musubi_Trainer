@@ -116,6 +116,24 @@ class QwenImageModel:
                 interactive=True,
             )
 
+        # Additional model settings
+        with gr.Row():
+            self.guidance_scale = gr.Number(
+                label="Guidance Scale", 
+                info="Classifier-free guidance scale. Default: 1.0. Higher values = stronger prompt adherence",
+                value=self.config.get("guidance_scale", 1.0),
+                minimum=0.1,
+                maximum=20.0,
+                step=0.1,
+                interactive=True,
+            )
+            
+            self.img_in_txt_in_offloading = gr.Checkbox(
+                label="Image-in-Text Input Offloading",
+                info="Memory optimization for mixed image-text inputs. Enable for VRAM savings with complex inputs",
+                value=self.config.get("img_in_txt_in_offloading", False),
+            )
+
         # Flow matching parameters
         with gr.Row():
             self.timestep_sampling = gr.Dropdown(
@@ -251,6 +269,7 @@ def qwen_image_gui_actions(
     flash_attn,
     sage_attn,
     xformers,
+    flash3,
     split_attn,
     max_train_steps,
     max_train_epochs,
@@ -314,6 +333,8 @@ def qwen_image_gui_actions(
     fp8_base,
     fp8_scaled,   # Qwen Image specific
     blocks_to_swap,
+    guidance_scale,
+    img_in_txt_in_offloading,
     timestep_sampling,
     discrete_flow_shift,
     weighting_scheme,
@@ -676,9 +697,16 @@ class QwenImageTrainingSettings:
                 value=self.config.get("xformers", False),
             )
 
+        with gr.Row():
+            self.flash3 = gr.Checkbox(
+                label="Use FlashAttention 3",
+                info="⚠️ EXPERIMENTAL: FlashAttention 3 support. Not confirmed to work with Qwen Image yet. Requires FlashAttention 3 library",
+                value=self.config.get("flash3", False),
+            )
+
             self.split_attn = gr.Checkbox(
                 label="Split Attention",
-                info="⚠️ REQUIRED if using FlashAttention/SageAttention/xformers. Splits attention computation to reduce memory usage",
+                info="⚠️ REQUIRED if using FlashAttention/SageAttention/xformers/flash3. Splits attention computation to reduce memory usage",
                 value=self.config.get("split_attn", False),
             )
 
@@ -1487,11 +1515,12 @@ def qwen_image_lora_tab(
         # Dataset Settings
         qwen_model.dataset_config,
         
-        # trainingSettings (flash3 not supported for Qwen Image)
+        # trainingSettings
         trainingSettings.sdpa,
         trainingSettings.flash_attn,
         trainingSettings.sage_attn,
         trainingSettings.xformers,
+        trainingSettings.flash3,
         trainingSettings.split_attn,
         trainingSettings.max_train_steps,
         trainingSettings.max_train_epochs,
@@ -1560,6 +1589,8 @@ def qwen_image_lora_tab(
         qwen_model.fp8_base,
         qwen_model.fp8_scaled,
         qwen_model.blocks_to_swap,
+        qwen_model.guidance_scale,
+        qwen_model.img_in_txt_in_offloading,
         qwen_model.timestep_sampling,
         qwen_model.discrete_flow_shift,
         qwen_model.weighting_scheme,

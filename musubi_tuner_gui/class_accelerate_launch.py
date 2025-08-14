@@ -55,6 +55,7 @@ class AccelerateLaunch:
                     label="Dynamo backend",
                     choices=[
                         "NO",
+                        "no",  # Legacy compatibility 
                         "EAGER", 
                         "AOT_EAGER",
                         "INDUCTOR",
