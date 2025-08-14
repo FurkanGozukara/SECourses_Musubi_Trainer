@@ -47,8 +47,9 @@ class QwenImageModel:
     def initialize_ui_components(self) -> None:
         with gr.Row():
             self.dataset_config = gr.Textbox(
-                label="Dataset Config",
-                placeholder='Path to the dataset config file',
+                label="Dataset Config File",
+                info="REQUIRED: Path to TOML file containing dataset configuration (images, captions, batch size, resolution, etc.)",
+                placeholder='e.g., /path/to/dataset.toml',
                 value=str(self.config.get("dataset_config", "")),
             )
 
@@ -61,7 +62,7 @@ class QwenImageModel:
 
             self.dit_dtype = gr.Dropdown(
                 label="DiT Data Type",
-                info="Data type for DiT (bfloat16 recommended and hardcoded for Qwen Image)",
+                info="⚙️ HARDCODED: bfloat16 is required and hardcoded for Qwen Image. Do not change - other dtypes will cause errors",
                 choices=["bfloat16"],
                 value=self.config.get("dit_dtype", "bfloat16"),
                 interactive=False,  # Hardcoded for Qwen Image
@@ -70,7 +71,8 @@ class QwenImageModel:
         with gr.Row():
             self.vae = gr.Textbox(
                 label="VAE Checkpoint Path",
-                placeholder="Path to VAE checkpoint",
+                info="REQUIRED: Path to VAE model (diffusion_pytorch_model.safetensors from Qwen/Qwen-Image). NOT ComfyUI VAE!",
+                placeholder="e.g., /path/to/vae/diffusion_pytorch_model.safetensors",
                 value=self.config.get("vae", ""),
             )
             # Note: vae_dtype is not supported in Qwen Image, removed from GUI
@@ -79,34 +81,37 @@ class QwenImageModel:
         with gr.Row():
             self.text_encoder = gr.Textbox(
                 label="Text Encoder (Qwen2.5-VL) Path",
-                placeholder="Path to Qwen2.5-VL text encoder",
+                info="REQUIRED: Path to Qwen2.5-VL text encoder model (qwen_2.5_vl_7b.safetensors from Comfy-Org/Qwen-Image_ComfyUI)",
+                placeholder="e.g., /path/to/text_encoder/qwen_2.5_vl_7b.safetensors",
                 value=self.config.get("text_encoder", ""),
             )
 
             self.fp8_vl = gr.Checkbox(
                 label="Use FP8 for Text Encoder",
-                info="Use FP8 for Qwen2.5-VL text encoder (STRONGLY recommended for <16GB VRAM)",
+                info="✅ ENABLED by default. FP8 quantization for Qwen2.5-VL saves ~8GB VRAM with minimal quality loss. Disable only if you have 24GB+ VRAM",
                 value=self.config.get("fp8_vl", True),
             )
 
         # Qwen Image specific options
         with gr.Row():
             self.fp8_base = gr.Checkbox(
-                label="Use FP8 for Base Model",
-                info="Use FP8 quantization for DiT base model (memory savings)",
+                label="Use FP8 for Base Model (DiT)",
+                info="FP8 quantization for DiT model saves ~12GB VRAM. May slightly reduce quality. Useful for 16GB GPUs. Combine with fp8_scaled",
                 value=self.config.get("fp8_base", False),
             )
             
             self.fp8_scaled = gr.Checkbox(
                 label="Use Scaled FP8 for DiT",
-                info="Use scaled FP8 for DiT (recommended when using fp8_base)",
+                info="Improved FP8 quantization method. REQUIRED when fp8_base is enabled. Better quality than standard FP8",
                 value=self.config.get("fp8_scaled", False),
             )
             
             self.blocks_to_swap = gr.Number(
-                label="Blocks to Swap",
-                info="Number of blocks to swap to CPU (for memory savings)",
-                value=self.config.get("blocks_to_swap", None),
+                label="Blocks to Swap to CPU",
+                info="Swap DiT blocks to CPU to save VRAM. 16=24GB→16GB, 45=42GB→12GB. Requires 64GB+ RAM. Slows training significantly",
+                value=self.config.get("blocks_to_swap", 0),
+                minimum=0,
+                maximum=50,
                 step=1,
                 interactive=True,
             )
@@ -131,7 +136,7 @@ class QwenImageModel:
 
             self.weighting_scheme = gr.Dropdown(
                 label="Weighting Scheme",
-                info="Weighting scheme for timestep distribution (none recommended)",
+                info="✅ 'none' recommended for Qwen Image. Advanced: 'logit_normal' for different timestep emphasis, 'mode' for SD3-style weighting",
                 choices=["none", "logit_normal", "mode", "cosmap", "sigma_sqrt"],
                 value=self.config.get("weighting_scheme", "none"),
                 interactive=True,
@@ -141,24 +146,30 @@ class QwenImageModel:
         with gr.Row():
             self.logit_mean = gr.Number(
                 label="Logit Mean",
-                info="Mean for 'logit_normal' weighting scheme",
+                info="Mean for 'logit_normal' weighting. 0.0=balanced, negative=favor early timesteps, positive=favor late timesteps",
                 value=self.config.get("logit_mean", 0.0),
+                minimum=-3.0,
+                maximum=3.0,
                 step=0.001,
                 interactive=True,
             )
 
             self.logit_std = gr.Number(
                 label="Logit Std",
-                info="Standard deviation for 'logit_normal' weighting scheme",
+                info="Standard deviation for 'logit_normal'. 1.0=normal distribution, <1.0=concentrated, >1.0=spread out timestep sampling",
                 value=self.config.get("logit_std", 1.0),
+                minimum=0.1,
+                maximum=5.0,
                 step=0.001,
                 interactive=True,
             )
 
             self.mode_scale = gr.Number(
                 label="Mode Scale",
-                info="Scale of mode weighting scheme",
+                info="Scale for 'mode' weighting scheme. Default 1.29 from SD3. Higher values = more emphasis on certain timesteps",
                 value=self.config.get("mode_scale", 1.29),
+                minimum=0.1,
+                maximum=5.0,
                 step=0.001,
                 interactive=True,
             )
@@ -632,47 +643,62 @@ class QwenImageTrainingSettings:
         with gr.Row():
             self.max_train_steps = gr.Number(
                 label="Max Training Steps",
-                info="Maximum number of training steps (default 1600)",
+                info="Total training steps. 1600 steps ≈ 1-2 hours on RTX 4090. Ignored if Max Training Epochs is set",
                 value=self.config.get("max_train_steps", 1600),
+                minimum=100,
+                step=100,
                 interactive=True,
             )
 
             self.max_train_epochs = gr.Number(
                 label="Max Training Epochs",
-                info="Overrides max_train_steps (16 recommended for Qwen Image)",
+                info="✅ RECOMMENDED: 16 epochs for Qwen Image. Overrides max_train_steps. 1 epoch = full pass through dataset",
                 value=self.config.get("max_train_epochs", 16),
+                minimum=1,
+                maximum=100,
+                step=1,
+                interactive=True,
             )
 
             self.max_data_loader_n_workers = gr.Number(
                 label="Max DataLoader Workers",
-                info="Qwen Image recommends 2 workers for stability",
+                info="✅ 2 recommended for Qwen Image stability. Higher values = faster data loading but more RAM usage and potential instability",
                 value=self.config.get("max_data_loader_n_workers", 2),
+                minimum=0,
+                maximum=16,
+                step=1,
                 interactive=True,
             )
 
             self.persistent_data_loader_workers = gr.Checkbox(
                 label="Persistent DataLoader Workers",
-                info="Keep workers alive between epochs (recommended)",
+                info="✅ ENABLED: Keeps data loading processes alive between epochs. Faster epoch transitions but uses more RAM",
                 value=self.config.get("persistent_data_loader_workers", True),
             )
 
         with gr.Row():
             self.seed = gr.Number(
                 label="Random Seed for Training",
-                info="Set to 42 for reproducible results",
+                info="42 = reproducible results (same output every time). 0 or empty = random seed each run. Useful for comparing training runs",
                 value=self.config.get("seed", 42),
+                minimum=0,
+                step=1,
+                interactive=True,
             )
 
             self.gradient_checkpointing = gr.Checkbox(
                 label="Enable Gradient Checkpointing",
-                info="STRONGLY recommended for memory savings with Qwen Image",
+                info="✅ ENABLED: Trades computation for memory. Essential for Qwen Image training. Saves ~50% VRAM but increases training time ~20%",
                 value=self.config.get("gradient_checkpointing", True),
             )
 
             self.gradient_accumulation_steps = gr.Number(
                 label="Gradient Accumulation Steps",
-                info="Number of steps to accumulate gradients before backward pass",
+                info="Simulate larger batch size. 1 = update every step, 4 = accumulate 4 steps then update. Useful for small VRAM",
                 value=self.config.get("gradient_accumulation_steps", 1),
+                minimum=1,
+                maximum=32,
+                step=1,
                 interactive=True,
             )
 
@@ -680,28 +706,32 @@ class QwenImageTrainingSettings:
         with gr.Row():
             self.logging_dir = gr.Textbox(
                 label="Logging Directory",
-                placeholder="Directory for TensorBoard logs",
+                info="Directory for training logs and TensorBoard data. Leave empty to disable logging. Example: ./logs",
+                placeholder="e.g., ./logs or /path/to/logs",
                 value=self.config.get("logging_dir", ""),
             )
 
             self.log_with = gr.Dropdown(
                 label="Logging Tool",
+                info="TensorBoard = local logs, WandB = cloud tracking, 'all' = both. Requires logging_dir for TensorBoard",
                 choices=["tensorboard", "wandb", "all"],
                 allow_custom_value=True,
-                value=self.config.get("log_with", None),
+                value=self.config.get("log_with", ""),
                 interactive=True,
             )
 
         with gr.Row():
             self.log_prefix = gr.Textbox(
                 label="Log Prefix",
-                placeholder="Prefix for log directory names",
+                info="Prefix added to log directory names with timestamp. Example: 'qwen-lora' creates 'qwen-lora-20241201120000'",
+                placeholder="e.g., qwen-lora or my-experiment",
                 value=self.config.get("log_prefix", ""),
             )
 
             self.log_tracker_name = gr.Textbox(
                 label="Log Tracker Name",
-                placeholder="Name for tracker",
+                info="Custom name for the tracker instance. Used in TensorBoard/WandB interface. Defaults to script name",
+                placeholder="e.g., qwen-image-training or my-custom-name",
                 value=self.config.get("log_tracker_name", ""),
             )
 
@@ -709,16 +739,18 @@ class QwenImageTrainingSettings:
         with gr.Row():
             self.sample_every_n_steps = gr.Number(
                 label="Sample Every N Steps",
-                info="Generate samples during training",
+                info="Generate test images every N training steps. 100-500 recommended. Leave empty to disable. Requires sample_prompts file",
                 value=self.config.get("sample_every_n_steps", None),
+                minimum=1,
                 step=1,
                 interactive=True,
             )
 
             self.sample_every_n_epochs = gr.Number(
                 label="Sample Every N Epochs",
-                info="Generate samples every N epochs",
+                info="Generate test images every N epochs. 1-4 recommended. Leave empty to disable. Overrides sample_every_n_steps",
                 value=self.config.get("sample_every_n_epochs", None),
+                minimum=1,
                 step=1,
                 interactive=True,
             )
@@ -726,13 +758,14 @@ class QwenImageTrainingSettings:
         with gr.Row():
             self.sample_at_first = gr.Checkbox(
                 label="Sample at First",
-                info="Generate sample before training starts",
+                info="Generate test images before training starts. Useful to verify prompts and base model quality",
                 value=self.config.get("sample_at_first", False),
             )
 
             self.sample_prompts = gr.Textbox(
                 label="Sample Prompts File",
-                placeholder="Path to prompts file for sample generation",
+                info="Path to text file with prompts (one per line). Required for sample generation. Example: 'A cat\nA dog\nA house'",
+                placeholder="e.g., /path/to/prompts.txt",
                 value=self.config.get("sample_prompts", ""),
             )
 
@@ -740,27 +773,30 @@ class QwenImageTrainingSettings:
         with gr.Row():
             self.wandb_run_name = gr.Textbox(
                 label="WandB Run Name",
-                placeholder="Name for WandB run",
+                info="Custom name for WandB experiment. Auto-generated if empty. Only used when log_with includes 'wandb'",
+                placeholder="e.g., qwen-lora-experiment-v1",
                 value=self.config.get("wandb_run_name", ""),
             )
 
             self.log_tracker_config = gr.Textbox(
                 label="Log Tracker Config",
-                placeholder="Path to tracker config file",
+                info="Path to JSON config file for logging parameters. Advanced users only. Leave empty for defaults",
+                placeholder="e.g., /path/to/tracker_config.json",
                 value=self.config.get("log_tracker_config", ""),
             )
 
         with gr.Row():
             self.wandb_api_key = gr.Textbox(
                 label="WandB API Key",
-                placeholder="WandB API key",
+                info="WandB API key for authentication. Get from wandb.ai/authorize. Can also set WANDB_API_KEY env variable",
+                placeholder="Enter your WandB API key (optional if env var set)",
                 type="password",
                 value=self.config.get("wandb_api_key", ""),
             )
 
             self.log_config = gr.Checkbox(
                 label="Log Training Configuration",
-                info="Log training config to tracker",
+                info="Include all training parameters in logs. Useful for experiment tracking and reproducibility",
                 value=self.config.get("log_config", False),
             )
 
@@ -818,8 +854,10 @@ class QwenImageOptimizerSettings:
 
             self.learning_rate = gr.Number(
                 label="Learning Rate",
-                info="Qwen Image example uses 1e-4 (higher than default 2e-6)",
+                info="✅ 1e-4 (0.0001) recommended for Qwen Image. Too high = instability, too low = slow learning. Typical range: 1e-6 to 1e-3",
                 value=self.config.get("learning_rate", 1e-4),
+                minimum=1e-7,
+                maximum=1e-2,
                 step=1e-6,
                 interactive=True,
             )
@@ -827,14 +865,17 @@ class QwenImageOptimizerSettings:
         with gr.Row():
             self.optimizer_args = gr.Textbox(
                 label="Optimizer Arguments",
+                info="Extra optimizer parameters as key=value pairs. Common: weight_decay=0.01 (regularization), betas=0.9,0.999 (momentum)",
                 placeholder='e.g. "weight_decay=0.01 betas=0.9,0.999"',
                 value=self.config.get("optimizer_args", ""),
             )
 
             self.max_grad_norm = gr.Number(
                 label="Max Gradient Norm",
-                info="Gradient clipping (0 to disable)",
+                info="Gradient clipping to prevent exploding gradients. 1.0 = good default, 0 = disabled. Higher = allow larger gradients",
                 value=self.config.get("max_grad_norm", 1.0),
+                minimum=0.0,
+                maximum=10.0,
                 step=0.1,
                 interactive=True,
             )
@@ -843,6 +884,7 @@ class QwenImageOptimizerSettings:
         with gr.Row():
             self.lr_scheduler = gr.Dropdown(
                 label="Learning Rate Scheduler",
+                info="✅ 'constant' recommended for most cases. 'cosine' = gradual decrease, 'linear' = linear decrease, 'constant_with_warmup' = warm start",
                 choices=["constant", "linear", "cosine", "cosine_with_restarts", "polynomial", "constant_with_warmup", "adafactor"],
                 value=self.config.get("lr_scheduler", "constant"),
                 interactive=True,
@@ -850,8 +892,9 @@ class QwenImageOptimizerSettings:
 
             self.lr_warmup_steps = gr.Number(
                 label="LR Warmup Steps",
-                info="Warmup steps or ratio (float <1)",
+                info="Gradually increase LR for stability. Integer = steps, float <1 = ratio of total steps. 0 = no warmup. Try 100-500 steps",
                 value=self.config.get("lr_warmup_steps", 0),
+                minimum=0,
                 step=1,
                 interactive=True,
             )
@@ -867,8 +910,10 @@ class QwenImageOptimizerSettings:
 
             self.lr_scheduler_num_cycles = gr.Number(
                 label="LR Scheduler Cycles",
-                info="For cosine_with_restarts",
+                info="Number of restart cycles for 'cosine_with_restarts' scheduler. More cycles = more LR restarts during training",
                 value=self.config.get("lr_scheduler_num_cycles", 1),
+                minimum=1,
+                maximum=10,
                 step=1,
                 interactive=True,
             )
@@ -876,15 +921,19 @@ class QwenImageOptimizerSettings:
         with gr.Row():
             self.lr_scheduler_power = gr.Number(
                 label="LR Scheduler Power",
-                info="For polynomial scheduler",
+                info="Polynomial decay power for 'polynomial' scheduler. 1.0 = linear, >1.0 = slower initial decay, <1.0 = faster initial decay",
                 value=self.config.get("lr_scheduler_power", 1.0),
+                minimum=0.1,
+                maximum=5.0,
                 step=0.1,
                 interactive=True,
             )
 
             self.lr_scheduler_timescale = gr.Number(
                 label="LR Scheduler Timescale",
-                value=self.config.get("lr_scheduler_timescale", None),
+                info="Inverse sqrt scheduler timescale. Defaults to warmup steps. Advanced parameter, leave empty for auto",
+                value=self.config.get("lr_scheduler_timescale", 0),
+                minimum=0,
                 step=1,
                 interactive=True,
             )
@@ -892,8 +941,10 @@ class QwenImageOptimizerSettings:
         with gr.Row():
             self.lr_scheduler_min_lr_ratio = gr.Number(
                 label="LR Min Ratio",
-                info="Minimum LR as ratio of initial LR",
-                value=self.config.get("lr_scheduler_min_lr_ratio", None),
+                info="Minimum learning rate as ratio of initial LR. 0.1 = LR won't go below 10% of initial. 0 = can reach zero",
+                value=self.config.get("lr_scheduler_min_lr_ratio", 0.0),
+                minimum=0.0,
+                maximum=1.0,
                 step=0.01,
                 interactive=True,
             )
@@ -907,7 +958,8 @@ class QwenImageOptimizerSettings:
         with gr.Row():
             self.lr_scheduler_args = gr.Textbox(
                 label="Scheduler Arguments",
-                placeholder='e.g. "T_max=100"',
+                info="Extra scheduler parameters as key=value pairs. Example: T_max=100 for CosineAnnealing, eta_min=1e-7 for minimum LR",
+                placeholder='e.g. "T_max=100 eta_min=1e-7"',
                 value=self.config.get("lr_scheduler_args", ""),
             )
 
@@ -923,29 +975,32 @@ class QwenImageNetworkSettings:
         with gr.Row():
             self.no_metadata = gr.Checkbox(
                 label="No Metadata",
-                info="Don't save metadata in output model",
+                info="Exclude training metadata from saved LoRA file. Reduces file size slightly but loses training info for future reference",
                 value=self.config.get("no_metadata", False),
             )
 
             self.network_weights = gr.Textbox(
-                label="Network Weights",
-                placeholder="Pretrained LoRA weights to start from",
+                label="Pretrained Network Weights",
+                info="Path to existing LoRA weights to continue training from. Leave empty to start from scratch",
+                placeholder="e.g., /path/to/existing_lora.safetensors",
                 value=self.config.get("network_weights", ""),
             )
 
         with gr.Row():
             self.network_module = gr.Textbox(
                 label="Network Module",
-                info="Auto-selected for Qwen Image (lora_qwen_image)",
-                placeholder="networks.lora",
-                value=self.config.get("network_module", "networks.lora"),
+                info="⚙️ AUTO-SET: LoRA implementation for Qwen Image. 'networks.lora_qwen_image' is automatically selected. Do not change",
+                placeholder="networks.lora_qwen_image",
+                value=self.config.get("network_module", "networks.lora_qwen_image"),
                 interactive=False,  # Will be auto-selected
             )
 
             self.network_dim = gr.Number(
                 label="Network Dimension (Rank)",
-                info="LoRA rank - 32 recommended for Qwen Image",
+                info="✅ LoRA rank/dimension. 32 recommended for Qwen Image. Higher = more capacity but larger files. Range: 8-128",
                 value=self.config.get("network_dim", 32),
+                minimum=1,
+                maximum=512,
                 step=1,
                 interactive=True,
             )
@@ -953,8 +1008,10 @@ class QwenImageNetworkSettings:
         with gr.Row():
             self.network_alpha = gr.Number(
                 label="Network Alpha",
-                info="LoRA alpha (1.0 recommended)",
+                info="✅ LoRA scaling factor. 1.0 recommended for Qwen Image. Higher = stronger LoRA effect. Formula: alpha/rank = final scaling",
                 value=self.config.get("network_alpha", 1.0),
+                minimum=0.1,
+                maximum=512.0,
                 step=0.1,
                 interactive=True,
             )
@@ -972,20 +1029,22 @@ class QwenImageNetworkSettings:
         with gr.Row():
             self.network_args = gr.Textbox(
                 label="Network Arguments",
-                placeholder="Additional network arguments",
+                info="Advanced LoRA parameters as key=value pairs. Common: conv_dim=4 (train convolution layers), conv_alpha=1",
+                placeholder='e.g. "conv_dim=4 conv_alpha=1"',
                 value=self.config.get("network_args", ""),
             )
 
             self.training_comment = gr.Textbox(
                 label="Training Comment",
-                placeholder="Comment for metadata",
+                info="Descriptive comment saved in LoRA metadata. Useful for tracking what this model was trained for",
+                placeholder='e.g. "Anime style character training on 500 images"',
                 value=self.config.get("training_comment", ""),
             )
 
         with gr.Row():
             self.dim_from_weights = gr.Checkbox(
-                label="Dim from Weights",
-                info="Auto-determine rank from network weights",
+                label="Auto-Determine Rank from Weights",
+                info="Automatically detect network_dim from pretrained LoRA weights. Only works when network_weights is specified",
                 value=self.config.get("dim_from_weights", False),
             )
 
@@ -1028,35 +1087,42 @@ class QwenImageSaveLoadSettings:
         with gr.Row():
             self.output_dir = gr.Textbox(
                 label="Output Directory",
-                placeholder="Directory to save trained model",
+                info="REQUIRED: Directory where trained LoRA model will be saved. Must exist or be creatable",
+                placeholder="e.g., ./models/trained or /path/to/output",
                 value=self.config.get("output_dir", ""),
             )
 
             self.output_name = gr.Textbox(
                 label="Output Name",
-                placeholder="Base name for saved model files",
+                info="REQUIRED: Base filename for saved LoRA (without extension). Example: 'my-qwen-lora' creates 'my-qwen-lora.safetensors'",
+                placeholder="e.g., my-qwen-lora or character-style-v1",
                 value=self.config.get("output_name", ""),
             )
 
         with gr.Row():
             self.resume = gr.Textbox(
-                label="Resume",
-                placeholder="Path to state file to resume training",
+                label="Resume Training State",
+                info="Path to .safetensors state file to resume interrupted training. Includes optimizer state, step count, etc.",
+                placeholder="e.g., /path/to/training_state.safetensors",
                 value=self.config.get("resume", ""),
             )
 
         with gr.Row():
             self.save_every_n_epochs = gr.Number(
                 label="Save Every N Epochs",
-                info="Save checkpoint every N epochs (1 recommended)",
+                info="✅ 1 recommended. Save checkpoint every N epochs for backup and progress tracking. 0 = save only at end",
                 value=self.config.get("save_every_n_epochs", 1),
+                minimum=0,
+                maximum=50,
                 step=1,
                 interactive=True,
             )
 
             self.save_every_n_steps = gr.Number(
                 label="Save Every N Steps",
+                info="Save checkpoint every N training steps. Leave empty to disable. Overrides save_every_n_epochs. Useful for long training",
                 value=self.config.get("save_every_n_steps", None),
+                minimum=1,
                 step=1,
                 interactive=True,
             )
@@ -1073,7 +1139,9 @@ class QwenImageSaveLoadSettings:
 
             self.save_last_n_epochs_state = gr.Number(
                 label="Save Last N Epochs State",
-                value=self.config.get("save_last_n_epochs_state", None),
+                info="Keep last N optimizer states (larger files). 0=keep all. Overrides save_last_n_epochs for state files only",
+                value=self.config.get("save_last_n_epochs_state", 0),
+                minimum=0,
                 step=1,
                 interactive=True,
             )
@@ -1081,14 +1149,18 @@ class QwenImageSaveLoadSettings:
         with gr.Row():
             self.save_last_n_steps = gr.Number(
                 label="Save Last N Steps",
-                value=self.config.get("save_last_n_steps", None),
+                info="Keep only last N step checkpoints. 0=keep all. Example: 3=keep only last 3 step saves, delete older ones",
+                value=self.config.get("save_last_n_steps", 0),
+                minimum=0,
                 step=1,
                 interactive=True,
             )
 
             self.save_last_n_steps_state = gr.Number(
                 label="Save Last N Steps State",
-                value=self.config.get("save_last_n_steps_state", None),
+                info="Keep last N optimizer states for step saves. 0=keep all. Overrides save_last_n_steps for state files only",
+                value=self.config.get("save_last_n_steps_state", 0),
+                minimum=0,
                 step=1,
                 interactive=True,
             )
@@ -1117,23 +1189,28 @@ class QwenImageLatentCaching:
     def initialize_ui_components(self) -> None:
         with gr.Row():
             self.caching_latent_device = gr.Textbox(
-                label="Device",
-                placeholder="Device for caching (e.g., cuda, cpu)",
+                label="Caching Device",
+                info="Device for latent caching. 'cuda' = GPU (faster), 'cpu' = CPU (slower but uses less VRAM)",
+                placeholder="cuda, cpu, cuda:0, cuda:1",
                 value=self.config.get("caching_latent_device", "cuda"),
             )
 
             self.caching_latent_batch_size = gr.Number(
-                label="Batch Size",
-                info="Conservative batch size for memory efficiency",
+                label="Caching Batch Size",
+                info="How many images to process at once. 4=conservative for 16GB VRAM, 8-16=faster with more VRAM. Reduce if OOM errors",
                 value=self.config.get("caching_latent_batch_size", 4),
+                minimum=1,
+                maximum=64,
                 step=1,
                 interactive=True,
             )
 
             self.caching_latent_num_workers = gr.Number(
-                label="Number of Workers",
-                info="Number of workers for dataset loading",
+                label="Data Loading Workers",
+                info="Parallel workers for loading images. 8=good default. Higher=faster loading but more RAM usage. 0=single-threaded",
                 value=self.config.get("caching_latent_num_workers", 8),
+                minimum=0,
+                maximum=32,
                 step=1,
                 interactive=True,
             )
@@ -1164,7 +1241,10 @@ class QwenImageLatentCaching:
 
             self.caching_latent_console_width = gr.Number(
                 label="Console Width",
+                info="Terminal width for debug console output formatting. Standard terminal = 80-120 characters",
                 value=self.config.get("caching_latent_console_width", 80),
+                minimum=40,
+                maximum=200,
                 step=1,
                 interactive=True,
             )
@@ -1172,13 +1252,17 @@ class QwenImageLatentCaching:
         with gr.Row():
             self.caching_latent_console_back = gr.Textbox(
                 label="Console Background",
+                info="Background character for debug console visualization. Usually leave empty or use space/dot",
+                placeholder="e.g., ' ' or '.' or leave empty",
                 value=self.config.get("caching_latent_console_back", ""),
                 interactive=True,
             )
 
             self.caching_latent_console_num_images = gr.Number(
                 label="Console Number of Images",
-                value=self.config.get("caching_latent_console_num_images", None),
+                info="Max images to show in debug console. 0=no limit. Useful to prevent console spam with large datasets",
+                value=self.config.get("caching_latent_console_num_images", 0),
+                minimum=0,
                 step=1,
                 interactive=True,
             )
@@ -1195,7 +1279,8 @@ class QwenImageTextEncoderOutputsCaching:
         with gr.Row():
             self.caching_teo_text_encoder = gr.Textbox(
                 label="Text Encoder (Qwen2.5-VL) Path",
-                placeholder="Path to Qwen2.5-VL text encoder",
+                info="Path to Qwen2.5-VL for text encoder caching. Usually same as main Text Encoder path above",
+                placeholder="e.g., /path/to/qwen_2.5_vl_7b.safetensors",
                 value=self.config.get("caching_teo_text_encoder", ""),
             )
 
@@ -1203,40 +1288,49 @@ class QwenImageTextEncoderOutputsCaching:
 
         with gr.Row():
             self.caching_teo_device = gr.Textbox(
-                label="Device",
-                placeholder="Device for caching (e.g., cuda, cpu)",
+                label="Caching Device",
+                info="Device for text encoder caching. 'cuda' = GPU (faster), 'cpu' = CPU (slower, use if GPU runs out of memory)",
+                placeholder="cuda, cpu, cuda:0, cuda:1",
                 value=self.config.get("caching_teo_device", "cuda"),
             )
 
             self.caching_teo_fp8_vl = gr.Checkbox(
                 label="Use FP8 for VL Model",
-                info="Use FP8 for Qwen2.5-VL during caching (recommended for <16GB VRAM)",
+                info="✅ ENABLED: Use FP8 quantization during caching to save VRAM. Usually matches main FP8 VL setting",
                 value=self.config.get("caching_teo_fp8_vl", True),
             )
 
         with gr.Row():
             self.caching_teo_batch_size = gr.Number(
-                label="Batch Size",
+                label="Caching Batch Size",
+                info="Text encoder batch size. 16=good default. Higher=faster but more VRAM. Reduce if getting OOM errors",
                 value=self.config.get("caching_teo_batch_size", 16),
+                minimum=1,
+                maximum=128,
                 step=1,
                 interactive=True,
             )
 
             self.caching_teo_num_workers = gr.Number(
-                label="Number of Workers",
+                label="Data Loading Workers",
+                info="Parallel workers for loading text data. 8=good default. Higher=faster but more RAM usage",
                 value=self.config.get("caching_teo_num_workers", 8),
+                minimum=0,
+                maximum=32,
                 step=1,
                 interactive=True,
             )
 
         with gr.Row():
             self.caching_teo_skip_existing = gr.Checkbox(
-                label="Skip Existing",
+                label="Skip Existing Cache Files",
+                info="Skip text encoder caching if cache files already exist. Disable to force re-caching all text embeddings",
                 value=self.config.get("caching_teo_skip_existing", True),
             )
 
             self.caching_teo_keep_cache = gr.Checkbox(
-                label="Keep Cache",
+                label="Keep Cache Files",
+                info="Keep cached text encoder files after training. Recommended to enable for faster re-training with same text data",
                 value=self.config.get("caching_teo_keep_cache", True),
             )
 

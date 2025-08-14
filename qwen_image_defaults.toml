@@ -7,7 +7,7 @@ dit_dtype = "bfloat16"
 fp8_vl = true
 fp8_base = false
 fp8_scaled = false
-blocks_to_swap = null
+# blocks_to_swap = # Leave empty unless you need CPU swapping
 
 # Flow Matching Settings
 timestep_sampling = "shift"
@@ -37,12 +37,12 @@ optimizer_type = "adamw8bit"
 learning_rate = 1e-4
 max_grad_norm = 1.0
 lr_scheduler = "constant"
-lr_warmup_steps = 0
-lr_decay_steps = 0
+# lr_warmup_steps = # Leave empty for no warmup
+# lr_decay_steps = # Leave empty for no decay
 lr_scheduler_num_cycles = 1
 lr_scheduler_power = 1.0
-lr_scheduler_timescale = null
-lr_scheduler_min_lr_ratio = null
+# lr_scheduler_timescale = # Leave empty for auto
+# lr_scheduler_min_lr_ratio = # Leave empty for no minimum
 lr_scheduler_type = ""
 lr_scheduler_args = ""
 
@@ -52,24 +52,24 @@ network_weights = ""
 network_module = "networks.lora_qwen_image"
 network_dim = 32
 network_alpha = 1.0
-network_dropout = 0.0
+# network_dropout = # Leave empty for no dropout
 network_args = ""
 training_comment = ""
 dim_from_weights = false
-scale_weight_norms = 0.0
+# scale_weight_norms = # Leave empty to disable weight scaling
 base_weights = ""
-base_weights_multiplier = 1.0
+# base_weights_multiplier = # Leave empty unless using base_weights
 
 # Save/Load Settings
 output_dir = ""
 output_name = ""
 resume = ""
 save_every_n_epochs = 1
-save_every_n_steps = 0
-save_last_n_epochs = 0
-save_last_n_epochs_state = 0
-save_last_n_steps = 0
-save_last_n_steps_state = 0
+# save_every_n_steps = # Leave empty to disable step-based saving
+# save_last_n_epochs = # Leave empty to keep all epoch checkpoints
+# save_last_n_epochs_state = # Leave empty to keep all epoch states
+# save_last_n_steps = # Leave empty to keep all step checkpoints  
+# save_last_n_steps_state = # Leave empty to keep all step states
 save_state = false
 save_state_on_train_end = false
 
@@ -82,7 +82,7 @@ caching_latent_keep_cache = true
 caching_latent_debug_mode = ""
 caching_latent_console_width = 80
 caching_latent_console_back = ""
-caching_latent_console_num_images = 0
+# caching_latent_console_num_images = # Leave empty for no limit
 
 # Caching Settings - Text Encoder
 caching_teo_text_encoder = ""
@@ -107,13 +107,13 @@ wandb_api_key = ""
 log_config = false
 
 # DDP Settings
-ddp_timeout = 0
+# ddp_timeout = # Leave empty for default timeout
 ddp_gradient_as_bucket_view = false
 ddp_static_graph = false
 
-# Sample Generation
-sample_every_n_steps = 0
-sample_every_n_epochs = 0
+# Sample Generation  
+# sample_every_n_steps = # Leave empty to disable step-based sampling
+# sample_every_n_epochs = # Leave empty to disable epoch-based sampling
 sample_at_first = false
 sample_prompts = ""
 
