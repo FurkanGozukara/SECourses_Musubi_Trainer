@@ -269,8 +269,23 @@ All boolean fields default to `false` except where noted:
 4. **Fixed inconsistent defaults** that could cause confusion
 5. **Made all numeric fields explicit** so users understand the effect of 0
 
+## 🔧 **TOML Generation & Command Line Behavior:**
+
+**✅ FIXED: Critical Parameter Handling Issues**
+- **0 values**: Now correctly preserved (e.g., `lr_warmup_steps = 0`, `blocks_to_swap = 0`)
+- **False values**: Now correctly preserved (e.g., `fp8_base = false`, `split_attn = false`) 
+- **Empty strings**: Now correctly preserved (allows user to specify empty paths when needed)
+- **None values**: Only None values are excluded from TOML files (as intended)
+
+**Command Line Generation:**
+- Boolean flags (`action="store_true"`): Only included when True, omitted when False
+- Numeric parameters: All values including 0 are preserved and passed to musubi tuner
+- String parameters: Empty strings are preserved, None values are omitted
+- Caching commands: Fixed to handle 0 values correctly (e.g., `num_workers = 0` is valid)
+
 The configuration now clearly shows:
 - Which fields are required vs optional
 - What happens when fields are 0 vs positive values  
 - When empty strings are valid vs when paths are required
 - Optimal default values with explanations
+- **Accurate TOML generation** that preserves all meaningful parameter values

@@ -9,6 +9,14 @@ text_encoder = ""  # REQUIRED: Path to Qwen2.5-VL checkpoint
 dataset_config = ""  # REQUIRED: Path to dataset TOML configuration
 
 dit_dtype = "bfloat16"  # HARDCODED: Must be bfloat16 for Qwen Image
+text_encoder_dtype = "float16"  # Data type for Qwen2.5-VL. float16=faster, bfloat16=better precision
+vae_dtype = "bfloat16"       # Data type for VAE. bfloat16=Qwen Image default, float16=faster
+
+# VAE Optimization Settings
+vae_tiling = false           # Enable spatial tiling to reduce VRAM usage during VAE operations
+vae_chunk_size = 0           # 0 = auto/disabled. Higher = faster but more VRAM
+vae_spatial_tile_sample_min_size = 0  # 0 = disabled. 256 = typical. Auto-enables vae_tiling if set
+
 fp8_vl = true  # RECOMMENDED: Saves ~8GB VRAM with minimal quality loss
 fp8_base = false  # Optional: FP8 for DiT model, saves ~12GB VRAM
 fp8_scaled = false  # REQUIRED when fp8_base=true, better quality than standard FP8

@@ -1313,7 +1313,7 @@ def SaveConfigFileToRun(
     variables = {
         name: value
         for name, value in sorted(parameters, key=lambda x: x[0])
-        if name not in exclusion and value != 0 and value != "" and value is not False
+        if name not in exclusion and value is not None
     }
 
     folder_path = os.path.dirname(file_path)

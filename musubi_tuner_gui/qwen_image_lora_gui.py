@@ -67,6 +67,14 @@ class QwenImageModel:
                 value=self.config.get("dit_dtype", "bfloat16"),
                 interactive=False,  # Hardcoded for Qwen Image
             )
+            
+            self.text_encoder_dtype = gr.Dropdown(
+                label="Text Encoder Data Type",
+                info="Data type for Qwen2.5-VL text encoder. float16 = faster, bfloat16 = better precision",
+                choices=["float16", "bfloat16", "float32"],
+                value=self.config.get("text_encoder_dtype", "float16"),
+                interactive=True,
+            )
 
         with gr.Row():
             self.vae = gr.Textbox(
@@ -75,7 +83,14 @@ class QwenImageModel:
                 placeholder="e.g., /path/to/vae/diffusion_pytorch_model.safetensors",
                 value=self.config.get("vae", ""),
             )
-            # Note: vae_dtype is not supported in Qwen Image, removed from GUI
+            
+            self.vae_dtype = gr.Dropdown(
+                label="VAE Data Type",
+                info="Data type for VAE model. bfloat16 = Qwen Image default, float16 = faster, float32 = highest precision",
+                choices=["bfloat16", "float16", "float32"],
+                value=self.config.get("vae_dtype", "bfloat16"),
+                interactive=True,
+            )
 
         # Qwen Image specific text encoder
         with gr.Row():
@@ -84,6 +99,34 @@ class QwenImageModel:
                 info="REQUIRED: Path to Qwen2.5-VL text encoder model (qwen_2.5_vl_7b.safetensors from Comfy-Org/Qwen-Image_ComfyUI)",
                 placeholder="e.g., /path/to/text_encoder/qwen_2.5_vl_7b.safetensors",
                 value=self.config.get("text_encoder", ""),
+            )
+
+        # VAE optimization settings  
+        with gr.Row():
+            self.vae_tiling = gr.Checkbox(
+                label="VAE Tiling",
+                info="Enable spatial tiling for VAE to reduce VRAM usage during encoding/decoding",
+                value=self.config.get("vae_tiling", False),
+            )
+            
+            self.vae_chunk_size = gr.Number(
+                label="VAE Chunk Size",
+                info="Chunk size for CausalConv3d in VAE. Higher = faster but more VRAM. 0 = auto/disabled",
+                value=self.config.get("vae_chunk_size", 0),
+                minimum=0,
+                maximum=128,
+                step=1,
+                interactive=True,
+            )
+            
+            self.vae_spatial_tile_sample_min_size = gr.Number(
+                label="VAE Spatial Tile Min Size", 
+                info="Minimum spatial tile size for VAE. Auto-enables vae_tiling if set. 0 = disabled, 256 = typical",
+                value=self.config.get("vae_spatial_tile_sample_min_size", 0),
+                minimum=0,
+                maximum=1024,
+                step=32,
+                interactive=True,
             )
 
             self.fp8_vl = gr.Checkbox(
@@ -327,7 +370,12 @@ def qwen_image_gui_actions(
     lr_scheduler_args,
     dit,
     dit_dtype,
+    text_encoder_dtype,
     vae,
+    vae_dtype,
+    vae_tiling,
+    vae_chunk_size,
+    vae_spatial_tile_sample_min_size,
     text_encoder,  # Qwen Image text encoder
     fp8_vl,       # Qwen Image specific
     fp8_base,
@@ -508,15 +556,15 @@ def train_qwen_image_model(headless, print_only, parameters):
     
     # Note: vae_dtype is not supported in Qwen Image
         
-    if param_dict.get("caching_latent_device"):
+    if param_dict.get("caching_latent_device") is not None and param_dict.get("caching_latent_device") != "":
         run_cache_latent_cmd.append("--device")
         run_cache_latent_cmd.append(str(param_dict.get("caching_latent_device")))
     
-    if param_dict.get("caching_latent_batch_size"):
+    if param_dict.get("caching_latent_batch_size") is not None:
         run_cache_latent_cmd.append("--batch_size")
         run_cache_latent_cmd.append(str(param_dict.get("caching_latent_batch_size")))
     
-    if param_dict.get("caching_latent_num_workers"):
+    if param_dict.get("caching_latent_num_workers") is not None:
         run_cache_latent_cmd.append("--num_workers")
         run_cache_latent_cmd.append(str(param_dict.get("caching_latent_num_workers")))
         
@@ -546,18 +594,18 @@ def train_qwen_image_model(headless, print_only, parameters):
                             "--dataset_config", str(param_dict.get("dataset_config"))
     ]
     
-    if param_dict.get("text_encoder"):
+    if param_dict.get("text_encoder") is not None and param_dict.get("text_encoder") != "":
         run_cache_teo_cmd.append("--text_encoder")
         run_cache_teo_cmd.append(str(param_dict.get("text_encoder")))   
                             
     if param_dict.get("caching_teo_fp8_vl"):
         run_cache_teo_cmd.append("--fp8_vl")
         
-    if param_dict.get("caching_teo_device"):
+    if param_dict.get("caching_teo_device") is not None and param_dict.get("caching_teo_device") != "":
         run_cache_teo_cmd.append("--device")
         run_cache_teo_cmd.append(str(param_dict.get("caching_teo_device")))
     
-    if param_dict.get("caching_teo_batch_size"):
+    if param_dict.get("caching_teo_batch_size") is not None:
         run_cache_teo_cmd.append("--batch_size")
         run_cache_teo_cmd.append(str(param_dict.get("caching_teo_batch_size")))
         
@@ -567,7 +615,7 @@ def train_qwen_image_model(headless, print_only, parameters):
     if param_dict.get("caching_teo_keep_cache"):
         run_cache_teo_cmd.append("--keep_cache")
         
-    if param_dict.get("caching_teo_num_workers"):
+    if param_dict.get("caching_teo_num_workers") is not None:
         run_cache_teo_cmd.append("--num_workers")
         run_cache_teo_cmd.append(str(param_dict.get("caching_teo_num_workers")))
 
@@ -1583,7 +1631,12 @@ def qwen_image_lora_tab(
         # Qwen Image model settings
         qwen_model.dit,
         qwen_model.dit_dtype,
+        qwen_model.text_encoder_dtype,
         qwen_model.vae,
+        qwen_model.vae_dtype,
+        qwen_model.vae_tiling,
+        qwen_model.vae_chunk_size,
+        qwen_model.vae_spatial_tile_sample_min_size,
         qwen_model.text_encoder,
         qwen_model.fp8_vl,
         qwen_model.fp8_base,
