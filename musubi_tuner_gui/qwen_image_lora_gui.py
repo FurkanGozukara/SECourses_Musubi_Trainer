@@ -120,8 +120,8 @@ class QwenImageModel:
         with gr.Row():
             self.timestep_sampling = gr.Dropdown(
                 label="Timestep Sampling Method",
-                info="'shift' uses fixed discrete_flow_shift value. 'qwen_shift' calculates dynamic shift based on image resolution (ignores discrete_flow_shift parameter)",
-                choices=["shift", "qwen_shift", "uniform", "sigmoid", "logsnr", "qinglong_flux", "qinglong_qwen"],
+                info="✅ 'shift' recommended for Qwen Image. 'qwen_shift' = dynamic shift per resolution. 'sigma' = musubi tuner default",
+                choices=["shift", "qwen_shift", "sigma", "uniform", "sigmoid", "flux_shift", "logsnr", "qinglong_flux", "qinglong_qwen"],
                 value=self.config.get("timestep_sampling", "shift"),
                 interactive=True,
             )
@@ -174,7 +174,45 @@ class QwenImageModel:
                 interactive=True,
             )
 
+        # Advanced timestep parameters  
         with gr.Row():
+            self.sigmoid_scale = gr.Number(
+                label="Sigmoid Scale", 
+                info="Scale factor for sigmoid timestep sampling. Only used with 'sigmoid' or some shift methods. Default: 1.0",
+                value=self.config.get("sigmoid_scale", 1.0),
+                minimum=0.1,
+                maximum=10.0,
+                step=0.1,
+                interactive=True,
+            )
+            
+            self.min_timestep = gr.Number(
+                label="Min Timestep",
+                info="Minimum timestep for training (0-999). Leave empty for default (0). Constrains timestep sampling range",
+                value=self.config.get("min_timestep", None),
+                minimum=0,
+                maximum=999,
+                step=1,
+                interactive=True,
+            )
+            
+            self.max_timestep = gr.Number(
+                label="Max Timestep", 
+                info="Maximum timestep for training (1-1000). Leave empty for default (1000). Constrains timestep sampling range",
+                value=self.config.get("max_timestep", None),
+                minimum=1,
+                maximum=1000,
+                step=1,
+                interactive=True,
+            )
+
+        with gr.Row():
+            self.preserve_distribution_shape = gr.Checkbox(
+                label="Preserve Distribution Shape",
+                info="Use rejection sampling to preserve original timestep distribution when using min/max timestep constraints",
+                value=self.config.get("preserve_distribution_shape", False),
+            )
+
             self.show_timesteps = gr.Dropdown(
                 label="Show Timesteps",
                 info="Visualization mode for timestep debugging. 'image' saves visual plots, 'console' prints to terminal. Leave empty for no visualization",
@@ -282,6 +320,10 @@ def qwen_image_gui_actions(
     logit_mean,
     logit_std,
     mode_scale,
+    sigmoid_scale,
+    min_timestep,
+    max_timestep,
+    preserve_distribution_shape,
     show_timesteps,
     no_metadata,
     network_weights,
@@ -846,8 +888,16 @@ class QwenImageOptimizerSettings:
         with gr.Row():
             self.optimizer_type = gr.Dropdown(
                 label="Optimizer Type",
-                info="adamw8bit recommended for Qwen Image training (memory efficient)",
-                choices=["adamw8bit", "AdamW", "AdaFactor", "bitsandbytes.optim.AdEMAMix8bit", "bitsandbytes.optim.PagedAdEMAMix8bit"],
+                info="✅ adamw8bit RECOMMENDED for Qwen Image (memory efficient, confirmed in official examples). AdamW = standard, AdaFactor = adaptive LR",
+                choices=[
+                    "adamw8bit", 
+                    "AdamW", 
+                    "AdaFactor", 
+                    "bitsandbytes.optim.AdEMAMix8bit", 
+                    "bitsandbytes.optim.PagedAdEMAMix8bit",
+                    "torch.optim.Adam",
+                    "torch.optim.SGD"
+                ],
                 allow_custom_value=True,
                 value=self.config.get("optimizer_type", "adamw8bit"),
             )
@@ -1516,6 +1566,10 @@ def qwen_image_lora_tab(
         qwen_model.logit_mean,
         qwen_model.logit_std,
         qwen_model.mode_scale,
+        qwen_model.sigmoid_scale,
+        qwen_model.min_timestep,
+        qwen_model.max_timestep,
+        qwen_model.preserve_distribution_shape,
         qwen_model.show_timesteps,
         
         # network

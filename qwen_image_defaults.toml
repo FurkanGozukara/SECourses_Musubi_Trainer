@@ -2,12 +2,17 @@
 # This file contains the recommended default values for Qwen Image LoRA training
 # Based on documentation examples and best practices
 
-# Model Settings
-dit_dtype = "bfloat16"
-fp8_vl = true
-fp8_base = false
-fp8_scaled = false
-# blocks_to_swap = # Leave empty unless you need CPU swapping
+# Model Settings - REQUIRED FIELDS MUST BE SET BY USER
+dit = ""  # REQUIRED: Path to DiT checkpoint (qwen_image_bf16.safetensors)
+vae = ""  # REQUIRED: Path to VAE checkpoint (diffusion_pytorch_model.safetensors)
+text_encoder = ""  # REQUIRED: Path to Qwen2.5-VL checkpoint
+dataset_config = ""  # REQUIRED: Path to dataset TOML configuration
+
+dit_dtype = "bfloat16"  # HARDCODED: Must be bfloat16 for Qwen Image
+fp8_vl = true  # RECOMMENDED: Saves ~8GB VRAM with minimal quality loss
+fp8_base = false  # Optional: FP8 for DiT model, saves ~12GB VRAM
+fp8_scaled = false  # REQUIRED when fp8_base=true, better quality than standard FP8
+blocks_to_swap = 0  # 0 = disabled. 16=save ~8GB VRAM, 45=save ~30GB VRAM (requires 64GB+ RAM)
 
 # Flow Matching Settings
 timestep_sampling = "shift"
@@ -16,6 +21,14 @@ weighting_scheme = "none"
 logit_mean = 0.0
 logit_std = 1.0
 mode_scale = 1.29
+
+# Advanced Timestep Parameters (usually leave as defaults)
+sigmoid_scale = 1.0          # Scale factor for sigmoid timestep sampling. Only used with 'sigmoid' method
+min_timestep = 0            # 0 = no minimum constraint. 0-999 = constrain minimum timestep
+max_timestep = 0            # 0 = no maximum constraint. 1-1000 = constrain maximum timestep 
+preserve_distribution_shape = false  # Preserve original distribution when using min/max constraints
+
+# Debugging
 show_timesteps = ""
 
 # Training Settings
@@ -37,12 +50,12 @@ optimizer_type = "adamw8bit"
 learning_rate = 1e-4
 max_grad_norm = 1.0
 lr_scheduler = "constant"
-# lr_warmup_steps = # Leave empty for no warmup
-# lr_decay_steps = # Leave empty for no decay
+lr_warmup_steps = 0  # 0 = no warmup. Integer = steps, float <1 = ratio of total steps
+lr_decay_steps = 0   # 0 = no decay. Integer = steps, float <1 = ratio of total steps
 lr_scheduler_num_cycles = 1
 lr_scheduler_power = 1.0
-# lr_scheduler_timescale = # Leave empty for auto
-# lr_scheduler_min_lr_ratio = # Leave empty for no minimum
+lr_scheduler_timescale = 0      # 0 = auto (uses warmup steps). Advanced parameter
+lr_scheduler_min_lr_ratio = 0.0  # 0.0 = can reach zero LR. 0.1 = minimum 10% of initial LR
 lr_scheduler_type = ""
 lr_scheduler_args = ""
 
@@ -52,24 +65,24 @@ network_weights = ""
 network_module = "networks.lora_qwen_image"
 network_dim = 32
 network_alpha = 1.0
-# network_dropout = # Leave empty for no dropout
+network_dropout = 0.0  # 0.0 = no dropout. 0.1 = 10% dropout for regularization
 network_args = ""
 training_comment = ""
 dim_from_weights = false
-# scale_weight_norms = # Leave empty to disable weight scaling
+scale_weight_norms = 0.0  # 0.0 = disabled. 1.0+ = scale weights to prevent exploding gradients
 base_weights = ""
-# base_weights_multiplier = # Leave empty unless using base_weights
+base_weights_multiplier = 1.0  # Only used if base_weights is specified. 1.0 = full strength
 
 # Save/Load Settings
 output_dir = ""
 output_name = ""
 resume = ""
 save_every_n_epochs = 1
-# save_every_n_steps = # Leave empty to disable step-based saving
-# save_last_n_epochs = # Leave empty to keep all epoch checkpoints
-# save_last_n_epochs_state = # Leave empty to keep all epoch states
-# save_last_n_steps = # Leave empty to keep all step checkpoints  
-# save_last_n_steps_state = # Leave empty to keep all step states
+save_every_n_steps = 0        # 0 = disabled. Positive integer = save every N steps
+save_last_n_epochs = 0       # 0 = keep all. Positive integer = keep only last N epoch checkpoints
+save_last_n_epochs_state = 0 # 0 = keep all. Positive integer = keep only last N epoch states
+save_last_n_steps = 0        # 0 = keep all. Positive integer = keep only last N step checkpoints
+save_last_n_steps_state = 0  # 0 = keep all. Positive integer = keep only last N step states
 save_state = false
 save_state_on_train_end = false
 
@@ -82,7 +95,7 @@ caching_latent_keep_cache = true
 caching_latent_debug_mode = ""
 caching_latent_console_width = 80
 caching_latent_console_back = ""
-# caching_latent_console_num_images = # Leave empty for no limit
+caching_latent_console_num_images = 0  # 0 = no limit. Positive integer = max images in debug console
 
 # Caching Settings - Text Encoder
 caching_teo_text_encoder = ""
@@ -93,8 +106,9 @@ caching_teo_num_workers = 8
 caching_teo_skip_existing = true
 caching_teo_keep_cache = true
 
-# Mixed Precision (Accelerate Launch)
-mixed_precision = "bf16"
+# Accelerate Launch Settings
+mixed_precision = "bf16"    # RECOMMENDED for Qwen Image. fp16 may cause instability, fp8 not supported
+dynamo_backend = "NO"       # NO = disabled (recommended). Use INDUCTOR for PyTorch 2.0+ optimization
 
 # Logging Settings
 logging_dir = ""
@@ -107,13 +121,13 @@ wandb_api_key = ""
 log_config = false
 
 # DDP Settings
-# ddp_timeout = # Leave empty for default timeout
+ddp_timeout = 0  # 0 = use default (30min). Positive integer = timeout in minutes for distributed training
 ddp_gradient_as_bucket_view = false
 ddp_static_graph = false
 
 # Sample Generation  
-# sample_every_n_steps = # Leave empty to disable step-based sampling
-# sample_every_n_epochs = # Leave empty to disable epoch-based sampling
+sample_every_n_steps = 0   # 0 = disabled. 100-500 recommended for step-based sampling
+sample_every_n_epochs = 0  # 0 = disabled. 1-4 recommended for epoch-based sampling
 sample_at_first = false
 sample_prompts = ""
 

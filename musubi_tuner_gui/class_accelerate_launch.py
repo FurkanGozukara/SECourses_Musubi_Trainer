@@ -20,9 +20,9 @@ class AccelerateLaunch:
             with gr.Row():
                 self.mixed_precision = gr.Dropdown(
                     label="Mixed precision",
-                    choices=["no", "fp16", "bf16", "fp8"],
-                    value=self.config.get("mixed_precision", "fp16"),
-                    info="Whether or not to use mixed precision training.",
+                    choices=["no", "fp16", "bf16"],
+                    value=self.config.get("mixed_precision", "bf16"),
+                    info="✅ bf16 RECOMMENDED for Qwen Image. fp16 may cause instability. fp8 not supported in mixed_precision.",
                 )
                 self.num_processes = gr.Number(
                     label="Number of processes",
@@ -54,22 +54,22 @@ class AccelerateLaunch:
                 self.dynamo_backend = gr.Dropdown(
                     label="Dynamo backend",
                     choices=[
-                        "no",
-                        "eager",
-                        "aot_eager",
-                        "inductor",
-                        "aot_ts_nvfuser",
-                        "nvprims_nvfuser",
-                        "cudagraphs",
-                        "ofi",
-                        "fx2trt",
-                        "onnxrt",
-                        "tensorrt",
-                        "ipex",
-                        "tvm",
+                        "NO",
+                        "EAGER", 
+                        "AOT_EAGER",
+                        "INDUCTOR",
+                        "NVFUSER",
+                        "AOT_NVFUSER",
+                        "CUDAGRAPHS",
+                        "OFI",
+                        "FX2TRT",
+                        "ONNXRT",
+                        "TENSORRT",
+                        "IPEX",
+                        "TVM",
                     ],
-                    value=self.config.get("dynamo_backend", "no"),
-                    info="The backend to use for the dynamo JIT compiler.",
+                    value=self.config.get("dynamo_backend", "NO"),
+                    info="Backend for dynamo JIT compiler. NO = disabled (recommended), INDUCTOR = PyTorch 2.0+ optimization",
                 )
                 self.dynamo_mode = gr.Dropdown(
                     label="Dynamo mode",
