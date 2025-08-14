@@ -8,6 +8,3 @@ dependencies = [
     "musubi-tuner>=0.1.0",
     "gradio>=5.0.0",
 ]
-
-[tool.uv.sources]
-musubi-tuner = { path = "musubi-tuner" }
