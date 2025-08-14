@@ -1,0 +1,143 @@
+# Musubi Tuner (HunyuanVideo) LoRA Training - Default Configuration
+# This file contains the default values for HunyuanVideo LoRA training
+# Based on HunyuanVideo specific requirements and examples
+
+# Model Settings (HunyuanVideo specific)
+dit_dtype = "bfloat16"
+vae_dtype = "float16"
+text_encoder_dtype = "float16"
+fp8_llm = false
+fp8_base = false
+vae_tiling = false
+vae_chunk_size = null
+vae_spatial_tile_sample_min_size = 256
+blocks_to_swap = null
+img_in_txt_in_offloading = false
+guidance_scale = 1.0
+
+# Flow Matching Settings (HunyuanVideo updated defaults - as per README examples)
+timestep_sampling = "shift"
+discrete_flow_shift = 7.0
+weighting_scheme = "none"
+logit_mean = 0.0
+logit_std = 1.0
+mode_scale = 1.29
+show_timesteps = null
+
+# Training Settings (HunyuanVideo defaults)
+sdpa = false
+flash_attn = false
+sage_attn = false
+xformers = false
+split_attn = false
+max_train_steps = 1600
+max_train_epochs = null
+max_data_loader_n_workers = 8
+persistent_data_loader_workers = false
+seed = null
+gradient_checkpointing = false
+gradient_accumulation_steps = 1
+
+# Optimizer Settings (HunyuanVideo updated defaults - as per README examples)
+optimizer_type = "adamw8bit"
+learning_rate = 2e-4
+max_grad_norm = 1.0
+lr_scheduler = "constant"
+lr_warmup_steps = 0
+lr_decay_steps = 0
+lr_scheduler_num_cycles = 1
+lr_scheduler_power = 1.0
+lr_scheduler_timescale = null
+lr_scheduler_min_lr_ratio = null
+lr_scheduler_type = ""
+lr_scheduler_args = ""
+
+# Network Settings (HunyuanVideo defaults)
+no_metadata = false
+network_weights = ""
+network_module = "networks.lora"
+network_dim = null
+network_alpha = 1.0
+network_dropout = null
+network_args = ""
+training_comment = ""
+dim_from_weights = false
+scale_weight_norms = null
+base_weights = ""
+base_weights_multiplier = null
+
+# Save/Load Settings
+output_dir = ""
+output_name = ""
+resume = ""
+save_every_n_epochs = null
+save_every_n_steps = null
+save_last_n_epochs = null
+save_last_n_epochs_state = null
+save_last_n_steps = null
+save_last_n_steps_state = null
+save_state = false
+save_state_on_train_end = false
+
+# Caching Settings - Latents (HunyuanVideo)
+caching_latent_device = "cuda"
+caching_latent_batch_size = null
+caching_latent_num_workers = null
+caching_latent_skip_existing = false
+caching_latent_keep_cache = false
+caching_latent_debug_mode = null
+caching_latent_console_width = 80
+caching_latent_console_back = null
+caching_latent_console_num_images = null
+
+# Caching Settings - Text Encoder (HunyuanVideo dual encoders)
+caching_teo_text_encoder1 = ""
+caching_teo_text_encoder2 = ""
+caching_teo_text_encoder_dtype = "float16"
+caching_teo_fp8_llm = false
+caching_teo_device = "cuda"
+caching_teo_batch_size = null
+caching_teo_num_workers = null
+caching_teo_skip_existing = false
+caching_teo_keep_cache = false
+
+# Mixed Precision (Accelerate Launch) - Updated default
+mixed_precision = "bf16"
+
+# Logging Settings
+logging_dir = ""
+log_with = null
+log_prefix = ""
+log_tracker_name = ""
+wandb_run_name = ""
+log_tracker_config = ""
+wandb_api_key = ""
+log_config = false
+
+# DDP Settings
+ddp_timeout = null
+ddp_gradient_as_bucket_view = false
+ddp_static_graph = false
+
+# Sample Generation
+sample_every_n_steps = null
+sample_every_n_epochs = null
+sample_at_first = false
+sample_prompts = ""
+
+# Metadata Settings
+metadata_author = ""
+metadata_description = ""
+metadata_license = ""
+metadata_tags = ""
+metadata_title = ""
+
+# HuggingFace Settings
+huggingface_repo_id = ""
+huggingface_token = ""
+huggingface_repo_type = ""
+huggingface_repo_visibility = ""
+huggingface_path_in_repo = ""
+save_state_to_huggingface = false
+resume_from_huggingface = false
+async_upload = false

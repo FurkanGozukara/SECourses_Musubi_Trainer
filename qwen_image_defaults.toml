@@ -1,0 +1,135 @@
+# Qwen Image LoRA Training - Optimal Defaults Configuration
+# This file contains the recommended default values for Qwen Image LoRA training
+# Based on documentation examples and best practices
+
+# Model Settings
+dit_dtype = "bfloat16"
+fp8_vl = true
+fp8_base = false
+fp8_scaled = false
+blocks_to_swap = null
+
+# Flow Matching Settings
+timestep_sampling = "shift"
+discrete_flow_shift = 3.0
+weighting_scheme = "none"
+logit_mean = 0.0
+logit_std = 1.0
+mode_scale = 1.29
+show_timesteps = null
+
+# Training Settings
+sdpa = true
+flash_attn = false
+sage_attn = false
+xformers = false
+split_attn = false
+max_train_steps = 1600
+max_train_epochs = 16
+max_data_loader_n_workers = 2
+persistent_data_loader_workers = true
+seed = 42
+gradient_checkpointing = true
+gradient_accumulation_steps = 1
+
+# Optimizer Settings
+optimizer_type = "adamw8bit"
+learning_rate = 1e-4
+max_grad_norm = 1.0
+lr_scheduler = "constant"
+lr_warmup_steps = 0
+lr_decay_steps = 0
+lr_scheduler_num_cycles = 1
+lr_scheduler_power = 1.0
+lr_scheduler_timescale = null
+lr_scheduler_min_lr_ratio = null
+lr_scheduler_type = ""
+lr_scheduler_args = ""
+
+# Network Settings
+no_metadata = false
+network_weights = ""
+network_module = "networks.lora_qwen_image"
+network_dim = 32
+network_alpha = 1.0
+network_dropout = null
+network_args = ""
+training_comment = ""
+dim_from_weights = false
+scale_weight_norms = null
+base_weights = ""
+base_weights_multiplier = null
+
+# Save/Load Settings
+output_dir = ""
+output_name = ""
+resume = ""
+save_every_n_epochs = 1
+save_every_n_steps = null
+save_last_n_epochs = null
+save_last_n_epochs_state = null
+save_last_n_steps = null
+save_last_n_steps_state = null
+save_state = false
+save_state_on_train_end = false
+
+# Caching Settings - Latents
+caching_latent_device = "cuda"
+caching_latent_batch_size = 4
+caching_latent_num_workers = 8
+caching_latent_skip_existing = true
+caching_latent_keep_cache = true
+caching_latent_debug_mode = null
+caching_latent_console_width = 80
+caching_latent_console_back = ""
+caching_latent_console_num_images = null
+
+# Caching Settings - Text Encoder
+caching_teo_text_encoder = ""
+caching_teo_device = "cuda"
+caching_teo_fp8_vl = true
+caching_teo_batch_size = 16
+caching_teo_num_workers = 8
+caching_teo_skip_existing = true
+caching_teo_keep_cache = true
+
+# Mixed Precision (Accelerate Launch)
+mixed_precision = "bf16"
+
+# Logging Settings
+logging_dir = ""
+log_with = null
+log_prefix = ""
+log_tracker_name = ""
+wandb_run_name = ""
+log_tracker_config = ""
+wandb_api_key = ""
+log_config = false
+
+# DDP Settings
+ddp_timeout = null
+ddp_gradient_as_bucket_view = false
+ddp_static_graph = false
+
+# Sample Generation
+sample_every_n_steps = null
+sample_every_n_epochs = null
+sample_at_first = false
+sample_prompts = ""
+
+# Metadata Settings
+metadata_author = ""
+metadata_description = ""
+metadata_license = ""
+metadata_tags = ""
+metadata_title = ""
+
+# HuggingFace Settings
+huggingface_repo_id = ""
+huggingface_token = ""
+huggingface_repo_type = ""
+huggingface_repo_visibility = ""
+huggingface_path_in_repo = ""
+save_state_to_huggingface = false
+resume_from_huggingface = false
+async_upload = false

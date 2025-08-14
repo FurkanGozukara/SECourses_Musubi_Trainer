@@ -6,8 +6,10 @@ import contextlib
 import gradio as gr
 
 from musubi_tuner_gui.lora_gui import lora_tab
+from musubi_tuner_gui.qwen_image_lora_gui import qwen_image_lora_tab
 from musubi_tuner_gui.custom_logging import setup_logging
 from musubi_tuner_gui.class_gui_config import GUIConfig
+from musubi_tuner_gui.class_tab_config_manager import TabConfigManager
 import toml
 
 PYTHON = sys.executable
@@ -21,7 +23,7 @@ def read_file_content(file_path):
     return ""
 
 # Function to initialize the Gradio UI interface
-def initialize_ui_interface(config, headless, release_info, readme_content):
+def initialize_ui_interface(config_manager, headless, release_info, readme_content):
     # Load custom CSS if available
     css = read_file_content("./assets/style.css")
 
@@ -29,8 +31,13 @@ def initialize_ui_interface(config, headless, release_info, readme_content):
     ui_interface = gr.Blocks(css=css, title=f"Musubi Tuner GUI {release_info}", theme=gr.themes.Default())
     with ui_interface:
         # Create tabs for different functionalities
+        with gr.Tab("Qwen Image LoRA"):
+            qwen_config = config_manager.get_config_for_tab("qwen_image")
+            qwen_image_lora_tab(headless=headless, config=qwen_config)
+            
         with gr.Tab("Musubi Tuner"):
-            lora_tab(headless=headless, config=config)
+            musubi_config = config_manager.get_config_for_tab("musubi_tuner")
+            lora_tab(headless=headless, config=musubi_config)
         
         with gr.Tab("About"):
             # About tab to display release information and README content
@@ -59,13 +66,15 @@ def UI(**kwargs):
     
     readme_content = read_file_content("./README.md")
     
-    # Load configuration from the specified file
-    config = GUIConfig(config_file_path=kwargs.get("config"))
-    if config.is_config_loaded():
-        log.info(f"Loaded default GUI values from '{kwargs.get('config')}'...")
+    # Initialize tab-aware configuration manager
+    config_manager = TabConfigManager(config_file_path=kwargs.get("config", "./config.toml"))
+    if config_manager.user_loaded_config:
+        log.info(f"Loaded user configuration from '{kwargs.get('config')}'...")
+    else:
+        log.info("No user config loaded - will use tab-specific defaults")
 
     # Initialize the Gradio UI interface
-    ui_interface = initialize_ui_interface(config, kwargs.get("headless", False), release_info, readme_content)
+    ui_interface = initialize_ui_interface(config_manager, kwargs.get("headless", False), release_info, readme_content)
 
     # Construct launch parameters using dictionary comprehension
     launch_params = {
