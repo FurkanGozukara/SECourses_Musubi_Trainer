@@ -140,7 +140,7 @@ class ImageCaptioningTab:
             
             # Custom Prompt and Batch Captioning in same row
             with gr.Row():
-                # Left Column: Custom Prompt
+                # Left Column: Custom Prompt and Configuration
                 with gr.Column(scale=1):
                     self.custom_prompt = gr.Textbox(
                         label="Custom Prompt",
@@ -150,6 +150,32 @@ class ImageCaptioningTab:
                         lines=4,
                         max_lines=10,
                     )
+                    
+                    # Configuration Save/Load Section (moved here)
+                    with gr.Accordion("Configuration", open=True):
+                        with gr.Row():
+                            self.config_file_path = gr.Textbox(
+                                label="Configuration File",
+                                placeholder="Path to save/load configuration",
+                                value="",
+                                scale=3
+                            )
+                            
+                            self.config_file_button = gr.Button(
+                                "📁",
+                                size="sm",
+                                scale=0
+                            )
+                        
+                        with gr.Row():
+                            self.save_config_button = gr.Button("Save Configuration")
+                            self.load_config_button = gr.Button("Load Configuration")
+                        
+                        self.config_status = gr.Textbox(
+                            label="Configuration Status",
+                            value="",
+                            interactive=False,
+                        )
                 
                 # Right Column: Batch Captioning
                 with gr.Column(scale=1):
@@ -221,32 +247,6 @@ class ImageCaptioningTab:
                             interactive=False,
                             lines=3,
                         )
-            
-            # Configuration Save/Load Section (open by default)
-            with gr.Accordion("Configuration", open=True):
-                with gr.Row():
-                    self.config_file_path = gr.Textbox(
-                        label="Configuration File",
-                        placeholder="Path to save/load configuration",
-                        value="",
-                        scale=3
-                    )
-                    
-                    self.config_file_button = gr.Button(
-                        "📁",
-                        size="sm",
-                        scale=0
-                    )
-                
-                with gr.Row():
-                    self.save_config_button = gr.Button("Save Configuration")
-                    self.load_config_button = gr.Button("Load Configuration")
-                
-                self.config_status = gr.Textbox(
-                    label="Configuration Status",
-                    value="",
-                    interactive=False,
-                )
         
         # Event handlers
         self.setup_event_handlers()
