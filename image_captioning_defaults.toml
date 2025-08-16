@@ -1,0 +1,25 @@
+# Image Captioning Default Configuration
+# This file contains default settings for the Image Captioning tab
+
+[image_captioning]
+# Model Configuration
+model_path = ""  # Path to Qwen2.5-VL model (qwen_2.5_vl_7b.safetensors)
+fp8_vl = true  # Use FP8 precision for memory savings (recommended for <24GB VRAM)
+max_size = 1280  # Maximum image size for processing
+
+# Caption Generation Settings
+max_new_tokens = 1024  # Maximum tokens to generate per caption
+prefix = ""  # Text to add before each caption
+suffix = ""  # Text to add after each caption
+custom_prompt = ""  # Custom prompt (empty = use default)
+
+# Batch Processing Settings
+batch_image_dir = ""  # Directory containing images for batch processing
+batch_output_folder = ""  # Output folder for caption files (optional, empty = save alongside images)
+output_format = "text"  # Output format: "text" or "jsonl"
+jsonl_output_file = ""  # Output file path for JSONL format
+
+# Advanced Settings
+enable_progress_tracking = true  # Show progress during batch processing
+validate_images = true  # Validate image files before processing
+auto_resize_images = true  # Automatically resize images to optimal size

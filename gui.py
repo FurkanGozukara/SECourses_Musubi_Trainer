@@ -7,6 +7,7 @@ import gradio as gr
 
 from musubi_tuner_gui.lora_gui import lora_tab
 from musubi_tuner_gui.qwen_image_lora_gui import qwen_image_lora_tab
+from musubi_tuner_gui.image_captioning_gui import image_captioning_tab
 from musubi_tuner_gui.custom_logging import setup_logging
 from musubi_tuner_gui.class_gui_config import GUIConfig
 from musubi_tuner_gui.class_tab_config_manager import TabConfigManager
@@ -38,6 +39,10 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
         with gr.Tab("Musubi Tuner"):
             musubi_config = config_manager.get_config_for_tab("musubi_tuner")
             lora_tab(headless=headless, config=musubi_config)
+        
+        with gr.Tab("Image Captioning"):
+            captioning_config = config_manager.get_config_for_tab("image_captioning")
+            image_captioning_tab(headless=headless, config=captioning_config)
         
         with gr.Tab("About"):
             # About tab to display release information and README content

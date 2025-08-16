@@ -14,7 +14,8 @@ class TabConfigManager:
         self.user_loaded_config = False
         self.configs = {
             "qwen_image": None,
-            "musubi_tuner": None
+            "musubi_tuner": None,
+            "image_captioning": None
         }
         
         # Initialize base config
@@ -43,7 +44,8 @@ class TabConfigManager:
         """Load default configuration for specific tab"""
         default_files = {
             "qwen_image": "qwen_image_defaults.toml",
-            "musubi_tuner": "musubi_tuner_defaults.toml"
+            "musubi_tuner": "musubi_tuner_defaults.toml",
+            "image_captioning": "image_captioning_defaults.toml"
         }
         
         if tab_name not in default_files:
@@ -75,7 +77,7 @@ class TabConfigManager:
             self.base_config = GUIConfig(config_file_path)
             self.user_loaded_config = True
             # Clear tab-specific configs so they use the user config
-            self.configs = {"qwen_image": None, "musubi_tuner": None}
+            self.configs = {"qwen_image": None, "musubi_tuner": None, "image_captioning": None}
             log.info(f"User configuration loaded from {config_file_path}")
         except Exception as e:
             log.error(f"Error loading user config: {e}")
@@ -83,7 +85,7 @@ class TabConfigManager:
     def reset_to_defaults(self):
         """Reset to use default configurations for each tab"""
         self.user_loaded_config = False
-        self.configs = {"qwen_image": None, "musubi_tuner": None}
+        self.configs = {"qwen_image": None, "musubi_tuner": None, "image_captioning": None}
         self.base_config = GUIConfig()  # Empty config
         log.info("Reset to using default configurations for each tab")
     

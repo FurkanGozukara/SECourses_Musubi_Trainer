@@ -1,0 +1,343 @@
+import os
+import json
+import math
+import sys
+import subprocess
+from pathlib import Path
+from typing import List, Union, Optional, Tuple
+import gradio as gr
+
+import torch
+from PIL import Image
+from tqdm import tqdm
+from transformers import AutoProcessor
+
+from .class_gui_config import GUIConfig
+from .custom_logging import setup_logging
+
+log = setup_logging()
+
+IMAGE_FACTOR = 28  # The image size must be divisible by this factor
+DEFAULT_MAX_SIZE = 1280
+
+DEFAULT_PROMPT = """# Image Annotator
+You are a professional image annotator. Please complete the following task based on the input image.
+## Create Image Caption
+1. Write the caption using natural, descriptive text without structured formats or rich text.
+2. Enrich caption details by including: object attributes, vision relations between objects, and environmental details.
+3. Identify the text visible in the image, without translation or explanation, and highlight it in the caption with quotation marks.
+4. Maintain authenticity and accuracy, avoid generalizations."""
+
+
+class ImageCaptioning:
+    """Core Image Captioning functionality using Qwen2.5-VL"""
+    
+    def __init__(self, headless: bool, config: GUIConfig) -> None:
+        self.config = config
+        self.headless = headless
+        self.model = None
+        self.processor = None
+        self.device = None
+        self.model_loaded = False
+        
+    def load_model_and_processor(self, model_path: str, max_size: int = DEFAULT_MAX_SIZE, fp8_vl: bool = False) -> Tuple[bool, str]:
+        """Load Qwen2.5-VL model and processor"""
+        try:
+            if not os.path.exists(model_path):
+                return False, f"Model path does not exist: {model_path}"
+                
+            log.info(f"Loading model from: {model_path}")
+            
+            # Set device
+            self.device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+            log.info(f"Using device: {self.device}")
+            
+            min_pixels = 256 * IMAGE_FACTOR * IMAGE_FACTOR  # this means 256x256 is the minimum input size
+            max_pixels = max_size * IMAGE_FACTOR * IMAGE_FACTOR
+            
+            # We don't have configs in model_path, so we use defaults from Hugging Face
+            self.processor = AutoProcessor.from_pretrained(
+                "Qwen/Qwen2.5-VL-7B-Instruct", 
+                min_pixels=min_pixels, 
+                max_pixels=max_pixels
+            )
+            
+            # Import load_qwen2_5_vl function from the musubi tuner
+            sys.path.append(os.path.join(os.path.dirname(__file__), "..", "musubi-tuner", "src"))
+            from musubi_tuner.qwen_image.qwen_image_utils import load_qwen2_5_vl
+            
+            # Use load_qwen2_5_vl function from qwen_image_utils
+            dtype = torch.float8_e4m3fn if fp8_vl else torch.bfloat16
+            _, self.model = load_qwen2_5_vl(model_path, dtype=dtype, device=self.device, disable_mmap=False)
+            
+            self.model.eval()
+            self.model_loaded = True
+            
+            log.info(f"Model loaded successfully on device: {self.model.device}")
+            return True, "Model loaded successfully"
+            
+        except Exception as e:
+            error_msg = f"Error loading model: {str(e)}"
+            log.error(error_msg)
+            return False, error_msg
+    
+    def resize_image(self, image: Image.Image, max_size: int = DEFAULT_MAX_SIZE) -> Image.Image:
+        """Resize image to a suitable resolution"""
+        # Import the dataset utilities
+        sys.path.append(os.path.join(os.path.dirname(__file__), "..", "musubi-tuner", "src"))
+        from musubi_tuner.dataset import image_video_dataset
+        
+        min_area = 256 * 256
+        max_area = max_size * max_size
+        width, height = image.size
+        width_rounded = int((width / IMAGE_FACTOR) + 0.5) * IMAGE_FACTOR
+        height_rounded = int((height / IMAGE_FACTOR) + 0.5) * IMAGE_FACTOR
+        
+        bucket_resos = []
+        if width_rounded * height_rounded < min_area:
+            # Scale up to min area
+            scale_factor = math.sqrt(min_area / (width_rounded * height_rounded))
+            new_width = math.ceil(width * scale_factor / IMAGE_FACTOR) * IMAGE_FACTOR
+            new_height = math.ceil(height * scale_factor / IMAGE_FACTOR) * IMAGE_FACTOR
+            
+            # Add to bucket resolutions: default and slight variations for keeping aspect ratio
+            bucket_resos.append((new_width, new_height))
+            bucket_resos.append((new_width + IMAGE_FACTOR, new_height))
+            bucket_resos.append((new_width, new_height + IMAGE_FACTOR))
+        elif width_rounded * height_rounded > max_area:
+            # Scale down to max area
+            scale_factor = math.sqrt(max_area / (width_rounded * height_rounded))
+            new_width = math.floor(width * scale_factor / IMAGE_FACTOR) * IMAGE_FACTOR
+            new_height = math.floor(height * scale_factor / IMAGE_FACTOR) * IMAGE_FACTOR
+            
+            # Add to bucket resolutions: default and slight variations for keeping aspect ratio
+            bucket_resos.append((new_width, new_height))
+            bucket_resos.append((new_width - IMAGE_FACTOR, new_height))
+            bucket_resos.append((new_width, new_height - IMAGE_FACTOR))
+        else:
+            # Keep original resolution, but add slight variations for keeping aspect ratio
+            bucket_resos.append((width_rounded, height_rounded))
+            bucket_resos.append((width_rounded - IMAGE_FACTOR, height_rounded))
+            bucket_resos.append((width_rounded, height_rounded - IMAGE_FACTOR))
+            bucket_resos.append((width_rounded + IMAGE_FACTOR, height_rounded))
+            bucket_resos.append((width_rounded, height_rounded + IMAGE_FACTOR))
+        
+        # Min/max area filtering
+        bucket_resos = [(w, h) for w, h in bucket_resos if w * h >= min_area and w * h <= max_area]
+        
+        # Select bucket which has a nearest aspect ratio
+        aspect_ratio = width / height
+        bucket_resos.sort(key=lambda x: abs((x[0] / x[1]) - aspect_ratio))
+        bucket_reso = bucket_resos[0]
+        
+        # Resize to bucket
+        image_np = image_video_dataset.resize_image_to_bucket(image, bucket_reso)
+        
+        # Convert back to PIL
+        image = Image.fromarray(image_np)
+        return image
+    
+    def generate_caption(
+        self, 
+        image_path: str, 
+        max_new_tokens: int = 1024,
+        prompt: str = DEFAULT_PROMPT,
+        max_size: int = DEFAULT_MAX_SIZE,
+        fp8_vl: bool = False,
+        prefix: str = "",
+        suffix: str = ""
+    ) -> Tuple[bool, str]:
+        """Generate caption for a single image"""
+        try:
+            # Model loading is now handled by the GUI layer
+                
+            if not os.path.exists(image_path):
+                return False, f"Image file does not exist: {image_path}"
+            
+            # Load and process image
+            image = Image.open(image_path).convert("RGB")
+            
+            # Process custom prompt - replace \n with actual newlines
+            processed_prompt = prompt.replace("\\n", "\n") if prompt else DEFAULT_PROMPT
+            
+            # Prepare messages
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image", "image": image},
+                        {"type": "text", "text": processed_prompt},
+                    ],
+                }
+            ]
+            
+            # Preparation for inference
+            text = self.processor.apply_chat_template(messages, tokenize=False, add_generation_prompt=True)
+            image_inputs = self.resize_image(image, max_size=max_size)
+            inputs = self.processor(text=[text], images=image_inputs, padding=True, return_tensors="pt")
+            inputs = inputs.to(self.device)
+            
+            # Generate caption with fp8 support
+            if fp8_vl:
+                with torch.no_grad(), torch.autocast(device_type=self.device.type, dtype=torch.bfloat16):
+                    generated_ids = self.model.generate(**inputs, max_new_tokens=max_new_tokens, pad_token_id=self.processor.tokenizer.eos_token_id)
+            else:
+                with torch.no_grad():
+                    generated_ids = self.model.generate(**inputs, max_new_tokens=max_new_tokens, pad_token_id=self.processor.tokenizer.eos_token_id)
+            
+            generated_ids_trimmed = [out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)]
+            caption = self.processor.batch_decode(generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
+            
+            # Get caption as string
+            caption_text = caption[0] if caption else ""
+            
+            # Add prefix and suffix if provided
+            if prefix:
+                caption_text = prefix + caption_text
+            if suffix:
+                caption_text = caption_text + suffix
+            
+            return True, caption_text
+            
+        except Exception as e:
+            error_msg = f"Error generating caption: {str(e)}"
+            log.error(error_msg)
+            return False, error_msg
+    
+    def batch_caption_images(
+        self,
+        image_dir: str,
+        output_format: str = "text",
+        output_file: str = "",
+        output_folder: str = "",
+        max_new_tokens: int = 1024,
+        prompt: str = DEFAULT_PROMPT,
+        max_size: int = DEFAULT_MAX_SIZE,
+        fp8_vl: bool = False,
+        prefix: str = "",
+        suffix: str = "",
+        progress: gr.Progress = None
+    ) -> Tuple[bool, str]:
+        """Batch caption images in a directory"""
+        try:
+            # Model loading is now handled by the GUI layer
+                
+            if not os.path.exists(image_dir):
+                return False, f"Image directory does not exist: {image_dir}"
+            
+            # Validate arguments
+            if output_format == "jsonl" and not output_file:
+                return False, "Output file is required when output format is 'jsonl'"
+            
+            # Import image utilities
+            sys.path.append(os.path.join(os.path.dirname(__file__), "..", "musubi-tuner", "src"))
+            from musubi_tuner.dataset import image_video_dataset
+            
+            # Get image files
+            image_files = image_video_dataset.glob_images(image_dir)
+            
+            if not image_files:
+                return False, f"No image files found in directory: {image_dir}"
+            
+            log.info(f"Found {len(image_files)} image files")
+            
+            # Create output directory if needed for JSONL format
+            if output_format == "jsonl":
+                output_path = Path(output_file)
+                output_path.parent.mkdir(parents=True, exist_ok=True)
+            
+            processed_count = 0
+            error_count = 0
+            
+            # Process images and write results
+            if output_format == "jsonl":
+                # JSONL output format
+                with open(output_file, "w", encoding="utf-8") as f:
+                    for i, image_path in enumerate(image_files):
+                        if progress:
+                            progress((i + 1) / len(image_files), f"Processing {os.path.basename(image_path)}")
+                        
+                        success, caption = self.generate_caption(
+                            image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix
+                        )
+                        
+                        if success:
+                            # Create JSONL entry
+                            entry = {"image_path": image_path, "caption": caption}
+                            # Write to file
+                            f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+                            f.flush()  # Ensure data is written immediately
+                            processed_count += 1
+                        else:
+                            log.error(f"Failed to caption {image_path}: {caption}")
+                            error_count += 1
+                
+                result_msg = f"Caption generation completed. Processed {processed_count} images"
+                if error_count > 0:
+                    result_msg += f", {error_count} errors"
+                result_msg += f". Results saved to: {output_file}"
+                
+            else:
+                # Text file output format
+                # Determine output directory: use output_folder if provided, otherwise use input directory
+                if output_folder and output_folder.strip():
+                    output_dir = Path(output_folder)
+                    output_dir.mkdir(parents=True, exist_ok=True)
+                    save_to_output_folder = True
+                else:
+                    output_dir = None
+                    save_to_output_folder = False
+                
+                for i, image_path in enumerate(image_files):
+                    if progress:
+                        progress((i + 1) / len(image_files), f"Processing {os.path.basename(image_path)}")
+                    
+                    success, caption = self.generate_caption(
+                        image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix
+                    )
+                    
+                    if success:
+                        image_path_obj = Path(image_path)
+                        
+                        if save_to_output_folder:
+                            # Save to specified output folder
+                            text_file_path = output_dir / f"{image_path_obj.stem}.txt"
+                        else:
+                            # Save alongside image (same directory as image)
+                            text_file_path = image_path_obj.with_suffix(".txt")
+                        
+                        # Write caption to text file
+                        with open(text_file_path, "w", encoding="utf-8") as f:
+                            f.write(caption)
+                        processed_count += 1
+                    else:
+                        log.error(f"Failed to caption {image_path}: {caption}")
+                        error_count += 1
+                
+                result_msg = f"Caption generation completed. Processed {processed_count} images"
+                if error_count > 0:
+                    result_msg += f", {error_count} errors"
+                
+                if save_to_output_folder:
+                    result_msg += f". Text files saved to: {output_dir}"
+                else:
+                    result_msg += ". Text files saved alongside each image."
+            
+            return True, result_msg
+            
+        except Exception as e:
+            error_msg = f"Error in batch captioning: {str(e)}"
+            log.error(error_msg)
+            return False, error_msg
+    
+    def get_supported_image_extensions(self) -> List[str]:
+        """Get list of supported image file extensions"""
+        return [".jpg", ".jpeg", ".png", ".bmp", ".tiff", ".webp"]
+    
+    def validate_image_file(self, file_path: str) -> bool:
+        """Validate if file is a supported image"""
+        if not os.path.exists(file_path):
+            return False
+        
+        ext = os.path.splitext(file_path)[1].lower()
+        return ext in self.get_supported_image_extensions()
