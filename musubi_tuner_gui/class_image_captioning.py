@@ -145,7 +145,8 @@ class ImageCaptioning:
         max_size: int = DEFAULT_MAX_SIZE,
         fp8_vl: bool = False,
         prefix: str = "",
-        suffix: str = ""
+        suffix: str = "",
+        replace_words: str = ""
     ) -> Tuple[bool, str]:
         """Generate caption for a single image"""
         try:
@@ -197,6 +198,22 @@ class ImageCaptioning:
             if suffix:
                 caption_text = caption_text + suffix
             
+            # Apply word replacements if provided
+            if replace_words:
+                try:
+                    # Parse replace_words format: "word1:replacement1;word2:replacement2"
+                    pairs = replace_words.split(";")
+                    for pair in pairs:
+                        if ":" in pair:
+                            parts = pair.split(":", 1)  # Split only on first colon
+                            if len(parts) == 2:
+                                org_word = parts[0].strip()
+                                replace_word = parts[1].strip()
+                                if org_word:  # Only replace if org_word is not empty
+                                    caption_text = caption_text.replace(org_word, replace_word)
+                except Exception as e:
+                    log.warning(f"Error applying word replacements: {str(e)}")
+            
             return True, caption_text
             
         except Exception as e:
@@ -216,6 +233,7 @@ class ImageCaptioning:
         fp8_vl: bool = False,
         prefix: str = "",
         suffix: str = "",
+        replace_words: str = "",
         progress: gr.Progress = None
     ) -> Tuple[bool, str]:
         """Batch caption images in a directory"""
@@ -258,7 +276,7 @@ class ImageCaptioning:
                             progress((i + 1) / len(image_files), f"Processing {os.path.basename(image_path)}")
                         
                         success, caption = self.generate_caption(
-                            image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix
+                            image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix, replace_words
                         )
                         
                         if success:
@@ -293,7 +311,7 @@ class ImageCaptioning:
                         progress((i + 1) / len(image_files), f"Processing {os.path.basename(image_path)}")
                     
                     success, caption = self.generate_caption(
-                        image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix
+                        image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix, replace_words
                     )
                     
                     if success:

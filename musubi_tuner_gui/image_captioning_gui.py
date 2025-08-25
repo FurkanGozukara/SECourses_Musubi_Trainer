@@ -134,6 +134,14 @@ class ImageCaptioningTab:
                                 value=self.config.get("suffix", ""),
                             )
                         
+                        self.replace_words = gr.Textbox(
+                            label="Replace Words",
+                            info="Word pairs to replace in captions. Format: orgword:replaceword;orgword2:replaceword2 (e.g., 'man:ohwx man;person:ohwx person'). Applied after prefix/suffix.",
+                            placeholder="e.g., man:ohwx man;person:ohwx person",
+                            value=self.config.get("replace_words", ""),
+                            lines=2,
+                        )
+                        
                         with gr.Row():
                             self.show_default_prompt = gr.Button("Show Default Prompt")
                             self.clear_prompt = gr.Button("Clear Prompt")
@@ -303,6 +311,7 @@ class ImageCaptioningTab:
                 self.fp8_vl,
                 self.prefix,
                 self.suffix,
+                self.replace_words,
                 self.model_path,
             ],
             outputs=[self.single_caption_output, self.model_status],
@@ -342,6 +351,7 @@ class ImageCaptioningTab:
                 self.fp8_vl,
                 self.prefix,
                 self.suffix,
+                self.replace_words,
                 self.model_path,
             ],
             outputs=self.batch_status,
@@ -358,6 +368,7 @@ class ImageCaptioningTab:
                 self.max_new_tokens,
                 self.prefix,
                 self.suffix,
+                self.replace_words,
                 self.custom_prompt,
                 self.batch_image_dir,
                 self.output_format,
@@ -377,6 +388,7 @@ class ImageCaptioningTab:
                 self.max_new_tokens,
                 self.prefix,
                 self.suffix,
+                self.replace_words,
                 self.custom_prompt,
                 self.batch_image_dir,
                 self.output_format,
@@ -421,6 +433,7 @@ class ImageCaptioningTab:
         fp8_vl: bool,
         prefix: str,
         suffix: str,
+        replace_words: str,
         model_path: str,
     ) -> Tuple[str, str]:
         """Generate caption for a single image with auto-loading"""
@@ -486,6 +499,7 @@ class ImageCaptioningTab:
         fp8_vl: bool,
         prefix: str,
         suffix: str,
+        replace_words: str,
         model_path: str,
     ) -> str:
         """Process batch captioning with auto-loading"""
@@ -507,7 +521,7 @@ class ImageCaptioningTab:
         
         success, message = self.captioning.batch_caption_images(
             image_dir, output_format, jsonl_output_file, output_folder, max_new_tokens,
-            prompt, max_size, fp8_vl, prefix, suffix, progress
+            prompt, max_size, fp8_vl, prefix, suffix, replace_words, progress
         )
         
         return message
@@ -521,6 +535,7 @@ class ImageCaptioningTab:
         max_new_tokens: int,
         prefix: str,
         suffix: str,
+        replace_words: str,
         custom_prompt: str,
         batch_image_dir: str,
         output_format: str,
@@ -540,6 +555,7 @@ class ImageCaptioningTab:
                     "max_new_tokens": max_new_tokens,
                     "prefix": prefix,
                     "suffix": suffix,
+                    "replace_words": replace_words,
                     "custom_prompt": custom_prompt,
                     "batch_image_dir": batch_image_dir,
                     "output_format": output_format,
@@ -562,10 +578,10 @@ class ImageCaptioningTab:
         except Exception as e:
             return f"Error saving configuration: {str(e)}"
     
-    def load_configuration(self, config_file_path: str) -> Tuple[str, bool, int, int, str, str, str, str, str, str, str, str]:
+    def load_configuration(self, config_file_path: str) -> Tuple[str, bool, int, int, str, str, str, str, str, str, str, str, str]:
         """Load configuration from file"""
         if not config_file_path:
-            return "", False, 1280, 1024, "", "", "", "", "text", "", "", "Please provide a configuration file path"
+            return "", False, 1280, 1024, "", "", "", "", "", "text", "", "", "Please provide a configuration file path"
         
         try:
             import toml
@@ -582,6 +598,7 @@ class ImageCaptioningTab:
                 captioning_config.get("max_new_tokens", 1024),
                 captioning_config.get("prefix", ""),
                 captioning_config.get("suffix", ""),
+                captioning_config.get("replace_words", ""),
                 captioning_config.get("custom_prompt", ""),
                 captioning_config.get("batch_image_dir", ""),
                 captioning_config.get("output_format", "text"),
@@ -590,7 +607,7 @@ class ImageCaptioningTab:
                 f"Configuration loaded from: {config_file_path}",
             )
         except Exception as e:
-            return "", False, 1280, 1024, "", "", "", "", "text", "", "", f"Error loading configuration: {str(e)}"
+            return "", False, 1280, 1024, "", "", "", "", "", "text", "", "", f"Error loading configuration: {str(e)}"
 
 
 def image_captioning_tab(headless: bool = False, config: GUIConfig = None) -> None:
