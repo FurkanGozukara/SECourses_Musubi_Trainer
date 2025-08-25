@@ -448,7 +448,7 @@ class ImageCaptioningTab:
         prompt = custom_prompt if custom_prompt.strip() else DEFAULT_PROMPT
         
         success, caption = self.captioning.generate_caption(
-            image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix
+            image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix, replace_words
         )
         
         if success:
@@ -567,9 +567,9 @@ class ImageCaptioningTab:
             # Ensure directory exists
             Path(config_file_path).parent.mkdir(parents=True, exist_ok=True)
             
-            # Save using the common GUI function
+            # Save using the common GUI function (expects list of tuples)
             SaveConfigFile(
-                parameters=config_data,
+                parameters=list(config_data.items()),
                 file_path=config_file_path,
                 exclusion=[""],
             )
