@@ -256,7 +256,7 @@ class ImageCaptioningTab:
         
         # File/folder picker buttons
         self.model_path_button.click(
-            fn=lambda: get_file_path(file_path="", defaultextension=".safetensors"),
+            fn=lambda: get_file_path(file_path="", default_extension=".safetensors"),
             outputs=self.model_path,
         )
         
