@@ -103,7 +103,7 @@ class TrainingSettings:
             self.log_with = gr.Dropdown(
                 label="Logging Tool",
                 info="Select the logging tool to use",
-                choices=["tensorboard", "wandb", "all"],
+                choices=["tensorboard", "wandb", "all", ""],
                 allow_custom_value=True,
                 value=self.config.get("log_with", ""),
                 interactive=True,

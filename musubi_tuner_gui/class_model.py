@@ -129,7 +129,7 @@ class Model:
 
             self.timestep_sampling = gr.Dropdown(
                 label="Timestep Sampling Method",
-                choices=["sigma", "uniform", "sigmoid", "shift"],
+                choices=["sigma", "uniform", "sigmoid", "shift", "qwen_shift", "flux_shift", "logsnr", "qinglong_flux", "qinglong_qwen"],
                 value=self.config.get("timestep_sampling", "sigma"),
                 interactive=True,
             )

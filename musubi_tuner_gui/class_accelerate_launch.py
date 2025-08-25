@@ -75,12 +75,13 @@ class AccelerateLaunch:
                 self.dynamo_mode = gr.Dropdown(
                     label="Dynamo mode",
                     choices=[
+                        "",  # Empty = use default
                         "default",
                         "reduce-overhead",
                         "max-autotune",
                     ],
-                    value=self.config.get("dynamo_mode", "default"),
-                    info="Choose a mode to optimize your training with dynamo.",
+                    value=self.config.get("dynamo_mode", ""),
+                    info="Choose a mode to optimize your training with dynamo. Leave empty for default.",
                 )
                 self.dynamo_use_fullgraph = gr.Checkbox(
                     label="Dynamo use fullgraph",
