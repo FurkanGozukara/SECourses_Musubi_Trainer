@@ -1594,7 +1594,7 @@ def qwen_image_lora_tab(
     dummy_headless = gr.Checkbox(value=headless, visible=False)
 
     # Setup Configuration Files Gradio
-    with gr.Accordion("Configuration file Settings", open=False):
+    with gr.Accordion("Configuration file Settings", open=True):
         # Show configuration status
         # Check if this is a default config by looking for Qwen-specific values
         is_using_defaults = (hasattr(config, 'config') and 
@@ -1622,43 +1622,71 @@ def qwen_image_lora_tab(
         gr.Markdown(config_status)
         configuration = ConfigurationFile(headless=headless, config=config)
 
-    with gr.Accordion("Accelerate launch Settings", open=False, elem_classes="flux1_background"), gr.Column():
+    # Add buttons to control all accordions
+    with gr.Row():
+        hide_all_btn = gr.Button("🔽 Hide All Panels", variant="secondary", size="sm")
+        open_all_btn = gr.Button("🔼 Open All Panels", variant="secondary", size="sm")
+
+    # Create accordion references
+    accordions = []
+    
+    accelerate_accordion = gr.Accordion("Accelerate launch Settings", open=False, elem_classes="flux1_background")
+    accordions.append(accelerate_accordion)
+    with accelerate_accordion, gr.Column():
         accelerate_launch = AccelerateLaunch(config=config)
         # Note: bf16 mixed precision is STRONGLY recommended for Qwen Image
         
-    with gr.Accordion("Qwen Image Model Settings", open=True, elem_classes="preset_background"):
+    qwen_model_accordion = gr.Accordion("Qwen Image Model Settings", open=True, elem_classes="preset_background")
+    accordions.append(qwen_model_accordion)
+    with qwen_model_accordion:
         qwen_model = QwenImageModel(headless=headless, config=config)
         
-    with gr.Accordion("Caching", open=True, elem_classes="samples_background"):
+    caching_accordion = gr.Accordion("Caching", open=True, elem_classes="samples_background")
+    accordions.append(caching_accordion)
+    with caching_accordion:
         with gr.Tab("Latent caching"):
             qwenLatentCaching = QwenImageLatentCaching(headless=headless, config=config)
                 
         with gr.Tab("Text encoder caching"):
             qwenTeoCaching = QwenImageTextEncoderOutputsCaching(headless=headless, config=config)
         
-    with gr.Accordion("Save Load Settings", open=True, elem_classes="samples_background"):
+    save_load_accordion = gr.Accordion("Save Load Settings", open=True, elem_classes="samples_background")
+    accordions.append(save_load_accordion)
+    with save_load_accordion:
         saveLoadSettings = QwenImageSaveLoadSettings(headless=headless, config=config)
         
-    with gr.Accordion("Optimizer and Scheduler Settings", open=True, elem_classes="flux1_rank_layers_background"):
+    optimizer_accordion = gr.Accordion("Optimizer and Scheduler Settings", open=True, elem_classes="flux1_rank_layers_background")
+    accordions.append(optimizer_accordion)
+    with optimizer_accordion:
         OptimizerAndSchedulerSettings = QwenImageOptimizerSettings(headless=headless, config=config)
         
-    with gr.Accordion("Network Settings", open=True, elem_classes="flux1_background"):
+    network_accordion = gr.Accordion("Network Settings", open=True, elem_classes="flux1_background")
+    accordions.append(network_accordion)
+    with network_accordion:
         network = QwenImageNetworkSettings(headless=headless, config=config)
         
-    with gr.Accordion("Training Settings", open=True, elem_classes="preset_background"):
+    training_accordion = gr.Accordion("Training Settings", open=True, elem_classes="preset_background")
+    accordions.append(training_accordion)
+    with training_accordion:
         trainingSettings = QwenImageTrainingSettings(headless=headless, config=config)
 
-    with gr.Accordion("Advanced Settings", open=False, elem_classes="samples_background"):
+    advanced_accordion = gr.Accordion("Advanced Settings", open=False, elem_classes="samples_background")
+    accordions.append(advanced_accordion)
+    with advanced_accordion:
         gr.Markdown("**Additional Parameters**: Add custom training parameters as key=value pairs (e.g., `custom_param=value`). These will be appended to the training command.")
         advanced_training = AdvancedTraining(
             headless=headless, training_type="lora", config=config
         )
 
-    with gr.Accordion("Metadata Settings", open=False, elem_classes="flux1_rank_layers_background"), gr.Group():
+    metadata_accordion = gr.Accordion("Metadata Settings", open=False, elem_classes="flux1_rank_layers_background")
+    accordions.append(metadata_accordion)
+    with metadata_accordion, gr.Group():
         metadata = MetaData(config=config)
 
     global huggingface
-    with gr.Accordion("HuggingFace Settings", open=False, elem_classes="huggingface_background"):
+    huggingface_accordion = gr.Accordion("HuggingFace Settings", open=False, elem_classes="huggingface_background")
+    accordions.append(huggingface_accordion)
+    with huggingface_accordion:
         huggingface = HuggingFace(config=config)
 
     settings_list = [
@@ -1830,6 +1858,25 @@ def qwen_image_lora_tab(
 
     global executor
     executor = CommandExecutor(headless=headless)
+
+    # Add handlers for Hide All and Open All buttons
+    def hide_all_panels():
+        return [gr.Accordion(open=False) for _ in accordions]
+    
+    def open_all_panels():
+        return [gr.Accordion(open=True) for _ in accordions]
+    
+    hide_all_btn.click(
+        hide_all_panels,
+        outputs=accordions,
+        show_progress=False,
+    )
+    
+    open_all_btn.click(
+        open_all_panels,
+        outputs=accordions,
+        show_progress=False,
+    )
 
     configuration.button_open_config.click(
         qwen_image_gui_actions,
