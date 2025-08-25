@@ -784,8 +784,9 @@ def qwen_image_gui_actions(
     
     # Create parameters list, ensuring numeric fields are not lists
     parameters = []
-    for k, v in locals().items():
-        if k not in ["action_type", "bool_value", "headless", "print_only", "numeric_fields"]:
+    local_vars = locals().copy()  # Make a copy to avoid modification during iteration
+    for k, v in local_vars.items():
+        if k not in ["action_type", "bool_value", "headless", "print_only", "numeric_fields", "parameters", "local_vars"]:
             # If it's a numeric field and the value is a list, take the first element
             if k in numeric_fields and isinstance(v, list):
                 log.warning(f"Converting list to single value for numeric field '{k}': {v} -> {v[0] if v else None}")
@@ -794,7 +795,9 @@ def qwen_image_gui_actions(
             elif isinstance(v, list) and k not in ['optimizer_args', 'lr_scheduler_args', 'network_args', 
                                                      'base_weights', 'extra_accelerate_launch_args',
                                                      'gpu_ids', 'additional_parameters']:
-                log.warning(f"Unexpected list value for field '{k}': {v}")
+                # Only log if it's not the parameters list itself (which would be recursive)
+                if 'parameters' not in str(v)[:100]:  # Check first 100 chars to avoid full recursion
+                    log.warning(f"Unexpected list value for field '{k}': {v}")
             parameters.append((k, v))
     
     if action_type == "save_configuration":
@@ -1036,7 +1039,9 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
             if i > 0 and i <= len(parameters):
                 param_name = parameters[i-1][0]  # -1 because values[0] is file_path
             
-            log.error(f"[VALIDATION ERROR] Found list value at index {i} (param: {param_name}): {v}")
+            # Only log verbose error if it's not the parameters list itself
+            if param_name != 'parameters' and 'parameters' not in str(v)[:50]:
+                log.debug(f"[VALIDATION] Processing list value at index {i} (param: {param_name})")
             # Try to fix it
             if param_name in numeric_fields:
                 fixed_value = v[0] if v else None
