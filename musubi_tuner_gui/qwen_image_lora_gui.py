@@ -631,7 +631,7 @@ def train_qwen_image_model(headless, print_only, parameters):
         raise ValueError("❌ Output name is required. Please specify a name for your trained LoRA model.")
     
     # Cache latents using Qwen Image specific script
-    run_cache_latent_cmd = [python_cmd, "./musubi-tuner/qwen_image_cache_latents.py",
+    run_cache_latent_cmd = [python_cmd, "./musubi-tuner/src/musubi_tuner/qwen_image_cache_latents.py",
                             "--dataset_config", str(param_dict.get("dataset_config")),
                             "--vae", str(param_dict.get("vae"))
     ]
@@ -706,7 +706,7 @@ def train_qwen_image_model(headless, print_only, parameters):
         raise RuntimeError(f"Python executable not found: {python_cmd}")
     
     # Cache text encoder outputs using Qwen Image specific script
-    run_cache_teo_cmd = [python_cmd, "./musubi-tuner/qwen_image_cache_text_encoder_outputs.py",
+    run_cache_teo_cmd = [python_cmd, "./musubi-tuner/src/musubi_tuner/qwen_image_cache_text_encoder_outputs.py",
                             "--dataset_config", str(param_dict.get("dataset_config"))
     ]
     
@@ -770,7 +770,7 @@ def train_qwen_image_model(headless, print_only, parameters):
     )
 
     # Use Qwen Image specific training script
-    run_cmd.append(f"{scriptdir}/musubi-tuner/qwen_image_train_network.py")
+    run_cmd.append(f"{scriptdir}/musubi-tuner/src/musubi_tuner/qwen_image_train_network.py")
 
     if print_only:
         print_command_and_toml(run_cmd, "")

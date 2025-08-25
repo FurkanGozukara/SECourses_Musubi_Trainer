@@ -13,7 +13,7 @@ text_encoder_dtype = "float16"  # Data type for Qwen2.5-VL. float16=faster, bflo
 vae_dtype = "bfloat16"       # Data type for VAE. bfloat16=Qwen Image default, float16=faster
 
 # VAE Optimization Settings
-vae_tiling = false           # Enable spatial tiling to reduce VRAM usage during VAE operations
+vae_tiling = false           # Enable spatial tiling to reduce VRAM usage during VAE operations (supported in Qwen Image)
 vae_chunk_size = 0           # 0 = auto/disabled. Higher = faster but more VRAM
 vae_spatial_tile_sample_min_size = 0  # 0 = disabled. 256 = typical. Auto-enables vae_tiling if set
 
@@ -65,7 +65,7 @@ gradient_accumulation_steps = 1
 # Optimizer Settings
 optimizer_type = "adamw8bit"
 optimizer_args = []  # Additional optimizer arguments like ["weight_decay=0.01", "betas=0.9,0.999"]
-learning_rate = 5e-5
+learning_rate = 5e-5  # RECOMMENDED: Changed from 1e-4 to 5e-5 per official documentation update
 max_grad_norm = 1.0
 lr_scheduler = "constant"
 lr_warmup_steps = 0  # 0 = no warmup. Integer = steps, float <1 = ratio of total steps
@@ -81,10 +81,16 @@ lr_scheduler_args = []  # Additional scheduler arguments like ["T_max=100"]
 no_metadata = false
 network_weights = ""
 network_module = "networks.lora_qwen_image"
-network_dim = 16
-network_alpha = 1.0
+network_dim = 16  # RECOMMENDED: Changed from 32 to 16 per official documentation update
+network_alpha = 16.0  # RECOMMENDED: Set equal to network_dim for best results (previously was 1.0)
 network_dropout = 0.0  # 0.0 = no dropout. 0.1 = 10% dropout for regularization
-network_args = []  # Additional network arguments like ["loraplus_lr_ratio=4", "verbose=true"]
+# Additional network arguments. Supported options:
+# - loraplus_lr_ratio=N: Enables LoRA+ with learning rate ratio for "up" matrices (e.g., "loraplus_lr_ratio=4")
+# - exclude_patterns=["regex"]: Regex patterns to exclude modules from LoRA (default excludes ".*(_mod_).*")
+# - include_patterns=["regex"]: Regex patterns to re-include excluded modules
+# - verbose=true: Print detailed info about which modules are being trained
+# Example: ["loraplus_lr_ratio=4", "verbose=true"]
+network_args = []
 training_comment = ""
 dim_from_weights = false
 scale_weight_norms = 0.0  # 0.0 = disabled. 1.0+ = scale weights to prevent exploding gradients
@@ -146,11 +152,12 @@ ddp_timeout = 0  # 0 = use default (30min). Positive integer = timeout in minute
 ddp_gradient_as_bucket_view = false
 ddp_static_graph = false
 
-# Sample Generation  
+# Sample Generation
+# Generate sample images during training to monitor progress
 sample_every_n_steps = 0   # 0 = disabled. 100-500 recommended for step-based sampling
-sample_every_n_epochs = 0  # 0 = disabled. 1-4 recommended for epoch-based sampling
+sample_every_n_epochs = 1  # 0 = disabled. 1 = generate samples every epoch (recommended)
 sample_at_first = false
-sample_prompts = ""
+sample_prompts = ""  # Path to text file with prompts for sample generation (one per line)
 
 # Metadata Settings
 metadata_author = ""
