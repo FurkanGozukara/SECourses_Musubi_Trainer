@@ -420,7 +420,7 @@ class ImageCaptioningTab:
                 self.copy_images,
                 self.overwrite_existing_captions,
             ],
-            outputs=self.config_status,
+            outputs=[self.config_file_path, self.config_status],
         )
         
         self.load_config_button.click(
@@ -605,10 +605,15 @@ class ImageCaptioningTab:
         scan_subfolders: bool,
         copy_images: bool,
         overwrite_existing_captions: bool,
-    ) -> str:
+    ) -> tuple:
         """Save current configuration to file"""
         if not config_file_path:
-            return "Please provide a configuration file path"
+            return config_file_path, "Please provide a configuration file path"
+        
+        # Auto-append .toml extension if not present
+        if config_file_path and not config_file_path.endswith('.toml'):
+            config_file_path = config_file_path + '.toml'
+            log.info(f"Auto-appending .toml extension: {config_file_path}")
         
         try:
             config_data = {
@@ -643,14 +648,29 @@ class ImageCaptioningTab:
                 exclusion=[""],
             )
             
-            return f"Configuration saved to: {config_file_path}"
+            # Show success message with Gradio Info
+            config_name = os.path.basename(config_file_path)
+            success_msg = f"✅ Configuration saved successfully to: {config_name}"
+            log.info(success_msg)
+            gr.Info(success_msg)
+            
+            return config_file_path, success_msg
         except Exception as e:
-            return f"Error saving configuration: {str(e)}"
+            error_msg = f"❌ Error saving configuration: {str(e)}"
+            log.error(error_msg)
+            gr.Error(error_msg)
+            return config_file_path, error_msg
     
     def load_configuration(self, config_file_path: str) -> Tuple[str, bool, int, int, str, str, str, bool, bool, str, str, str, str, str, bool, bool, bool, str]:
         """Load configuration from file"""
         if not config_file_path:
             return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, "Please provide a configuration file path"
+        
+        if not os.path.isfile(config_file_path):
+            error_msg = f"❌ Configuration file does not exist: {config_file_path}"
+            log.error(error_msg)
+            gr.Error(error_msg)
+            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, error_msg
         
         try:
             import toml
@@ -659,6 +679,12 @@ class ImageCaptioningTab:
                 config_data = toml.load(f)
             
             captioning_config = config_data.get("image_captioning", {})
+            
+            # Show success message with Gradio Info
+            config_name = os.path.basename(config_file_path)
+            success_msg = f"✅ Configuration loaded successfully from: {config_name}"
+            log.info(success_msg)
+            gr.Info(success_msg)
             
             return (
                 captioning_config.get("model_path", ""),
@@ -678,10 +704,13 @@ class ImageCaptioningTab:
                 captioning_config.get("scan_subfolders", False),
                 captioning_config.get("copy_images", False),
                 captioning_config.get("overwrite_existing_captions", False),
-                f"Configuration loaded from: {config_file_path}",
+                success_msg,
             )
         except Exception as e:
-            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, f"Error loading configuration: {str(e)}"
+            error_msg = f"❌ Error loading configuration: {str(e)}"
+            log.error(error_msg)
+            gr.Error(error_msg)
+            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, error_msg
 
 
 def image_captioning_tab(headless: bool = False, config: GUIConfig = None) -> None:

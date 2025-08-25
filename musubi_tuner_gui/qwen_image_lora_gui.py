@@ -835,7 +835,11 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
         )
     else:
         log.info("Save...")
-        if file_path == None or file_path == "":
+        # Auto-append .toml extension if not present
+        if file_path and not file_path.endswith('.toml'):
+            file_path = file_path + '.toml'
+            log.info(f"Auto-appending .toml extension: {file_path}")
+        elif file_path == None or file_path == "":
             file_path = get_saveasfile_path(
                 file_path,
                 defaultextension=".toml",
@@ -845,7 +849,8 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
     log.debug(file_path)
 
     if file_path == None or file_path == "":
-        return original_file_path
+        gr.Info("Save cancelled")
+        return original_file_path, gr.update(value="Save cancelled", visible=True)
 
     destination_directory = os.path.dirname(file_path)
 
@@ -881,21 +886,34 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
             value = value[0] if value else None
         processed_params.append((key, value))
 
-    SaveConfigFile(
-        parameters=processed_params,
-        file_path=file_path,
-        exclusion=[
-            "file_path",
-            "save_as",
-            "save_as_bool",
-        ],
-    )
-
-    return file_path
+    try:
+        SaveConfigFile(
+            parameters=processed_params,
+            file_path=file_path,
+            exclusion=[
+                "file_path",
+                "save_as",
+                "save_as_bool",
+            ],
+        )
+        
+        # Show success message
+        config_name = os.path.basename(file_path)
+        success_msg = f"Configuration saved successfully to: {config_name}"
+        log.info(success_msg)
+        gr.Info(success_msg)
+        
+        return file_path, gr.update(value=success_msg, visible=True)
+    except Exception as e:
+        error_msg = f"Failed to save configuration: {str(e)}"
+        log.error(error_msg)
+        gr.Error(error_msg)
+        return original_file_path, gr.update(value=error_msg, visible=True)
 
 
 def open_qwen_image_configuration(ask_for_file, file_path, parameters):
     original_file_path = file_path
+    status_msg = ""
 
     if ask_for_file:
         file_path = get_file_path(
@@ -904,15 +922,39 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
 
     if not file_path == "" and not file_path == None:
         if not os.path.isfile(file_path):
-            log.error(f"Config file {file_path} does not exist.")
-            return
+            error_msg = f"Config file {file_path} does not exist."
+            log.error(error_msg)
+            gr.Error(error_msg)
+            # Return with error status
+            values = [original_file_path, gr.update(value=error_msg, visible=True)]
+            for key, value in parameters:
+                if not key in ["ask_for_file", "apply_preset", "file_path"]:
+                    values.append(value)
+            return tuple(values)
 
-        with open(file_path, "r", encoding="utf-8") as f:
-            my_data = toml.load(f)
-            log.info("Loading config...")
+        try:
+            with open(file_path, "r", encoding="utf-8") as f:
+                my_data = toml.load(f)
+                config_name = os.path.basename(file_path)
+                status_msg = f"Configuration loaded successfully from: {config_name}"
+                log.info(status_msg)
+                gr.Info(status_msg)
+        except Exception as e:
+            error_msg = f"Failed to load configuration: {str(e)}"
+            log.error(error_msg)
+            gr.Error(error_msg)
+            # Return with error status
+            values = [original_file_path, gr.update(value=error_msg, visible=True)]
+            for key, value in parameters:
+                if not key in ["ask_for_file", "apply_preset", "file_path"]:
+                    values.append(value)
+            return tuple(values)
     else:
         file_path = original_file_path
         my_data = {}
+        if ask_for_file:
+            status_msg = "Load cancelled"
+            gr.Info(status_msg)
 
     # Define minimum value constraints to prevent validation errors
     # Based on actual Gradio component definitions
@@ -984,7 +1026,7 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
         'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers'
     ]
     
-    values = [file_path]
+    values = [file_path, gr.update(value=status_msg, visible=True)]
     for key, value in parameters:
         if not key in ["ask_for_file", "apply_preset", "file_path"]:
             toml_value = my_data.get(key)
@@ -2437,21 +2479,21 @@ def qwen_image_lora_tab(
     configuration.button_open_config.click(
         qwen_image_gui_actions,
         inputs=[gr.Textbox(value="open_configuration", visible=False), dummy_true, configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
-        outputs=[configuration.config_file_name] + settings_list,
+        outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
         show_progress=False,
     )
 
     configuration.button_load_config.click(
         qwen_image_gui_actions,
         inputs=[gr.Textbox(value="open_configuration", visible=False), dummy_false, configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
-        outputs=[configuration.config_file_name] + settings_list,
+        outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
         show_progress=False,
     )
 
     configuration.button_save_config.click(
         qwen_image_gui_actions,
         inputs=[gr.Textbox(value="save_configuration", visible=False), dummy_false, configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
-        outputs=[configuration.config_file_name],
+        outputs=[configuration.config_file_name, configuration.config_status],
         show_progress=False,
     )
 

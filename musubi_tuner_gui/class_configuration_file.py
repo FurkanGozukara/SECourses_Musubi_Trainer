@@ -93,6 +93,15 @@ class ConfigurationFile:
                     elem_id="open_folder_small",
                     elem_classes=["tool"],
                 )
+            
+            # Status display for configuration operations
+            self.config_status = gr.Textbox(
+                label="Configuration Status",
+                value="",
+                interactive=False,
+                visible=False,
+                elem_id="config_status"
+            )
 
             # Handler for change events on the configuration file dropdown, allowing dynamic update of choices.
             self.config_file_name.change(
