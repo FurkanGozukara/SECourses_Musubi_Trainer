@@ -29,6 +29,11 @@ from .common_gui import (
 from .class_huggingface import HuggingFace
 from .class_metadata import MetaData
 from .custom_logging import setup_logging
+from .dataset_config_generator import (
+    generate_dataset_config_from_folders,
+    save_dataset_config,
+    validate_dataset_config
+)
 
 log = setup_logging()
 
@@ -45,12 +50,133 @@ class QwenImageModel:
         self.initialize_ui_components()
 
     def initialize_ui_components(self) -> None:
+        # Dataset configuration mode selection
         with gr.Row():
+            self.dataset_config_mode = gr.Radio(
+                label="Dataset Configuration Method",
+                choices=["Use TOML File", "Generate from Folder Structure"],
+                value=self.config.get("dataset_config_mode", "Use TOML File"),
+                info="Choose how to configure your dataset: provide a TOML file or auto-generate from folder structure"
+            )
+        
+        # TOML file mode
+        with gr.Row(visible=self.config.get("dataset_config_mode", "Use TOML File") == "Use TOML File") as self.toml_mode_row:
             self.dataset_config = gr.Textbox(
                 label="Dataset Config File",
                 info="REQUIRED: Path to TOML file containing dataset configuration (images, captions, batch size, resolution, etc.)",
                 placeholder='e.g., /path/to/dataset.toml',
                 value=str(self.config.get("dataset_config", "")),
+            )
+        
+        # Folder structure mode
+        with gr.Column(visible=self.config.get("dataset_config_mode", "Use TOML File") == "Generate from Folder Structure") as self.folder_mode_column:
+            with gr.Row():
+                self.parent_folder_path = gr.Textbox(
+                    label="Parent Folder Path",
+                    info="Path to parent folder containing subfolders with images. Each subfolder can have format: [repeats]_[name] (e.g., 3_ohwx, 2_style)",
+                    placeholder="e.g., C:\\Users\\Name\\Pictures\\training_data",
+                    value=self.config.get("parent_folder_path", "")
+                )
+                self.parent_folder_button = gr.Button(
+                    "Browse", elem_id="parent_folder_button", size="sm"
+                )
+            
+            with gr.Row():
+                self.dataset_resolution_width = gr.Number(
+                    label="Resolution Width",
+                    value=self.config.get("dataset_resolution_width", 960),
+                    minimum=64,
+                    maximum=4096,
+                    step=64,
+                    info="Width of training images"
+                )
+                self.dataset_resolution_height = gr.Number(
+                    label="Resolution Height",
+                    value=self.config.get("dataset_resolution_height", 544),
+                    minimum=64,
+                    maximum=4096,
+                    step=64,
+                    info="Height of training images"
+                )
+            
+            with gr.Row():
+                self.dataset_caption_extension = gr.Textbox(
+                    label="Caption Extension",
+                    value=self.config.get("dataset_caption_extension", ".txt"),
+                    info="File extension for caption files (e.g., .txt, .caption)"
+                )
+                self.dataset_batch_size = gr.Number(
+                    label="Batch Size",
+                    value=self.config.get("dataset_batch_size", 1),
+                    minimum=1,
+                    maximum=64,
+                    step=1,
+                    info="Training batch size per dataset"
+                )
+            
+            with gr.Row():
+                self.create_missing_captions = gr.Checkbox(
+                    label="Create Missing Captions",
+                    value=self.config.get("create_missing_captions", True),
+                    info="Automatically create caption files for images that don't have them"
+                )
+                self.caption_strategy = gr.Dropdown(
+                    label="Caption Strategy",
+                    choices=["folder_name", "empty"],
+                    value=self.config.get("caption_strategy", "folder_name"),
+                    info="folder_name: Use folder name (without repeat prefix) as caption | empty: Create empty caption files",
+                    visible=self.config.get("create_missing_captions", True)
+                )
+            
+            with gr.Row():
+                self.dataset_enable_bucket = gr.Checkbox(
+                    label="Enable Bucketing",
+                    value=self.config.get("dataset_enable_bucket", False),
+                    info="Enable aspect ratio bucketing to train on images with different aspect ratios"
+                )
+                self.dataset_bucket_no_upscale = gr.Checkbox(
+                    label="Bucket No Upscale",
+                    value=self.config.get("dataset_bucket_no_upscale", False),
+                    info="Don't upscale images when bucketing (maintains original size if smaller than target)"
+                )
+            
+            with gr.Row():
+                self.dataset_cache_directory = gr.Textbox(
+                    label="Cache Directory Name",
+                    value=self.config.get("dataset_cache_directory", "cache_dir"),
+                    info="Name for cache directory (relative) or full path (absolute). If relative, created inside each dataset folder"
+                )
+                self.dataset_control_directory = gr.Textbox(
+                    label="Control Directory Name",
+                    value=self.config.get("dataset_control_directory", "edit_images"),
+                    info="Name for control/edit images directory (for image editing). Expected inside each dataset folder"
+                )
+            
+            with gr.Row():
+                self.dataset_qwen_image_edit_no_resize_control = gr.Checkbox(
+                    label="Qwen Image Edit: No Resize Control",
+                    value=self.config.get("dataset_qwen_image_edit_no_resize_control", False),
+                    info="Don't resize control images to target resolution (keeps original control image size)"
+                )
+            
+            with gr.Row():
+                self.generate_toml_button = gr.Button(
+                    "Generate Dataset Configuration",
+                    variant="primary"
+                )
+                self.generated_toml_path = gr.Textbox(
+                    label="Generated TOML Path",
+                    value=self.config.get("generated_toml_path", ""),
+                    info="Path where the generated TOML file will be saved",
+                    interactive=False
+                )
+            
+            self.dataset_status = gr.Textbox(
+                label="Dataset Status",
+                value="",
+                lines=5,
+                interactive=False,
+                info="Status messages from dataset configuration generation"
             )
 
         with gr.Row():
@@ -62,7 +188,7 @@ class QwenImageModel:
 
             self.dit_dtype = gr.Dropdown(
                 label="DiT Data Type",
-                info="⚙️ HARDCODED: bfloat16 is required and hardcoded for Qwen Image. Do not change - other dtypes will cause errors",
+                info="[HARDCODED] bfloat16 is required and hardcoded for Qwen Image. Do not change - other dtypes will cause errors",
                 choices=["bfloat16"],
                 value=self.config.get("dit_dtype", "bfloat16"),
                 interactive=False,  # Hardcoded for Qwen Image
@@ -187,7 +313,7 @@ class QwenImageModel:
         with gr.Row():
             self.timestep_sampling = gr.Dropdown(
                 label="Timestep Sampling Method",
-                info="✅ 'shift' recommended for Qwen Image. 'qwen_shift' = dynamic shift per resolution. 'sigma' = musubi tuner default",
+                info="[RECOMMENDED] 'shift' recommended for Qwen Image. 'qwen_shift' = dynamic shift per resolution. 'sigma' = musubi tuner default",
                 choices=["shift", "qwen_shift", "sigma", "uniform", "sigmoid", "flux_shift", "logsnr", "qinglong_flux", "qinglong_qwen"],
                 value=self.config.get("timestep_sampling", "shift"),
                 interactive=True,
@@ -195,7 +321,7 @@ class QwenImageModel:
 
             self.discrete_flow_shift = gr.Number(
                 label="Discrete Flow Shift",
-                info="⚠️ Only used with 'shift' method. Qwen Image optimal: 2.2. 'qwen_shift' automatically calculates dynamic shift (0.5-0.9) based on image resolution",
+                info="[NOTE] Only used with 'shift' method. Qwen Image optimal: 2.2. 'qwen_shift' automatically calculates dynamic shift (0.5-0.9) based on image resolution",
                 value=self.config.get("discrete_flow_shift", 2.2),
                 step=0.1,
                 interactive=True,
@@ -203,7 +329,7 @@ class QwenImageModel:
 
             self.weighting_scheme = gr.Dropdown(
                 label="Weighting Scheme",
-                info="✅ 'none' recommended for Qwen Image. Advanced: 'logit_normal' for different timestep emphasis, 'mode' for SD3-style weighting",
+                info="[RECOMMENDED] 'none' recommended for Qwen Image. Advanced: 'logit_normal' for different timestep emphasis, 'mode' for SD3-style weighting",
                 choices=["none", "logit_normal", "mode", "cosmap", "sigma_sqrt"],
                 value=self.config.get("weighting_scheme", "none"),
                 interactive=True,
@@ -298,6 +424,144 @@ class QwenImageModel:
                 value=self.config.get("show_timesteps", None),
                 interactive=True,
             )
+    
+    def setup_dataset_ui_events(self, saveLoadSettings=None):
+        """Setup event handlers for dataset configuration UI"""
+        
+        def toggle_dataset_mode(mode):
+            """Toggle visibility of dataset configuration modes"""
+            is_toml = mode == "Use TOML File"
+            return (
+                gr.Row(visible=is_toml),  # toml_mode_row
+                gr.Column(visible=not is_toml),  # folder_mode_column
+            )
+        
+        def toggle_caption_strategy(create_missing):
+            """Toggle visibility of caption strategy dropdown"""
+            return gr.Dropdown(visible=create_missing)
+        
+        def browse_parent_folder():
+            """Browse for parent folder"""
+            try:
+                from tkinter import filedialog
+                import tkinter as tk
+                root = tk.Tk()
+                root.withdraw()
+                folder_path = filedialog.askdirectory(title="Select Parent Folder for Dataset")
+                root.destroy()
+                return folder_path if folder_path else gr.update()
+            except ImportError:
+                # If tkinter is not available, return a message
+                return gr.update(value="Please type the folder path manually (tkinter not available)")
+        
+        def generate_dataset_config(
+            parent_folder,
+            width, height,
+            caption_ext,
+            create_missing,
+            caption_strat,
+            batch_size,
+            enable_bucket,
+            bucket_no_upscale,
+            cache_dir,
+            control_dir,
+            qwen_no_resize,
+            output_dir  # Add output_dir parameter
+        ):
+            """Generate dataset configuration from folder structure"""
+            try:
+                if not parent_folder:
+                    return "", "", "[ERROR] Please specify a parent folder path"
+                
+                # Determine where to save the dataset config
+                save_location = output_dir if output_dir else os.path.dirname(parent_folder)
+                
+                # Generate configuration
+                config, messages = generate_dataset_config_from_folders(
+                    parent_folder=parent_folder,
+                    resolution=(int(width), int(height)),
+                    caption_extension=caption_ext,
+                    create_missing_captions=create_missing,
+                    caption_strategy=caption_strat,
+                    batch_size=int(batch_size),
+                    enable_bucket=enable_bucket,
+                    bucket_no_upscale=bucket_no_upscale,
+                    cache_directory_name=cache_dir,
+                    control_directory_name=control_dir,
+                    qwen_image_edit_no_resize_control=qwen_no_resize
+                )
+                
+                # Create output directory if needed
+                if output_dir and not os.path.exists(output_dir):
+                    os.makedirs(output_dir, exist_ok=True)
+                
+                # Save to file
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                output_path = os.path.join(
+                    save_location,
+                    f"dataset_config_{timestamp}.toml"
+                )
+                save_dataset_config(config, output_path)
+                
+                # Format status messages
+                status = "\n".join(messages)
+                status += f"\n\n[OK] Configuration saved to: {output_path}"
+                if output_dir:
+                    status += f"\n[INFO] Saved in output directory as requested"
+                
+                # Return path for both generated_toml_path AND dataset_config fields
+                return output_path, output_path, status
+                
+            except Exception as e:
+                return "", "", f"[ERROR] Error generating configuration: {str(e)}"
+        
+        # Connect event handlers
+        self.dataset_config_mode.change(
+            fn=toggle_dataset_mode,
+            inputs=[self.dataset_config_mode],
+            outputs=[self.toml_mode_row, self.folder_mode_column]
+        )
+        
+        self.create_missing_captions.change(
+            fn=toggle_caption_strategy,
+            inputs=[self.create_missing_captions],
+            outputs=[self.caption_strategy]
+        )
+        
+        self.parent_folder_button.click(
+            fn=browse_parent_folder,
+            outputs=[self.parent_folder_path]
+        )
+        
+        self.generate_toml_button.click(
+            fn=generate_dataset_config,
+            inputs=[
+                self.parent_folder_path,
+                self.dataset_resolution_width,
+                self.dataset_resolution_height,
+                self.dataset_caption_extension,
+                self.create_missing_captions,
+                self.caption_strategy,
+                self.dataset_batch_size,
+                self.dataset_enable_bucket,
+                self.dataset_bucket_no_upscale,
+                self.dataset_cache_directory,
+                self.dataset_control_directory,
+                self.dataset_qwen_image_edit_no_resize_control,
+                saveLoadSettings.output_dir if saveLoadSettings else gr.Textbox(value="")  # Pass output_dir from SaveLoadSettings
+            ],
+            outputs=[self.generated_toml_path, self.dataset_config, self.dataset_status]
+        )
+    
+    def get_dataset_config_path(self):
+        """Get the effective dataset config path based on mode"""
+        if hasattr(self, 'dataset_config_mode') and self.dataset_config_mode.value == "Use TOML File":
+            return self.dataset_config.value
+        elif hasattr(self, 'generated_toml_path'):
+            # Use generated TOML path
+            return self.generated_toml_path.value if self.generated_toml_path.value else self.dataset_config.value
+        else:
+            return self.dataset_config.value
 
 
 def qwen_image_gui_actions(
@@ -323,7 +587,22 @@ def qwen_image_gui_actions(
     extra_accelerate_launch_args,
     # advanced_training
     additional_parameters,
+    # dataset configuration parameters
+    dataset_config_mode,
     dataset_config,
+    parent_folder_path,
+    dataset_resolution_width,
+    dataset_resolution_height,
+    dataset_caption_extension,
+    create_missing_captions,
+    caption_strategy,
+    dataset_batch_size,
+    dataset_enable_bucket,
+    dataset_bucket_no_upscale,
+    dataset_cache_directory,
+    dataset_control_directory,
+    dataset_qwen_image_edit_no_resize_control,
+    generated_toml_path,
     sdpa,
     flash_attn,
     sage_attn,
@@ -611,6 +890,8 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
 
 def train_qwen_image_model(headless, print_only, parameters):
     import sys
+    import shutil
+    import json
     
     # Use Python directly instead of uv for better compatibility
     python_cmd = sys.executable
@@ -618,17 +899,72 @@ def train_qwen_image_model(headless, print_only, parameters):
 
     param_dict = dict(parameters)
     
+    # Get effective dataset config path based on mode
+    effective_dataset_config = None
+    if param_dict.get("dataset_config_mode") == "Generate from Folder Structure":
+        effective_dataset_config = param_dict.get("generated_toml_path")
+    else:
+        effective_dataset_config = param_dict.get("dataset_config")
+    
     # Validate required parameters before starting
-    if not param_dict.get("dataset_config"):
-        raise ValueError("❌ Dataset config file is required for training. Please specify a path to your dataset configuration TOML file.")
+    if not effective_dataset_config:
+        raise ValueError("[ERROR] Dataset config file is required for training. Please specify a TOML file or generate one from folder structure.")
+    
+    # Update param_dict with effective config
+    param_dict["dataset_config"] = effective_dataset_config
     if not param_dict.get("vae"):
-        raise ValueError("❌ VAE checkpoint path is required for training. Please download and specify the VAE model path (diffusion_pytorch_model.safetensors from Qwen/Qwen-Image).")
+        raise ValueError("[ERROR] VAE checkpoint path is required for training. Please download and specify the VAE model path (diffusion_pytorch_model.safetensors from Qwen/Qwen-Image).")
     if not param_dict.get("dit"):
-        raise ValueError("❌ DiT checkpoint path is required for training. Please download and specify the DiT model path (qwen_image_bf16.safetensors from Comfy-Org/Qwen-Image_ComfyUI).")
+        raise ValueError("[ERROR] DiT checkpoint path is required for training. Please download and specify the DiT model path (qwen_image_bf16.safetensors from Comfy-Org/Qwen-Image_ComfyUI).")
     if not param_dict.get("output_dir"):
-        raise ValueError("❌ Output directory is required. Please specify where to save your trained LoRA model.")
+        raise ValueError("[ERROR] Output directory is required. Please specify where to save your trained LoRA model.")
     if not param_dict.get("output_name"):
-        raise ValueError("❌ Output name is required. Please specify a name for your trained LoRA model.")
+        raise ValueError("[ERROR] Output name is required. Please specify a name for your trained LoRA model.")
+    
+    # Create output directory if it doesn't exist
+    output_dir = param_dict.get("output_dir")
+    os.makedirs(output_dir, exist_ok=True)
+    
+    # Generate timestamp for file naming
+    timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")[:-3]  # Remove last 3 digits of microseconds to get milliseconds
+    
+    # Save dataset TOML to output directory
+    dataset_toml_dest = os.path.join(output_dir, f"{timestamp}.toml")
+    if os.path.exists(effective_dataset_config):
+        shutil.copy2(effective_dataset_config, dataset_toml_dest)
+        log.info(f"Dataset config saved to: {dataset_toml_dest}")
+        print(f"\n[INFO] Dataset configuration backed up to output directory:")
+        print(f"       {dataset_toml_dest}")
+    
+    # Save JSON config to output directory (same as save configuration)
+    json_config_path = os.path.join(output_dir, f"{timestamp}.json")
+    
+    # Convert parameters to a clean dictionary for saving
+    save_dict = {}
+    for key, value in param_dict.items():
+        # Convert any gradio objects to their values
+        if hasattr(value, 'value'):
+            save_dict[key] = value.value
+        else:
+            save_dict[key] = value
+    
+    # Save JSON configuration using the same format as SaveConfigFile
+    SaveConfigFile(
+        parameters=parameters,
+        file_path=json_config_path,
+        exclusion=[
+            "file_path",
+            "save_as",
+            "save_as_bool",
+            "headless",
+            "print_only"
+        ],
+    )
+    log.info(f"Training config saved to: {json_config_path}")
+    print(f"[INFO] Training configuration saved to output directory:")
+    print(f"       {json_config_path}")
+    print(f"\n[INFO] Both configuration files saved with timestamp: {timestamp}")
+    print(f"       These files will be preserved with your trained model for reproducibility.\n")
     
     # Cache latents using Qwen Image specific script
     run_cache_latent_cmd = [python_cmd, "./musubi-tuner/src/musubi_tuner/qwen_image_cache_latents.py",
@@ -842,7 +1178,7 @@ class QwenImageTrainingSettings:
         with gr.Row():
             self.sdpa = gr.Checkbox(
                 label="Use SDPA for CrossAttention",
-                info="✅ RECOMMENDED for Qwen Image. PyTorch's Scaled Dot Product Attention - fastest and most memory efficient",
+                info="[RECOMMENDED] PyTorch's Scaled Dot Product Attention - fastest and most memory efficient for Qwen Image",
                 value=self.config.get("sdpa", True),
             )
 
@@ -867,13 +1203,13 @@ class QwenImageTrainingSettings:
         with gr.Row():
             self.flash3 = gr.Checkbox(
                 label="Use FlashAttention 3",
-                info="⚠️ EXPERIMENTAL: FlashAttention 3 support. Not confirmed to work with Qwen Image yet. Requires FlashAttention 3 library",
+                info="[EXPERIMENTAL] FlashAttention 3 support. Not confirmed to work with Qwen Image yet. Requires FlashAttention 3 library",
                 value=self.config.get("flash3", False),
             )
 
             self.split_attn = gr.Checkbox(
                 label="Split Attention",
-                info="⚠️ REQUIRED if using FlashAttention/SageAttention/xformers/flash3. Splits attention computation to reduce memory usage",
+                info="[REQUIRED] if using FlashAttention/SageAttention/xformers/flash3. Splits attention computation to reduce memory usage",
                 value=self.config.get("split_attn", False),
             )
 
@@ -889,7 +1225,7 @@ class QwenImageTrainingSettings:
 
             self.max_train_epochs = gr.Number(
                 label="Max Training Epochs",
-                info="✅ RECOMMENDED: 16 epochs for Qwen Image. Overrides max_train_steps. 1 epoch = full pass through dataset",
+                info="[RECOMMENDED] 16 epochs for Qwen Image. Overrides max_train_steps. 1 epoch = full pass through dataset",
                 value=self.config.get("max_train_epochs", 16),
                 minimum=1,
                 maximum=100,
@@ -899,7 +1235,7 @@ class QwenImageTrainingSettings:
 
             self.max_data_loader_n_workers = gr.Number(
                 label="Max DataLoader Workers",
-                info="✅ 2 recommended for Qwen Image stability. Higher values = faster data loading but more RAM usage and potential instability",
+                info="[RECOMMENDED] 2 recommended for Qwen Image stability. Higher values = faster data loading but more RAM usage and potential instability",
                 value=self.config.get("max_data_loader_n_workers", 2),
                 minimum=0,
                 maximum=16,
@@ -909,7 +1245,7 @@ class QwenImageTrainingSettings:
 
             self.persistent_data_loader_workers = gr.Checkbox(
                 label="Persistent DataLoader Workers",
-                info="✅ ENABLED: Keeps data loading processes alive between epochs. Faster epoch transitions but uses more RAM",
+                info="[ENABLED] Keeps data loading processes alive between epochs. Faster epoch transitions but uses more RAM",
                 value=self.config.get("persistent_data_loader_workers", True),
             )
 
@@ -925,7 +1261,7 @@ class QwenImageTrainingSettings:
 
             self.gradient_checkpointing = gr.Checkbox(
                 label="Enable Gradient Checkpointing",
-                info="✅ ENABLED: Trades computation for memory. Essential for Qwen Image training. Saves ~50% VRAM but increases training time ~20%",
+                info="[ENABLED] Trades computation for memory. Essential for Qwen Image training. Saves ~50% VRAM but increases training time ~20%",
                 value=self.config.get("gradient_checkpointing", True),
             )
 
@@ -1083,7 +1419,7 @@ class QwenImageOptimizerSettings:
         with gr.Row():
             self.optimizer_type = gr.Dropdown(
                 label="Optimizer Type",
-                info="✅ adamw8bit RECOMMENDED for Qwen Image (memory efficient, confirmed in official examples). AdamW = standard, AdaFactor = adaptive LR",
+                info="[RECOMMENDED] adamw8bit for Qwen Image (memory efficient, confirmed in official examples). AdamW = standard, AdaFactor = adaptive LR",
                 choices=[
                     "adamw8bit", 
                     "AdamW", 
@@ -1099,7 +1435,7 @@ class QwenImageOptimizerSettings:
 
             self.learning_rate = gr.Number(
                 label="Learning Rate",
-                info="✅ 5e-5 (0.00005) recommended for Qwen Image. Too high = instability, too low = slow learning. Typical range: 1e-6 to 1e-3",
+                info="[RECOMMENDED] 5e-5 (0.00005) for Qwen Image. Too high = instability, too low = slow learning. Typical range: 1e-6 to 1e-3",
                 value=self.config.get("learning_rate", 5e-5),
                 minimum=1e-7,
                 maximum=1e-2,
@@ -1129,7 +1465,7 @@ class QwenImageOptimizerSettings:
         with gr.Row():
             self.lr_scheduler = gr.Dropdown(
                 label="Learning Rate Scheduler",
-                info="✅ 'constant' recommended for most cases. 'cosine' = gradual decrease, 'linear' = linear decrease, 'constant_with_warmup' = warm start",
+                info="[RECOMMENDED] 'constant' for most cases. 'cosine' = gradual decrease, 'linear' = linear decrease, 'constant_with_warmup' = warm start",
                 choices=["constant", "linear", "cosine", "cosine_with_restarts", "polynomial", "constant_with_warmup", "adafactor"],
                 value=self.config.get("lr_scheduler", "constant"),
                 interactive=True,
@@ -1234,7 +1570,7 @@ class QwenImageNetworkSettings:
         with gr.Row():
             self.network_module = gr.Textbox(
                 label="Network Module",
-                info="⚙️ AUTO-SET: LoRA implementation for Qwen Image. 'networks.lora_qwen_image' is automatically selected. Do not change",
+                info="[AUTO-SET] LoRA implementation for Qwen Image. 'networks.lora_qwen_image' is automatically selected. Do not change",
                 placeholder="networks.lora_qwen_image",
                 value=self.config.get("network_module", "networks.lora_qwen_image"),
                 interactive=False,  # Will be auto-selected
@@ -1242,7 +1578,7 @@ class QwenImageNetworkSettings:
 
             self.network_dim = gr.Number(
                 label="Network Dimension (Rank)",
-                info="✅ LoRA rank/dimension. 16 recommended for Qwen Image. Higher = more capacity but larger files. Range: 8-128",
+                info="[RECOMMENDED] LoRA rank/dimension. 16 for Qwen Image. Higher = more capacity but larger files. Range: 8-128",
                 value=self.config.get("network_dim", 16),
                 minimum=1,
                 maximum=512,
@@ -1253,7 +1589,7 @@ class QwenImageNetworkSettings:
         with gr.Row():
             self.network_alpha = gr.Number(
                 label="Network Alpha",
-                info="✅ LoRA scaling factor. 1.0 recommended for Qwen Image. Higher = stronger LoRA effect. Formula: alpha/rank = final scaling",
+                info="[RECOMMENDED] LoRA scaling factor. 1.0 for Qwen Image. Higher = stronger LoRA effect. Formula: alpha/rank = final scaling",
                 value=self.config.get("network_alpha", 1.0),
                 minimum=0.1,
                 maximum=512.0,
@@ -1355,7 +1691,7 @@ class QwenImageSaveLoadSettings:
         with gr.Row():
             self.save_every_n_epochs = gr.Number(
                 label="Save Every N Epochs",
-                info="✅ 1 recommended. Save checkpoint every N epochs for backup and progress tracking. 0 = save only at end",
+                info="[RECOMMENDED] 1 recommended. Save checkpoint every N epochs for backup and progress tracking. 0 = save only at end",
                 value=self.config.get("save_every_n_epochs", 1),
                 minimum=0,
                 maximum=50,
@@ -1620,7 +1956,7 @@ def qwen_image_lora_tab(
         
         if is_using_defaults:
             config_status = """
-            ✅ **Qwen Image Optimal Defaults Active**
+            [OK] **Qwen Image Optimal Defaults Active**
             
             **Key Optimizations Applied:**
             - Discrete Flow Shift: 3.0 (optimal for Qwen Image)
@@ -1631,9 +1967,9 @@ def qwen_image_lora_tab(
             - Gradient Checkpointing: Enabled (memory savings)
             """
         elif hasattr(config, 'config') and config.config:
-            config_status = "📄 **Custom configuration loaded** - You may want to verify optimal settings are applied"
+            config_status = "[INFO] **Custom configuration loaded** - You may want to verify optimal settings are applied"
         else:
-            config_status = "⚠️ **No configuration** - Default values will be used"
+            config_status = "[WARNING] **No configuration** - Default values will be used"
         
         gr.Markdown(config_status)
         configuration = ConfigurationFile(headless=headless, config=config)
@@ -1642,7 +1978,7 @@ def qwen_image_lora_tab(
     with gr.Row():
         with gr.Column(scale=1):
             toggle_all_btn = gr.Button(
-                value="🔼 Open All Panels", 
+                value="Open All Panels", 
                 variant="secondary", 
                 size="lg",
                 elem_id="toggle-all-btn"
@@ -1659,10 +1995,17 @@ def qwen_image_lora_tab(
         accelerate_launch = AccelerateLaunch(config=config)
         # Note: bf16 mixed precision is STRONGLY recommended for Qwen Image
         
+    # Save Load Settings - moved before Model Settings for better workflow
+    save_load_accordion = gr.Accordion("Save Load Settings", open=False, elem_classes="samples_background")
+    accordions.append(save_load_accordion)
+    with save_load_accordion:
+        saveLoadSettings = QwenImageSaveLoadSettings(headless=headless, config=config)
+    
     qwen_model_accordion = gr.Accordion("Qwen Image Model Settings", open=False, elem_classes="preset_background")
     accordions.append(qwen_model_accordion)
     with qwen_model_accordion:
         qwen_model = QwenImageModel(headless=headless, config=config)
+        qwen_model.setup_dataset_ui_events(saveLoadSettings)  # Pass saveLoadSettings for output_dir access
         
     caching_accordion = gr.Accordion("Caching", open=False, elem_classes="samples_background")
     accordions.append(caching_accordion)
@@ -1672,11 +2015,6 @@ def qwen_image_lora_tab(
                 
         with gr.Tab("Text encoder caching"):
             qwenTeoCaching = QwenImageTextEncoderOutputsCaching(headless=headless, config=config)
-        
-    save_load_accordion = gr.Accordion("Save Load Settings", open=False, elem_classes="samples_background")
-    accordions.append(save_load_accordion)
-    with save_load_accordion:
-        saveLoadSettings = QwenImageSaveLoadSettings(headless=headless, config=config)
         
     optimizer_accordion = gr.Accordion("Optimizer and Scheduler Settings", open=False, elem_classes="flux1_rank_layers_background")
     accordions.append(optimizer_accordion)
@@ -1730,8 +2068,22 @@ def qwen_image_lora_tab(
         # advanced_training
         advanced_training.additional_parameters,
         
-        # Dataset Settings
+        # Dataset Settings - new parameters
+        qwen_model.dataset_config_mode,
         qwen_model.dataset_config,
+        qwen_model.parent_folder_path,
+        qwen_model.dataset_resolution_width,
+        qwen_model.dataset_resolution_height,
+        qwen_model.dataset_caption_extension,
+        qwen_model.create_missing_captions,
+        qwen_model.caption_strategy,
+        qwen_model.dataset_batch_size,
+        qwen_model.dataset_enable_bucket,
+        qwen_model.dataset_bucket_no_upscale,
+        qwen_model.dataset_cache_directory,
+        qwen_model.dataset_control_directory,
+        qwen_model.dataset_qwen_image_edit_no_resize_control,
+        qwen_model.generated_toml_path,
         
         # trainingSettings
         trainingSettings.sdpa,
@@ -1887,12 +2239,12 @@ def qwen_image_lora_tab(
         if current_state == "closed":
             # Open all panels and update button text
             new_state = "open"
-            new_button_text = "🔽 Hide All Panels"
+            new_button_text = "Hide All Panels"
             accordion_states = [gr.Accordion(open=True) for _ in accordions]
         else:
             # Close all panels and update button text
             new_state = "closed"
-            new_button_text = "🔼 Open All Panels"
+            new_button_text = "Open All Panels"
             accordion_states = [gr.Accordion(open=False) for _ in accordions]
         
         return [new_state, gr.Button(value=new_button_text)] + accordion_states
