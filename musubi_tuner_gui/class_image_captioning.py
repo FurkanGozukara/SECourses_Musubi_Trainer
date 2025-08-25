@@ -146,7 +146,9 @@ class ImageCaptioning:
         fp8_vl: bool = False,
         prefix: str = "",
         suffix: str = "",
-        replace_words: str = ""
+        replace_words: str = "",
+        replace_case_insensitive: bool = True,
+        replace_whole_words_only: bool = True
     ) -> Tuple[bool, str]:
         """Generate caption for a single image"""
         try:
@@ -201,6 +203,7 @@ class ImageCaptioning:
             # Apply word replacements if provided
             if replace_words:
                 try:
+                    import re
                     # Parse replace_words format: "word1:replacement1;word2:replacement2"
                     pairs = replace_words.split(";")
                     for pair in pairs:
@@ -210,7 +213,25 @@ class ImageCaptioning:
                                 org_word = parts[0].strip()
                                 replace_word = parts[1].strip()
                                 if org_word:  # Only replace if org_word is not empty
-                                    caption_text = caption_text.replace(org_word, replace_word)
+                                    if replace_whole_words_only:
+                                        # Use word boundaries for whole word matching
+                                        if replace_case_insensitive:
+                                            # Case insensitive whole word replacement
+                                            pattern = r'\b' + re.escape(org_word) + r'\b'
+                                            caption_text = re.sub(pattern, replace_word, caption_text, flags=re.IGNORECASE)
+                                        else:
+                                            # Case sensitive whole word replacement
+                                            pattern = r'\b' + re.escape(org_word) + r'\b'
+                                            caption_text = re.sub(pattern, replace_word, caption_text)
+                                    else:
+                                        # Partial word matching allowed
+                                        if replace_case_insensitive:
+                                            # Case insensitive partial replacement
+                                            pattern = re.escape(org_word)
+                                            caption_text = re.sub(pattern, replace_word, caption_text, flags=re.IGNORECASE)
+                                        else:
+                                            # Case sensitive partial replacement (original behavior)
+                                            caption_text = caption_text.replace(org_word, replace_word)
                 except Exception as e:
                     log.warning(f"Error applying word replacements: {str(e)}")
             
@@ -234,6 +255,11 @@ class ImageCaptioning:
         prefix: str = "",
         suffix: str = "",
         replace_words: str = "",
+        replace_case_insensitive: bool = True,
+        replace_whole_words_only: bool = True,
+        scan_subfolders: bool = False,
+        copy_images: bool = False,
+        overwrite_existing_captions: bool = False,
         progress: gr.Progress = None
     ) -> Tuple[bool, str]:
         """Batch caption images in a directory"""
@@ -250,19 +276,41 @@ class ImageCaptioning:
             # Import image utilities
             sys.path.append(os.path.join(os.path.dirname(__file__), "..", "musubi-tuner", "src"))
             from musubi_tuner.dataset import image_video_dataset
+            import shutil
             
             # Get image files
-            image_files = image_video_dataset.glob_images(image_dir)
+            if scan_subfolders:
+                # Recursively find images in all subfolders
+                image_files = []
+                for root, dirs, files in os.walk(image_dir):
+                    for file in files:
+                        if any(file.lower().endswith(ext) for ext in ['.jpg', '.jpeg', '.png', '.webp', '.bmp', '.gif']):
+                            image_files.append(os.path.join(root, file))
+                image_files.sort()  # Sort for consistent ordering
+            else:
+                # Use the existing method for current directory only
+                image_files = image_video_dataset.glob_images(image_dir)
             
             if not image_files:
                 return False, f"No image files found in directory: {image_dir}"
             
             log.info(f"Found {len(image_files)} image files")
             
+            # Log processing mode
+            if scan_subfolders:
+                log.info("Scanning subfolders recursively")
+            if copy_images:
+                log.info("Will copy images to output folder")
+            
             # Create output directory if needed for JSONL format
             if output_format == "jsonl":
                 output_path = Path(output_file)
                 output_path.parent.mkdir(parents=True, exist_ok=True)
+                
+                # If copying images with JSONL, create image output folder
+                if copy_images and output_folder and output_folder.strip():
+                    jsonl_image_dir = Path(output_folder)
+                    jsonl_image_dir.mkdir(parents=True, exist_ok=True)
             
             processed_count = 0
             error_count = 0
@@ -276,12 +324,35 @@ class ImageCaptioning:
                             progress((i + 1) / len(image_files), f"Processing {os.path.basename(image_path)}")
                         
                         success, caption = self.generate_caption(
-                            image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix, replace_words
+                            image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix, replace_words,
+                            replace_case_insensitive, replace_whole_words_only
                         )
                         
                         if success:
-                            # Create JSONL entry
-                            entry = {"image_path": image_path, "caption": caption}
+                            # Copy image if requested (for JSONL format)
+                            if copy_images and output_folder and output_folder.strip():
+                                image_path_obj = Path(image_path)
+                                if scan_subfolders:
+                                    # Preserve subfolder structure
+                                    rel_path = os.path.relpath(image_path, image_dir)
+                                    rel_dir = os.path.dirname(rel_path)
+                                    output_subdir = jsonl_image_dir / rel_dir
+                                    output_subdir.mkdir(parents=True, exist_ok=True)
+                                    image_output_path = output_subdir / image_path_obj.name
+                                else:
+                                    # No subfolder structure
+                                    image_output_path = jsonl_image_dir / image_path_obj.name
+                                
+                                if not image_output_path.exists():
+                                    shutil.copy2(image_path, image_output_path)
+                                
+                                # Update entry to use relative path if images were copied
+                                rel_image_path = os.path.relpath(str(image_output_path), str(output_path.parent))
+                                entry = {"image_path": rel_image_path, "caption": caption}
+                            else:
+                                # Create JSONL entry with original path
+                                entry = {"image_path": image_path, "caption": caption}
+                            
                             # Write to file
                             f.write(json.dumps(entry, ensure_ascii=False) + "\n")
                             f.flush()  # Ensure data is written immediately
@@ -294,6 +365,11 @@ class ImageCaptioning:
                 if error_count > 0:
                     result_msg += f", {error_count} errors"
                 result_msg += f". Results saved to: {output_file}"
+                
+                if copy_images and output_folder and output_folder.strip():
+                    result_msg += f". Images copied to: {output_folder}"
+                    if scan_subfolders:
+                        result_msg += " (preserving folder structure)"
                 
             else:
                 # Text file output format
@@ -311,7 +387,8 @@ class ImageCaptioning:
                         progress((i + 1) / len(image_files), f"Processing {os.path.basename(image_path)}")
                     
                     success, caption = self.generate_caption(
-                        image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix, replace_words
+                        image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix, replace_words,
+                        replace_case_insensitive, replace_whole_words_only
                     )
                     
                     if success:
@@ -319,10 +396,36 @@ class ImageCaptioning:
                         
                         if save_to_output_folder:
                             # Save to specified output folder
-                            text_file_path = output_dir / f"{image_path_obj.stem}.txt"
+                            if scan_subfolders:
+                                # Preserve subfolder structure
+                                rel_path = os.path.relpath(image_path, image_dir)
+                                rel_dir = os.path.dirname(rel_path)
+                                output_subdir = output_dir / rel_dir
+                                output_subdir.mkdir(parents=True, exist_ok=True)
+                                text_file_path = output_subdir / f"{image_path_obj.stem}.txt"
+                                
+                                # Copy image if requested
+                                if copy_images:
+                                    image_output_path = output_subdir / image_path_obj.name
+                                    if not image_output_path.exists():
+                                        shutil.copy2(image_path, image_output_path)
+                            else:
+                                # No subfolder structure to preserve
+                                text_file_path = output_dir / f"{image_path_obj.stem}.txt"
+                                
+                                # Copy image if requested
+                                if copy_images:
+                                    image_output_path = output_dir / image_path_obj.name
+                                    if not image_output_path.exists():
+                                        shutil.copy2(image_path, image_output_path)
                         else:
                             # Save alongside image (same directory as image)
                             text_file_path = image_path_obj.with_suffix(".txt")
+                        
+                        # Check if caption already exists and skip if not overwriting
+                        if text_file_path.exists() and not overwrite_existing_captions:
+                            log.info(f"Skipping {image_path} - caption already exists")
+                            continue
                         
                         # Write caption to text file
                         with open(text_file_path, "w", encoding="utf-8") as f:
@@ -338,6 +441,10 @@ class ImageCaptioning:
                 
                 if save_to_output_folder:
                     result_msg += f". Text files saved to: {output_dir}"
+                    if copy_images:
+                        result_msg += ". Images also copied"
+                        if scan_subfolders:
+                            result_msg += " (preserving folder structure)"
                 else:
                     result_msg += ". Text files saved alongside each image."
             

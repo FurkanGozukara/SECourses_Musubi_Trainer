@@ -143,6 +143,19 @@ class ImageCaptioningTab:
                         )
                         
                         with gr.Row():
+                            self.replace_case_insensitive = gr.Checkbox(
+                                label="Case Insensitive Replace",
+                                info="Replace words regardless of case (e.g., 'Man', 'man', 'MAN' all match)",
+                                value=self.config.get("replace_case_insensitive", True)
+                            )
+                            
+                            self.replace_whole_words_only = gr.Checkbox(
+                                label="Replace Whole Words Only",
+                                info="Only replace complete words (e.g., 'he' won't match 'her' or 'the')",
+                                value=self.config.get("replace_whole_words_only", True)
+                            )
+                        
+                        with gr.Row():
                             self.show_default_prompt = gr.Button("Show Default Prompt")
                             self.clear_prompt = gr.Button("Clear Prompt")
             
@@ -224,6 +237,26 @@ class ImageCaptioningTab:
                                 choices=["text", "jsonl"],
                                 value=self.config.get("output_format", "text"),
                                 info="text: Creates .txt file for each image | jsonl: Creates single JSONL file with all captions",
+                            )
+                        
+                        with gr.Row():
+                            self.scan_subfolders = gr.Checkbox(
+                                label="Scan Subfolders",
+                                info="Include images from all subfolders recursively",
+                                value=self.config.get("scan_subfolders", False)
+                            )
+                            
+                            self.copy_images = gr.Checkbox(
+                                label="Copy Images",
+                                info="Copy images to output folder (preserves folder structure when scanning subfolders)",
+                                value=self.config.get("copy_images", False)
+                            )
+                        
+                        with gr.Row():
+                            self.overwrite_existing_captions = gr.Checkbox(
+                                label="Overwrite Existing Captions",
+                                info="Replace existing caption files. If unchecked, skips images that already have captions",
+                                value=self.config.get("overwrite_existing_captions", False)
                             )
                         
                         with gr.Row(visible=False) as self.jsonl_output_row:
@@ -312,6 +345,8 @@ class ImageCaptioningTab:
                 self.prefix,
                 self.suffix,
                 self.replace_words,
+                self.replace_case_insensitive,
+                self.replace_whole_words_only,
                 self.model_path,
             ],
             outputs=[self.single_caption_output, self.model_status],
@@ -352,6 +387,11 @@ class ImageCaptioningTab:
                 self.prefix,
                 self.suffix,
                 self.replace_words,
+                self.replace_case_insensitive,
+                self.replace_whole_words_only,
+                self.scan_subfolders,
+                self.copy_images,
+                self.overwrite_existing_captions,
                 self.model_path,
             ],
             outputs=self.batch_status,
@@ -369,11 +409,16 @@ class ImageCaptioningTab:
                 self.prefix,
                 self.suffix,
                 self.replace_words,
+                self.replace_case_insensitive,
+                self.replace_whole_words_only,
                 self.custom_prompt,
                 self.batch_image_dir,
                 self.output_format,
                 self.jsonl_output_file,
                 self.batch_output_folder,
+                self.scan_subfolders,
+                self.copy_images,
+                self.overwrite_existing_captions,
             ],
             outputs=self.config_status,
         )
@@ -389,11 +434,16 @@ class ImageCaptioningTab:
                 self.prefix,
                 self.suffix,
                 self.replace_words,
+                self.replace_case_insensitive,
+                self.replace_whole_words_only,
                 self.custom_prompt,
                 self.batch_image_dir,
                 self.output_format,
                 self.jsonl_output_file,
                 self.batch_output_folder,
+                self.scan_subfolders,
+                self.copy_images,
+                self.overwrite_existing_captions,
                 self.config_status,
             ],
         )
@@ -434,6 +484,8 @@ class ImageCaptioningTab:
         prefix: str,
         suffix: str,
         replace_words: str,
+        replace_case_insensitive: bool,
+        replace_whole_words_only: bool,
         model_path: str,
     ) -> Tuple[str, str]:
         """Generate caption for a single image with auto-loading"""
@@ -448,7 +500,8 @@ class ImageCaptioningTab:
         prompt = custom_prompt if custom_prompt.strip() else DEFAULT_PROMPT
         
         success, caption = self.captioning.generate_caption(
-            image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix, replace_words
+            image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix, replace_words,
+            replace_case_insensitive, replace_whole_words_only
         )
         
         if success:
@@ -500,6 +553,11 @@ class ImageCaptioningTab:
         prefix: str,
         suffix: str,
         replace_words: str,
+        replace_case_insensitive: bool,
+        replace_whole_words_only: bool,
+        scan_subfolders: bool,
+        copy_images: bool,
+        overwrite_existing_captions: bool,
         model_path: str,
     ) -> str:
         """Process batch captioning with auto-loading"""
@@ -521,7 +579,8 @@ class ImageCaptioningTab:
         
         success, message = self.captioning.batch_caption_images(
             image_dir, output_format, jsonl_output_file, output_folder, max_new_tokens,
-            prompt, max_size, fp8_vl, prefix, suffix, replace_words, progress
+            prompt, max_size, fp8_vl, prefix, suffix, replace_words, replace_case_insensitive,
+            replace_whole_words_only, scan_subfolders, copy_images, overwrite_existing_captions, progress
         )
         
         return message
@@ -536,11 +595,16 @@ class ImageCaptioningTab:
         prefix: str,
         suffix: str,
         replace_words: str,
+        replace_case_insensitive: bool,
+        replace_whole_words_only: bool,
         custom_prompt: str,
         batch_image_dir: str,
         output_format: str,
         jsonl_output_file: str,
         batch_output_folder: str,
+        scan_subfolders: bool,
+        copy_images: bool,
+        overwrite_existing_captions: bool,
     ) -> str:
         """Save current configuration to file"""
         if not config_file_path:
@@ -556,11 +620,16 @@ class ImageCaptioningTab:
                     "prefix": prefix,
                     "suffix": suffix,
                     "replace_words": replace_words,
+                    "replace_case_insensitive": replace_case_insensitive,
+                    "replace_whole_words_only": replace_whole_words_only,
                     "custom_prompt": custom_prompt,
                     "batch_image_dir": batch_image_dir,
                     "output_format": output_format,
                     "jsonl_output_file": jsonl_output_file,
                     "batch_output_folder": batch_output_folder,
+                    "scan_subfolders": scan_subfolders,
+                    "copy_images": copy_images,
+                    "overwrite_existing_captions": overwrite_existing_captions,
                 }
             }
             
@@ -578,10 +647,10 @@ class ImageCaptioningTab:
         except Exception as e:
             return f"Error saving configuration: {str(e)}"
     
-    def load_configuration(self, config_file_path: str) -> Tuple[str, bool, int, int, str, str, str, str, str, str, str, str, str]:
+    def load_configuration(self, config_file_path: str) -> Tuple[str, bool, int, int, str, str, str, bool, bool, str, str, str, str, str, bool, bool, bool, str]:
         """Load configuration from file"""
         if not config_file_path:
-            return "", False, 1280, 1024, "", "", "", "", "", "text", "", "", "Please provide a configuration file path"
+            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, "Please provide a configuration file path"
         
         try:
             import toml
@@ -599,15 +668,20 @@ class ImageCaptioningTab:
                 captioning_config.get("prefix", ""),
                 captioning_config.get("suffix", ""),
                 captioning_config.get("replace_words", ""),
+                captioning_config.get("replace_case_insensitive", True),
+                captioning_config.get("replace_whole_words_only", True),
                 captioning_config.get("custom_prompt", ""),
                 captioning_config.get("batch_image_dir", ""),
                 captioning_config.get("output_format", "text"),
                 captioning_config.get("jsonl_output_file", ""),
                 captioning_config.get("batch_output_folder", ""),
+                captioning_config.get("scan_subfolders", False),
+                captioning_config.get("copy_images", False),
+                captioning_config.get("overwrite_existing_captions", False),
                 f"Configuration loaded from: {config_file_path}",
             )
         except Exception as e:
-            return "", False, 1280, 1024, "", "", "", "", "", "text", "", "", f"Error loading configuration: {str(e)}"
+            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, f"Error loading configuration: {str(e)}"
 
 
 def image_captioning_tab(headless: bool = False, config: GUIConfig = None) -> None:

@@ -180,52 +180,70 @@ class QwenImageModel:
             )
 
         with gr.Row():
-            self.dit = gr.Textbox(
-                label="DiT (Base Model) Checkpoint Path",
-                placeholder="Path to DiT base model checkpoint (qwen_image_bf16.safetensors)",
-                value=self.config.get("dit", ""),
+            with gr.Column(scale=4):
+                self.dit = gr.Textbox(
+                    label="DiT (Base Model) Checkpoint Path",
+                    placeholder="Path to DiT base model checkpoint (qwen_image_bf16.safetensors)",
+                    value=self.config.get("dit", ""),
+                )
+            self.dit_button = gr.Button(
+                "📁",
+                size="sm",
+                elem_id="dit_button"
             )
-
-            self.dit_dtype = gr.Dropdown(
-                label="DiT Data Type",
-                info="[HARDCODED] bfloat16 is required and hardcoded for Qwen Image. Do not change - other dtypes will cause errors",
-                choices=["bfloat16"],
-                value=self.config.get("dit_dtype", "bfloat16"),
-                interactive=False,  # Hardcoded for Qwen Image
-            )
-            
-            self.text_encoder_dtype = gr.Dropdown(
-                label="Text Encoder Data Type",
-                info="Data type for Qwen2.5-VL text encoder. float16 = faster, bfloat16 = better precision",
-                choices=["float16", "bfloat16", "float32"],
-                value=self.config.get("text_encoder_dtype", "float16"),
-                interactive=True,
-            )
+            with gr.Column(scale=1):
+                self.dit_dtype = gr.Dropdown(
+                    label="DiT Data Type",
+                    info="[HARDCODED] bfloat16 is required and hardcoded for Qwen Image. Do not change - other dtypes will cause errors",
+                    choices=["bfloat16"],
+                    value=self.config.get("dit_dtype", "bfloat16"),
+                    interactive=False,  # Hardcoded for Qwen Image
+                )
 
         with gr.Row():
-            self.vae = gr.Textbox(
-                label="VAE Checkpoint Path",
-                info="REQUIRED: Path to VAE model (diffusion_pytorch_model.safetensors from Qwen/Qwen-Image). NOT ComfyUI VAE!",
-                placeholder="e.g., /path/to/vae/diffusion_pytorch_model.safetensors",
-                value=self.config.get("vae", ""),
+            with gr.Column(scale=4):
+                self.vae = gr.Textbox(
+                    label="VAE Checkpoint Path",
+                    info="REQUIRED: Path to VAE model (diffusion_pytorch_model.safetensors from Qwen/Qwen-Image). NOT ComfyUI VAE!",
+                    placeholder="e.g., /path/to/vae/diffusion_pytorch_model.safetensors",
+                    value=self.config.get("vae", ""),
+                )
+            self.vae_button = gr.Button(
+                "📁",
+                size="sm",
+                elem_id="vae_button"
             )
-            
-            self.vae_dtype = gr.Dropdown(
-                label="VAE Data Type",
-                info="Data type for VAE model. bfloat16 = Qwen Image default, float16 = faster, float32 = highest precision",
-                choices=["bfloat16", "float16", "float32"],
-                value=self.config.get("vae_dtype", "bfloat16"),
-                interactive=True,
-            )
+            with gr.Column(scale=1):
+                self.vae_dtype = gr.Dropdown(
+                    label="VAE Data Type",
+                    info="Data type for VAE model. bfloat16 = Qwen Image default, float16 = faster, float32 = highest precision",
+                    choices=["bfloat16", "float16", "float32"],
+                    value=self.config.get("vae_dtype", "bfloat16"),
+                    interactive=True,
+                )
 
         # Qwen Image specific text encoder
         with gr.Row():
-            self.text_encoder = gr.Textbox(
-                label="Text Encoder (Qwen2.5-VL) Path",
-                info="REQUIRED: Path to Qwen2.5-VL text encoder model (qwen_2.5_vl_7b.safetensors from Comfy-Org/Qwen-Image_ComfyUI)",
-                placeholder="e.g., /path/to/text_encoder/qwen_2.5_vl_7b.safetensors",
-                value=self.config.get("text_encoder", ""),
+            with gr.Column(scale=4):
+                self.text_encoder = gr.Textbox(
+                    label="Text Encoder (Qwen2.5-VL) Path",
+                    info="REQUIRED: Path to Qwen2.5-VL text encoder model (qwen_2.5_vl_7b.safetensors from Comfy-Org/Qwen-Image_ComfyUI)",
+                    placeholder="e.g., /path/to/text_encoder/qwen_2.5_vl_7b.safetensors",
+                    value=self.config.get("text_encoder", ""),
+                )
+            self.text_encoder_button = gr.Button(
+                "📁",
+                size="sm",
+                elem_id="text_encoder_button"
             )
+            with gr.Column(scale=1):
+                self.text_encoder_dtype = gr.Dropdown(
+                    label="Text Encoder Data Type",
+                    info="Data type for Qwen2.5-VL text encoder. float16 = faster, bfloat16 = better precision",
+                    choices=["float16", "bfloat16", "float32"],
+                    value=self.config.get("text_encoder_dtype", "float16"),
+                    interactive=True,
+                )
 
         # VAE optimization settings  
         with gr.Row():
@@ -533,6 +551,22 @@ class QwenImageModel:
             outputs=[self.parent_folder_path]
         )
         
+        # Add file browse button handlers for model paths
+        self.dit_button.click(
+            fn=lambda: get_file_path(file_path="", default_extension=".safetensors", extension_name="Safetensors files (*.safetensors)"),
+            outputs=[self.dit]
+        )
+        
+        self.vae_button.click(
+            fn=lambda: get_file_path(file_path="", default_extension=".safetensors", extension_name="Safetensors files (*.safetensors)"),
+            outputs=[self.vae]
+        )
+        
+        self.text_encoder_button.click(
+            fn=lambda: get_file_path(file_path="", default_extension=".safetensors", extension_name="Safetensors files (*.safetensors)"),
+            outputs=[self.text_encoder]
+        )
+        
         self.generate_toml_button.click(
             fn=generate_dataset_config,
             inputs=[
@@ -781,9 +815,37 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
 
     if not os.path.exists(destination_directory):
         os.makedirs(destination_directory)
+    
+    # Process parameters to handle list values properly
+    processed_params = []
+    numeric_fields = [
+        'learning_rate', 'max_grad_norm', 'guidance_scale', 'logit_mean', 'logit_std',
+        'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
+        'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',
+        'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap',
+        'min_timestep', 'max_timestep', 'discrete_flow_shift', 'network_dropout',
+        'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
+        'dataset_batch_size', 'max_train_steps', 'max_train_epochs', 'seed',
+        'gradient_accumulation_steps', 'sample_every_n_steps', 'sample_every_n_epochs',
+        'save_every_n_steps', 'save_every_n_epochs', 'save_last_n_epochs',
+        'save_last_n_steps', 'save_last_n_epochs_state', 'save_last_n_steps_state',
+        'network_dim', 'lr_warmup_steps', 'lr_decay_steps', 'lr_scheduler_num_cycles',
+        'num_timestep_buckets', 'ddp_timeout', 'max_data_loader_n_workers',
+        'num_processes', 'num_machines', 'num_cpu_threads_per_process', 'main_process_port',
+        'caching_latent_batch_size', 'caching_latent_num_workers', 'caching_latent_console_width',
+        'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers'
+    ]
+    
+    for key, value in parameters:
+        # If value is a list and it's not supposed to be (like from a Number component)
+        # take the first element or convert to appropriate type
+        if isinstance(value, list) and len(value) > 0 and key in numeric_fields:
+            # These should be single numeric values
+            value = value[0] if value else None
+        processed_params.append((key, value))
 
     SaveConfigFile(
-        parameters=parameters,
+        parameters=processed_params,
         file_path=file_path,
         exclusion=[
             "file_path",
@@ -866,20 +928,45 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
         "save_every_n_steps", "save_last_n_epochs", "max_timestep", "min_timestep"
     }
 
+    numeric_fields = [
+        'learning_rate', 'max_grad_norm', 'guidance_scale', 'logit_mean', 'logit_std',
+        'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
+        'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',
+        'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap',
+        'min_timestep', 'max_timestep', 'discrete_flow_shift', 'network_dropout',
+        'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
+        'dataset_batch_size', 'max_train_steps', 'max_train_epochs', 'seed',
+        'gradient_accumulation_steps', 'sample_every_n_steps', 'sample_every_n_epochs',
+        'save_every_n_steps', 'save_every_n_epochs', 'save_last_n_epochs',
+        'save_last_n_steps', 'save_last_n_epochs_state', 'save_last_n_steps_state',
+        'network_dim', 'lr_warmup_steps', 'lr_decay_steps', 'lr_scheduler_num_cycles',
+        'num_timestep_buckets', 'ddp_timeout', 'max_data_loader_n_workers',
+        'num_processes', 'num_machines', 'num_cpu_threads_per_process', 'main_process_port',
+        'caching_latent_batch_size', 'caching_latent_num_workers', 'caching_latent_console_width',
+        'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers'
+    ]
+    
     values = [file_path]
     for key, value in parameters:
         if not key in ["ask_for_file", "apply_preset", "file_path"]:
             toml_value = my_data.get(key)
             if toml_value is not None:
+                # Handle list values that should be single values
+                if isinstance(toml_value, list) and key in numeric_fields:
+                    toml_value = toml_value[0] if toml_value else None
+                
                 # Convert 0 to None for optional parameters to avoid minimum constraint violations
                 if key in optional_parameters and toml_value == 0:
                     toml_value = None
-                elif key in minimum_constraints:
+                elif key in minimum_constraints and toml_value is not None:
                     # Apply minimum constraints if the parameter has one
                     min_val = minimum_constraints[key]
-                    if toml_value < min_val:
-                        log.warning(f"Parameter '{key}' value {toml_value} is below minimum {min_val}, adjusting to minimum")
-                        toml_value = min_val
+                    try:
+                        if toml_value < min_val:
+                            log.warning(f"Parameter '{key}' value {toml_value} is below minimum {min_val}, adjusting to minimum")
+                            toml_value = min_val
+                    except (TypeError, ValueError) as e:
+                        log.warning(f"Could not compare {key} value {toml_value} with minimum {min_val}: {e}")
                 values.append(toml_value)
             else:
                 # Use original default value if not found in config
