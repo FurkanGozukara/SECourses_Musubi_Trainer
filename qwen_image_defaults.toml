@@ -110,8 +110,8 @@ network_args = []
 training_comment = ""
 dim_from_weights = false
 scale_weight_norms = 0.0  # 0.0 = disabled. 1.0+ = scale weights to prevent exploding gradients
-base_weights = []  # List of LoRA weights to merge before training
-base_weights_multiplier = []  # List of multipliers for base_weights. Default 1.0 for each
+base_weights = ""  # Path to LoRA weights to merge before training (empty = none)
+base_weights_multiplier = 1.0  # Strength multiplier for base weights (1.0 = full strength)
 
 # Save/Load Settings
 output_dir = ""

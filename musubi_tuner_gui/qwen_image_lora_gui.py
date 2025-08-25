@@ -762,7 +762,40 @@ def qwen_image_gui_actions(
     metadata_tags,
     metadata_title,
 ):
-    parameters = [(k, v) for k, v in locals().items() if k not in ["action_type", "bool_value", "headless", "print_only"]]
+    # Define numeric fields that should never be lists
+    # NOTE: Exclude fields that are legitimately lists like optimizer_args, lr_scheduler_args, network_args
+    numeric_fields = [
+        'learning_rate', 'max_grad_norm', 'guidance_scale', 'logit_mean', 'logit_std',
+        'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
+        'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',  # base_weights_multiplier is a Number in Qwen Image GUI
+        'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap',
+        'min_timestep', 'max_timestep', 'discrete_flow_shift', 'network_dropout',
+        'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
+        'dataset_batch_size', 'max_train_steps', 'max_train_epochs', 'seed',
+        'gradient_accumulation_steps', 'sample_every_n_steps', 'sample_every_n_epochs',
+        'save_every_n_steps', 'save_every_n_epochs', 'save_last_n_epochs',
+        'save_last_n_steps', 'save_last_n_epochs_state', 'save_last_n_steps_state',
+        'network_dim', 'lr_warmup_steps', 'lr_decay_steps', 'lr_scheduler_num_cycles',
+        'num_timestep_buckets', 'ddp_timeout', 'max_data_loader_n_workers',
+        'num_processes', 'num_machines', 'num_cpu_threads_per_process', 'main_process_port',
+        'caching_latent_batch_size', 'caching_latent_num_workers', 'caching_latent_console_width',
+        'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers'
+    ]
+    
+    # Create parameters list, ensuring numeric fields are not lists
+    parameters = []
+    for k, v in locals().items():
+        if k not in ["action_type", "bool_value", "headless", "print_only", "numeric_fields"]:
+            # If it's a numeric field and the value is a list, take the first element
+            if k in numeric_fields and isinstance(v, list):
+                log.warning(f"Converting list to single value for numeric field '{k}': {v} -> {v[0] if v else None}")
+                v = v[0] if v else None
+            # Also check for any other unexpected lists in numeric-like fields
+            elif isinstance(v, list) and k not in ['optimizer_args', 'lr_scheduler_args', 'network_args', 
+                                                     'base_weights', 'extra_accelerate_launch_args',
+                                                     'gpu_ids', 'additional_parameters']:
+                log.warning(f"Unexpected list value for field '{k}': {v}")
+            parameters.append((k, v))
     
     if action_type == "save_configuration":
         log.info("Save configuration...")
@@ -818,10 +851,11 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
     
     # Process parameters to handle list values properly
     processed_params = []
+    # NOTE: Exclude fields that are legitimately lists like optimizer_args, lr_scheduler_args, network_args
     numeric_fields = [
         'learning_rate', 'max_grad_norm', 'guidance_scale', 'logit_mean', 'logit_std',
         'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
-        'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',
+        'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',  # base_weights_multiplier is a Number in Qwen Image GUI
         'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap',
         'min_timestep', 'max_timestep', 'discrete_flow_shift', 'network_dropout',
         'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
@@ -928,10 +962,11 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
         "save_every_n_steps", "save_last_n_epochs", "max_timestep", "min_timestep"
     }
 
+    # NOTE: Exclude fields that are legitimately lists like optimizer_args, lr_scheduler_args, network_args
     numeric_fields = [
         'learning_rate', 'max_grad_norm', 'guidance_scale', 'logit_mean', 'logit_std',
         'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
-        'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',
+        'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',  # base_weights_multiplier is a Number in Qwen Image GUI
         'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap',
         'min_timestep', 'max_timestep', 'discrete_flow_shift', 'network_dropout',
         'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
@@ -953,7 +988,12 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
             if toml_value is not None:
                 # Handle list values that should be single values
                 if isinstance(toml_value, list) and key in numeric_fields:
+                    log.info(f"[CONFIG] Converting list to single value for numeric field '{key}': {toml_value} -> {toml_value[0] if toml_value else None}")
                     toml_value = toml_value[0] if toml_value else None
+                elif isinstance(toml_value, list) and key not in ['optimizer_args', 'lr_scheduler_args', 'network_args', 
+                                                                  'base_weights', 'base_weights_multiplier', 'extra_accelerate_launch_args',
+                                                                  'gpu_ids', 'additional_parameters']:
+                    log.warning(f"[CONFIG] Unexpected list value for field '{key}': {toml_value} (type: {type(toml_value)})")
                 
                 # Convert 0 to None for optional parameters to avoid minimum constraint violations
                 if key in optional_parameters and toml_value == 0:
@@ -967,12 +1007,58 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
                             toml_value = min_val
                     except (TypeError, ValueError) as e:
                         log.warning(f"Could not compare {key} value {toml_value} with minimum {min_val}: {e}")
+                
+                # Final check before appending
+                if isinstance(toml_value, list) and key in numeric_fields:
+                    log.error(f"[CONFIG ERROR] Still have list for numeric field '{key}' after processing: {toml_value}")
+                    toml_value = None  # Fallback to None to prevent error
+                    
                 values.append(toml_value)
             else:
                 # Use original default value if not found in config
+                # Check if the default value is a list and should be a single value
+                if isinstance(value, list) and key in numeric_fields:
+                    log.info(f"[DEFAULT] Converting list to single value for numeric field '{key}': {value} -> {value[0] if value else None}")
+                    value = value[0] if value else None
+                elif isinstance(value, list) and key not in ['optimizer_args', 'lr_scheduler_args', 'network_args', 
+                                                             'base_weights', 'base_weights_multiplier', 'extra_accelerate_launch_args',
+                                                             'gpu_ids', 'additional_parameters']:
+                    log.warning(f"[DEFAULT] Unexpected list value for field '{key}': {value}")
+                    
                 values.append(value)
 
-    return tuple(values)
+    # Final validation before returning
+    result_values = []
+    for i, v in enumerate(values):
+        if isinstance(v, list):
+            # Get parameter name for this index
+            param_name = "unknown"
+            if i > 0 and i <= len(parameters):
+                param_name = parameters[i-1][0]  # -1 because values[0] is file_path
+            
+            log.error(f"[VALIDATION ERROR] Found list value at index {i} (param: {param_name}): {v}")
+            # Try to fix it
+            if param_name in numeric_fields:
+                fixed_value = v[0] if v else None
+                log.info(f"[VALIDATION FIX] Converted {param_name} to: {fixed_value}")
+                result_values.append(fixed_value)
+            elif param_name in ['optimizer_args', 'lr_scheduler_args', 'network_args', 
+                               'base_weights', 'extra_accelerate_launch_args',
+                               'gpu_ids', 'additional_parameters']:
+                # These should remain as lists
+                result_values.append(v)
+            else:
+                # Unknown list - try to convert if it looks numeric
+                if v and len(v) == 1 and isinstance(v[0], (int, float, type(None))):
+                    log.warning(f"[VALIDATION] Converting unexpected single-element list {param_name}: {v} -> {v[0]}")
+                    result_values.append(v[0])
+                else:
+                    log.warning(f"[VALIDATION] Keeping list for param {param_name}")
+                    result_values.append(v)
+        else:
+            result_values.append(v)
+
+    return tuple(result_values)
 
 
 def train_qwen_image_model(headless, print_only, parameters):
