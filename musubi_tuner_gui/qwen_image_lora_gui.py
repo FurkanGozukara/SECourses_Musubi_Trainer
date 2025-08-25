@@ -313,9 +313,9 @@ class QwenImageModel:
         with gr.Row():
             self.timestep_sampling = gr.Dropdown(
                 label="Timestep Sampling Method",
-                info="[RECOMMENDED] 'shift' recommended for Qwen Image. 'qwen_shift' = dynamic shift per resolution. 'sigma' = musubi tuner default",
+                info="[RECOMMENDED] 'qwen_shift' = dynamic shift per resolution (best for Qwen). 'shift' = fixed shift. 'sigma' = musubi tuner default",
                 choices=["shift", "qwen_shift", "sigma", "uniform", "sigmoid", "flux_shift", "logsnr", "qinglong_flux", "qinglong_qwen"],
-                value=self.config.get("timestep_sampling", "shift"),
+                value=self.config.get("timestep_sampling", "qwen_shift"),
                 interactive=True,
             )
 
@@ -419,9 +419,9 @@ class QwenImageModel:
             self.show_timesteps = gr.Dropdown(
                 label="Show Timesteps",
                 info="Visualization mode for timestep debugging. 'image' saves visual plots, 'console' prints to terminal. Leave empty for no visualization",
-                choices=["image", "console"],
+                choices=["image", "console", ""],
                 allow_custom_value=True,
-                value=self.config.get("show_timesteps", None),
+                value=self.config.get("show_timesteps", ""),
                 interactive=True,
             )
     
@@ -1287,7 +1287,7 @@ class QwenImageTrainingSettings:
             self.log_with = gr.Dropdown(
                 label="Logging Tool",
                 info="TensorBoard = local logs, WandB = cloud tracking, 'all' = both. Requires logging_dir for TensorBoard",
-                choices=["tensorboard", "wandb", "all"],
+                choices=["tensorboard", "wandb", "all", ""],
                 allow_custom_value=True,
                 value=self.config.get("log_with", ""),
                 interactive=True,
@@ -1401,9 +1401,9 @@ class QwenImageTrainingSettings:
             self.show_timesteps = gr.Dropdown(
                 label="Show Timesteps",
                 info="Debug timestep distribution. 'image' saves visual plots, 'console' prints to terminal. Leave empty for no visualization",
-                choices=["image", "console"],
+                choices=["image", "console", ""],
                 allow_custom_value=True,
-                value=self.config.get("show_timesteps", None),
+                value=self.config.get("show_timesteps", ""),
                 interactive=True,
             )
 
@@ -1814,9 +1814,9 @@ class QwenImageLatentCaching:
             self.caching_latent_debug_mode = gr.Dropdown(
                 label="Debug Mode",
                 info="Debug visualization for latent caching. 'image' saves debug images, 'console' prints debug info, 'video' for video models. Leave empty for no debugging",
-                choices=["image", "console", "video"],
+                choices=["image", "console", "video", ""],
                 allow_custom_value=True,
-                value=self.config.get("caching_latent_debug_mode", None),
+                value=self.config.get("caching_latent_debug_mode", ""),
                 interactive=True,
             )
 

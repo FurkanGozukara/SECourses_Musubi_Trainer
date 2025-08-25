@@ -71,10 +71,10 @@ def UI(**kwargs):
     
     readme_content = read_file_content("./README.md")
     
-    # Initialize tab-aware configuration manager
-    config_manager = TabConfigManager(config_file_path=kwargs.get("config", "./config.toml"))
+    # Initialize tab-aware configuration manager - default to qwen_image_defaults.toml
+    config_manager = TabConfigManager(config_file_path=kwargs.get("config", "./qwen_image_defaults.toml"))
     if config_manager.user_loaded_config:
-        log.info(f"Loaded user configuration from '{kwargs.get('config')}'...")
+        log.info(f"Loaded user configuration from '{kwargs.get('config', './qwen_image_defaults.toml')}'...")
     else:
         log.info("No user config loaded - will use tab-specific defaults")
 
@@ -101,7 +101,7 @@ def UI(**kwargs):
 # Function to initialize argument parser for command-line arguments
 def initialize_arg_parser():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, default="./config.toml", help="Path to the toml config file for interface defaults")
+    parser.add_argument("--config", type=str, default="./qwen_image_defaults.toml", help="Path to the toml config file for interface defaults")
     parser.add_argument("--debug", action="store_true", help="Debug on")
     parser.add_argument("--listen", type=str, default="127.0.0.1", help="IP to listen on for connections to Gradio")
     parser.add_argument("--username", type=str, default="", help="Username for authentication")
