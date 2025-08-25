@@ -1,7 +1,7 @@
 additional_parameters = ""
 async_upload = false
 base_weights = ""
-base_weights_multiplier = ""
+base_weights_multiplier = 1.0
 blocks_to_swap = 0
 caching_latent_batch_size = 1
 caching_latent_console_back = ""

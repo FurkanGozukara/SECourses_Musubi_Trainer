@@ -177,6 +177,12 @@ class QwenImageModel:
                 value=self.config.get("img_in_txt_in_offloading", False),
             )
 
+            self.edit = gr.Checkbox(
+                label="Enable Qwen-Image-Edit Mode",
+                info="Enable image editing training with control images. Requires control_image_path in dataset configuration and Qwen-Image-Edit DiT model",
+                value=self.config.get("edit", False),
+            )
+
         # Flow matching parameters
         with gr.Row():
             self.timestep_sampling = gr.Dropdown(
@@ -383,6 +389,7 @@ def qwen_image_gui_actions(
     blocks_to_swap,
     guidance_scale,
     img_in_txt_in_offloading,
+    edit,
     timestep_sampling,
     discrete_flow_shift,
     weighting_scheme,
@@ -518,11 +525,75 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
         file_path = original_file_path
         my_data = {}
 
+    # Define minimum value constraints to prevent validation errors
+    # Based on actual Gradio component definitions
+    minimum_constraints = {
+        # Accelerate Launch components (shared with Musubi Tuner)
+        "num_processes": 1,           # minimum=1
+        "num_machines": 1,           # minimum=1
+        "num_cpu_threads_per_process": 1,  # minimum=1 (Slider)
+        "main_process_port": 0,      # minimum=0
+        # Components with minimum=0
+        "vae_chunk_size": 0,
+        "vae_spatial_tile_sample_min_size": 0,
+        "blocks_to_swap": 0,
+        "min_timestep": 0,
+        "max_data_loader_n_workers": 0,
+        "seed": 0,
+        "max_grad_norm": 0.0,
+        "lr_warmup_steps": 0,
+        # Components with minimum=0.1
+        "guidance_scale": 0.1,
+        "logit_std": 0.1,
+        "mode_scale": 0.1,
+        "sigmoid_scale": 0.1,
+        "lr_scheduler_power": 0.1,
+        "network_alpha": 0.1,
+        # Components with minimum=1
+        "max_timestep": 1,
+        "max_train_epochs": 1,
+        "gradient_accumulation_steps": 1,
+        "sample_every_n_steps": 1,
+        "sample_every_n_epochs": 1,
+        "ddp_timeout": 1,
+        "lr_scheduler_num_cycles": 1,
+        "network_dim": 1,
+        "save_every_n_steps": 1,
+        "save_last_n_epochs": 1,
+        "caching_latent_batch_size": 1,
+        "caching_teo_batch_size": 1,
+        # Components with minimum=100
+        "max_train_steps": 100,
+        # Components with minimum=1e-7
+        "learning_rate": 1e-7,
+        # Components with minimum=-3.0
+        "logit_mean": -3.0
+    }
+
+    # Parameters that should be None when their value is 0 (optional parameters)
+    optional_parameters = {
+        "ddp_timeout", "sample_every_n_steps", "sample_every_n_epochs", 
+        "save_every_n_steps", "save_last_n_epochs", "max_timestep", "min_timestep"
+    }
+
     values = [file_path]
     for key, value in parameters:
         if not key in ["ask_for_file", "apply_preset", "file_path"]:
             toml_value = my_data.get(key)
-            values.append(toml_value if toml_value is not None else value)
+            if toml_value is not None:
+                # Convert 0 to None for optional parameters to avoid minimum constraint violations
+                if key in optional_parameters and toml_value == 0:
+                    toml_value = None
+                elif key in minimum_constraints:
+                    # Apply minimum constraints if the parameter has one
+                    min_val = minimum_constraints[key]
+                    if toml_value < min_val:
+                        log.warning(f"Parameter '{key}' value {toml_value} is below minimum {min_val}, adjusting to minimum")
+                        toml_value = min_val
+                values.append(toml_value)
+            else:
+                # Use original default value if not found in config
+                values.append(value)
 
     return tuple(values)
 
@@ -573,6 +644,40 @@ def train_qwen_image_model(headless, print_only, parameters):
         
     if param_dict.get("caching_latent_keep_cache"):
         run_cache_latent_cmd.append("--keep_cache")
+    
+    # VAE optimization parameters for latent caching
+    if param_dict.get("vae_tiling"):
+        run_cache_latent_cmd.append("--vae_tiling")
+        
+    if param_dict.get("vae_chunk_size") is not None and param_dict.get("vae_chunk_size") > 0:
+        run_cache_latent_cmd.append("--vae_chunk_size")
+        run_cache_latent_cmd.append(str(param_dict.get("vae_chunk_size")))
+        
+    if param_dict.get("vae_spatial_tile_sample_min_size") is not None and param_dict.get("vae_spatial_tile_sample_min_size") > 0:
+        run_cache_latent_cmd.append("--vae_spatial_tile_sample_min_size")
+        run_cache_latent_cmd.append(str(param_dict.get("vae_spatial_tile_sample_min_size")))
+    
+    # VAE dtype parameter
+    if param_dict.get("vae_dtype") is not None and param_dict.get("vae_dtype") != "":
+        run_cache_latent_cmd.append("--vae_dtype")
+        run_cache_latent_cmd.append(str(param_dict.get("vae_dtype")))
+    
+    # Debug parameters for latent caching
+    if param_dict.get("caching_latent_debug_mode") is not None and param_dict.get("caching_latent_debug_mode") != "":
+        run_cache_latent_cmd.append("--debug_mode")
+        run_cache_latent_cmd.append(str(param_dict.get("caching_latent_debug_mode")))
+        
+    if param_dict.get("caching_latent_console_width") is not None:
+        run_cache_latent_cmd.append("--console_width")
+        run_cache_latent_cmd.append(str(param_dict.get("caching_latent_console_width")))
+        
+    if param_dict.get("caching_latent_console_back") is not None and param_dict.get("caching_latent_console_back") != "":
+        run_cache_latent_cmd.append("--console_back")
+        run_cache_latent_cmd.append(str(param_dict.get("caching_latent_console_back")))
+        
+    if param_dict.get("caching_latent_console_num_images") is not None:
+        run_cache_latent_cmd.append("--console_num_images")
+        run_cache_latent_cmd.append(str(param_dict.get("caching_latent_console_num_images")))
 
     log.info(f"Executing command: {run_cache_latent_cmd}")
     log.info("Caching latents...")
@@ -618,6 +723,9 @@ def train_qwen_image_model(headless, print_only, parameters):
     if param_dict.get("caching_teo_num_workers") is not None:
         run_cache_teo_cmd.append("--num_workers")
         run_cache_teo_cmd.append(str(param_dict.get("caching_teo_num_workers")))
+        
+    if param_dict.get("edit"):
+        run_cache_teo_cmd.append("--edit")
 
     log.info(f"Executing command: {run_cache_teo_cmd}")
     log.info("Caching text encoder outputs...")
@@ -857,18 +965,18 @@ class QwenImageTrainingSettings:
         with gr.Row():
             self.sample_every_n_steps = gr.Number(
                 label="Sample Every N Steps",
-                info="Generate test images every N training steps. 100-500 recommended. Leave empty to disable. Requires sample_prompts file",
-                value=self.config.get("sample_every_n_steps", None),
-                minimum=1,
+                info="Generate test images every N training steps. 0 = disable, 100-500 recommended. Requires sample_prompts file",
+                value=self.config.get("sample_every_n_steps", 0),
+                minimum=0,
                 step=1,
                 interactive=True,
             )
 
             self.sample_every_n_epochs = gr.Number(
                 label="Sample Every N Epochs",
-                info="Generate test images every N epochs. 1-4 recommended. Leave empty to disable. Overrides sample_every_n_steps",
-                value=self.config.get("sample_every_n_epochs", None),
-                minimum=1,
+                info="Generate test images every N epochs. 0 = disable, 1-4 recommended. Overrides sample_every_n_steps",
+                value=self.config.get("sample_every_n_epochs", 0),
+                minimum=0,
                 step=1,
                 interactive=True,
             )
@@ -922,9 +1030,9 @@ class QwenImageTrainingSettings:
         with gr.Row():
             self.ddp_timeout = gr.Number(
                 label="DDP Timeout (minutes)",
-                info="Distributed training timeout in minutes. Increase if training crashes on multi-GPU setups. Leave empty for default (30min)",
-                value=self.config.get("ddp_timeout", None),
-                minimum=1,
+                info="Distributed training timeout in minutes. 0 = use default (30min). Increase if training crashes on multi-GPU setups",
+                value=self.config.get("ddp_timeout", 0),
+                minimum=0,
                 maximum=1440,
                 step=1,
                 interactive=True,
@@ -980,8 +1088,8 @@ class QwenImageOptimizerSettings:
 
             self.learning_rate = gr.Number(
                 label="Learning Rate",
-                info="✅ 1e-4 (0.0001) recommended for Qwen Image. Too high = instability, too low = slow learning. Typical range: 1e-6 to 1e-3",
-                value=self.config.get("learning_rate", 1e-4),
+                info="✅ 5e-5 (0.00005) recommended for Qwen Image. Too high = instability, too low = slow learning. Typical range: 1e-6 to 1e-3",
+                value=self.config.get("learning_rate", 5e-5),
                 minimum=1e-7,
                 maximum=1e-2,
                 step=1e-6,
@@ -1123,8 +1231,8 @@ class QwenImageNetworkSettings:
 
             self.network_dim = gr.Number(
                 label="Network Dimension (Rank)",
-                info="✅ LoRA rank/dimension. 32 recommended for Qwen Image. Higher = more capacity but larger files. Range: 8-128",
-                value=self.config.get("network_dim", 32),
+                info="✅ LoRA rank/dimension. 16 recommended for Qwen Image. Higher = more capacity but larger files. Range: 8-128",
+                value=self.config.get("network_dim", 16),
                 minimum=1,
                 maximum=512,
                 step=1,
@@ -1246,9 +1354,9 @@ class QwenImageSaveLoadSettings:
 
             self.save_every_n_steps = gr.Number(
                 label="Save Every N Steps",
-                info="Save checkpoint every N training steps. Leave empty to disable. Overrides save_every_n_epochs. Useful for long training",
-                value=self.config.get("save_every_n_steps", None),
-                minimum=1,
+                info="Save checkpoint every N training steps. 0 = disable. Overrides save_every_n_epochs. Useful for long training",
+                value=self.config.get("save_every_n_steps", 0),
+                minimum=0,
                 step=1,
                 interactive=True,
             )
@@ -1256,9 +1364,9 @@ class QwenImageSaveLoadSettings:
         with gr.Row():
             self.save_last_n_epochs = gr.Number(
                 label="Save Last N Epochs",
-                info="Keep only last N epoch checkpoints (removes older ones). Example: 3 = keep only last 3 checkpoints. Leave empty to keep all",
-                value=self.config.get("save_last_n_epochs", None),
-                minimum=1,
+                info="Keep only last N epoch checkpoints (removes older ones). 0 = keep all, 3 = keep only last 3 checkpoints",
+                value=self.config.get("save_last_n_epochs", 0),
+                minimum=0,
                 step=1,
                 interactive=True,
             )
@@ -1490,7 +1598,7 @@ def qwen_image_lora_tab(
             **Key Optimizations Applied:**
             - Discrete Flow Shift: 3.0 (optimal for Qwen Image)
             - Optimizer: adamw8bit (memory efficient, recommended)
-            - Learning Rate: 1e-4 (higher than default, per Qwen examples)
+            - Learning Rate: 5e-5 (recommended for Qwen Image, per latest docs)
             - Mixed Precision: bf16 (strongly recommended)
             - SDPA Attention: Enabled (fastest for Qwen Image)
             - Gradient Checkpointing: Enabled (memory savings)
@@ -1644,6 +1752,7 @@ def qwen_image_lora_tab(
         qwen_model.blocks_to_swap,
         qwen_model.guidance_scale,
         qwen_model.img_in_txt_in_offloading,
+        qwen_model.edit,
         qwen_model.timestep_sampling,
         qwen_model.discrete_flow_shift,
         qwen_model.weighting_scheme,

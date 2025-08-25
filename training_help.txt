@@ -1,0 +1,26 @@
+Trying to import sageattention
+Failed to import sageattention
+Traceback (most recent call last):
+  File "E:\SECourses_Improved_Trainer_v1\SECourses_Improved_Trainer\musubi-tuner\src\musubi_tuner\qwen_image_train_network.py", line 428, in <module>
+    main()
+  File "E:\SECourses_Improved_Trainer_v1\SECourses_Improved_Trainer\musubi-tuner\src\musubi_tuner\qwen_image_train_network.py", line 416, in main
+    args = parser.parse_args()
+  File "C:\Python310\lib\argparse.py", line 1833, in parse_args
+    args, argv = self.parse_known_args(args, namespace)
+  File "C:\Python310\lib\argparse.py", line 1866, in parse_known_args
+    namespace, args = self._parse_known_args(args, namespace)
+  File "C:\Python310\lib\argparse.py", line 2079, in _parse_known_args
+    start_index = consume_optional(start_index)
+  File "C:\Python310\lib\argparse.py", line 2019, in consume_optional
+    take_action(action, args, option_string)
+  File "C:\Python310\lib\argparse.py", line 1943, in take_action
+    action(self, namespace, argument_values, option_string)
+  File "C:\Python310\lib\argparse.py", line 1106, in __call__
+    parser.print_help()
+  File "C:\Python310\lib\argparse.py", line 2567, in print_help
+    self._print_message(self.format_help(), file)
+  File "C:\Python310\lib\argparse.py", line 2573, in _print_message
+    file.write(message)
+  File "C:\Python310\lib\encodings\cp1252.py", line 19, in encode
+    return codecs.charmap_encode(input,self.errors,encoding_table)[0]
+UnicodeEncodeError: 'charmap' codec can't encode characters in position 7378-7393: character maps to <undefined>

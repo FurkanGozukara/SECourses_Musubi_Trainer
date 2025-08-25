@@ -77,9 +77,88 @@ class GUIConfig:
             # Update `data` to the value associated with the current key
             data = data.get(k)
 
+        # Apply minimum constraints and optional parameter handling
+        if data is not None:
+            data = self._apply_constraints(key, data, default)
+
         # Return the final value
         log.debug(f"Returned {data}")
         return data
+
+    def _apply_constraints(self, key: str, value, default):
+        """
+        Apply minimum constraints and handle optional parameters.
+        
+        Parameters:
+        - key (str): The parameter key
+        - value: The loaded value  
+        - default: The default value for fallback
+        
+        Returns:
+        The constrained value
+        """
+        # Define minimum value constraints to prevent validation errors
+        minimum_constraints = {
+            # Accelerate Launch components
+            "num_processes": 1,
+            "num_machines": 1,
+            "num_cpu_threads_per_process": 1,
+            "main_process_port": 0,
+            # Components with minimum=0
+            "vae_chunk_size": 0,
+            "vae_spatial_tile_sample_min_size": 0,
+            "blocks_to_swap": 0,
+            "min_timestep": 0,
+            "max_data_loader_n_workers": 0,
+            "seed": 0,
+            "max_grad_norm": 0.0,
+            "lr_warmup_steps": 0,
+            # Components with minimum=0.1
+            "guidance_scale": 0.1,
+            "logit_std": 0.1,
+            "mode_scale": 0.1,
+            "sigmoid_scale": 0.1,
+            "lr_scheduler_power": 0.1,
+            "network_alpha": 0.1,
+            # Components with minimum=1
+            "max_timestep": 1,
+            "max_train_epochs": 1,
+            "gradient_accumulation_steps": 1,
+            "lr_scheduler_num_cycles": 1,
+            "network_dim": 1,
+            "caching_latent_batch_size": 1,
+            "caching_teo_batch_size": 1,
+            # Components changed to minimum=0 (can be disabled)
+            "sample_every_n_steps": 0,
+            "sample_every_n_epochs": 0,
+            "ddp_timeout": 0,
+            "save_every_n_steps": 0,
+            "save_last_n_epochs": 0,
+            # Components with minimum=100
+            "max_train_steps": 100,
+            # Components with minimum=1e-7
+            "learning_rate": 1e-7,
+            # Components with minimum=-3.0
+            "logit_mean": -3.0
+        }
+        
+        # Parameters that should be None when their value is 0 (optional parameters)
+        # Removed parameters that now accept 0 as a valid disabled state
+        optional_parameters = {
+            "max_timestep", "min_timestep"
+        }
+        
+        # Convert 0 to None for optional parameters to avoid minimum constraint violations
+        if key in optional_parameters and value == 0:
+            log.debug(f"Converting optional parameter '{key}' value 0 to None")
+            return None
+        elif key in minimum_constraints:
+            min_val = minimum_constraints[key]
+            if value < min_val:
+                log.warning(f"Parameter '{key}' value {value} is below minimum {min_val}, adjusting to minimum")
+                return min_val
+        
+        return value
 
     def is_config_loaded(self) -> bool:
         """

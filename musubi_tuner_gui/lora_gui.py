@@ -318,13 +318,43 @@ def open_configuration(
         file_path = original_file_path  # In case a file_path was provided and the user decides to cancel the open action
         my_data = {}  # Initialize an empty dict if no data was loaded
 
+    # Define minimum value constraints to prevent validation errors
+    # Based on actual Gradio component definitions
+    minimum_constraints = {
+        # Accelerate Launch components
+        "num_processes": 1,           # minimum=1
+        "num_machines": 1,           # minimum=1
+        "num_cpu_threads_per_process": 1,  # minimum=1 (Slider)
+        "main_process_port": 0,      # minimum=0
+        # Model components
+        "max_timestep": 1,           # minimum=1
+        # Optimizer and scheduler components
+        "lr_scheduler_num_cycles": 1  # minimum=1
+    }
+
+    # Parameters that should be None when their value is 0 (optional parameters)
+    optional_parameters = {
+        "max_timestep"  # max_timestep in the model class might be optional
+    }
+
     values = [file_path]
     # Iterate over parameters to set their values from `my_data` or use default if not found
     for key, value in parameters:
         if not key in ["ask_for_file", "apply_preset", "file_path"]:
             toml_value = my_data.get(key)
-            # Append the value from TOML if present; otherwise, use the parameter's default value
-            values.append(toml_value if toml_value is not None else value)
+            if toml_value is not None:
+                # Convert 0 to None for optional parameters to avoid minimum constraint violations  
+                if key in optional_parameters and toml_value == 0:
+                    toml_value = None
+                elif key in minimum_constraints:
+                    # Apply minimum constraints if the parameter has one
+                    min_val = minimum_constraints[key]
+                    if toml_value < min_val:
+                        log.warning(f"Parameter '{key}' value {toml_value} is below minimum {min_val}, adjusting to minimum")
+                        toml_value = min_val
+                values.append(toml_value)
+            else:
+                values.append(value)
 
     return tuple(values)
 
