@@ -25,10 +25,11 @@ blocks_to_swap = 0             # 0 = disabled. 16=save ~8GB VRAM, 45=save ~30GB 
 # Additional Model Settings  
 guidance_scale = 1.0          # Classifier-free guidance scale. 1.0 = default, higher = stronger prompt adherence
 img_in_txt_in_offloading = false  # Memory optimization for mixed image-text inputs
+edit = false  # Enable Qwen-Image-Edit mode for training with control images
 
 # Flow Matching Settings
 timestep_sampling = "shift"
-discrete_flow_shift = 3.0
+discrete_flow_shift = 2.2
 weighting_scheme = "none"
 logit_mean = 0.0
 logit_std = 1.0
@@ -39,6 +40,9 @@ sigmoid_scale = 1.0          # Scale factor for sigmoid timestep sampling. Only 
 min_timestep = 0            # 0 = no minimum constraint. 0-999 = constrain minimum timestep
 max_timestep = 0            # 0 = no maximum constraint. 1-1000 = constrain maximum timestep 
 preserve_distribution_shape = false  # Preserve original distribution when using min/max constraints
+
+# Advanced Timestep Settings
+num_timestep_buckets = 0  # 0 = disabled. 4-10 = bucketed sampling for uniform timestep distribution
 
 # Debugging
 show_timesteps = ""
@@ -60,7 +64,8 @@ gradient_accumulation_steps = 1
 
 # Optimizer Settings
 optimizer_type = "adamw8bit"
-learning_rate = 1e-4
+optimizer_args = []  # Additional optimizer arguments like ["weight_decay=0.01", "betas=0.9,0.999"]
+learning_rate = 5e-5
 max_grad_norm = 1.0
 lr_scheduler = "constant"
 lr_warmup_steps = 0  # 0 = no warmup. Integer = steps, float <1 = ratio of total steps
@@ -70,21 +75,21 @@ lr_scheduler_power = 1.0
 lr_scheduler_timescale = 0      # 0 = auto (uses warmup steps). Advanced parameter
 lr_scheduler_min_lr_ratio = 0.0  # 0.0 = can reach zero LR. 0.1 = minimum 10% of initial LR
 lr_scheduler_type = ""
-lr_scheduler_args = ""
+lr_scheduler_args = []  # Additional scheduler arguments like ["T_max=100"]
 
 # Network Settings
 no_metadata = false
 network_weights = ""
 network_module = "networks.lora_qwen_image"
-network_dim = 32
+network_dim = 16
 network_alpha = 1.0
 network_dropout = 0.0  # 0.0 = no dropout. 0.1 = 10% dropout for regularization
-network_args = ""
+network_args = []  # Additional network arguments like ["loraplus_lr_ratio=4", "verbose=true"]
 training_comment = ""
 dim_from_weights = false
 scale_weight_norms = 0.0  # 0.0 = disabled. 1.0+ = scale weights to prevent exploding gradients
-base_weights = ""
-base_weights_multiplier = 1.0  # Only used if base_weights is specified. 1.0 = full strength
+base_weights = []  # List of LoRA weights to merge before training
+base_weights_multiplier = []  # List of multipliers for base_weights. Default 1.0 for each
 
 # Save/Load Settings
 output_dir = ""
@@ -122,6 +127,9 @@ caching_teo_keep_cache = true
 # Accelerate Launch Settings
 mixed_precision = "bf16"    # RECOMMENDED for Qwen Image. fp16 may cause instability, fp8 not supported
 dynamo_backend = "NO"       # NO = disabled (recommended). Use INDUCTOR for PyTorch 2.0+ optimization
+dynamo_mode = ""           # "" = default. Options: "default", "reduce-overhead", "max-autotune"
+dynamo_fullgraph = false   # Use fullgraph mode for dynamo
+dynamo_dynamic = false     # Use dynamic mode for dynamo
 
 # Logging Settings
 logging_dir = ""

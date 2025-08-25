@@ -195,8 +195,8 @@ class QwenImageModel:
 
             self.discrete_flow_shift = gr.Number(
                 label="Discrete Flow Shift",
-                info="⚠️ Only used with 'shift' method. Qwen Image optimal: 3.0. 'qwen_shift' automatically calculates dynamic shift (0.5-0.9) based on image resolution",
-                value=self.config.get("discrete_flow_shift", 3.0),
+                info="⚠️ Only used with 'shift' method. Qwen Image optimal: 2.2. 'qwen_shift' automatically calculates dynamic shift (0.5-0.9) based on image resolution",
+                value=self.config.get("discrete_flow_shift", 2.2),
                 step=0.1,
                 interactive=True,
             )
@@ -278,6 +278,16 @@ class QwenImageModel:
                 label="Preserve Distribution Shape",
                 info="Use rejection sampling to preserve original timestep distribution when using min/max timestep constraints",
                 value=self.config.get("preserve_distribution_shape", False),
+            )
+
+            self.num_timestep_buckets = gr.Number(
+                label="Num Timestep Buckets",
+                info="Number of buckets for uniform timestep sampling. 0=disabled (default), 4-10=bucketed sampling for better training stability",
+                value=self.config.get("num_timestep_buckets", 0),
+                minimum=0,
+                maximum=100,
+                step=1,
+                interactive=True,
             )
 
             self.show_timesteps = gr.Dropdown(
@@ -400,6 +410,7 @@ def qwen_image_gui_actions(
     min_timestep,
     max_timestep,
     preserve_distribution_shape,
+    num_timestep_buckets,
     show_timesteps,
     no_metadata,
     network_weights,
@@ -1763,6 +1774,7 @@ def qwen_image_lora_tab(
         qwen_model.min_timestep,
         qwen_model.max_timestep,
         qwen_model.preserve_distribution_shape,
+        qwen_model.num_timestep_buckets,
         qwen_model.show_timesteps,
         
         # network
