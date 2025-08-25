@@ -131,8 +131,8 @@ class QwenImageModel:
 
             self.fp8_vl = gr.Checkbox(
                 label="Use FP8 for Text Encoder",
-                info="✅ ENABLED by default. FP8 quantization for Qwen2.5-VL saves ~8GB VRAM with minimal quality loss. Disable only if you have 24GB+ VRAM",
-                value=self.config.get("fp8_vl", True),
+                info="FP8 quantization for Qwen2.5-VL saves ~8GB VRAM with minimal quality loss. Enable for GPUs with <16GB VRAM",
+                value=self.config.get("fp8_vl", False),
             )
 
         # Qwen Image specific options
@@ -1541,8 +1541,8 @@ class QwenImageTextEncoderOutputsCaching:
 
             self.caching_teo_fp8_vl = gr.Checkbox(
                 label="Use FP8 for VL Model",
-                info="✅ ENABLED: Use FP8 quantization during caching to save VRAM. Usually matches main FP8 VL setting",
-                value=self.config.get("caching_teo_fp8_vl", True),
+                info="Use FP8 quantization during caching to save VRAM. Should match main FP8 VL setting. Enable for <16GB VRAM",
+                value=self.config.get("caching_teo_fp8_vl", False),
             )
 
         with gr.Row():
@@ -1588,6 +1588,22 @@ def qwen_image_lora_tab(
     headless=False,
     config: GUIConfig = {},
 ):
+    # Add custom CSS for larger button text
+    gr.HTML("""
+    <style>
+        #toggle-all-btn {
+            font-size: 1.2rem !important;
+            padding: 10px 20px !important;
+            font-weight: 600 !important;
+        }
+        #toggle-all-btn button {
+            font-size: 1.2rem !important;
+            padding: 10px 20px !important;
+            font-weight: 600 !important;
+        }
+    </style>
+    """)
+    
     # Configuration is now managed by TabConfigManager
     dummy_true = gr.Checkbox(value=True, visible=False)
     dummy_false = gr.Checkbox(value=False, visible=False)
@@ -1622,10 +1638,17 @@ def qwen_image_lora_tab(
         gr.Markdown(config_status)
         configuration = ConfigurationFile(headless=headless, config=config)
 
-    # Add buttons to control all accordions
+    # Add unified toggle button to control all accordions
     with gr.Row():
-        hide_all_btn = gr.Button("🔽 Hide All Panels", variant="secondary", size="sm")
-        open_all_btn = gr.Button("🔼 Open All Panels", variant="secondary", size="sm")
+        with gr.Column(scale=1):
+            toggle_all_btn = gr.Button(
+                value="🔼 Open All Panels", 
+                variant="secondary", 
+                size="lg",
+                elem_id="toggle-all-btn"
+            )
+            # Hidden state to track if panels are open or closed
+            panels_state = gr.State(value="closed")  # Default state is closed
 
     # Create accordion references
     accordions = []
@@ -1636,12 +1659,12 @@ def qwen_image_lora_tab(
         accelerate_launch = AccelerateLaunch(config=config)
         # Note: bf16 mixed precision is STRONGLY recommended for Qwen Image
         
-    qwen_model_accordion = gr.Accordion("Qwen Image Model Settings", open=True, elem_classes="preset_background")
+    qwen_model_accordion = gr.Accordion("Qwen Image Model Settings", open=False, elem_classes="preset_background")
     accordions.append(qwen_model_accordion)
     with qwen_model_accordion:
         qwen_model = QwenImageModel(headless=headless, config=config)
         
-    caching_accordion = gr.Accordion("Caching", open=True, elem_classes="samples_background")
+    caching_accordion = gr.Accordion("Caching", open=False, elem_classes="samples_background")
     accordions.append(caching_accordion)
     with caching_accordion:
         with gr.Tab("Latent caching"):
@@ -1650,22 +1673,22 @@ def qwen_image_lora_tab(
         with gr.Tab("Text encoder caching"):
             qwenTeoCaching = QwenImageTextEncoderOutputsCaching(headless=headless, config=config)
         
-    save_load_accordion = gr.Accordion("Save Load Settings", open=True, elem_classes="samples_background")
+    save_load_accordion = gr.Accordion("Save Load Settings", open=False, elem_classes="samples_background")
     accordions.append(save_load_accordion)
     with save_load_accordion:
         saveLoadSettings = QwenImageSaveLoadSettings(headless=headless, config=config)
         
-    optimizer_accordion = gr.Accordion("Optimizer and Scheduler Settings", open=True, elem_classes="flux1_rank_layers_background")
+    optimizer_accordion = gr.Accordion("Optimizer and Scheduler Settings", open=False, elem_classes="flux1_rank_layers_background")
     accordions.append(optimizer_accordion)
     with optimizer_accordion:
         OptimizerAndSchedulerSettings = QwenImageOptimizerSettings(headless=headless, config=config)
         
-    network_accordion = gr.Accordion("Network Settings", open=True, elem_classes="flux1_background")
+    network_accordion = gr.Accordion("Network Settings", open=False, elem_classes="flux1_background")
     accordions.append(network_accordion)
     with network_accordion:
         network = QwenImageNetworkSettings(headless=headless, config=config)
         
-    training_accordion = gr.Accordion("Training Settings", open=True, elem_classes="preset_background")
+    training_accordion = gr.Accordion("Training Settings", open=False, elem_classes="preset_background")
     accordions.append(training_accordion)
     with training_accordion:
         trainingSettings = QwenImageTrainingSettings(headless=headless, config=config)
@@ -1859,22 +1882,25 @@ def qwen_image_lora_tab(
     global executor
     executor = CommandExecutor(headless=headless)
 
-    # Add handlers for Hide All and Open All buttons
-    def hide_all_panels():
-        return [gr.Accordion(open=False) for _ in accordions]
+    # Add handler for unified toggle button
+    def toggle_all_panels(current_state):
+        if current_state == "closed":
+            # Open all panels and update button text
+            new_state = "open"
+            new_button_text = "🔽 Hide All Panels"
+            accordion_states = [gr.Accordion(open=True) for _ in accordions]
+        else:
+            # Close all panels and update button text
+            new_state = "closed"
+            new_button_text = "🔼 Open All Panels"
+            accordion_states = [gr.Accordion(open=False) for _ in accordions]
+        
+        return [new_state, gr.Button(value=new_button_text)] + accordion_states
     
-    def open_all_panels():
-        return [gr.Accordion(open=True) for _ in accordions]
-    
-    hide_all_btn.click(
-        hide_all_panels,
-        outputs=accordions,
-        show_progress=False,
-    )
-    
-    open_all_btn.click(
-        open_all_panels,
-        outputs=accordions,
+    toggle_all_btn.click(
+        toggle_all_panels,
+        inputs=[panels_state],
+        outputs=[panels_state, toggle_all_btn] + accordions,
         show_progress=False,
     )
 

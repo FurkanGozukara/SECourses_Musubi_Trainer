@@ -17,7 +17,7 @@ vae_tiling = false           # Enable spatial tiling to reduce VRAM usage during
 vae_chunk_size = 0           # 0 = auto/disabled. Higher = faster but more VRAM
 vae_spatial_tile_sample_min_size = 0  # 0 = disabled. 256 = typical. Auto-enables vae_tiling if set
 
-fp8_vl = true  # RECOMMENDED: Saves ~8GB VRAM with minimal quality loss
+fp8_vl = false  # Enable for GPUs with <16GB VRAM. Saves ~8GB VRAM with minimal quality loss
 fp8_base = false  # Optional: FP8 for DiT model, saves ~12GB VRAM
 fp8_scaled = false  # REQUIRED when fp8_base=true, better quality than standard FP8
 blocks_to_swap = 0             # 0 = disabled. 16=save ~8GB VRAM, 45=save ~30GB VRAM (requires 64GB+ RAM)
@@ -118,7 +118,7 @@ caching_latent_console_num_images = 0  # 0 = no limit. Positive integer = max im
 # Caching Settings - Text Encoder
 caching_teo_text_encoder = ""
 caching_teo_device = "cuda"
-caching_teo_fp8_vl = true
+caching_teo_fp8_vl = false
 caching_teo_batch_size = 16
 caching_teo_num_workers = 8
 caching_teo_skip_existing = true
