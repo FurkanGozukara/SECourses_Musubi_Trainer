@@ -11,8 +11,8 @@ dataset_config_mode = "Generate from Folder Structure"  # Default to auto-genera
 
 # Folder Structure Settings (used when dataset_config_mode = "Generate from Folder Structure")
 parent_folder_path = ""  # REQUIRED when using folder structure mode: Path to parent folder containing training images
-dataset_resolution_width = 960  # Target width for training images
-dataset_resolution_height = 544  # Target height for training images
+dataset_resolution_width = 1328  # Target width for training images
+dataset_resolution_height = 1328  # Target height for training images
 dataset_caption_extension = ".txt"  # Extension for caption files
 create_missing_captions = true  # Auto-create empty captions for images without caption files
 caption_strategy = "folder_name"  # How to handle missing captions: "folder_name" or "empty"
@@ -54,7 +54,7 @@ mode_scale = 1.0  # Optimized for Qwen (lower than SD3's 1.29 for better stabili
 # Advanced Timestep Parameters (usually leave as defaults)
 sigmoid_scale = 1.0          # Scale factor for sigmoid timestep sampling. Only used with 'sigmoid' method
 min_timestep = 0            # 0 = no minimum constraint. 0-999 = constrain minimum timestep
-max_timestep = 0            # 0 = no maximum constraint. 1-1000 = constrain maximum timestep 
+max_timestep = 1000         # Maximum timestep value. 1000 = default (full range). 1-1000 = constrain maximum timestep 
 preserve_distribution_shape = false  # Preserve original distribution when using min/max constraints
 
 # Advanced Timestep Settings
