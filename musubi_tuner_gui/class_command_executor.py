@@ -23,8 +23,16 @@ class CommandExecutor:
         
         with gr.Row():
             self.button_run = gr.Button("Start training", variant="primary")
+        
+        # Training status indicator
+        with gr.Row():
+            self.training_status = gr.Textbox(
+                label="Training Status",
+                value="Ready",
+                interactive=False
+            )
 
-        # Stop training controls with confirmation
+        # Stop training controls with confirmation - now under status
         with gr.Row(visible=self.process is not None or headless) as self.stop_row:
             self.stop_confirm_checkbox = gr.Checkbox(
                 label="Confirm stop training",
@@ -34,14 +42,6 @@ class CommandExecutor:
             self.button_stop_training = gr.Button(
                 "Stop training", 
                 variant="stop",
-                interactive=False
-            )
-        
-        # Training status indicator
-        with gr.Row():
-            self.training_status = gr.Textbox(
-                label="Training Status",
-                value="Ready",
                 interactive=False
             )
 

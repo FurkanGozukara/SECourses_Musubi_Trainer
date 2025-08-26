@@ -2241,8 +2241,8 @@ class QwenImageTextEncoderOutputsCaching:
         with gr.Row():
             self.caching_teo_text_encoder = gr.Textbox(
                 label="Text Encoder (Qwen2.5-VL) Path",
-                info="Path to Qwen2.5-VL for text encoder caching. Usually same as main Text Encoder path above",
-                placeholder="e.g., /path/to/qwen_2.5_vl_7b.safetensors",
+                info="Path to Qwen2.5-VL for text encoder caching. Leave empty to use the main Text Encoder path from Model Settings above",
+                placeholder="e.g., /path/to/qwen_2.5_vl_7b.safetensors (leave empty to use main path)",
                 value=self.config.get("caching_teo_text_encoder", ""),
             )
 
