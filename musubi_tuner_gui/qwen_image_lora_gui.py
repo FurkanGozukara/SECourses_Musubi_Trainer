@@ -1,5 +1,6 @@
 import gradio as gr
 import os
+import shutil
 import subprocess
 import time
 import toml
@@ -1110,12 +1111,33 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
 
 def train_qwen_image_model(headless, print_only, parameters):
     import sys
-    import shutil
     import json
     
     # Use Python directly instead of uv for better compatibility
     python_cmd = sys.executable
-    run_cmd = [python_cmd, "-m", "accelerate", "launch"]
+    
+    # Find accelerate using shutil.which (like Kohya does)
+    accelerate_path = shutil.which("accelerate")
+    
+    if accelerate_path:
+        # Found accelerate in PATH
+        log.debug(f"Found accelerate at: {accelerate_path}")
+        run_cmd = [rf"{accelerate_path}", "launch"]
+    else:
+        # Fallback: try to find accelerate in the venv's Scripts/bin directory
+        python_dir = os.path.dirname(python_cmd)
+        if sys.platform == "win32":
+            accelerate_fallback = os.path.join(python_dir, "accelerate.exe")
+        else:
+            accelerate_fallback = os.path.join(python_dir, "accelerate")
+        
+        if os.path.exists(accelerate_fallback) and os.access(accelerate_fallback, os.X_OK):
+            log.debug(f"Found accelerate via fallback at: {accelerate_fallback}")
+            run_cmd = [rf"{accelerate_fallback}", "launch"]
+        else:
+            # Last resort: run accelerate through Python using the commands.launch module
+            log.warning("Accelerate binary not found, using Python module fallback")
+            run_cmd = [python_cmd, "-m", "accelerate.commands.launch"]
 
     param_dict = dict(parameters)
     
