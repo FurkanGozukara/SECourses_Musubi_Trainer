@@ -1141,62 +1141,36 @@ def train_qwen_image_model(headless, print_only, parameters):
     if not param_dict.get("output_name"):
         raise ValueError("[ERROR] Output name is required. Please specify a name for your trained LoRA model.")
     
-    # Create output directory if it doesn't exist
-    output_dir = param_dict.get("output_dir")
-    os.makedirs(output_dir, exist_ok=True)
-    
-    # Generate timestamp for file naming
-    timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")[:-3]  # Remove last 3 digits of microseconds to get milliseconds
-    
-    # Save dataset TOML to output directory
-    dataset_toml_dest = os.path.join(output_dir, f"{timestamp}.toml")
-    if os.path.exists(effective_dataset_config):
-        shutil.copy2(effective_dataset_config, dataset_toml_dest)
-        log.info(f"Dataset config saved to: {dataset_toml_dest}")
-        print(f"\n[INFO] Dataset configuration backed up to output directory:")
-        print(f"       {dataset_toml_dest}")
-    
-    # Save JSON config to output directory (same as save configuration)
-    json_config_path = os.path.join(output_dir, f"{timestamp}.json")
-    
-    # Convert parameters to a clean dictionary for saving
-    save_dict = {}
-    for key, value in param_dict.items():
-        # Convert any gradio objects to their values
-        if hasattr(value, 'value'):
-            save_dict[key] = value.value
-        else:
-            save_dict[key] = value
-    
-    # Save JSON configuration using the same format as SaveConfigFile
-    SaveConfigFile(
-        parameters=parameters,
-        file_path=json_config_path,
-        exclusion=[
-            "file_path",
-            "save_as",
-            "save_as_bool",
-            "headless",
-            "print_only"
-        ],
-    )
-    log.info(f"Training config saved to: {json_config_path}")
-    print(f"[INFO] Training configuration saved to output directory:")
-    print(f"       {json_config_path}")
-    print(f"\n[INFO] Both configuration files saved with timestamp: {timestamp}")
-    print(f"       These files will be preserved with your trained model for reproducibility.\n")
-    
-    # Cache latents using Qwen Image specific script
-    run_cache_latent_cmd = [python_cmd, "./musubi-tuner/src/musubi_tuner/qwen_image_cache_latents.py",
-                            "--dataset_config", str(param_dict.get("dataset_config")),
-                            "--vae", str(param_dict.get("vae"))
-    ]
-    
-    # Note: vae_dtype is not supported in Qwen Image
+    # Only do file operations and caching if not in print_only mode
+    if not print_only:
+        # Create output directory if it doesn't exist
+        output_dir = param_dict.get("output_dir")
+        os.makedirs(output_dir, exist_ok=True)
         
-    if param_dict.get("caching_latent_device") is not None and param_dict.get("caching_latent_device") != "":
-        run_cache_latent_cmd.append("--device")
-        run_cache_latent_cmd.append(str(param_dict.get("caching_latent_device")))
+        # Generate timestamp for file naming
+        timestamp = datetime.now().strftime("%Y_%m_%d_%H_%M_%S_%f")[:-3]  # Remove last 3 digits of microseconds to get milliseconds
+        
+        # Save dataset TOML to output directory (NO JSON saving anymore)
+        dataset_toml_dest = os.path.join(output_dir, f"{timestamp}.toml")
+        if os.path.exists(effective_dataset_config):
+            shutil.copy2(effective_dataset_config, dataset_toml_dest)
+            log.info(f"Dataset config saved to: {dataset_toml_dest}")
+            print(f"\n[INFO] Dataset configuration backed up to output directory:")
+            print(f"       {dataset_toml_dest}")
+            print(f"\n[INFO] Configuration file saved with timestamp: {timestamp}")
+            print(f"       This file will be preserved with your trained model for reproducibility.\n")
+    
+        # Cache latents using Qwen Image specific script
+        run_cache_latent_cmd = [python_cmd, "./musubi-tuner/src/musubi_tuner/qwen_image_cache_latents.py",
+                                "--dataset_config", str(param_dict.get("dataset_config")),
+                                "--vae", str(param_dict.get("vae"))
+        ]
+        
+        # Note: vae_dtype is not supported in Qwen Image
+            
+        if param_dict.get("caching_latent_device") is not None and param_dict.get("caching_latent_device") != "":
+            run_cache_latent_cmd.append("--device")
+            run_cache_latent_cmd.append(str(param_dict.get("caching_latent_device")))
     
     if param_dict.get("caching_latent_batch_size") is not None:
         run_cache_latent_cmd.append("--batch_size")
@@ -1212,101 +1186,101 @@ def train_qwen_image_model(headless, print_only, parameters):
     if param_dict.get("caching_latent_keep_cache"):
         run_cache_latent_cmd.append("--keep_cache")
     
-    # VAE optimization parameters for latent caching
-    if param_dict.get("vae_tiling"):
-        run_cache_latent_cmd.append("--vae_tiling")
+        # VAE optimization parameters for latent caching
+        if param_dict.get("vae_tiling"):
+            run_cache_latent_cmd.append("--vae_tiling")
         
-    if param_dict.get("vae_chunk_size") is not None and param_dict.get("vae_chunk_size") > 0:
-        run_cache_latent_cmd.append("--vae_chunk_size")
-        run_cache_latent_cmd.append(str(param_dict.get("vae_chunk_size")))
+        if param_dict.get("vae_chunk_size") is not None and param_dict.get("vae_chunk_size") > 0:
+            run_cache_latent_cmd.append("--vae_chunk_size")
+            run_cache_latent_cmd.append(str(param_dict.get("vae_chunk_size")))
         
-    if param_dict.get("vae_spatial_tile_sample_min_size") is not None and param_dict.get("vae_spatial_tile_sample_min_size") > 0:
-        run_cache_latent_cmd.append("--vae_spatial_tile_sample_min_size")
-        run_cache_latent_cmd.append(str(param_dict.get("vae_spatial_tile_sample_min_size")))
+        if param_dict.get("vae_spatial_tile_sample_min_size") is not None and param_dict.get("vae_spatial_tile_sample_min_size") > 0:
+            run_cache_latent_cmd.append("--vae_spatial_tile_sample_min_size")
+            run_cache_latent_cmd.append(str(param_dict.get("vae_spatial_tile_sample_min_size")))
     
-    # VAE dtype parameter
-    if param_dict.get("vae_dtype") is not None and param_dict.get("vae_dtype") != "":
-        run_cache_latent_cmd.append("--vae_dtype")
-        run_cache_latent_cmd.append(str(param_dict.get("vae_dtype")))
+        # VAE dtype parameter - SKIP for Qwen Image as it's not supported
+        # if param_dict.get("vae_dtype") is not None and param_dict.get("vae_dtype") != "":
+        #     run_cache_latent_cmd.append("--vae_dtype")
+        #     run_cache_latent_cmd.append(str(param_dict.get("vae_dtype")))
     
-    # Debug parameters for latent caching
-    if param_dict.get("caching_latent_debug_mode") is not None and param_dict.get("caching_latent_debug_mode") != "":
-        run_cache_latent_cmd.append("--debug_mode")
-        run_cache_latent_cmd.append(str(param_dict.get("caching_latent_debug_mode")))
+        # Debug parameters for latent caching
+        if param_dict.get("caching_latent_debug_mode") is not None and param_dict.get("caching_latent_debug_mode") != "":
+            run_cache_latent_cmd.append("--debug_mode")
+            run_cache_latent_cmd.append(str(param_dict.get("caching_latent_debug_mode")))
         
-    if param_dict.get("caching_latent_console_width") is not None:
-        run_cache_latent_cmd.append("--console_width")
-        run_cache_latent_cmd.append(str(param_dict.get("caching_latent_console_width")))
+        if param_dict.get("caching_latent_console_width") is not None:
+            run_cache_latent_cmd.append("--console_width")
+            run_cache_latent_cmd.append(str(param_dict.get("caching_latent_console_width")))
         
-    if param_dict.get("caching_latent_console_back") is not None and param_dict.get("caching_latent_console_back") != "":
-        run_cache_latent_cmd.append("--console_back")
-        run_cache_latent_cmd.append(str(param_dict.get("caching_latent_console_back")))
+        if param_dict.get("caching_latent_console_back") is not None and param_dict.get("caching_latent_console_back") != "":
+            run_cache_latent_cmd.append("--console_back")
+            run_cache_latent_cmd.append(str(param_dict.get("caching_latent_console_back")))
         
-    if param_dict.get("caching_latent_console_num_images") is not None:
-        run_cache_latent_cmd.append("--console_num_images")
-        run_cache_latent_cmd.append(str(param_dict.get("caching_latent_console_num_images")))
+        if param_dict.get("caching_latent_console_num_images") is not None:
+            run_cache_latent_cmd.append("--console_num_images")
+            run_cache_latent_cmd.append(str(param_dict.get("caching_latent_console_num_images")))
 
-    log.info(f"Executing command: {run_cache_latent_cmd}")
-    log.info("Caching latents...")
-    try:
-        result = subprocess.run(run_cache_latent_cmd, env=setup_environment(), 
-                               capture_output=True, text=True, check=True)
-        log.debug("Latent caching completed.")
-    except subprocess.CalledProcessError as e:
-        log.error(f"Latent caching failed with return code {e.returncode}")
-        log.error(f"Error output: {e.stderr}")
-        raise RuntimeError(f"Latent caching failed: {e.stderr}")
-    except FileNotFoundError as e:
-        log.error(f"Command not found: {e}")
-        log.error("Please ensure Python is installed and accessible in your PATH")
-        raise RuntimeError(f"Python executable not found: {python_cmd}")
+        log.info(f"Executing command: {run_cache_latent_cmd}")
+        log.info("Caching latents...")
+        try:
+            result = subprocess.run(run_cache_latent_cmd, env=setup_environment(), 
+                                   capture_output=True, text=True, check=True)
+            log.debug("Latent caching completed.")
+        except subprocess.CalledProcessError as e:
+            log.error(f"Latent caching failed with return code {e.returncode}")
+            log.error(f"Error output: {e.stderr}")
+            raise RuntimeError(f"Latent caching failed: {e.stderr}")
+        except FileNotFoundError as e:
+            log.error(f"Command not found: {e}")
+            log.error("Please ensure Python is installed and accessible in your PATH")
+            raise RuntimeError(f"Python executable not found: {python_cmd}")
     
-    # Cache text encoder outputs using Qwen Image specific script
-    run_cache_teo_cmd = [python_cmd, "./musubi-tuner/src/musubi_tuner/qwen_image_cache_text_encoder_outputs.py",
-                            "--dataset_config", str(param_dict.get("dataset_config"))
-    ]
+        # Cache text encoder outputs using Qwen Image specific script
+        run_cache_teo_cmd = [python_cmd, "./musubi-tuner/src/musubi_tuner/qwen_image_cache_text_encoder_outputs.py",
+                                "--dataset_config", str(param_dict.get("dataset_config"))
+        ]
     
-    if param_dict.get("text_encoder") is not None and param_dict.get("text_encoder") != "":
-        run_cache_teo_cmd.append("--text_encoder")
-        run_cache_teo_cmd.append(str(param_dict.get("text_encoder")))   
-                            
-    if param_dict.get("caching_teo_fp8_vl"):
-        run_cache_teo_cmd.append("--fp8_vl")
+        if param_dict.get("text_encoder") is not None and param_dict.get("text_encoder") != "":
+            run_cache_teo_cmd.append("--text_encoder")
+            run_cache_teo_cmd.append(str(param_dict.get("text_encoder")))   
+                                
+        if param_dict.get("caching_teo_fp8_vl"):
+            run_cache_teo_cmd.append("--fp8_vl")
         
-    if param_dict.get("caching_teo_device") is not None and param_dict.get("caching_teo_device") != "":
-        run_cache_teo_cmd.append("--device")
-        run_cache_teo_cmd.append(str(param_dict.get("caching_teo_device")))
-    
-    if param_dict.get("caching_teo_batch_size") is not None:
-        run_cache_teo_cmd.append("--batch_size")
-        run_cache_teo_cmd.append(str(param_dict.get("caching_teo_batch_size")))
+        if param_dict.get("caching_teo_device") is not None and param_dict.get("caching_teo_device") != "":
+            run_cache_teo_cmd.append("--device")
+            run_cache_teo_cmd.append(str(param_dict.get("caching_teo_device")))
         
-    if param_dict.get("caching_teo_skip_existing"):
-        run_cache_teo_cmd.append("--skip_existing")
-        
-    if param_dict.get("caching_teo_keep_cache"):
-        run_cache_teo_cmd.append("--keep_cache")
-        
-    if param_dict.get("caching_teo_num_workers") is not None:
-        run_cache_teo_cmd.append("--num_workers")
-        run_cache_teo_cmd.append(str(param_dict.get("caching_teo_num_workers")))
-        
-    if param_dict.get("edit"):
-        run_cache_teo_cmd.append("--edit")
+        if param_dict.get("caching_teo_batch_size") is not None:
+            run_cache_teo_cmd.append("--batch_size")
+            run_cache_teo_cmd.append(str(param_dict.get("caching_teo_batch_size")))
+            
+        if param_dict.get("caching_teo_skip_existing"):
+            run_cache_teo_cmd.append("--skip_existing")
+            
+        if param_dict.get("caching_teo_keep_cache"):
+            run_cache_teo_cmd.append("--keep_cache")
+            
+        if param_dict.get("caching_teo_num_workers") is not None:
+            run_cache_teo_cmd.append("--num_workers")
+            run_cache_teo_cmd.append(str(param_dict.get("caching_teo_num_workers")))
+            
+        if param_dict.get("edit"):
+            run_cache_teo_cmd.append("--edit")
 
-    log.info(f"Executing command: {run_cache_teo_cmd}")
-    log.info("Caching text encoder outputs...")
-    try:
-        result = subprocess.run(run_cache_teo_cmd, env=setup_environment(),
-                               capture_output=True, text=True, check=True)
-        log.debug("Text encoder output caching completed.")
-    except subprocess.CalledProcessError as e:
-        log.error(f"Text encoder caching failed with return code {e.returncode}")
-        log.error(f"Error output: {e.stderr}")
-        raise RuntimeError(f"Text encoder caching failed: {e.stderr}")
-    except FileNotFoundError as e:
-        log.error(f"Command not found: {e}")
-        raise RuntimeError(f"Python executable not found: {python_cmd}")
+        log.info(f"Executing command: {run_cache_teo_cmd}")
+        log.info("Caching text encoder outputs...")
+        try:
+            result = subprocess.run(run_cache_teo_cmd, env=setup_environment(),
+                                   capture_output=True, text=True, check=True)
+            log.debug("Text encoder output caching completed.")
+        except subprocess.CalledProcessError as e:
+            log.error(f"Text encoder caching failed with return code {e.returncode}")
+            log.error(f"Error output: {e.stderr}")
+            raise RuntimeError(f"Text encoder caching failed: {e.stderr}")
+        except FileNotFoundError as e:
+            log.error(f"Command not found: {e}")
+            raise RuntimeError(f"Python executable not found: {python_cmd}")
 
     # Setup accelerate launch command
     run_cmd = AccelerateLaunch.run_cmd(
