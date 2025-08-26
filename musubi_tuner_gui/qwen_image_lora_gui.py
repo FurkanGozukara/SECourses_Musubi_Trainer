@@ -1171,21 +1171,21 @@ def train_qwen_image_model(headless, print_only, parameters):
         if param_dict.get("caching_latent_device") is not None and param_dict.get("caching_latent_device") != "":
             run_cache_latent_cmd.append("--device")
             run_cache_latent_cmd.append(str(param_dict.get("caching_latent_device")))
-    
-    if param_dict.get("caching_latent_batch_size") is not None:
-        run_cache_latent_cmd.append("--batch_size")
-        run_cache_latent_cmd.append(str(param_dict.get("caching_latent_batch_size")))
-    
-    if param_dict.get("caching_latent_num_workers") is not None:
-        run_cache_latent_cmd.append("--num_workers")
-        run_cache_latent_cmd.append(str(param_dict.get("caching_latent_num_workers")))
         
-    if param_dict.get("caching_latent_skip_existing"):
-        run_cache_latent_cmd.append("--skip_existing")
+        if param_dict.get("caching_latent_batch_size") is not None:
+            run_cache_latent_cmd.append("--batch_size")
+            run_cache_latent_cmd.append(str(param_dict.get("caching_latent_batch_size")))
         
-    if param_dict.get("caching_latent_keep_cache"):
-        run_cache_latent_cmd.append("--keep_cache")
-    
+        if param_dict.get("caching_latent_num_workers") is not None:
+            run_cache_latent_cmd.append("--num_workers")
+            run_cache_latent_cmd.append(str(param_dict.get("caching_latent_num_workers")))
+            
+        if param_dict.get("caching_latent_skip_existing"):
+            run_cache_latent_cmd.append("--skip_existing")
+            
+        if param_dict.get("caching_latent_keep_cache"):
+            run_cache_latent_cmd.append("--keep_cache")
+        
         # VAE optimization parameters for latent caching
         if param_dict.get("vae_tiling"):
             run_cache_latent_cmd.append("--vae_tiling")
@@ -1197,12 +1197,12 @@ def train_qwen_image_model(headless, print_only, parameters):
         if param_dict.get("vae_spatial_tile_sample_min_size") is not None and param_dict.get("vae_spatial_tile_sample_min_size") > 0:
             run_cache_latent_cmd.append("--vae_spatial_tile_sample_min_size")
             run_cache_latent_cmd.append(str(param_dict.get("vae_spatial_tile_sample_min_size")))
-    
+        
         # VAE dtype parameter - SKIP for Qwen Image as it's not supported
         # if param_dict.get("vae_dtype") is not None and param_dict.get("vae_dtype") != "":
         #     run_cache_latent_cmd.append("--vae_dtype")
         #     run_cache_latent_cmd.append(str(param_dict.get("vae_dtype")))
-    
+        
         # Debug parameters for latent caching
         if param_dict.get("caching_latent_debug_mode") is not None and param_dict.get("caching_latent_debug_mode") != "":
             run_cache_latent_cmd.append("--debug_mode")
