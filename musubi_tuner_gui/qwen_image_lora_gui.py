@@ -1168,9 +1168,17 @@ def train_qwen_image_model(headless, print_only, parameters):
         
         # Note: vae_dtype is not supported in Qwen Image
             
-        if param_dict.get("caching_latent_device") is not None and param_dict.get("caching_latent_device") != "":
+        # Determine the device for caching latents
+        caching_device = param_dict.get("caching_latent_device", "cuda")
+        if caching_device == "cuda" and param_dict.get("gpu_ids"):
+            # If gpu_ids is specified in accelerate config, use the first GPU ID
+            gpu_ids = str(param_dict.get("gpu_ids")).split(",")
+            caching_device = f"cuda:{gpu_ids[0].strip()}"
+            log.info(f"Using GPU ID from accelerate config for latent caching: {caching_device}")
+        
+        if caching_device:
             run_cache_latent_cmd.append("--device")
-            run_cache_latent_cmd.append(str(param_dict.get("caching_latent_device")))
+            run_cache_latent_cmd.append(str(caching_device))
         
         if param_dict.get("caching_latent_batch_size") is not None:
             run_cache_latent_cmd.append("--batch_size")
@@ -1223,13 +1231,12 @@ def train_qwen_image_model(headless, print_only, parameters):
         log.info(f"Executing command: {run_cache_latent_cmd}")
         log.info("Caching latents...")
         try:
-            result = subprocess.run(run_cache_latent_cmd, env=setup_environment(), 
-                                   capture_output=True, text=True, check=True)
+            # Run without capture_output to show progress in real-time
+            result = subprocess.run(run_cache_latent_cmd, env=setup_environment(), check=True)
             log.debug("Latent caching completed.")
         except subprocess.CalledProcessError as e:
             log.error(f"Latent caching failed with return code {e.returncode}")
-            log.error(f"Error output: {e.stderr}")
-            raise RuntimeError(f"Latent caching failed: {e.stderr}")
+            raise RuntimeError(f"Latent caching failed with return code {e.returncode}")
         except FileNotFoundError as e:
             log.error(f"Command not found: {e}")
             log.error("Please ensure Python is installed and accessible in your PATH")
@@ -1247,9 +1254,17 @@ def train_qwen_image_model(headless, print_only, parameters):
         if param_dict.get("caching_teo_fp8_vl"):
             run_cache_teo_cmd.append("--fp8_vl")
         
-        if param_dict.get("caching_teo_device") is not None and param_dict.get("caching_teo_device") != "":
+        # Determine the device for caching text encoder outputs
+        teo_caching_device = param_dict.get("caching_teo_device", "cuda")
+        if teo_caching_device == "cuda" and param_dict.get("gpu_ids"):
+            # If gpu_ids is specified in accelerate config, use the first GPU ID
+            gpu_ids = str(param_dict.get("gpu_ids")).split(",")
+            teo_caching_device = f"cuda:{gpu_ids[0].strip()}"
+            log.info(f"Using GPU ID from accelerate config for text encoder caching: {teo_caching_device}")
+        
+        if teo_caching_device:
             run_cache_teo_cmd.append("--device")
-            run_cache_teo_cmd.append(str(param_dict.get("caching_teo_device")))
+            run_cache_teo_cmd.append(str(teo_caching_device))
         
         if param_dict.get("caching_teo_batch_size") is not None:
             run_cache_teo_cmd.append("--batch_size")
@@ -1271,13 +1286,12 @@ def train_qwen_image_model(headless, print_only, parameters):
         log.info(f"Executing command: {run_cache_teo_cmd}")
         log.info("Caching text encoder outputs...")
         try:
-            result = subprocess.run(run_cache_teo_cmd, env=setup_environment(),
-                                   capture_output=True, text=True, check=True)
+            # Run without capture_output to show progress in real-time
+            result = subprocess.run(run_cache_teo_cmd, env=setup_environment(), check=True)
             log.debug("Text encoder output caching completed.")
         except subprocess.CalledProcessError as e:
             log.error(f"Text encoder caching failed with return code {e.returncode}")
-            log.error(f"Error output: {e.stderr}")
-            raise RuntimeError(f"Text encoder caching failed: {e.stderr}")
+            raise RuntimeError(f"Text encoder caching failed with return code {e.returncode}")
         except FileNotFoundError as e:
             log.error(f"Command not found: {e}")
             raise RuntimeError(f"Python executable not found: {python_cmd}")
