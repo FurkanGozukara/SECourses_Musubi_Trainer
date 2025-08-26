@@ -295,10 +295,10 @@ class QwenImageModel:
             
             self.blocks_to_swap = gr.Number(
                 label="Blocks to Swap to CPU",
-                info="Swap DiT blocks to CPU to save VRAM. 16=24GB→16GB, 45=42GB→12GB. Requires 64GB+ RAM. Slows training significantly",
+                info="Swap DiT blocks to CPU to save VRAM. Qwen Image has 60 total blocks, max swap is 59. 16=24GB→16GB, 45=42GB→12GB. Requires 64GB+ RAM. Slows training significantly",
                 value=self.config.get("blocks_to_swap", 0),
                 minimum=0,
-                maximum=50,
+                maximum=59,
                 step=1,
                 interactive=True,
             )
@@ -1398,25 +1398,25 @@ class QwenImageTrainingSettings:
         with gr.Row():
             self.sdpa = gr.Checkbox(
                 label="Use SDPA for CrossAttention",
-                info="[RECOMMENDED] PyTorch's Scaled Dot Product Attention - fastest and most memory efficient for Qwen Image",
+                info="[RECOMMENDED] PyTorch's Scaled Dot Product Attention - fastest and most memory efficient for Qwen Image. PRIORITY 1: If multiple selected, SDPA takes precedence",
                 value=self.config.get("sdpa", True),
             )
 
             self.flash_attn = gr.Checkbox(
                 label="Use FlashAttention for CrossAttention",
-                info="Memory-efficient attention implementation. Requires FlashAttention library. Enable split_attn if using this",
+                info="Memory-efficient attention implementation. Requires FlashAttention library. Enable split_attn if using this. PRIORITY 2: Used only if SDPA is disabled",
                 value=self.config.get("flash_attn", False),
             )
 
             self.sage_attn = gr.Checkbox(
                 label="Use SageAttention for CrossAttention",
-                info="Alternative attention implementation. Requires SageAttention library. Enable split_attn if using this",
+                info="Alternative attention implementation. Requires SageAttention library. Enable split_attn if using this. PRIORITY 3: Used only if SDPA & FlashAttn are disabled",
                 value=self.config.get("sage_attn", False),
             )
 
             self.xformers = gr.Checkbox(
                 label="Use xformers for CrossAttention",
-                info="Memory-efficient attention from xformers library. Enable split_attn if using this",
+                info="Memory-efficient attention from xformers library. Enable split_attn if using this. PRIORITY 4: Lowest priority, used only if all others are disabled",
                 value=self.config.get("xformers", False),
             )
 
@@ -1448,7 +1448,7 @@ class QwenImageTrainingSettings:
                 info="[RECOMMENDED] 16 epochs for Qwen Image. Overrides max_train_steps. 1 epoch = full pass through dataset",
                 value=self.config.get("max_train_epochs", 16),
                 minimum=1,
-                maximum=100,
+                maximum=9999,
                 step=1,
                 interactive=True,
             )

@@ -36,7 +36,7 @@ vae_spatial_tile_sample_min_size = 0  # 0 = disabled. 256 = typical. Auto-enable
 fp8_vl = false  # Enable for GPUs with <16GB VRAM. Saves ~8GB VRAM with minimal quality loss
 fp8_base = false  # Optional: FP8 for DiT model, saves ~12GB VRAM
 fp8_scaled = false  # REQUIRED when fp8_base=true, better quality than standard FP8
-blocks_to_swap = 0             # 0 = disabled. 16=save ~8GB VRAM, 45=save ~30GB VRAM (requires 64GB+ RAM)
+blocks_to_swap = 0             # 0 = disabled. Max 59 (Qwen has 60 blocks). 16=save ~8GB VRAM, 45=save ~30GB VRAM (requires 64GB+ RAM)
 
 # Additional Model Settings  
 guidance_scale = 1.0          # Classifier-free guidance scale. 1.0 = default, higher = stronger prompt adherence
