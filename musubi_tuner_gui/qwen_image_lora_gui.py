@@ -1391,9 +1391,12 @@ def train_qwen_image_model(headless, print_only, parameters):
         train_state_value = time.time()
 
         return (
-            gr.Button(visible=False or headless),
-            gr.Button(visible=True),
-            gr.Textbox(value=train_state_value),
+            gr.Button(visible=False or headless),  # Hide start button
+            gr.Row(visible=True),  # Show stop row
+            gr.Checkbox(value=False),  # Reset checkbox
+            gr.Button(interactive=False),  # Disable stop button initially
+            gr.Textbox(value="Training in progress..."),  # Update status
+            gr.Textbox(value=train_state_value),  # Trigger state change
         )
 
 
@@ -2511,7 +2514,13 @@ def qwen_image_lora_tab(
 
     run_state.change(
         fn=executor.wait_for_training_to_end,
-        outputs=[executor.button_run, executor.button_stop_training],
+        outputs=[
+            executor.button_run,
+            executor.stop_row,
+            executor.stop_confirm_checkbox,
+            executor.button_stop_training,
+            executor.training_status,
+        ],
     )
 
     button_print.click(
@@ -2523,11 +2532,32 @@ def qwen_image_lora_tab(
     executor.button_run.click(
         qwen_image_gui_actions,
         inputs=[gr.Textbox(value="train_model", visible=False), dummy_false, configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
-        outputs=[executor.button_run, executor.button_stop_training, run_state],
+        outputs=[
+            executor.button_run,
+            executor.stop_row,
+            executor.stop_confirm_checkbox,
+            executor.button_stop_training,
+            executor.training_status,
+            run_state,
+        ],
         show_progress=False,
+    )
+    
+    # Wire up checkbox to enable/disable stop button
+    executor.stop_confirm_checkbox.change(
+        executor.toggle_stop_button,
+        inputs=[executor.stop_confirm_checkbox],
+        outputs=[executor.button_stop_training],
     )
 
     executor.button_stop_training.click(
         executor.kill_command,
-        outputs=[executor.button_run, executor.button_stop_training],
+        inputs=[executor.stop_confirm_checkbox],
+        outputs=[
+            executor.button_run,
+            executor.stop_row,
+            executor.stop_confirm_checkbox,
+            executor.button_stop_training,
+            executor.training_status,
+        ],
     )
