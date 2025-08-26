@@ -155,7 +155,7 @@ dynamo_dynamic = false     # Use dynamic mode for dynamo
 
 # Logging Settings
 logging_dir = ""
-log_with = ""
+# log_with = ""  # Leave commented out or set to specific logger like "tensorboard"
 log_prefix = ""
 log_tracker_name = ""
 wandb_run_name = ""

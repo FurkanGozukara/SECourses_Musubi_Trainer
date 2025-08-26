@@ -1310,11 +1310,14 @@ def SaveConfigFileToRun(
         file_path (str): Path to the file where the filtered parameters should be saved.
         exclusion (list): List of keys to exclude from saving. Defaults to ["file_path", "save_as", "headless", "print_only"].
     """
-    variables = {
-        name: value
-        for name, value in sorted(parameters, key=lambda x: x[0])
-        if name not in exclusion and value is not None
-    }
+    variables = {}
+    for name, value in sorted(parameters, key=lambda x: x[0]):
+        if name in exclusion or value is None:
+            continue
+        # Skip empty string for log_with parameter (causes accelerate error)
+        if name == "log_with" and value == "":
+            continue
+        variables[name] = value
 
     folder_path = os.path.dirname(file_path)
     if not os.path.exists(folder_path):

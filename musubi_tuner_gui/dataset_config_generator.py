@@ -160,13 +160,13 @@ def generate_dataset_config_from_folders(
             "num_repeats": repeat_count
         }
         
-        # Set cache directory
+        # Set cache directory - MUST be unique per dataset (musubi-tuner requirement)
         if cache_directory_name:
             if os.path.isabs(cache_directory_name):
-                # Absolute path provided
-                dataset_entry["cache_directory"] = cache_directory_name
+                # Absolute path provided - append subdir name to make it unique
+                dataset_entry["cache_directory"] = os.path.join(cache_directory_name, subdir)
             else:
-                # Relative path - put inside subdirectory
+                # Relative path - put inside subdirectory (each dataset gets its own)
                 dataset_entry["cache_directory"] = os.path.join(subdir_path, cache_directory_name)
         
         # Check for control directory

@@ -145,7 +145,7 @@ class QwenImageModel:
                 self.dataset_cache_directory = gr.Textbox(
                     label="Cache Directory Name",
                     value=self.config.get("dataset_cache_directory", "cache_dir"),
-                    info="Name for cache directory (relative) or full path (absolute). If relative, created inside each dataset folder"
+                    info="Cache folder name (relative) or full path (absolute). Each dataset gets its own cache directory to avoid conflicts"
                 )
                 self.dataset_control_directory = gr.Textbox(
                     label="Control Directory Name",
@@ -1519,8 +1519,8 @@ class QwenImageTrainingSettings:
 
             self.log_with = gr.Dropdown(
                 label="Logging Tool",
-                info="TensorBoard = local logs, WandB = cloud tracking, 'all' = both. Requires logging_dir for TensorBoard",
-                choices=["tensorboard", "wandb", "all", ""],
+                info="TensorBoard = local logs, WandB = cloud tracking, 'all' = both, (none) = no logging. Requires logging_dir for TensorBoard",
+                choices=[("(none)", ""), ("tensorboard", "tensorboard"), ("wandb", "wandb"), ("all", "all")],
                 allow_custom_value=True,
                 value=self.config.get("log_with", ""),
                 interactive=True,
@@ -2008,14 +2008,16 @@ class QwenImageLatentCaching:
         **IMPORTANT:** Both Latent AND Text Encoder caching are REQUIRED for training!
         
         **What is cached:** Image latent representations from VAE encoder  
-        **Where cached:** In `cache_dir` folder next to your training images  
+        **Where cached:** In `cache_dir` folder inside each dataset directory (each dataset has its own cache)  
         **When to re-cache (uncheck Skip Existing):**
         - Changed training images
         - Changed VAE model
         - Changed resolution
         - Cache files are corrupted
         
-        **Cache files:** `.safetensors` files with same names as your images
+        **Cache files:** `*_qi.safetensors` files in each dataset's cache_dir
+        
+        ⚠️ **Note:** Each dataset MUST have its own cache directory. Skip Existing checks each dataset's cache separately.
         """)
         
         with gr.Row():
@@ -2112,14 +2114,19 @@ class QwenImageTextEncoderOutputsCaching:
         ### 📝 Text Encoder Caching Info
         
         **What is cached:** Caption text embeddings from Qwen2.5-VL model  
-        **Where cached:** In `cache_dir` folder next to your training images  
+        **Where cached:** In `cache_dir` folder inside each dataset directory (each dataset has its own cache)  
         **When to re-cache (uncheck Skip Existing):**
         - Changed captions or added new captions
         - Changed text encoder model
         - Cache files are corrupted
         - Changed training resolution
         
-        **Cache files:** `.npz` files with same names as your images
+        **Cache files:** `*_qi_te.safetensors` files in each dataset's cache_dir
+        
+        ⚠️ **Note:** If caching re-runs even with "Skip Existing" checked:
+        - This may happen on first run (no cache exists yet)
+        - Check each dataset folder contains its own cache_dir with `*_qi_te.safetensors` files
+        - Each dataset needs its own unique cache directory (musubi-tuner requirement)
         """)
         
         with gr.Row():
