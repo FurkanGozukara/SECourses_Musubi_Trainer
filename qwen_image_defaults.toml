@@ -148,7 +148,7 @@ caching_teo_keep_cache = true
 
 # Accelerate Launch Settings
 mixed_precision = "bf16"    # RECOMMENDED for Qwen Image. fp16 may cause instability, fp8 not supported
-dynamo_backend = "NO"       # NO = disabled (recommended). Use INDUCTOR for PyTorch 2.0+ optimization
+dynamo_backend = "no"       # no = disabled (recommended). Use inductor for PyTorch 2.0+ optimization
 dynamo_mode = ""            # Empty = default. Options: "default", "reduce-overhead", "max-autotune"
 dynamo_fullgraph = false   # Use fullgraph mode for dynamo
 dynamo_dynamic = false     # Use dynamic mode for dynamo

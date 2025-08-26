@@ -100,7 +100,7 @@ def test_toml_generation():
         ("text_encoder_dtype", "float16"),
         ("vae_dtype", "bfloat16"),
         ("mixed_precision", "bf16"),
-        ("dynamo_backend", "NO"),
+        ("dynamo_backend", "no"),
         ("caching_latent_device", "cuda"),
         ("caching_teo_device", "cuda"),
         
