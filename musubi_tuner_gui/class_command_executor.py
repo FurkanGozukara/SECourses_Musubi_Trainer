@@ -118,13 +118,21 @@ class CommandExecutor:
         while self.is_running():
             time.sleep(1)
             log.debug("Waiting for training to end...")
-        log.info("Training has ended.")
+        
+        # Check if process ended with error
+        if self.process and self.process.returncode != 0:
+            log.error(f"Training failed with exit code: {self.process.returncode}")
+            status_msg = f"⚠️ Training failed (exit code: {self.process.returncode}). Check console for details."
+        else:
+            log.info("Training completed successfully.")
+            status_msg = "✅ Training completed successfully"
+        
         return (
             gr.Button(visible=True),  # Show start button
             gr.Row(visible=False or self.headless),  # Hide stop row
             gr.Checkbox(value=False),  # Reset checkbox
             gr.Button(interactive=False),  # Disable stop button
-            gr.Textbox(value="Training completed")  # Update status
+            gr.Textbox(value=status_msg)  # Update status
         )
 
     def is_running(self):

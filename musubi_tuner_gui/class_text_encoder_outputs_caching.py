@@ -69,11 +69,11 @@ class TextEncoderOutputsCaching:
                 label="Skip Existing",
                 value=self.config.get("caching_teo_skip_existing", False),
                 interactive=True,
-                info="Skip existing cache files"
+                info="✅ RECOMMENDED: Skip if cache already exists. Uncheck to re-cache (needed when: changing captions, changing text encoder model, or cache is corrupted)"
             )
             self.caching_teo_keep_cache = gr.Checkbox(
                 label="Keep Cache",
                 value=self.config.get("caching_teo_keep_cache", False),
                 interactive=True,
-                info="Keep cache files not in dataset"
+                info="✅ RECOMMENDED: Keep old cache files when images are removed from dataset. Uncheck to delete orphaned cache files"
             )

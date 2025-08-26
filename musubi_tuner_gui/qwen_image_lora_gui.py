@@ -2001,6 +2001,23 @@ class QwenImageLatentCaching:
         self.initialize_ui_components()
 
     def initialize_ui_components(self) -> None:
+        # Add informative text about latent caching
+        gr.Markdown("""
+        ### 🖼️ Latent Caching Info
+        
+        **IMPORTANT:** Both Latent AND Text Encoder caching are REQUIRED for training!
+        
+        **What is cached:** Image latent representations from VAE encoder  
+        **Where cached:** In `cache_dir` folder next to your training images  
+        **When to re-cache (uncheck Skip Existing):**
+        - Changed training images
+        - Changed VAE model
+        - Changed resolution
+        - Cache files are corrupted
+        
+        **Cache files:** `.safetensors` files with same names as your images
+        """)
+        
         with gr.Row():
             self.caching_latent_device = gr.Textbox(
                 label="Caching Device",
@@ -2090,6 +2107,21 @@ class QwenImageTextEncoderOutputsCaching:
         self.initialize_ui_components()
 
     def initialize_ui_components(self) -> None:
+        # Add informative text about text encoder caching
+        gr.Markdown("""
+        ### 📝 Text Encoder Caching Info
+        
+        **What is cached:** Caption text embeddings from Qwen2.5-VL model  
+        **Where cached:** In `cache_dir` folder next to your training images  
+        **When to re-cache (uncheck Skip Existing):**
+        - Changed captions or added new captions
+        - Changed text encoder model
+        - Cache files are corrupted
+        - Changed training resolution
+        
+        **Cache files:** `.npz` files with same names as your images
+        """)
+        
         with gr.Row():
             self.caching_teo_text_encoder = gr.Textbox(
                 label="Text Encoder (Qwen2.5-VL) Path",
@@ -2138,13 +2170,13 @@ class QwenImageTextEncoderOutputsCaching:
         with gr.Row():
             self.caching_teo_skip_existing = gr.Checkbox(
                 label="Skip Existing Cache Files",
-                info="Skip text encoder caching if cache files already exist. Disable to force re-caching all text embeddings",
+                info="✅ KEEP CHECKED: Skip if cache already exists (fast). UNCHECK ONLY to re-cache when: captions changed, text encoder changed, or cache corrupted",
                 value=self.config.get("caching_teo_skip_existing", True),
             )
 
             self.caching_teo_keep_cache = gr.Checkbox(
                 label="Keep Cache Files",
-                info="Keep cached text encoder files after training. Recommended to enable for faster re-training with same text data",
+                info="✅ KEEP CHECKED: Keep cache for faster re-training. Cache stays in cache_dir folder even if images removed from dataset",
                 value=self.config.get("caching_teo_keep_cache", True),
             )
 
