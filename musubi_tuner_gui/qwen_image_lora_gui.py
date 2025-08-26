@@ -168,8 +168,8 @@ class QwenImageModel:
                 self.generated_toml_path = gr.Textbox(
                     label="Generated TOML Path",
                     value=self.config.get("generated_toml_path", ""),
-                    info="Path where the generated TOML file will be saved",
-                    interactive=False
+                    info="Path where the generated TOML file will be saved. You can edit this path and it will be saved with your configuration",
+                    interactive=True
                 )
             
             self.dataset_status = gr.Textbox(
