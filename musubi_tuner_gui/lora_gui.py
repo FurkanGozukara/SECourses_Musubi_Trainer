@@ -826,9 +826,22 @@ def lora_tab(
         show_progress=False,
     )
 
+    executor.stop_confirm_checkbox.change(
+        executor.toggle_stop_button,
+        inputs=[executor.stop_confirm_checkbox],
+        outputs=[executor.button_stop_training],
+    )
+
     executor.button_stop_training.click(
         executor.kill_command,
-        outputs=[executor.button_run, executor.button_stop_training],
+        inputs=[executor.stop_confirm_checkbox],
+        outputs=[
+            executor.button_run,
+            executor.stop_row,
+            executor.stop_confirm_checkbox,
+            executor.button_stop_training,
+            executor.training_status,
+        ],
     )
 
     
