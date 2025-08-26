@@ -490,7 +490,31 @@ class QwenImageModel:
             """Generate dataset configuration from folder structure"""
             try:
                 if not parent_folder:
-                    return "", "", "[ERROR] Please specify a parent folder path"
+                    return "", "", "[ERROR] Please specify a parent folder path containing your dataset folders"
+                
+                if not os.path.exists(parent_folder):
+                    return "", "", f"[ERROR] Parent folder does not exist: {parent_folder}\nPlease check the path and try again."
+                
+                if not os.path.isdir(parent_folder):
+                    return "", "", f"[ERROR] Path is not a directory: {parent_folder}\nPlease specify a folder, not a file."
+                
+                # Check if parent folder has subdirectories
+                subdirs = [d for d in os.listdir(parent_folder) 
+                          if os.path.isdir(os.path.join(parent_folder, d)) 
+                          and not d.startswith('.')]
+                
+                if not subdirs:
+                    return "", "", (
+                        f"[ERROR] No subdirectories found in: {parent_folder}\n"
+                        "Expected folder structure:\n"
+                        "  parent_folder/\n"
+                        "    ├── 1_concept/\n"
+                        "    │   ├── image1.png\n"
+                        "    │   └── image1.txt\n"
+                        "    └── 2_style/\n"
+                        "        ├── image2.png\n"
+                        "        └── image2.txt"
+                    )
                 
                 # Determine where to save the dataset config
                 save_location = output_dir if output_dir else os.path.dirname(parent_folder)
@@ -1143,21 +1167,84 @@ def train_qwen_image_model(headless, print_only, parameters):
     
     # Get effective dataset config path based on mode
     effective_dataset_config = None
-    if param_dict.get("dataset_config_mode") == "Generate from Folder Structure":
-        effective_dataset_config = param_dict.get("generated_toml_path")
-    else:
-        effective_dataset_config = param_dict.get("dataset_config")
+    dataset_mode = param_dict.get("dataset_config_mode", "Use TOML File")
     
-    # Validate required parameters before starting
-    if not effective_dataset_config:
-        raise ValueError("[ERROR] Dataset config file is required for training. Please specify a TOML file or generate one from folder structure.")
+    if dataset_mode == "Generate from Folder Structure":
+        effective_dataset_config = param_dict.get("generated_toml_path")
+        if not effective_dataset_config:
+            raise ValueError(
+                "[ERROR] No generated dataset configuration found!\n"
+                "Please click 'Generate Dataset Config' button first to create a TOML file from your folder structure."
+            )
+        if not os.path.exists(effective_dataset_config):
+            raise ValueError(
+                f"[ERROR] Generated dataset config file does not exist: {effective_dataset_config}\n"
+                "Please regenerate the dataset configuration using the 'Generate Dataset Config' button."
+            )
+    else:  # Use TOML File mode
+        effective_dataset_config = param_dict.get("dataset_config")
+        if not effective_dataset_config:
+            raise ValueError(
+                "[ERROR] Dataset config file path is required!\n"
+                "Please either:\n"
+                "1. Specify a path to an existing dataset.toml file, OR\n"
+                "2. Switch to 'Generate from Folder Structure' mode and generate a config"
+            )
+        if not os.path.exists(effective_dataset_config):
+            raise ValueError(
+                f"[ERROR] Dataset config file does not exist: {effective_dataset_config}\n"
+                "Please check the file path or create the dataset configuration file first."
+            )
+    
+    # Validate the TOML file can be parsed
+    try:
+        with open(effective_dataset_config, 'r', encoding='utf-8') as f:
+            dataset_config_content = toml.load(f)
+        if not dataset_config_content.get("datasets"):
+            raise ValueError(
+                f"[ERROR] Invalid dataset config: No datasets defined in {effective_dataset_config}\n"
+                "The TOML file must contain at least one [[datasets]] section."
+            )
+    except toml.TomlDecodeError as e:
+        raise ValueError(
+            f"[ERROR] Invalid TOML format in dataset config: {effective_dataset_config}\n"
+            f"Error: {str(e)}"
+        )
+    except Exception as e:
+        raise ValueError(
+            f"[ERROR] Failed to read dataset config: {effective_dataset_config}\n"
+            f"Error: {str(e)}"
+        )
     
     # Update param_dict with effective config
     param_dict["dataset_config"] = effective_dataset_config
-    if not param_dict.get("vae"):
-        raise ValueError("[ERROR] VAE checkpoint path is required for training. Please download and specify the VAE model path (diffusion_pytorch_model.safetensors from Qwen/Qwen-Image).")
-    if not param_dict.get("dit"):
-        raise ValueError("[ERROR] DiT checkpoint path is required for training. Please download and specify the DiT model path (qwen_image_bf16.safetensors from Comfy-Org/Qwen-Image_ComfyUI).")
+    # Validate VAE checkpoint
+    vae_path = param_dict.get("vae")
+    if not vae_path:
+        raise ValueError(
+            "[ERROR] VAE checkpoint path is required for training!\n"
+            "Please download and specify the VAE model path.\n"
+            "Expected file: pytorch_model.pt or similar from Qwen/Qwen-Image"
+        )
+    if not os.path.exists(vae_path):
+        raise ValueError(
+            f"[ERROR] VAE checkpoint file does not exist: {vae_path}\n"
+            "Please check the file path or download the VAE model first."
+        )
+    
+    # Validate DiT checkpoint
+    dit_path = param_dict.get("dit")
+    if not dit_path:
+        raise ValueError(
+            "[ERROR] DiT checkpoint path is required for training!\n"
+            "Please download and specify the DiT model path.\n"
+            "Expected file: mp_rank_00_model_states_fp8.safetensors or similar"
+        )
+    if not os.path.exists(dit_path):
+        raise ValueError(
+            f"[ERROR] DiT checkpoint file does not exist: {dit_path}\n"
+            "Please check the file path or download the DiT model first."
+        )
     if not param_dict.get("output_dir"):
         raise ValueError("[ERROR] Output directory is required. Please specify where to save your trained LoRA model.")
     if not param_dict.get("output_name"):
@@ -1269,9 +1356,31 @@ def train_qwen_image_model(headless, print_only, parameters):
                                 "--dataset_config", str(param_dict.get("dataset_config"))
         ]
     
-        if param_dict.get("text_encoder") is not None and param_dict.get("text_encoder") != "":
-            run_cache_teo_cmd.append("--text_encoder")
-            run_cache_teo_cmd.append(str(param_dict.get("text_encoder")))   
+        # Validate text encoder for caching
+        text_encoder_path = param_dict.get("text_encoder")
+        if text_encoder_path and text_encoder_path != "":
+            if not os.path.exists(text_encoder_path):
+                log.warning(f"Text encoder file does not exist: {text_encoder_path}")
+                log.warning("Text encoder caching will use text_encoder from caching_teo_text_encoder if specified")
+            else:
+                run_cache_teo_cmd.append("--text_encoder")
+                run_cache_teo_cmd.append(str(text_encoder_path))
+        
+        # Check for caching-specific text encoder
+        caching_text_encoder_path = param_dict.get("caching_teo_text_encoder")
+        if caching_text_encoder_path and caching_text_encoder_path != "":
+            if not os.path.exists(caching_text_encoder_path):
+                raise ValueError(
+                    f"[ERROR] Text encoder file for caching does not exist: {caching_text_encoder_path}\n"
+                    "Please check the file path or download the Qwen2.5-VL model first."
+                )
+            # Override with caching-specific text encoder
+            if "--text_encoder" in run_cache_teo_cmd:
+                idx = run_cache_teo_cmd.index("--text_encoder")
+                run_cache_teo_cmd[idx + 1] = str(caching_text_encoder_path)
+            else:
+                run_cache_teo_cmd.append("--text_encoder")
+                run_cache_teo_cmd.append(str(caching_text_encoder_path))   
                                 
         if param_dict.get("caching_teo_fp8_vl"):
             run_cache_teo_cmd.append("--fp8_vl")
