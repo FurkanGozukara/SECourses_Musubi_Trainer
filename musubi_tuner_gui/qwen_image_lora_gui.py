@@ -2476,6 +2476,7 @@ def qwen_image_lora_tab(
         inputs=[gr.Textbox(value="open_configuration", visible=False), dummy_false, configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
         outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
         show_progress=False,
+        queue=False,  # Allow load button to work during training
     )
 
     configuration.button_save_config.click(
@@ -2483,6 +2484,7 @@ def qwen_image_lora_tab(
         inputs=[gr.Textbox(value="save_configuration", visible=False), dummy_false, configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
         outputs=[configuration.config_file_name, configuration.config_status],
         show_progress=False,
+        queue=False,  # Allow save button to work during training
     )
 
     run_state.change(
