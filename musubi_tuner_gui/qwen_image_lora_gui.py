@@ -64,7 +64,7 @@ class QwenImageModel:
         with gr.Row(visible=self.config.get("dataset_config_mode", "Use TOML File") == "Use TOML File") as self.toml_mode_row:
             self.dataset_config = gr.Textbox(
                 label="Dataset Config File",
-                info="REQUIRED: Path to TOML file containing dataset configuration (images, captions, batch size, resolution, etc.)",
+                info="REQUIRED: Path to TOML file for training. This is the file path the model will use. Must exist before starting training!",
                 placeholder='e.g., /path/to/dataset.toml',
                 value=str(self.config.get("dataset_config", "")),
             )
@@ -168,8 +168,14 @@ class QwenImageModel:
                 self.generated_toml_path = gr.Textbox(
                     label="Generated TOML Path",
                     value=self.config.get("generated_toml_path", ""),
-                    info="Path where the generated TOML file will be saved. You can edit this path and it will be saved with your configuration",
-                    interactive=True
+                    info="Display only. This path is auto-copied to 'Dataset Config File' field. Training ALWAYS uses the 'Dataset Config File' path.",
+                    interactive=False
+                )
+            
+            with gr.Row():
+                self.copy_generated_path_button = gr.Button(
+                    "📋 Copy Generated TOML Path to Dataset Config",
+                    variant="secondary"
                 )
             
             self.dataset_status = gr.Textbox(
@@ -610,6 +616,19 @@ class QwenImageModel:
                 saveLoadSettings.output_dir if saveLoadSettings else gr.Textbox(value="")  # Pass output_dir from SaveLoadSettings
             ],
             outputs=[self.generated_toml_path, self.dataset_config, self.dataset_status]
+        )
+        
+        # Add copy button handler
+        def copy_generated_path(generated_path):
+            """Copy the generated TOML path to the dataset config field"""
+            if not generated_path or generated_path.strip() == "":
+                return generated_path, "[INFO] No generated TOML path to copy. Please generate a dataset configuration first."
+            return generated_path, f"[OK] Copied path to Dataset Config File: {generated_path}"
+        
+        self.copy_generated_path_button.click(
+            fn=copy_generated_path,
+            inputs=[self.generated_toml_path],
+            outputs=[self.dataset_config, self.dataset_status]
         )
     
     def get_dataset_config_path(self):
@@ -1165,32 +1184,28 @@ def train_qwen_image_model(headless, print_only, parameters):
 
     param_dict = dict(parameters)
     
-    # Get effective dataset config path based on mode
-    effective_dataset_config = None
+    # Always use the Dataset Config File path for training
+    effective_dataset_config = param_dict.get("dataset_config")
     dataset_mode = param_dict.get("dataset_config_mode", "Use TOML File")
     
-    if dataset_mode == "Generate from Folder Structure":
-        effective_dataset_config = param_dict.get("generated_toml_path")
-        if not effective_dataset_config:
+    # Validate dataset config path
+    if not effective_dataset_config or effective_dataset_config.strip() == "":
+        if dataset_mode == "Generate from Folder Structure":
             raise ValueError(
-                "[ERROR] No generated dataset configuration found!\n"
-                "Please click 'Generate Dataset Config' button first to create a TOML file from your folder structure."
+                "[ERROR] Dataset config file path is empty!\n"
+                "After generating a dataset configuration:\n"
+                "1. The path should be auto-copied to 'Dataset Config File' field, OR\n"
+                "2. Click 'Copy Generated TOML Path to Dataset Config' button to manually copy it\n"
+                "The model always uses the path in 'Dataset Config File' for training."
             )
-        if not os.path.exists(effective_dataset_config):
+        else:
             raise ValueError(
-                f"[ERROR] Generated dataset config file does not exist: {effective_dataset_config}\n"
-                "Please regenerate the dataset configuration using the 'Generate Dataset Config' button."
+                "[ERROR] Dataset config file path is empty!\n"
+                "Please enter a path in the 'Dataset Config File' field.\n"
+                "This is the path that will be used for training."
             )
-    else:  # Use TOML File mode
-        effective_dataset_config = param_dict.get("dataset_config")
-        if not effective_dataset_config:
-            raise ValueError(
-                "[ERROR] Dataset config file path is required!\n"
-                "Please either:\n"
-                "1. Specify a path to an existing dataset.toml file, OR\n"
-                "2. Switch to 'Generate from Folder Structure' mode and generate a config"
-            )
-        if not os.path.exists(effective_dataset_config):
+    
+    if not os.path.exists(effective_dataset_config):
             raise ValueError(
                 f"[ERROR] Dataset config file does not exist: {effective_dataset_config}\n"
                 "Please check the file path or create the dataset configuration file first."
