@@ -2035,7 +2035,7 @@ class QwenImageOptimizerSettings:
 
 
 class QwenImageNetworkSettings:
-    """Qwen Image specific network settings with optimal defaults"""
+    """Qwen Image specific LoRA network settings with optimal defaults"""
     def __init__(self, headless: bool, config: GUIConfig) -> None:
         self.config = config
         self.headless = headless
@@ -2050,7 +2050,7 @@ class QwenImageNetworkSettings:
             )
 
             self.network_weights = gr.Textbox(
-                label="Pretrained Network Weights",
+                label="Network Weights (LoRA Weights)",
                 info="Path to existing LoRA weights to continue training from. Leave empty to start from scratch",
                 placeholder="e.g., /path/to/existing_lora.safetensors",
                 value=self.config.get("network_weights", ""),
@@ -2058,7 +2058,7 @@ class QwenImageNetworkSettings:
 
         with gr.Row():
             self.network_module = gr.Textbox(
-                label="Network Module",
+                label="Network Module (LoRA Type)",
                 info="[AUTO-SET] LoRA implementation for Qwen Image. 'networks.lora_qwen_image' is automatically selected. Do not change",
                 placeholder="networks.lora_qwen_image",
                 value=self.config.get("network_module", "networks.lora_qwen_image"),
@@ -2066,7 +2066,7 @@ class QwenImageNetworkSettings:
             )
 
             self.network_dim = gr.Number(
-                label="Network Dimension (Rank)",
+                label="Network Dimension (LoRA Rank)",
                 info="[RECOMMENDED] LoRA rank/dimension. 16 for Qwen Image. Higher = more capacity but larger files. Range: 8-128",
                 value=self.config.get("network_dim", 16),
                 minimum=1,
@@ -2077,7 +2077,7 @@ class QwenImageNetworkSettings:
 
         with gr.Row():
             self.network_alpha = gr.Number(
-                label="Network Alpha",
+                label="Network Alpha (LoRA Alpha)",
                 info="[RECOMMENDED] LoRA scaling factor. 1.0 for Qwen Image. Higher = stronger LoRA effect. Formula: alpha/rank = final scaling",
                 value=self.config.get("network_alpha", 1.0),
                 minimum=0.1,
@@ -2087,8 +2087,8 @@ class QwenImageNetworkSettings:
             )
 
             self.network_dropout = gr.Number(
-                label="Network Dropout",
-                info="Dropout rate for regularization. 0.0 = no dropout, 0.1 = 10% dropout. Helps prevent overfitting",
+                label="Network Dropout (LoRA Dropout)",
+                info="Dropout rate for LoRA regularization. 0.0 = no dropout, 0.1 = 10% dropout. Helps prevent overfitting",
                 value=self.config.get("network_dropout", 0.0),
                 minimum=0.0,
                 maximum=1.0,
@@ -2098,7 +2098,7 @@ class QwenImageNetworkSettings:
 
         with gr.Row():
             self.network_args = gr.Textbox(
-                label="Network Arguments",
+                label="Network Arguments (LoRA Args)",
                 info="Advanced LoRA parameters as key=value pairs. Common: conv_dim=4 (train convolution layers), conv_alpha=1",
                 placeholder='e.g. "conv_dim=4 conv_alpha=1"',
                 value=self.config.get("network_args", ""),
@@ -2570,7 +2570,7 @@ def qwen_image_lora_tab(
     with optimizer_accordion:
         OptimizerAndSchedulerSettings = QwenImageOptimizerSettings(headless=headless, config=config)
         
-    network_accordion = gr.Accordion("Network Settings", open=False, elem_classes="flux1_background")
+    network_accordion = gr.Accordion("LoRA Settings", open=False, elem_classes="flux1_background")
     accordions.append(network_accordion)
     with network_accordion:
         network = QwenImageNetworkSettings(headless=headless, config=config)

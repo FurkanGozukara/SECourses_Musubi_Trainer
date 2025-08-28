@@ -621,7 +621,7 @@ def lora_tab(
     with gr.Accordion("Optimizer and Scheduler Settings", open=True, elem_classes="flux1_rank_layers_background"):
         OptimizerAndSchedulerSettings = OptimizerAndScheduler(headless=headless, config=config)
         
-    with gr.Accordion("Network Settings", open=True, elem_classes="flux1_background"):
+    with gr.Accordion("LoRA Settings", open=True, elem_classes="flux1_background"):
         network = Network(headless=headless, config=config)
         
     with gr.Accordion("Training Settings", open=True, elem_classes="preset_background"):

@@ -22,28 +22,28 @@ class Network:
             )
 
             self.network_weights = gr.Textbox(
-                label="Network Weights",
-                placeholder="Path to pretrained weights for network",
+                label="Network Weights (LoRA Weights)",
+                placeholder="Path to pretrained LoRA weights for network",
                 value=self.config.get("network_weights", None),
             )
 
             self.network_module = gr.Textbox(
-                label="Network Module",
-                placeholder="Module of the network to train",
+                label="Network Module (LoRA Type)",
+                placeholder="LoRA module type to train",
                 value=self.config.get("network_module", None),
             )
 
         with gr.Row():
             self.network_dim = gr.Number(
-                label="Network Dimensions",
-                info="Specify dimensions for the network (depends on the module)",
+                label="Network Dimensions (LoRA Rank)",
+                info="LoRA rank/dimensions (depends on the module type)",
                 value=self.config.get("network_dim", 32),
                 step=1,
                 interactive=True,
             )
 
             self.network_alpha = gr.Number(
-                label="Network Alpha",
+                label="Network Alpha (LoRA Alpha)",
                 info="Alpha value for LoRA weight scaling (default: 1)",
                 value=self.config.get("network_alpha", 1),
                 step=1,
@@ -51,8 +51,8 @@ class Network:
             )
 
             self.network_dropout = gr.Number(
-                label="Network Dropout",
-                info="Dropout rate (0 or None for no dropout, 1 drops all neurons)",
+                label="Network Dropout (LoRA Dropout)",
+                info="LoRA dropout rate (0 or None for no dropout, 1 drops all neurons)",
                 value=self.config.get("network_dropout", 0),
                 step=0.01,
                 minimum=0,
@@ -62,8 +62,8 @@ class Network:
 
         with gr.Row():
             self.network_args = gr.Textbox(
-                label="Network Arguments",
-                placeholder="Additional network arguments (key=value)",
+                label="Network Arguments (LoRA Args)",
+                placeholder="Additional LoRA network arguments (key=value)",
                 value=self.config.get("network_args", ""),
                 interactive=True,
             )
@@ -77,7 +77,7 @@ class Network:
 
         with gr.Row():
             self.dim_from_weights = gr.Checkbox(
-                label="Determine Dimensions from Network Weights",
+                label="Determine Dimensions from LoRA Weights",
                 value=self.config.get("dim_from_weights", False),
             )
 
@@ -92,8 +92,8 @@ class Network:
 
         with gr.Row():
             self.base_weights = gr.Textbox(
-                label="Base Weights",
-                placeholder="Paths to network weights to merge into the model before training",
+                label="Base Weights (LoRA Base)",
+                placeholder="Paths to LoRA weights to merge into the model before training",
                 value=self.config.get("base_weights", ""),
             )
 
