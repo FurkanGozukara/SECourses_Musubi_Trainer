@@ -1407,6 +1407,26 @@ def SaveConfigFile(
                         # Space-separated arguments like "conv_dim=4 conv_alpha=1"
                         value = value.split() if value.strip() else []
             
+            # Convert 0 to None for parameters that musubi tuner expects as None when disabled
+            # This prevents ZeroDivisionError and other issues
+            zero_to_none_params = [
+                "sample_every_n_steps", "sample_every_n_epochs", "save_every_n_steps",
+                "blocks_to_swap", "min_timestep", "num_timestep_buckets", 
+                "vae_chunk_size", "vae_spatial_tile_sample_min_size"
+            ]
+            if name in zero_to_none_params:
+                if value == 0:
+                    value = None
+            
+            # Convert empty strings to None for parameters that musubi tuner expects as None
+            empty_to_none_params = [
+                "base_weights", "dit", "vae", "network_weights",
+                "log_tracker_config", "metadata_title", "wandb_api_key"
+            ]
+            if name in empty_to_none_params:
+                if isinstance(value, str) and value == "":
+                    value = None
+            
             variables[name] = value
 
     folder_path = os.path.dirname(file_path)
@@ -1509,6 +1529,26 @@ def SaveConfigFileToRun(
                 else:
                     # Space-separated arguments like "conv_dim=4 conv_alpha=1"
                     value = value.split() if value.strip() else []
+        
+        # Convert 0 to None for parameters that musubi tuner expects as None when disabled
+        # This prevents ZeroDivisionError and other issues
+        zero_to_none_params = [
+            "sample_every_n_steps", "sample_every_n_epochs", "save_every_n_steps",
+            "blocks_to_swap", "min_timestep", "num_timestep_buckets", 
+            "vae_chunk_size", "vae_spatial_tile_sample_min_size"
+        ]
+        if name in zero_to_none_params:
+            if value == 0:
+                value = None
+        
+        # Convert empty strings to None for parameters that musubi tuner expects as None
+        empty_to_none_params = [
+            "base_weights", "dit", "vae", "network_weights",
+            "log_tracker_config", "metadata_title", "wandb_api_key"
+        ]
+        if name in empty_to_none_params:
+            if isinstance(value, str) and value == "":
+                value = None
         
         variables[name] = value
 
