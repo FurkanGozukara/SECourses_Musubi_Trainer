@@ -1379,11 +1379,16 @@ def SaveConfigFile(
                     # But allow some specific parameters that can be empty
                     if name not in ["output_dir", "output_name", "comment", "metadata_author", 
                                    "metadata_description", "metadata_license", "metadata_tags", 
-                                   "metadata_title", "huggingface_repo_id", "huggingface_token",
-                                   "huggingface_path_in_repo", "extra_accelerate_launch_args",
+                                   "metadata_title", "extra_accelerate_launch_args",
                                    "additional_parameters", "wandb_api_key", "tracker_name",
                                    "tracker_run_name", "log_tracker_name", "log_tracker_config"]:
                         continue
+            
+            # Skip HuggingFace parameters if they are empty strings (prevent upload attempts)
+            if name in ["huggingface_repo_id", "huggingface_token", "huggingface_path_in_repo", 
+                       "huggingface_repo_type", "huggingface_repo_visibility"]:
+                if isinstance(value, str) and value == "":
+                    continue
             
             # Convert string representations of lists back to actual lists for specific parameters
             if name in ["network_args", "optimizer_args", "lr_scheduler_args"]:
@@ -1477,11 +1482,16 @@ def SaveConfigFileToRun(
                 # But allow some specific parameters that can be empty
                 if name not in ["output_dir", "output_name", "comment", "metadata_author", 
                                "metadata_description", "metadata_license", "metadata_tags", 
-                               "metadata_title", "huggingface_repo_id", "huggingface_token",
-                               "huggingface_path_in_repo", "extra_accelerate_launch_args",
+                               "metadata_title", "extra_accelerate_launch_args",
                                "additional_parameters", "wandb_api_key", "tracker_name",
                                "tracker_run_name", "log_tracker_name", "log_tracker_config"]:
                     continue
+        
+        # Skip HuggingFace parameters if they are empty strings (prevent upload attempts)
+        if name in ["huggingface_repo_id", "huggingface_token", "huggingface_path_in_repo", 
+                   "huggingface_repo_type", "huggingface_repo_visibility"]:
+            if isinstance(value, str) and value == "":
+                continue
         
         # Convert string representations of lists back to actual lists for specific parameters
         if name in ["network_args", "optimizer_args", "lr_scheduler_args"]:
