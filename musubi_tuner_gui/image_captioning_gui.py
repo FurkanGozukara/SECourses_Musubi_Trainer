@@ -75,7 +75,7 @@ class ImageCaptioningTab:
                                 label="Qwen2.5-VL Model Path",
                                 info="Path to Qwen2.5-VL text encoder model (qwen_2.5_vl_7b.safetensors from Comfy-Org/Qwen-Image_ComfyUI)",
                                 placeholder="e.g., /path/to/qwen_2.5_vl_7b.safetensors",
-                                value=self.config.get("model_path", ""),
+                                value=self.config.get("image_captioning.model_path", ""),
                                 scale=3
                             )
                             
@@ -89,13 +89,13 @@ class ImageCaptioningTab:
                             self.fp8_vl = gr.Checkbox(
                                 label="Use FP8 Precision",
                                 info="Enable FP8 quantization to reduce VRAM usage (~8GB savings). Recommended for GPUs with <24GB VRAM",
-                                value=self.config.get("fp8_vl", True),
+                                value=self.config.get("image_captioning.fp8_vl", True),
                             )
                             
                             self.max_size = gr.Number(
                                 label="Max Image Size",
                                 info="Maximum image size for processing. Higher values need more VRAM",
-                                value=self.config.get("max_size", 1280),
+                                value=self.config.get("image_captioning.max_size", 1280),
                                 minimum=256,
                                 maximum=2048,
                                 step=64,
@@ -114,32 +114,80 @@ class ImageCaptioningTab:
                             self.max_new_tokens = gr.Number(
                                 label="Max New Tokens",
                                 info="Maximum number of tokens to generate for each caption",
-                                value=self.config.get("max_new_tokens", 1024),
+                                value=self.config.get("image_captioning.max_new_tokens", 1024),
                                 minimum=64,
                                 maximum=4096,
                                 step=64,
                             )
                         
+                        # Add Generation Parameters section
+                        gr.Markdown("### Generation Parameters")
+                        with gr.Row():
+                            self.do_sample = gr.Checkbox(
+                                label="Do Sample",
+                                info="Whether to use sampling for text generation (recommended: True)",
+                                value=self.config.get("image_captioning.do_sample", True),
+                            )
+                            
+                            self.temperature = gr.Slider(
+                                label="Temperature",
+                                info="Controls randomness (0.1=focused, 1.0=creative)",
+                                value=self.config.get("image_captioning.temperature", 0.7),
+                                minimum=0.1,
+                                maximum=2.0,
+                                step=0.1,
+                            )
+                        
+                        with gr.Row():
+                            self.top_k = gr.Number(
+                                label="Top K",
+                                info="Number of top tokens to consider (higher=more diverse)",
+                                value=self.config.get("image_captioning.top_k", 50),
+                                minimum=1,
+                                maximum=100,
+                                step=1,
+                            )
+                            
+                            self.top_p = gr.Slider(
+                                label="Top P",
+                                info="Cumulative probability threshold (0.95 recommended)",
+                                value=self.config.get("image_captioning.top_p", 0.95),
+                                minimum=0.1,
+                                maximum=1.0,
+                                step=0.05,
+                            )
+                        
+                        with gr.Row():
+                            self.repetition_penalty = gr.Slider(
+                                label="Repetition Penalty",
+                                info="Penalty for repeating tokens (1.0=no penalty, higher=less repetition)",
+                                value=self.config.get("image_captioning.repetition_penalty", 1.05),
+                                minimum=1.0,
+                                maximum=2.0,
+                                step=0.05,
+                            )
+                        
+                        gr.Markdown("### Caption Modifications")
                         with gr.Row():
                             self.prefix = gr.Textbox(
                                 label="Caption Prefix",
                                 info="Text to add before each generated caption",
                                 placeholder="e.g., 'A detailed image showing '",
-                                value=self.config.get("prefix", ""),
+                                value=self.config.get("image_captioning.prefix", ""),
                             )
                             
                             self.suffix = gr.Textbox(
                                 label="Caption Suffix", 
                                 info="Text to add after each generated caption",
                                 placeholder="e.g., ' with high quality details.'",
-                                value=self.config.get("suffix", ""),
+                                value=self.config.get("image_captioning.suffix", ""),
                             )
                         
                         self.replace_words = gr.Textbox(
                             label="Replace Words",
                             info="Word pairs to replace in captions. Format: orgword:replaceword;orgword2:replaceword2 (e.g., 'man:ohwx man;person:ohwx person'). Applied after prefix/suffix.",
                             placeholder="e.g., man:ohwx man;person:ohwx person",
-                            value=self.config.get("replace_words", ""),
+                            value=self.config.get("image_captioning.replace_words", ""),
                             lines=2,
                         )
                         
@@ -147,13 +195,13 @@ class ImageCaptioningTab:
                             self.replace_case_insensitive = gr.Checkbox(
                                 label="Case Insensitive Replace",
                                 info="Replace words regardless of case (e.g., 'Man', 'man', 'MAN' all match)",
-                                value=self.config.get("replace_case_insensitive", True)
+                                value=self.config.get("image_captioning.replace_case_insensitive", True)
                             )
                             
                             self.replace_whole_words_only = gr.Checkbox(
                                 label="Replace Whole Words Only",
                                 info="Only replace complete words (e.g., 'he' won't match 'her' or 'the')",
-                                value=self.config.get("replace_whole_words_only", True)
+                                value=self.config.get("image_captioning.replace_whole_words_only", True)
                             )
                         
                         with gr.Row():
@@ -168,7 +216,7 @@ class ImageCaptioningTab:
                         label="Custom Prompt",
                         info="Custom prompt for caption generation. Use \\n for newlines. Leave empty to use default",
                         placeholder="Enter custom prompt or leave empty for default...",
-                        value=self.config.get("custom_prompt", ""),
+                        value=self.config.get("image_captioning.custom_prompt", ""),
                         lines=4,
                         max_lines=10,
                     )
@@ -207,7 +255,7 @@ class ImageCaptioningTab:
                                 label="Image Directory",
                                 info="Directory containing images to caption",
                                 placeholder="e.g., /path/to/images",
-                                value=self.config.get("batch_image_dir", ""),
+                                value=self.config.get("image_captioning.batch_image_dir", ""),
                                 scale=3
                             )
                             
@@ -222,7 +270,7 @@ class ImageCaptioningTab:
                                 label="Output Folder (optional)",
                                 info="Where to save caption files. Leave empty to save alongside images",
                                 placeholder="e.g., /path/to/output (optional)",
-                                value=self.config.get("batch_output_folder", ""),
+                                value=self.config.get("image_captioning.batch_output_folder", ""),
                                 scale=3
                             )
                             
@@ -236,7 +284,7 @@ class ImageCaptioningTab:
                             self.output_format = gr.Radio(
                                 label="Output Format",
                                 choices=["text", "jsonl"],
-                                value=self.config.get("output_format", "text"),
+                                value=self.config.get("image_captioning.output_format", "text"),
                                 info="text: Creates .txt file for each image | jsonl: Creates single JSONL file with all captions",
                             )
                         
@@ -244,20 +292,20 @@ class ImageCaptioningTab:
                             self.scan_subfolders = gr.Checkbox(
                                 label="Scan Subfolders",
                                 info="Include images from all subfolders recursively",
-                                value=self.config.get("scan_subfolders", False)
+                                value=self.config.get("image_captioning.scan_subfolders", False)
                             )
                             
                             self.copy_images = gr.Checkbox(
                                 label="Copy Images",
                                 info="Copy images to output folder (preserves folder structure when scanning subfolders)",
-                                value=self.config.get("copy_images", False)
+                                value=self.config.get("image_captioning.copy_images", False)
                             )
                         
                         with gr.Row():
                             self.overwrite_existing_captions = gr.Checkbox(
                                 label="Overwrite Existing Captions",
                                 info="Replace existing caption files. If unchecked, skips images that already have captions",
-                                value=self.config.get("overwrite_existing_captions", False)
+                                value=self.config.get("image_captioning.overwrite_existing_captions", False)
                             )
                         
                         with gr.Row(visible=False) as self.jsonl_output_row:
@@ -265,7 +313,7 @@ class ImageCaptioningTab:
                                 label="JSONL Output File",
                                 info="Path to save JSONL file (required when output format is JSONL)",
                                 placeholder="e.g., /path/to/captions.jsonl",
-                                value=self.config.get("jsonl_output_file", ""),
+                                value=self.config.get("image_captioning.jsonl_output_file", ""),
                                 scale=3
                             )
                             
@@ -349,6 +397,12 @@ class ImageCaptioningTab:
                 self.replace_case_insensitive,
                 self.replace_whole_words_only,
                 self.model_path,
+                # Generation parameters
+                self.do_sample,
+                self.temperature,
+                self.top_k,
+                self.top_p,
+                self.repetition_penalty,
             ],
             outputs=[self.single_caption_output, self.model_status],
         )
@@ -394,6 +448,12 @@ class ImageCaptioningTab:
                 self.copy_images,
                 self.overwrite_existing_captions,
                 self.model_path,
+                # Generation parameters
+                self.do_sample,
+                self.temperature,
+                self.top_k,
+                self.top_p,
+                self.repetition_penalty,
             ],
             outputs=self.batch_status,
         )
@@ -420,6 +480,12 @@ class ImageCaptioningTab:
                 self.scan_subfolders,
                 self.copy_images,
                 self.overwrite_existing_captions,
+                # Generation parameters
+                self.do_sample,
+                self.temperature,
+                self.top_k,
+                self.top_p,
+                self.repetition_penalty,
             ],
             outputs=[self.config_file_path, self.config_status],
         )
@@ -445,6 +511,12 @@ class ImageCaptioningTab:
                 self.scan_subfolders,
                 self.copy_images,
                 self.overwrite_existing_captions,
+                # Generation parameters
+                self.do_sample,
+                self.temperature,
+                self.top_k,
+                self.top_p,
+                self.repetition_penalty,
                 self.config_status,
             ],
         )
@@ -488,6 +560,12 @@ class ImageCaptioningTab:
         replace_case_insensitive: bool,
         replace_whole_words_only: bool,
         model_path: str,
+        # Generation parameters
+        do_sample: bool,
+        temperature: float,
+        top_k: int,
+        top_p: float,
+        repetition_penalty: float,
     ) -> Tuple[str, str]:
         """Generate caption for a single image with auto-loading"""
         if not image_path:
@@ -502,7 +580,7 @@ class ImageCaptioningTab:
         
         success, caption = self.captioning.generate_caption(
             image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix, replace_words,
-            replace_case_insensitive, replace_whole_words_only
+            replace_case_insensitive, replace_whole_words_only, do_sample, temperature, top_k, top_p, repetition_penalty
         )
         
         if success:
@@ -560,6 +638,12 @@ class ImageCaptioningTab:
         copy_images: bool,
         overwrite_existing_captions: bool,
         model_path: str,
+        # Generation parameters
+        do_sample: bool,
+        temperature: float,
+        top_k: int,
+        top_p: float,
+        repetition_penalty: float,
     ) -> str:
         """Process batch captioning with auto-loading"""
         if not image_dir:
@@ -581,7 +665,8 @@ class ImageCaptioningTab:
         success, message = self.captioning.batch_caption_images(
             image_dir, output_format, jsonl_output_file, output_folder, max_new_tokens,
             prompt, max_size, fp8_vl, prefix, suffix, replace_words, replace_case_insensitive,
-            replace_whole_words_only, scan_subfolders, copy_images, overwrite_existing_captions, progress
+            replace_whole_words_only, scan_subfolders, copy_images, overwrite_existing_captions, progress,
+            do_sample, temperature, top_k, top_p, repetition_penalty
         )
         
         return message
@@ -606,6 +691,12 @@ class ImageCaptioningTab:
         scan_subfolders: bool,
         copy_images: bool,
         overwrite_existing_captions: bool,
+        # Generation parameters
+        do_sample: bool,
+        temperature: float,
+        top_k: int,
+        top_p: float,
+        repetition_penalty: float,
     ) -> tuple:
         """Save current configuration to file"""
         if not config_file_path:
@@ -636,6 +727,12 @@ class ImageCaptioningTab:
                     "scan_subfolders": scan_subfolders,
                     "copy_images": copy_images,
                     "overwrite_existing_captions": overwrite_existing_captions,
+                    # Generation parameters
+                    "do_sample": do_sample,
+                    "temperature": temperature,
+                    "top_k": top_k,
+                    "top_p": top_p,
+                    "repetition_penalty": repetition_penalty,
                 }
             }
             
@@ -663,16 +760,16 @@ class ImageCaptioningTab:
             gr.Error(error_msg)
             return config_file_path, error_msg
     
-    def load_configuration(self, config_file_path: str) -> Tuple[str, bool, int, int, str, str, str, bool, bool, str, str, str, str, str, bool, bool, bool, str]:
+    def load_configuration(self, config_file_path: str) -> Tuple[str, bool, int, int, str, str, str, bool, bool, str, str, str, str, str, bool, bool, bool, bool, float, int, float, float, str]:
         """Load configuration from file"""
         if not config_file_path:
-            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, "Please provide a configuration file path"
+            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, True, 0.7, 50, 0.95, 1.05, "Please provide a configuration file path"
         
         if not os.path.isfile(config_file_path):
             error_msg = f"❌ Configuration file does not exist: {config_file_path}"
             log.error(error_msg)
             gr.Error(error_msg)
-            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, error_msg
+            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, True, 0.7, 50, 0.95, 1.05, error_msg
         
         try:
             import toml
@@ -706,13 +803,19 @@ class ImageCaptioningTab:
                 captioning_config.get("scan_subfolders", False),
                 captioning_config.get("copy_images", False),
                 captioning_config.get("overwrite_existing_captions", False),
+                # Generation parameters - load with proper defaults
+                captioning_config.get("do_sample", True),
+                captioning_config.get("temperature", 0.7),
+                captioning_config.get("top_k", 50),
+                captioning_config.get("top_p", 0.95),
+                captioning_config.get("repetition_penalty", 1.05),
                 success_msg,
             )
         except Exception as e:
             error_msg = f"❌ Error loading configuration: {str(e)}"
             log.error(error_msg)
             gr.Error(error_msg)
-            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, error_msg
+            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, True, 0.7, 50, 0.95, 1.05, error_msg
 
 
 def image_captioning_tab(headless: bool = False, config: GUIConfig = None) -> None:

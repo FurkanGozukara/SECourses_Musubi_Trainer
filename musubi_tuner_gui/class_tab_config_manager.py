@@ -18,11 +18,17 @@ class TabConfigManager:
             "image_captioning": None
         }
         
-        # Initialize base config
-        self.base_config = GUIConfig(config_file_path)
-        
-        # Check if user loaded a config file
-        self.user_loaded_config = self.base_config.is_config_loaded()
+        # Check if config file exists and has content
+        import os
+        if os.path.exists(config_file_path):
+            # Initialize base config
+            self.base_config = GUIConfig(config_file_path)
+            # Check if user loaded a config file
+            self.user_loaded_config = self.base_config.is_config_loaded()
+        else:
+            # No config file exists, use empty config
+            self.base_config = GUIConfig()
+            self.user_loaded_config = False
         
     def get_config_for_tab(self, tab_name: str) -> GUIConfig:
         """Get configuration for specific tab, loading defaults if needed"""
@@ -30,7 +36,19 @@ class TabConfigManager:
             log.error(f"Unknown tab: {tab_name}")
             return self.base_config
             
-        # If user has loaded their own config, use it for all tabs
+        # Special handling for image_captioning: check if config has this section
+        if tab_name == "image_captioning":
+            # Check if the base config has image_captioning section
+            if self.user_loaded_config and "image_captioning" in self.base_config.config:
+                # User has image_captioning config, use it
+                return self.base_config
+            else:
+                # No image_captioning config, load defaults
+                if self.configs[tab_name] is None:
+                    self.configs[tab_name] = self._load_tab_defaults(tab_name)
+                return self.configs[tab_name]
+        
+        # For other tabs, if user has loaded their own config, use it
         if self.user_loaded_config:
             return self.base_config
             
@@ -58,10 +76,8 @@ class TabConfigManager:
         try:
             if os.path.exists(default_path):
                 log.info(f"Loading {tab_name} defaults from {default_file}")
-                config = GUIConfig()
-                with open(default_path, "r", encoding="utf-8") as f:
-                    default_data = toml.load(f)
-                    config.config.update(default_data)
+                # Create a GUIConfig with the default file path
+                config = GUIConfig(default_path)
                 log.info(f"{tab_name} defaults loaded successfully")
                 return config
             else:

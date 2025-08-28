@@ -13,11 +13,26 @@ prefix = ""  # Text to add before each caption
 suffix = ""  # Text to add after each caption
 custom_prompt = ""  # Custom prompt (empty = use default)
 
+# Generation Parameters (Optimized for diverse, coherent captions)
+do_sample = true  # Enable sampling for text generation
+temperature = 0.7  # Controls randomness (0.1=focused, 1.0=creative, 0.7=balanced)
+top_k = 50  # Number of top tokens to consider (higher=more diverse vocabulary)
+top_p = 0.95  # Cumulative probability threshold (0.95 recommended for coherence)
+repetition_penalty = 1.05  # Penalty for repeating tokens (1.0=none, 1.05=slight penalty)
+
+# Word Replacement Settings
+replace_words = ""  # Word replacement pairs (format: word1:replacement1;word2:replacement2)
+replace_case_insensitive = true  # Replace words regardless of case
+replace_whole_words_only = true  # Only replace complete words
+
 # Batch Processing Settings
 batch_image_dir = ""  # Directory containing images for batch processing
 batch_output_folder = ""  # Output folder for caption files (optional, empty = save alongside images)
 output_format = "text"  # Output format: "text" or "jsonl"
 jsonl_output_file = ""  # Output file path for JSONL format
+scan_subfolders = false  # Include images from all subfolders recursively
+copy_images = false  # Copy images to output folder
+overwrite_existing_captions = false  # Replace existing caption files
 
 # Advanced Settings
 enable_progress_tracking = true  # Show progress during batch processing

@@ -148,7 +148,13 @@ class ImageCaptioning:
         suffix: str = "",
         replace_words: str = "",
         replace_case_insensitive: bool = True,
-        replace_whole_words_only: bool = True
+        replace_whole_words_only: bool = True,
+        # Generation parameters
+        do_sample: bool = True,
+        temperature: float = 0.7,
+        top_k: int = 50,
+        top_p: float = 0.95,
+        repetition_penalty: float = 1.05
     ) -> Tuple[bool, str]:
         """Generate caption for a single image"""
         try:
@@ -180,13 +186,25 @@ class ImageCaptioning:
             inputs = self.processor(text=[text], images=image_inputs, padding=True, return_tensors="pt")
             inputs = inputs.to(self.device)
             
+            # Set proper generation parameters
+            generation_params = {
+                "do_sample": do_sample,
+                "temperature": temperature,
+                "top_k": top_k,
+                "top_p": top_p,
+                "repetition_penalty": repetition_penalty,
+                "max_new_tokens": max_new_tokens,
+                "pad_token_id": self.processor.tokenizer.pad_token_id if self.processor.tokenizer.pad_token_id is not None else self.processor.tokenizer.eos_token_id,
+                "eos_token_id": self.processor.tokenizer.eos_token_id,
+            }
+            
             # Generate caption with fp8 support
             if fp8_vl:
                 with torch.no_grad(), torch.autocast(device_type=self.device.type, dtype=torch.bfloat16):
-                    generated_ids = self.model.generate(**inputs, max_new_tokens=max_new_tokens, pad_token_id=self.processor.tokenizer.eos_token_id)
+                    generated_ids = self.model.generate(**inputs, **generation_params)
             else:
                 with torch.no_grad():
-                    generated_ids = self.model.generate(**inputs, max_new_tokens=max_new_tokens, pad_token_id=self.processor.tokenizer.eos_token_id)
+                    generated_ids = self.model.generate(**inputs, **generation_params)
             
             generated_ids_trimmed = [out_ids[len(in_ids) :] for in_ids, out_ids in zip(inputs.input_ids, generated_ids)]
             caption = self.processor.batch_decode(generated_ids_trimmed, skip_special_tokens=True, clean_up_tokenization_spaces=False)
@@ -260,7 +278,13 @@ class ImageCaptioning:
         scan_subfolders: bool = False,
         copy_images: bool = False,
         overwrite_existing_captions: bool = False,
-        progress: gr.Progress = None
+        progress: gr.Progress = None,
+        # Generation parameters
+        do_sample: bool = True,
+        temperature: float = 0.7,
+        top_k: int = 50,
+        top_p: float = 0.95,
+        repetition_penalty: float = 1.05
     ) -> Tuple[bool, str]:
         """Batch caption images in a directory"""
         try:
@@ -325,7 +349,7 @@ class ImageCaptioning:
                         
                         success, caption = self.generate_caption(
                             image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix, replace_words,
-                            replace_case_insensitive, replace_whole_words_only
+                            replace_case_insensitive, replace_whole_words_only, do_sample, temperature, top_k, top_p, repetition_penalty
                         )
                         
                         if success:
