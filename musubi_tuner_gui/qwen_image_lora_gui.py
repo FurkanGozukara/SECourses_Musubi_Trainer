@@ -20,6 +20,7 @@ from .class_training import TrainingSettings
 from .common_gui import (
     get_file_path,
     get_file_path_or_save_as,
+    get_folder_path,
     get_saveasfile_path,
     print_command_and_toml,
     run_cmd_advanced_training,
@@ -2038,19 +2039,26 @@ class QwenImageSaveLoadSettings:
 
     def initialize_ui_components(self) -> None:
         with gr.Row():
-            self.output_dir = gr.Textbox(
-                label="Output Directory",
-                info="REQUIRED: Directory where trained LoRA model will be saved. Must exist or be creatable",
-                placeholder="e.g., ./models/trained or /path/to/output",
-                value=self.config.get("output_dir", ""),
+            with gr.Column(scale=4):
+                self.output_dir = gr.Textbox(
+                    label="Output Directory",
+                    info="REQUIRED: Directory where trained LoRA model will be saved. Must exist or be creatable",
+                    placeholder="e.g., ./models/trained or /path/to/output",
+                    value=self.config.get("output_dir", ""),
+                )
+            self.output_dir_button = gr.Button(
+                "📂",
+                size="sm",
+                elem_id="output_dir_button"
             )
 
-            self.output_name = gr.Textbox(
-                label="Output Name",
-                info="REQUIRED: Base filename for saved LoRA (without extension). Example: 'my-qwen-lora' creates 'my-qwen-lora.safetensors'",
-                placeholder="e.g., my-qwen-lora or character-style-v1",
-                value=self.config.get("output_name", ""),
-            )
+            with gr.Column(scale=4):
+                self.output_name = gr.Textbox(
+                    label="Output Name",
+                    info="REQUIRED: Base filename for saved LoRA (without extension). Example: 'my-qwen-lora' creates 'my-qwen-lora.safetensors'",
+                    placeholder="e.g., my-qwen-lora or character-style-v1",
+                    value=self.config.get("output_name", ""),
+                )
 
         with gr.Row():
             self.resume = gr.Textbox(
@@ -2130,6 +2138,12 @@ class QwenImageSaveLoadSettings:
                 info="Save complete training state when training finishes, even if 'Save Optimizer States' is disabled. Useful for resuming training later",
                 value=self.config.get("save_state_on_train_end", False),
             )
+        
+        # Add click handler for output directory folder button
+        self.output_dir_button.click(
+            fn=lambda: get_folder_path(),
+            outputs=[self.output_dir]
+        )
 
 
 class QwenImageLatentCaching:

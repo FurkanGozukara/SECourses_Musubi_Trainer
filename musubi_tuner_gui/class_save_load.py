@@ -1,6 +1,7 @@
 import gradio as gr
 import toml
 from .class_gui_config import GUIConfig
+from .common_gui import get_folder_path
 
 class SaveLoadSettings:
     def __init__(
@@ -16,18 +17,25 @@ class SaveLoadSettings:
 
     def initialize_ui_components(self) -> None:
         with gr.Row():
-            self.output_dir = gr.Textbox(
-                label="Output Directory",
-                placeholder="Directory to save the trained model",
-                value=self.config.get("output_dir", None),
-                interactive=True,
+            with gr.Column(scale=4):
+                self.output_dir = gr.Textbox(
+                    label="Output Directory",
+                    placeholder="Directory to save the trained model",
+                    value=self.config.get("output_dir", None),
+                    interactive=True,
+                )
+            self.output_dir_button = gr.Button(
+                "📂",
+                size="sm",
+                elem_id="output_dir_button"
             )
-            self.output_name = gr.Textbox(
-                label="Output Name",
-                placeholder="Base name of the trained model file (excluding extension)",
-                value=self.config.get("output_name", "lora"),
-                interactive=True,
-            )
+            with gr.Column(scale=4):
+                self.output_name = gr.Textbox(
+                    label="Output Name",
+                    placeholder="Base name of the trained model file (excluding extension)",
+                    value=self.config.get("output_name", "lora"),
+                    interactive=True,
+                )
 
         with gr.Row():
             self.resume = gr.Textbox(
@@ -97,3 +105,9 @@ class SaveLoadSettings:
                 value=self.config.get("save_state_on_train_end", False),
                 interactive=True,
             )
+        
+        # Add click handler for folder button
+        self.output_dir_button.click(
+            fn=lambda: get_folder_path(),
+            outputs=[self.output_dir]
+        )
