@@ -1493,6 +1493,34 @@ def train_qwen_image_model(headless, print_only, parameters):
 
         log.info(f"Saving training config to {file_path}...")
 
+        # Validate sample generation settings
+        # If sample_prompts is empty or missing, disable sample generation to avoid errors
+        sample_prompts_provided = False
+        for key, value in parameters:
+            if key == 'sample_prompts' and value and value.strip():
+                sample_prompts_provided = True
+                break
+        
+        if not sample_prompts_provided:
+            # Disable sample generation if no prompt file is provided
+            modified_params = []
+            for key, value in parameters:
+                if key in ['sample_every_n_epochs', 'sample_every_n_steps', 'sample_at_first']:
+                    if key == 'sample_every_n_epochs' and value and value != 0:
+                        log.warning(f"Disabling {key}={value} because no sample_prompts file was provided")
+                        modified_params.append((key, 0))
+                    elif key == 'sample_every_n_steps' and value and value != 0:
+                        log.warning(f"Disabling {key}={value} because no sample_prompts file was provided")
+                        modified_params.append((key, 0))
+                    elif key == 'sample_at_first' and value:
+                        log.warning(f"Disabling {key}={value} because no sample_prompts file was provided")
+                        modified_params.append((key, False))
+                    else:
+                        modified_params.append((key, value))
+                else:
+                    modified_params.append((key, value))
+            parameters = modified_params
+
         pattern_exclusion = []
         for key, _ in parameters:
             if key.startswith('caching_latent_') or key.startswith('caching_teo_'):
