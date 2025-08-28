@@ -19,6 +19,7 @@ from .class_text_encoder_outputs_caching import TextEncoderOutputsCaching
 from .class_training import TrainingSettings
 from .common_gui import (
     get_file_path,
+    get_file_path_or_save_as,
     get_saveasfile_path,
     print_command_and_toml,
     run_cmd_advanced_training,
@@ -960,12 +961,26 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
     status_msg = ""
 
     if ask_for_file:
-        file_path = get_file_path(
-            file_path, default_extension=".toml", extension_name="TOML files (*.toml)"
+        # Use the new function that allows both file selection and folder navigation
+        file_path = get_file_path_or_save_as(
+            file_path, default_extension=".toml", extension_name="TOML files"
         )
 
     if not file_path == "" and not file_path == None:
-        if not os.path.isfile(file_path):
+        # Check if it's a new file (doesn't exist yet) - that's OK if user typed a new name
+        if not os.path.isfile(file_path) and ask_for_file:
+            # If user selected a path but the file doesn't exist, it's a new config
+            # We'll return the path so it can be used for saving later
+            status_msg = f"New configuration file will be created at: {os.path.basename(file_path)}"
+            log.info(status_msg)
+            gr.Info(status_msg)
+            # Return the new file path with empty/default values for configuration
+            values = [file_path, gr.update(value=status_msg, visible=True)]
+            for key, value in parameters:
+                if not key in ["ask_for_file", "apply_preset", "file_path"]:
+                    values.append(value)  # Keep current values
+            return tuple(values)
+        elif not os.path.isfile(file_path):
             error_msg = f"Config file {file_path} does not exist."
             log.error(error_msg)
             gr.Error(error_msg)

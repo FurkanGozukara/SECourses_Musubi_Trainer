@@ -518,6 +518,63 @@ def get_file_path(
     return file_path
 
 
+def get_file_path_or_save_as(
+    file_path="", default_extension=".toml", extension_name="TOML files"
+):
+    """
+    Opens a file dialog that allows both selecting existing files and navigating to folders
+    to create new files. Uses asksaveasfilename which allows typing new filenames while
+    still being able to select existing files.
+    
+    Parameters:
+    - file_path (str): The initial file path or empty string by default
+    - default_extension (str): The default file extension (e.g., ".toml")
+    - extension_name (str): The display name for the type of files
+    
+    Returns:
+    - str: The path of the file selected/created by the user, or the initial file_path if no selection
+    """
+    # Validate parameter types
+    if not isinstance(file_path, str):
+        raise TypeError("file_path must be a string")
+    if not isinstance(default_extension, str):
+        raise TypeError("default_extension must be a string")
+    if not isinstance(extension_name, str):
+        raise TypeError("extension_name must be a string")
+
+    # Environment and platform check to decide on showing the file dialog
+    if not any(var in os.environ for var in ENV_EXCLUSION) and sys.platform != "darwin":
+        current_file_path = file_path  # Backup in case no file is selected
+
+        initial_dir, initial_file = get_dir_and_file(file_path)
+
+        # Initialize a hidden Tkinter window for the file dialog
+        root = Tk()
+        root.wm_attributes("-topmost", 1)
+        root.withdraw()
+
+        # Use asksaveasfilename which allows both selecting existing files and typing new names
+        file_path = filedialog.asksaveasfilename(
+            filetypes=((extension_name, f"*{default_extension}"), ("All files", "*.*")),
+            defaultextension=default_extension,
+            initialfile=initial_file if initial_file else f"config{default_extension}",
+            initialdir=initial_dir,
+            title="Select existing file or type new filename",
+            confirmoverwrite=False  # Don't show overwrite dialog for existing files
+        )
+
+        root.destroy()
+
+        # Fallback to the initial path if no selection is made
+        if not file_path:
+            file_path = current_file_path
+        # Ensure the file has the correct extension
+        elif not file_path.endswith(default_extension):
+            file_path = file_path + default_extension
+
+    return file_path
+
+
 def get_any_file_path(file_path: str = "") -> str:
     """
     Opens a file dialog to select any file, allowing the user to navigate and choose a file.

@@ -19,6 +19,7 @@ from .class_text_encoder_outputs_caching import TextEncoderOutputsCaching
 from .class_training import TrainingSettings
 from .common_gui import (
     get_file_path,
+    get_file_path_or_save_as,
     get_saveasfile_path,
     print_command_and_toml,
     run_cmd_advanced_training,
@@ -298,14 +299,26 @@ def open_configuration(
 
     # Request a file path from the user if required
     if ask_for_file:
-        file_path = get_file_path(
-            file_path, default_extension=".toml", extension_name="TOML files (*.toml)"
+        # Use the new function that allows both file selection and folder navigation
+        file_path = get_file_path_or_save_as(
+            file_path, default_extension=".toml", extension_name="TOML files"
         )
 
     # Proceed if the file path is valid (not empty or None)
     if not file_path == "" and not file_path == None:
-        # Check if the file exists before opening it
-        if not os.path.isfile(file_path):
+        # Check if it's a new file (doesn't exist yet) - that's OK if user typed a new name
+        if not os.path.isfile(file_path) and ask_for_file:
+            # If user selected a path but the file doesn't exist, it's a new config
+            # We'll return the path so it can be used for saving later
+            log.info(f"New configuration file will be created at: {file_path}")
+            gr.Info(f"New configuration file will be created at: {os.path.basename(file_path)}")
+            # Return the new file path with current values
+            values = [file_path]
+            for key, value in parameters:
+                if not key in ["ask_for_file", "apply_preset", "file_path"]:
+                    values.append(value)  # Keep current values
+            return tuple(values)
+        elif not os.path.isfile(file_path):
             log.error(f"Config file {file_path} does not exist.")
             return
 
@@ -313,6 +326,7 @@ def open_configuration(
         with open(file_path, "r", encoding="utf-8") as f:
             my_data = toml.load(f)
             log.info("Loading config...")
+            gr.Info(f"Configuration loaded from: {os.path.basename(file_path)}")
     else:
         # Reset the file path to the original if the operation was cancelled or invalid
         file_path = original_file_path  # In case a file_path was provided and the user decides to cancel the open action
