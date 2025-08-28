@@ -197,6 +197,7 @@ class QwenImageModel:
                     label="DiT (Base Model) Checkpoint Path",
                     placeholder="Path to DiT base model checkpoint (qwen_image_bf16.safetensors)",
                     value=self.config.get("dit", ""),
+                    info="Must be standard bf16/fp16 model. FP8 pre-quantized models NOT supported. FP8 conversion happens automatically if enabled below"
                 )
             self.dit_button = gr.Button(
                 "📁",
@@ -205,8 +206,8 @@ class QwenImageModel:
             )
             with gr.Column(scale=1):
                 self.dit_dtype = gr.Dropdown(
-                    label="DiT Data Type",
-                    info="[HARDCODED] bfloat16 is required and hardcoded for Qwen Image. Do not change - other dtypes will cause errors",
+                    label="DiT Computation Data Type",
+                    info="[HARDCODED] bfloat16 computation precision is required for Qwen Image training. FP8 settings below control weight storage only",
                     choices=["bfloat16"],
                     value=self.config.get("dit_dtype", "bfloat16"),
                     interactive=False,  # Hardcoded for Qwen Image
@@ -292,16 +293,25 @@ class QwenImageModel:
             )
 
         # Qwen Image specific options
+        gr.Markdown("""
+        ### FP8 Quantization Options
+        **Important:** FP8 is an on-the-fly optimization. You MUST provide standard bf16 models as input. 
+        Pre-quantized FP8 models are NOT supported. Training outputs LoRA weights only - base models remain in bf16 format.
+        
+        **GPU Compatibility:** Both options work on ALL CUDA GPUs (RTX 2000/3000/4000). 
+        For 16GB GPUs, enable BOTH checkboxes to reduce VRAM from 24GB → 12GB.
+        """)
+        
         with gr.Row():
             self.fp8_base = gr.Checkbox(
                 label="Use FP8 for Base Model (DiT)",
-                info="FP8 quantization for DiT model saves ~12GB VRAM. May slightly reduce quality. Useful for 16GB GPUs. Combine with fp8_scaled",
+                info="Converts bf16 model to FP8 on-the-fly, saving ~12GB VRAM (24GB→12GB). INPUT: Requires standard bf16 model. OUTPUT: Cannot save FP8 models. Always enable with fp8_scaled below",
                 value=self.config.get("fp8_base", False),
             )
             
             self.fp8_scaled = gr.Checkbox(
                 label="Use Scaled FP8 for DiT",
-                info="Improved FP8 quantization method. REQUIRED when fp8_base is enabled. Better quality than standard FP8",
+                info="REQUIRED with fp8_base for best quality. RTX 4000: native support (fast). RTX 2000/3000: automatic fallback (same quality, slightly slower)",
                 value=self.config.get("fp8_scaled", False),
             )
             
@@ -1710,11 +1720,17 @@ class QwenImageTrainingSettings:
                 value=self.config.get("sample_at_first", False),
             )
 
-            self.sample_prompts = gr.Textbox(
-                label="Sample Prompts File",
-                info="Path to text file with prompts (one per line). Required for sample generation. Example: 'A cat\nA dog\nA house'",
-                placeholder="e.g., /path/to/prompts.txt",
-                value=self.config.get("sample_prompts", ""),
+            with gr.Column(scale=4):
+                self.sample_prompts = gr.Textbox(
+                    label="Sample Prompts File",
+                    info="Path to text file with prompts (one per line). Required for sample generation. Example: 'A cat\nA dog\nA house'",
+                    placeholder="e.g., /path/to/prompts.txt",
+                    value=self.config.get("sample_prompts", ""),
+                )
+            self.sample_prompts_button = gr.Button(
+                "📂",
+                size="sm",
+                elem_id="sample_prompts_button"
             )
 
         # Additional settings
@@ -1786,6 +1802,12 @@ class QwenImageTrainingSettings:
         self.logging_dir_button.click(
             fn=lambda: get_folder_path(),
             outputs=[self.logging_dir]
+        )
+        
+        # Add click handler for sample prompts file button
+        self.sample_prompts_button.click(
+            fn=lambda: get_file_path(file_path="", file_filter="Text files (*.txt)|*.txt|All files (*.*)|*.*"),
+            outputs=[self.sample_prompts]
         )
 
 

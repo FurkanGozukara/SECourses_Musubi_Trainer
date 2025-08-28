@@ -1336,11 +1336,27 @@ def SaveConfigFile(
         file_path (str): Path to the file where the filtered parameters should be saved.
         exclusion (list): List of keys to exclude from saving. Defaults to ["file_path", "save_as", "headless", "print_only"].
     """
-    variables = {
-        name: value
-        for name, value in sorted(parameters, key=lambda x: x[0])
-        if name not in exclusion
-    }
+    variables = {}
+    for name, value in sorted(parameters, key=lambda x: x[0]):
+        if name not in exclusion:
+            # Convert string representations of lists back to actual lists for specific parameters
+            if name in ["network_args", "optimizer_args", "lr_scheduler_args"]:
+                if isinstance(value, str):
+                    if value == "[]" or value == "":
+                        value = []
+                    elif value.startswith("[") and value.endswith("]"):
+                        # It's a JSON-like list string, try to parse it
+                        try:
+                            import json
+                            value = json.loads(value)
+                        except:
+                            # If JSON parsing fails, treat as space-separated arguments
+                            value = value.strip("[]").split() if value.strip("[]") else []
+                    else:
+                        # Space-separated arguments like "conv_dim=4 conv_alpha=1"
+                        value = value.split() if value.strip() else []
+            
+            variables[name] = value
 
     folder_path = os.path.dirname(file_path)
     if not os.path.exists(folder_path):
@@ -1374,6 +1390,24 @@ def SaveConfigFileToRun(
         # Skip empty string for log_with parameter (causes accelerate error)
         if name == "log_with" and value == "":
             continue
+        
+        # Convert string representations of lists back to actual lists for specific parameters
+        if name in ["network_args", "optimizer_args", "lr_scheduler_args"]:
+            if isinstance(value, str):
+                if value == "[]" or value == "":
+                    value = []
+                elif value.startswith("[") and value.endswith("]"):
+                    # It's a JSON-like list string, try to parse it
+                    try:
+                        import json
+                        value = json.loads(value)
+                    except:
+                        # If JSON parsing fails, treat as space-separated arguments
+                        value = value.strip("[]").split() if value.strip("[]") else []
+                else:
+                    # Space-separated arguments like "conv_dim=4 conv_alpha=1"
+                    value = value.split() if value.strip() else []
+        
         variables[name] = value
 
     folder_path = os.path.dirname(file_path)

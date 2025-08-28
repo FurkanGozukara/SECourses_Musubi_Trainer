@@ -1,0 +1,6 @@
+learning_rate = 5e-5
+lr_scheduler_args = []
+max_train_steps = 100
+network_args = []
+optimizer_args = []
+output_dir = "test_output"
