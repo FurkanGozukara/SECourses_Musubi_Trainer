@@ -1538,8 +1538,7 @@ def train_qwen_image_model(headless, print_only, parameters):
         return (
             gr.Button(visible=False or headless),  # Hide start button
             gr.Row(visible=True),  # Show stop row
-            gr.Checkbox(value=False),  # Reset checkbox
-            gr.Button(interactive=False),  # Disable stop button initially
+            gr.Button(interactive=True),  # Enable stop button by default
             gr.Textbox(value="Training in progress..."),  # Update status
             gr.Textbox(value=train_state_value),  # Trigger state change
         )
@@ -2752,7 +2751,6 @@ def qwen_image_lora_tab(
         outputs=[
             executor.button_run,
             executor.stop_row,
-            executor.stop_confirm_checkbox,
             executor.button_stop_training,
             executor.training_status,
         ],
@@ -2770,7 +2768,6 @@ def qwen_image_lora_tab(
         outputs=[
             executor.button_run,
             executor.stop_row,
-            executor.stop_confirm_checkbox,
             executor.button_stop_training,
             executor.training_status,
             run_state,
@@ -2778,21 +2775,15 @@ def qwen_image_lora_tab(
         show_progress=False,
     )
     
-    # Wire up checkbox to enable/disable stop button
-    executor.stop_confirm_checkbox.change(
-        executor.toggle_stop_button,
-        inputs=[executor.stop_confirm_checkbox],
-        outputs=[executor.button_stop_training],
-    )
-
+    # Wire up stop button with JavaScript confirmation
     executor.button_stop_training.click(
         executor.kill_command,
-        inputs=[executor.stop_confirm_checkbox],
+        inputs=[],
         outputs=[
             executor.button_run,
             executor.stop_row,
-            executor.stop_confirm_checkbox,
             executor.button_stop_training,
             executor.training_status,
         ],
+        js="() => { if (confirm('Are you sure you want to stop training?')) { return []; } else { throw new Error('Cancelled'); } }",
     )

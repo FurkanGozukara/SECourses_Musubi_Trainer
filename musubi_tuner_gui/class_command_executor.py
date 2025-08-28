@@ -32,17 +32,13 @@ class CommandExecutor:
                 interactive=False
             )
 
-        # Stop training controls with confirmation - now under status
+        # Stop training controls - now under status
         with gr.Row(visible=self.process is not None or headless) as self.stop_row:
-            self.stop_confirm_checkbox = gr.Checkbox(
-                label="Confirm stop training",
-                value=False,
-                info="Check this box to confirm you want to stop training"
-            )
             self.button_stop_training = gr.Button(
                 "Stop training", 
                 variant="stop",
-                interactive=False
+                interactive=True,
+                elem_id="stop_training_btn"
             )
 
     def execute_command(self, run_cmd: str, **kwargs):
@@ -67,21 +63,10 @@ class CommandExecutor:
             self.process = subprocess.Popen(run_cmd, **kwargs)
             log.debug("Command executed.")
 
-    def kill_command(self, confirm_checked):
+    def kill_command(self):
         """
         Kill the currently running command and its child processes.
-        Requires confirmation checkbox to be checked.
         """
-        if not confirm_checked:
-            log.warning("Please check the confirmation box to stop training.")
-            return (
-                gr.Button(visible=False), 
-                gr.Row(visible=True),
-                gr.Checkbox(value=False),
-                gr.Button(interactive=False),
-                gr.Textbox(value="⚠️ Please check confirmation box to stop")
-            )
-        
         if self.is_running():
             try:
                 # Get the parent process and kill all its children
@@ -109,8 +94,7 @@ class CommandExecutor:
         return (
             gr.Button(visible=True),  # Show start button
             gr.Row(visible=False or self.headless),  # Hide stop row
-            gr.Checkbox(value=False),  # Reset checkbox
-            gr.Button(interactive=False),  # Disable stop button
+            gr.Button(interactive=True),  # Keep stop button enabled
             gr.Textbox(value=status_msg)  # Update status
         )
 
@@ -130,8 +114,7 @@ class CommandExecutor:
         return (
             gr.Button(visible=True),  # Show start button
             gr.Row(visible=False or self.headless),  # Hide stop row
-            gr.Checkbox(value=False),  # Reset checkbox
-            gr.Button(interactive=False),  # Disable stop button
+            gr.Button(interactive=True),  # Keep stop button enabled
             gr.Textbox(value=status_msg)  # Update status
         )
 
@@ -144,8 +127,52 @@ class CommandExecutor:
         """
         return self.process is not None and self.process.poll() is None
     
-    def toggle_stop_button(self, checkbox_value):
+    def wait_for_training_to_end_simple(self):
         """
-        Enable/disable stop button based on checkbox state.
+        Simplified version for lora_gui compatibility - returns only 2 values
         """
-        return gr.Button(interactive=checkbox_value)
+        while self.is_running():
+            time.sleep(1)
+            log.debug("Waiting for training to end...")
+        
+        # Check if process ended with error
+        if self.process and self.process.returncode != 0:
+            log.error(f"Training failed with exit code: {self.process.returncode}")
+        else:
+            log.info("Training completed successfully.")
+        
+        return (
+            gr.Button(visible=True),  # Show start button
+            gr.Button(visible=False),  # Hide stop button
+        )
+    
+    def kill_command_simple(self):
+        """
+        Simplified version for lora_gui compatibility - returns appropriate values
+        """
+        if self.is_running():
+            try:
+                # Get the parent process and kill all its children
+                parent = psutil.Process(self.process.pid)
+                for child in parent.children(recursive=True):
+                    child.kill()
+                parent.kill()
+                log.info("The running process has been terminated.")
+                status_msg = "Training stopped by user"
+            except psutil.NoSuchProcess:
+                log.info("The process does not exist. It might have terminated before the kill command was issued.")
+                status_msg = "Process already terminated"
+            except Exception as e:
+                log.info(f"Error when terminating process: {e}")
+                status_msg = f"Error stopping: {e}"
+        else:
+            self.process = None
+            log.info("There is no running process to kill.")
+            status_msg = "No process to stop"
+
+        return (
+            gr.Button(visible=True),  # Show start button
+            gr.Row(visible=False or self.headless),  # Hide stop row
+            gr.Button(interactive=True),  # Keep stop button enabled
+            gr.Textbox(value=status_msg)  # Update status
+        )

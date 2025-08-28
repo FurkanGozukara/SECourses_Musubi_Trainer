@@ -171,7 +171,7 @@ ddp_static_graph = false
 # Sample Generation
 # Generate sample images during training to monitor progress
 sample_every_n_steps = 0   # 0 = disabled. 100-500 recommended for step-based sampling
-sample_every_n_epochs = 1  # 0 = disabled. 1 = generate samples every epoch (recommended)
+sample_every_n_epochs = 0  # 0 = disabled. 1 = generate samples every epoch (recommended)
 sample_at_first = false
 sample_prompts = ""  # Path to text file with prompts for sample generation (one per line)
 

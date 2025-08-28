@@ -843,7 +843,7 @@ def lora_tab(
     )
 
     run_state.change(
-        fn=executor.wait_for_training_to_end,
+        fn=executor.wait_for_training_to_end_simple,
         outputs=[executor.button_run, executor.button_stop_training],
     )
 
@@ -860,22 +860,17 @@ def lora_tab(
         show_progress=False,
     )
 
-    executor.stop_confirm_checkbox.change(
-        executor.toggle_stop_button,
-        inputs=[executor.stop_confirm_checkbox],
-        outputs=[executor.button_stop_training],
-    )
-
+    # Wire up stop button with JavaScript confirmation
     executor.button_stop_training.click(
-        executor.kill_command,
-        inputs=[executor.stop_confirm_checkbox],
+        executor.kill_command_simple,
+        inputs=[],
         outputs=[
             executor.button_run,
             executor.stop_row,
-            executor.stop_confirm_checkbox,
             executor.button_stop_training,
             executor.training_status,
         ],
+        js="() => { if (confirm('Are you sure you want to stop training?')) { return []; } else { throw new Error('Cancelled'); } }",
     )
 
     
