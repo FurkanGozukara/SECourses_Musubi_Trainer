@@ -1,5 +1,6 @@
 import gradio as gr
 import os
+import re
 import shutil
 import subprocess
 import time
@@ -45,8 +46,8 @@ huggingface = None
 train_state_value = time.time()
 
 
-class QwenImageModel:
-    """Qwen Image specific model settings"""
+class QwenImageDataset:
+    """Qwen Image dataset configuration settings"""
     def __init__(self, headless: bool, config: GUIConfig) -> None:
         self.config = config
         self.headless = headless
@@ -190,7 +191,221 @@ class QwenImageModel:
                 interactive=False,
                 info="Status messages from dataset configuration generation"
             )
+    
+    def setup_dataset_ui_events(self, saveLoadSettings=None):
+        """Setup event handlers for dataset configuration UI"""
+        
+        def toggle_dataset_mode(mode):
+            """Toggle visibility of dataset configuration modes"""
+            is_toml = mode == "Use TOML File"
+            return (
+                gr.Row(visible=is_toml),  # toml_mode_row
+                gr.Column(visible=not is_toml),  # folder_mode_column
+            )
+        
+        def toggle_caption_strategy(create_missing):
+            """Toggle visibility of caption strategy dropdown"""
+            return gr.Dropdown(visible=create_missing)
+        
+        def browse_parent_folder():
+            """Browse for parent folder"""
+            folder_path = get_folder_path()
+            return folder_path if folder_path else gr.update()
+        
+        def generate_dataset_config(
+            parent_folder,
+            width, height,
+            caption_ext,
+            create_missing,
+            caption_strat,
+            batch_size,
+            enable_bucket,
+            bucket_no_upscale,
+            cache_dir,
+            control_dir,
+            qwen_no_resize,
+            output_dir  # Add output_dir parameter
+        ):
+            """Generate dataset configuration from folder structure"""
+            try:
+                if not parent_folder:
+                    return "", "", "[ERROR] Please specify a parent folder path containing your dataset folders"
+                
+                if not os.path.exists(parent_folder):
+                    return "", "", f"[ERROR] Parent folder does not exist: {parent_folder}"
+                
+                # Create caption files if requested
+                if create_missing:
+                    subfolder_paths = [os.path.join(parent_folder, d) for d in os.listdir(parent_folder) 
+                                     if os.path.isdir(os.path.join(parent_folder, d))]
+                    
+                    for folder_path in subfolder_paths:
+                        # Parse folder name to get name without repeat count
+                        folder_name = os.path.basename(folder_path)
+                        match = re.match(r"^(\d+)_(.+)$", folder_name)
+                        
+                        if match and caption_strat == "folder_name":
+                            # Use the name part only (without repeat count)
+                            caption_text = match.group(2)
+                        elif caption_strat == "folder_name":
+                            # Use full folder name if no repeat format
+                            caption_text = folder_name
+                        else:
+                            # Empty caption
+                            caption_text = ""
+                        
+                        # Create caption files for all images without captions
+                        for img_file in os.listdir(folder_path):
+                            img_path = os.path.join(folder_path, img_file)
+                            if os.path.isfile(img_path) and img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.bmp')):
+                                caption_path = os.path.splitext(img_path)[0] + caption_ext
+                                if not os.path.exists(caption_path):
+                                    with open(caption_path, 'w', encoding='utf-8') as f:
+                                        f.write(caption_text)
+                
+                # Generate the dataset configuration
+                config = generate_dataset_config_from_folders(
+                    parent_folder_path=parent_folder,
+                    width=int(width),
+                    height=int(height),
+                    caption_extension=caption_ext,
+                    batch_size=int(batch_size),
+                    enable_bucket=enable_bucket,
+                    bucket_no_upscale=bucket_no_upscale,
+                    cache_latents_to_disk=True,
+                    cache_latents_to_memory=False,
+                    cache_text_encoder_outputs=False,
+                    cache_text_encoder_outputs_to_disk=True,
+                    cache_text_encoder_outputs_to_memory=False,
+                    cache_dir_name=cache_dir,
+                    control_dir_name=control_dir,
+                    qwen_image_edit_no_resize_control=qwen_no_resize
+                )
+                
+                # Validate the configuration
+                if not validate_dataset_config(config):
+                    return "", "", "[ERROR] Generated configuration failed validation. Check your folder structure."
+                
+                # Generate output filename with timestamp
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                
+                # Use output_dir from saveLoadSettings if available
+                if output_dir and os.path.exists(output_dir):
+                    output_path = os.path.join(output_dir, f"dataset_config_{timestamp}.toml")
+                else:
+                    # Default to parent folder
+                    output_path = os.path.join(parent_folder, f"dataset_config_{timestamp}.toml")
+                
+                # Save the configuration
+                save_dataset_config(config, output_path)
+                
+                # Get dataset info for status message
+                num_datasets = len(config.get("datasets", []))
+                total_images = sum(len(ds.get("image_paths", [])) for ds in config.get("datasets", []))
+                
+                status_msg = f"[SUCCESS] Generated dataset configuration:\n"
+                status_msg += f"  Output: {output_path}\n"
+                status_msg += f"  Datasets: {num_datasets}\n"
+                status_msg += f"  Total images: {total_images}\n"
+                
+                if create_missing:
+                    status_msg += f"  Caption files created with strategy: {caption_strat}"
+                
+                # Return both paths - output_path for dataset_config field and display
+                return output_path, output_path, status_msg
+                
+            except Exception as e:
+                error_msg = f"[ERROR] Failed to generate dataset configuration:\n{str(e)}"
+                log.error(error_msg)
+                import traceback
+                traceback.print_exc()
+                return "", "", error_msg
+        
+        def copy_generated_path(generated_path):
+            """Copy generated TOML path to dataset config field"""
+            if generated_path:
+                return generated_path
+            return gr.update()
+        
+        # Event handlers
+        self.dataset_config_mode.change(
+            fn=toggle_dataset_mode,
+            inputs=[self.dataset_config_mode],
+            outputs=[self.toml_mode_row, self.folder_mode_column]
+        )
+        
+        self.create_missing_captions.change(
+            fn=toggle_caption_strategy,
+            inputs=[self.create_missing_captions],
+            outputs=[self.caption_strategy]
+        )
+        
+        self.parent_folder_button.click(
+            fn=browse_parent_folder,
+            outputs=[self.parent_folder_path]
+        )
+        
+        # Bind generate button
+        if hasattr(self, 'generate_toml_button'):
+            # Pass output_dir from saveLoadSettings if available
+            if saveLoadSettings and hasattr(saveLoadSettings, 'output_dir'):
+                self.generate_toml_button.click(
+                    fn=generate_dataset_config,
+                    inputs=[
+                        self.parent_folder_path,
+                        self.dataset_resolution_width,
+                        self.dataset_resolution_height,
+                        self.dataset_caption_extension,
+                        self.create_missing_captions,
+                        self.caption_strategy,
+                        self.dataset_batch_size,
+                        self.dataset_enable_bucket,
+                        self.dataset_bucket_no_upscale,
+                        self.dataset_cache_directory,
+                        self.dataset_control_directory,
+                        self.dataset_qwen_image_edit_no_resize_control,
+                        saveLoadSettings.output_dir  # Pass output_dir
+                    ],
+                    outputs=[self.dataset_config, self.generated_toml_path, self.dataset_status]
+                )
+            else:
+                # Fallback without output_dir
+                self.generate_toml_button.click(
+                    fn=lambda *args: generate_dataset_config(*args, None),  # Pass None for output_dir
+                    inputs=[
+                        self.parent_folder_path,
+                        self.dataset_resolution_width,
+                        self.dataset_resolution_height,
+                        self.dataset_caption_extension,
+                        self.create_missing_captions,
+                        self.caption_strategy,
+                        self.dataset_batch_size,
+                        self.dataset_enable_bucket,
+                        self.dataset_bucket_no_upscale,
+                        self.dataset_cache_directory,
+                        self.dataset_control_directory,
+                        self.dataset_qwen_image_edit_no_resize_control,
+                    ],
+                    outputs=[self.dataset_config, self.generated_toml_path, self.dataset_status]
+                )
+        
+        # Bind copy button
+        if hasattr(self, 'copy_generated_path_button'):
+            self.copy_generated_path_button.click(
+                fn=copy_generated_path,
+                inputs=[self.generated_toml_path],
+                outputs=[self.dataset_config]
+            )
 
+
+class QwenImageModel:
+    """Qwen Image specific model settings"""
+    def __init__(self, headless: bool, config: GUIConfig) -> None:
+        self.config = config
+        self.headless = headless
+        self.initialize_ui_components()
+
+    def initialize_ui_components(self) -> None:
         with gr.Row():
             with gr.Column(scale=4):
                 self.dit = gr.Textbox(
@@ -465,128 +680,8 @@ class QwenImageModel:
                 interactive=True,
             )
     
-    def setup_dataset_ui_events(self, saveLoadSettings=None):
-        """Setup event handlers for dataset configuration UI"""
-        
-        def toggle_dataset_mode(mode):
-            """Toggle visibility of dataset configuration modes"""
-            is_toml = mode == "Use TOML File"
-            return (
-                gr.Row(visible=is_toml),  # toml_mode_row
-                gr.Column(visible=not is_toml),  # folder_mode_column
-            )
-        
-        def toggle_caption_strategy(create_missing):
-            """Toggle visibility of caption strategy dropdown"""
-            return gr.Dropdown(visible=create_missing)
-        
-        def browse_parent_folder():
-            """Browse for parent folder"""
-            folder_path = get_folder_path()
-            return folder_path if folder_path else gr.update()
-        
-        def generate_dataset_config(
-            parent_folder,
-            width, height,
-            caption_ext,
-            create_missing,
-            caption_strat,
-            batch_size,
-            enable_bucket,
-            bucket_no_upscale,
-            cache_dir,
-            control_dir,
-            qwen_no_resize,
-            output_dir  # Add output_dir parameter
-        ):
-            """Generate dataset configuration from folder structure"""
-            try:
-                if not parent_folder:
-                    return "", "", "[ERROR] Please specify a parent folder path containing your dataset folders"
-                
-                if not os.path.exists(parent_folder):
-                    return "", "", f"[ERROR] Parent folder does not exist: {parent_folder}\nPlease check the path and try again."
-                
-                if not os.path.isdir(parent_folder):
-                    return "", "", f"[ERROR] Path is not a directory: {parent_folder}\nPlease specify a folder, not a file."
-                
-                # Check if parent folder has subdirectories
-                subdirs = [d for d in os.listdir(parent_folder) 
-                          if os.path.isdir(os.path.join(parent_folder, d)) 
-                          and not d.startswith('.')]
-                
-                if not subdirs:
-                    return "", "", (
-                        f"[ERROR] No subdirectories found in: {parent_folder}\n"
-                        "Expected folder structure:\n"
-                        "  parent_folder/\n"
-                        "    ├── 1_concept/\n"
-                        "    │   ├── image1.png\n"
-                        "    │   └── image1.txt\n"
-                        "    └── 2_style/\n"
-                        "        ├── image2.png\n"
-                        "        └── image2.txt"
-                    )
-                
-                # Determine where to save the dataset config
-                save_location = output_dir if output_dir else os.path.dirname(parent_folder)
-                
-                # Generate configuration
-                config, messages = generate_dataset_config_from_folders(
-                    parent_folder=parent_folder,
-                    resolution=(int(width), int(height)),
-                    caption_extension=caption_ext,
-                    create_missing_captions=create_missing,
-                    caption_strategy=caption_strat,
-                    batch_size=int(batch_size),
-                    enable_bucket=enable_bucket,
-                    bucket_no_upscale=bucket_no_upscale,
-                    cache_directory_name=cache_dir,
-                    control_directory_name=control_dir,
-                    qwen_image_edit_no_resize_control=qwen_no_resize
-                )
-                
-                # Create output directory if needed
-                if output_dir and not os.path.exists(output_dir):
-                    os.makedirs(output_dir, exist_ok=True)
-                
-                # Save to file
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                output_path = os.path.join(
-                    save_location,
-                    f"dataset_config_{timestamp}.toml"
-                )
-                save_dataset_config(config, output_path)
-                
-                # Format status messages
-                status = "\n".join(messages)
-                status += f"\n\n[OK] Configuration saved to: {output_path}"
-                if output_dir:
-                    status += f"\n[INFO] Saved in output directory as requested"
-                
-                # Return path for both generated_toml_path AND dataset_config fields
-                return output_path, output_path, status
-                
-            except Exception as e:
-                return "", "", f"[ERROR] Error generating configuration: {str(e)}"
-        
-        # Connect event handlers
-        self.dataset_config_mode.change(
-            fn=toggle_dataset_mode,
-            inputs=[self.dataset_config_mode],
-            outputs=[self.toml_mode_row, self.folder_mode_column]
-        )
-        
-        self.create_missing_captions.change(
-            fn=toggle_caption_strategy,
-            inputs=[self.create_missing_captions],
-            outputs=[self.caption_strategy]
-        )
-        
-        self.parent_folder_button.click(
-            fn=browse_parent_folder,
-            outputs=[self.parent_folder_path]
-        )
+    def setup_model_ui_events(self):
+        """Setup event handlers for model configuration UI"""
         
         # Add file browse button handlers for model paths
         self.dit_button.click(
@@ -603,49 +698,6 @@ class QwenImageModel:
             fn=lambda: get_file_path(file_path="", default_extension=".safetensors", extension_name="Safetensors files (*.safetensors)"),
             outputs=[self.text_encoder]
         )
-        
-        self.generate_toml_button.click(
-            fn=generate_dataset_config,
-            inputs=[
-                self.parent_folder_path,
-                self.dataset_resolution_width,
-                self.dataset_resolution_height,
-                self.dataset_caption_extension,
-                self.create_missing_captions,
-                self.caption_strategy,
-                self.dataset_batch_size,
-                self.dataset_enable_bucket,
-                self.dataset_bucket_no_upscale,
-                self.dataset_cache_directory,
-                self.dataset_control_directory,
-                self.dataset_qwen_image_edit_no_resize_control,
-                saveLoadSettings.output_dir if saveLoadSettings else gr.Textbox(value="")  # Pass output_dir from SaveLoadSettings
-            ],
-            outputs=[self.generated_toml_path, self.dataset_config, self.dataset_status]
-        )
-        
-        # Add copy button handler
-        def copy_generated_path(generated_path):
-            """Copy the generated TOML path to the dataset config field"""
-            if not generated_path or generated_path.strip() == "":
-                return generated_path, "[INFO] No generated TOML path to copy. Please generate a dataset configuration first."
-            return generated_path, f"[OK] Copied path to Dataset Config File: {generated_path}"
-        
-        self.copy_generated_path_button.click(
-            fn=copy_generated_path,
-            inputs=[self.generated_toml_path],
-            outputs=[self.dataset_config, self.dataset_status]
-        )
-    
-    def get_dataset_config_path(self):
-        """Get the effective dataset config path based on mode"""
-        if hasattr(self, 'dataset_config_mode') and self.dataset_config_mode.value == "Use TOML File":
-            return self.dataset_config.value
-        elif hasattr(self, 'generated_toml_path'):
-            # Use generated TOML path
-            return self.generated_toml_path.value if self.generated_toml_path.value else self.dataset_config.value
-        else:
-            return self.dataset_config.value
 
 
 def qwen_image_gui_actions(
@@ -868,6 +920,7 @@ def qwen_image_gui_actions(
         
     if action_type == "train_model":
         log.info("Train Qwen Image model...")
+        gr.Info("Training is starting... Please check the console for progress.")
         return train_qwen_image_model(
             headless=headless,
             print_only=print_only,
@@ -1377,10 +1430,13 @@ def train_qwen_image_model(headless, print_only, parameters):
         log.info("Caching latents...")
         try:
             # Run without capture_output to show progress in real-time
+            gr.Info("Starting latent caching... This may take a while.")
             result = subprocess.run(run_cache_latent_cmd, env=setup_environment(), check=True)
             log.debug("Latent caching completed.")
+            gr.Info("Latent caching completed successfully!")
         except subprocess.CalledProcessError as e:
             log.error(f"Latent caching failed with return code {e.returncode}")
+            gr.Warning(f"Latent caching failed with return code {e.returncode}")
             raise RuntimeError(f"Latent caching failed with return code {e.returncode}")
         except FileNotFoundError as e:
             log.error(f"Command not found: {e}")
@@ -1454,10 +1510,13 @@ def train_qwen_image_model(headless, print_only, parameters):
         log.info("Caching text encoder outputs...")
         try:
             # Run without capture_output to show progress in real-time
+            gr.Info("Starting text encoder output caching... This may take a while.")
             result = subprocess.run(run_cache_teo_cmd, env=setup_environment(), check=True)
             log.debug("Text encoder output caching completed.")
+            gr.Info("Text encoder output caching completed successfully!")
         except subprocess.CalledProcessError as e:
             log.error(f"Text encoder caching failed with return code {e.returncode}")
+            gr.Warning(f"Text encoder caching failed with return code {e.returncode}")
             raise RuntimeError(f"Text encoder caching failed with return code {e.returncode}")
         except FileNotFoundError as e:
             log.error(f"Command not found: {e}")
@@ -2483,11 +2542,19 @@ def qwen_image_lora_tab(
     with save_load_accordion:
         saveLoadSettings = QwenImageSaveLoadSettings(headless=headless, config=config)
     
+    # Qwen Image Training Dataset accordion - placed before Model Settings for better workflow
+    qwen_dataset_accordion = gr.Accordion("Qwen Image Training Dataset", open=False, elem_classes="samples_background")
+    accordions.append(qwen_dataset_accordion)
+    with qwen_dataset_accordion:
+        qwen_dataset = QwenImageDataset(headless=headless, config=config)
+        qwen_dataset.setup_dataset_ui_events(saveLoadSettings)  # Pass saveLoadSettings for output_dir access
+        
+    # Qwen Image Model Settings accordion - contains model paths and settings
     qwen_model_accordion = gr.Accordion("Qwen Image Model Settings", open=False, elem_classes="preset_background")
     accordions.append(qwen_model_accordion)
     with qwen_model_accordion:
         qwen_model = QwenImageModel(headless=headless, config=config)
-        qwen_model.setup_dataset_ui_events(saveLoadSettings)  # Pass saveLoadSettings for output_dir access
+        qwen_model.setup_model_ui_events()  # Setup model UI events
         
     caching_accordion = gr.Accordion("Caching", open=False, elem_classes="samples_background")
     accordions.append(caching_accordion)
@@ -2551,21 +2618,21 @@ def qwen_image_lora_tab(
         advanced_training.additional_parameters,
         
         # Dataset Settings - new parameters
-        qwen_model.dataset_config_mode,
-        qwen_model.dataset_config,
-        qwen_model.parent_folder_path,
-        qwen_model.dataset_resolution_width,
-        qwen_model.dataset_resolution_height,
-        qwen_model.dataset_caption_extension,
-        qwen_model.create_missing_captions,
-        qwen_model.caption_strategy,
-        qwen_model.dataset_batch_size,
-        qwen_model.dataset_enable_bucket,
-        qwen_model.dataset_bucket_no_upscale,
-        qwen_model.dataset_cache_directory,
-        qwen_model.dataset_control_directory,
-        qwen_model.dataset_qwen_image_edit_no_resize_control,
-        qwen_model.generated_toml_path,
+        qwen_dataset.dataset_config_mode,
+        qwen_dataset.dataset_config,
+        qwen_dataset.parent_folder_path,
+        qwen_dataset.dataset_resolution_width,
+        qwen_dataset.dataset_resolution_height,
+        qwen_dataset.dataset_caption_extension,
+        qwen_dataset.create_missing_captions,
+        qwen_dataset.caption_strategy,
+        qwen_dataset.dataset_batch_size,
+        qwen_dataset.dataset_enable_bucket,
+        qwen_dataset.dataset_bucket_no_upscale,
+        qwen_dataset.dataset_cache_directory,
+        qwen_dataset.dataset_control_directory,
+        qwen_dataset.dataset_qwen_image_edit_no_resize_control,
+        qwen_dataset.generated_toml_path,
         
         # trainingSettings
         trainingSettings.sdpa,

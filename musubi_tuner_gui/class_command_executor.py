@@ -75,6 +75,7 @@ class CommandExecutor:
                     child.kill()
                 parent.kill()
                 log.info("The running process has been terminated.")
+                gr.Warning("Training is being cancelled... Please wait for the process to stop.")
                 status_msg = "Training stopped by user"
             except psutil.NoSuchProcess:
                 # Explicitly handle the case where the process does not exist
@@ -106,10 +107,12 @@ class CommandExecutor:
         # Check if process ended with error
         if self.process and self.process.returncode != 0:
             log.error(f"Training failed with exit code: {self.process.returncode}")
-            status_msg = f"⚠️ Training failed (exit code: {self.process.returncode}). Check console for details."
+            gr.Warning(f"Training failed with exit code: {self.process.returncode}. Check console for details.")
+            status_msg = f"Training failed (exit code: {self.process.returncode}). Check console for details."
         else:
             log.info("Training completed successfully.")
-            status_msg = "✅ Training completed successfully"
+            gr.Info("Training completed successfully!")
+            status_msg = "Training completed successfully"
         
         return (
             gr.Button(visible=True),  # Show start button
