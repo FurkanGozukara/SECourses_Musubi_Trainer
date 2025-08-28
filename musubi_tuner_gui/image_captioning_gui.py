@@ -63,11 +63,12 @@ class ImageCaptioningTab:
                         self.copy_caption_button = gr.Button("Copy Caption")
                         self.save_caption_button = gr.Button("Save as Text File")
             
+            gr.Markdown("**Note:** May not work on Windows yet, reported, meanwhile you can use Joy Caption: https://www.patreon.com/posts/118827960")
             gr.Markdown("Generate descriptive captions for images using the Qwen2.5-VL multimodal model.")
             
-            # Top Row: Model and Caption Configuration in 2 columns
+            # Top Row: Model Configuration and Caption Configuration in left, Configuration and Custom Prompt in right
             with gr.Row():
-                # Left Column: Model Configuration
+                # Left Column: Model Configuration and Caption Configuration
                 with gr.Column(scale=1):
                     with gr.Accordion("Model Configuration", open=True):
                         with gr.Row():
@@ -106,9 +107,8 @@ class ImageCaptioningTab:
                             value="Model will auto-load when captioning starts",
                             interactive=False,
                         )
-                
-                # Right Column: Caption Configuration
-                with gr.Column(scale=1):
+                    
+                    # Caption Configuration moved here under Model Configuration
                     with gr.Accordion("Caption Configuration", open=True):
                         with gr.Row():
                             self.max_new_tokens = gr.Number(
@@ -204,24 +204,9 @@ class ImageCaptioningTab:
                                 value=self.config.get("image_captioning.replace_whole_words_only", True)
                             )
                         
-                        with gr.Row():
-                            self.show_default_prompt = gr.Button("Show Default Prompt")
-                            self.clear_prompt = gr.Button("Clear Prompt")
-            
-            # Custom Prompt and Batch Captioning in same row
-            with gr.Row():
-                # Left Column: Custom Prompt and Configuration
+                
+                # Right Column: Configuration and Custom Prompt
                 with gr.Column(scale=1):
-                    self.custom_prompt = gr.Textbox(
-                        label="Custom Prompt",
-                        info="Custom prompt for caption generation. Use \\n for newlines. Leave empty to use default",
-                        placeholder="Enter custom prompt or leave empty for default...",
-                        value=self.config.get("image_captioning.custom_prompt", ""),
-                        lines=4,
-                        max_lines=10,
-                    )
-                    
-                    # Configuration Save/Load Section (moved here)
                     with gr.Accordion("Configuration", open=True):
                         with gr.Row():
                             self.config_file_path = gr.Textbox(
@@ -246,9 +231,22 @@ class ImageCaptioningTab:
                             value="",
                             interactive=False,
                         )
-                
-                # Right Column: Batch Captioning
-                with gr.Column(scale=1):
+                    
+                    # Custom Prompt with buttons
+                    self.custom_prompt = gr.Textbox(
+                        label="Custom Prompt",
+                        info="Custom prompt for caption generation. Use \\n for newlines. Leave empty to use default",
+                        placeholder="Enter custom prompt or leave empty for default...",
+                        value=self.config.get("image_captioning.custom_prompt", ""),
+                        lines=8,
+                        max_lines=12,
+                    )
+                    
+                    with gr.Row():
+                        self.show_default_prompt = gr.Button("Show Default Prompt")
+                        self.clear_prompt = gr.Button("Clear Prompt")
+                    
+                    # Unified Batch Captioning panel
                     with gr.Accordion("Batch Captioning", open=True):
                         with gr.Row():
                             self.batch_image_dir = gr.Textbox(
@@ -281,31 +279,17 @@ class ImageCaptioningTab:
                             )
                         
                         with gr.Row():
+                            self.extension = gr.Textbox(
+                                label="Caption File Extension",
+                                info="Extension for saved caption files",
+                                value=self.config.get("image_captioning.extension", ".txt"),
+                            )
+                            
                             self.output_format = gr.Radio(
                                 label="Output Format",
                                 choices=["text", "jsonl"],
                                 value=self.config.get("image_captioning.output_format", "text"),
                                 info="text: Creates .txt file for each image | jsonl: Creates single JSONL file with all captions",
-                            )
-                        
-                        with gr.Row():
-                            self.scan_subfolders = gr.Checkbox(
-                                label="Scan Subfolders",
-                                info="Include images from all subfolders recursively",
-                                value=self.config.get("image_captioning.scan_subfolders", False)
-                            )
-                            
-                            self.copy_images = gr.Checkbox(
-                                label="Copy Images",
-                                info="Copy images to output folder (preserves folder structure when scanning subfolders)",
-                                value=self.config.get("image_captioning.copy_images", False)
-                            )
-                        
-                        with gr.Row():
-                            self.overwrite_existing_captions = gr.Checkbox(
-                                label="Overwrite Existing Captions",
-                                info="Replace existing caption files. If unchecked, skips images that already have captions",
-                                value=self.config.get("image_captioning.overwrite_existing_captions", False)
                             )
                         
                         with gr.Row(visible=False) as self.jsonl_output_row:
@@ -324,18 +308,49 @@ class ImageCaptioningTab:
                             )
                         
                         with gr.Row():
+                            self.recursive = gr.Checkbox(
+                                label="Recursive",
+                                info="Process subdirectories recursively",
+                                value=self.config.get("image_captioning.recursive", False),
+                            )
+                            
+                            self.scan_subfolders = gr.Checkbox(
+                                label="Scan Subfolders",
+                                info="Include images from all subfolders recursively",
+                                value=self.config.get("image_captioning.scan_subfolders", False)
+                            )
+                            
+                            self.overwrite = gr.Checkbox(
+                                label="Overwrite Existing",
+                                info="Overwrite existing caption files",
+                                value=self.config.get("image_captioning.overwrite", False),
+                            )
+                        
+                        with gr.Row():
+                            self.copy_images = gr.Checkbox(
+                                label="Copy Images",
+                                info="Copy images to output folder (preserves folder structure when scanning subfolders)",
+                                value=self.config.get("image_captioning.copy_images", False)
+                            )
+                            
+                            self.overwrite_existing_captions = gr.Checkbox(
+                                label="Overwrite Existing Captions",
+                                info="Replace existing caption files. If unchecked, skips images that already have captions",
+                                value=self.config.get("image_captioning.overwrite_existing_captions", False)
+                            )
+                        
+                        with gr.Row():
                             self.batch_caption_button = gr.Button(
                                 "Start Batch Captioning",
                                 variant="primary",
                                 size="lg"
                             )
                         
-                        self.batch_progress = gr.Progress()
                         self.batch_status = gr.Textbox(
-                            label="Batch Status",
+                            label="Batch Progress/Status",
                             value="Ready to start batch captioning",
                             interactive=False,
-                            lines=3,
+                            lines=4,
                         )
         
         # Event handlers
