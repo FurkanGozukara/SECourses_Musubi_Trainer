@@ -2674,6 +2674,19 @@ def qwen_image_lora_tab(
         show_progress=False,
         queue=False,  # Allow save button to work during training
     )
+    
+    # Auto-load configuration when a valid config file is selected
+    configuration.config_file_name.change(
+        fn=lambda config_name, *args: (
+            qwen_image_gui_actions("open_configuration", False, config_name, dummy_headless.value, False, *args)
+            if config_name and config_name.endswith('.json')
+            else ([config_name, ""] + [gr.update() for _ in settings_list])
+        ),
+        inputs=[configuration.config_file_name] + settings_list,
+        outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
+        show_progress=False,
+        queue=False,
+    )
 
     run_state.change(
         fn=executor.wait_for_training_to_end,

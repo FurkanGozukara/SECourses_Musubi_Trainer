@@ -1,6 +1,6 @@
 import gradio as gr
 import os
-from .common_gui import list_files, scriptdir, create_refresh_button
+from .common_gui import list_files, scriptdir
 from .custom_logging import setup_logging
 
 # Set up logging
@@ -66,15 +66,7 @@ class ConfigurationFile:
                     allow_custom_value=True,
                 )
 
-                # Button to refresh the list of configuration files in the dropdown.
-                create_refresh_button(
-                    self.config_file_name,
-                    lambda: None,  # Placeholder for potential future functionality.
-                    lambda: {
-                        "choices": [""] + self.list_config_dir(self.current_config_dir)
-                    },
-                    "open_folder_small",
-                )
+                # Refresh button removed - auto-refresh happens on dropdown change
 
                 # Buttons for opening, saving, and loading configuration files, displayed conditionally based on headless mode.
                 self.button_open_config = gr.Button(
@@ -102,11 +94,5 @@ class ConfigurationFile:
                 visible=False,
                 elem_id="config_status"
             )
-
-            # Handler for change events on the configuration file dropdown, allowing dynamic update of choices.
-            self.config_file_name.change(
-                fn=lambda path: gr.Dropdown(choices=[""] + self.list_config_dir(path)),
-                inputs=self.config_file_name,
-                outputs=self.config_file_name,
-                show_progress=False,
-            )
+            
+            # Note: Change handler for auto-load is now set in the parent GUI component
