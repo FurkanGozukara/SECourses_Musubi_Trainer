@@ -1336,9 +1336,55 @@ def SaveConfigFile(
         file_path (str): Path to the file where the filtered parameters should be saved.
         exclusion (list): List of keys to exclude from saving. Defaults to ["file_path", "save_as", "headless", "print_only"].
     """
+    # File path parameters that should be excluded if empty (same as SaveConfigFileToRun)
+    FILE_PATH_PARAMETERS = [
+        # Model and weight paths
+        "network_weights", "base_weights", "dit", "vae", "text_encoder",
+        "weights", "pretrained_model_name_or_path", "state_dict",
+        "checkpoint", "ckpt", "safetensors", "model_path",
+        
+        # Text encoder paths
+        "text_encoder1", "text_encoder2", 
+        "caching_teo_text_encoder", "caching_teo_text_encoder1", "caching_teo_text_encoder2",
+        
+        # Resume and state paths  
+        "resume", "resume_from_huggingface",
+        
+        # Sample and prompt paths
+        "sample_prompts", "prompt_file", "from_file",
+        
+        # Config and tracker paths
+        "log_tracker_config", "dataset_config",
+        
+        # Output paths for specific file formats (only when used as input)
+        "jsonl_output_file", "image_jsonl_file", "video_jsonl_file",
+        
+        # Latent paths
+        "latent_path",
+        
+        # Generated paths that should not be saved when empty
+        "generated_toml_path",
+    ]
+    
     variables = {}
     for name, value in sorted(parameters, key=lambda x: x[0]):
-        if name not in exclusion:
+        if name not in exclusion and value is not None:
+            # Skip empty strings for file path parameters (prevents FileNotFoundError)
+            if isinstance(value, str) and value == "":
+                # Check if this is a known file path parameter
+                if name in FILE_PATH_PARAMETERS:
+                    continue
+                # Check if parameter name suggests it's a file path
+                if any(keyword in name.lower() for keyword in ["path", "file", "weights", "model", "checkpoint", "ckpt"]):
+                    # But allow some specific parameters that can be empty
+                    if name not in ["output_dir", "output_name", "comment", "metadata_author", 
+                                   "metadata_description", "metadata_license", "metadata_tags", 
+                                   "metadata_title", "huggingface_repo_id", "huggingface_token",
+                                   "huggingface_path_in_repo", "extra_accelerate_launch_args",
+                                   "additional_parameters", "wandb_api_key", "tracker_name",
+                                   "tracker_run_name", "log_tracker_name", "log_tracker_config"]:
+                        continue
+            
             # Convert string representations of lists back to actual lists for specific parameters
             if name in ["network_args", "optimizer_args", "lr_scheduler_args"]:
                 if isinstance(value, str):
@@ -1383,6 +1429,36 @@ def SaveConfigFileToRun(
         file_path (str): Path to the file where the filtered parameters should be saved.
         exclusion (list): List of keys to exclude from saving. Defaults to ["file_path", "save_as", "headless", "print_only"].
     """
+    # File path parameters that should be excluded if empty
+    FILE_PATH_PARAMETERS = [
+        # Model and weight paths
+        "network_weights", "base_weights", "dit", "vae", "text_encoder",
+        "weights", "pretrained_model_name_or_path", "state_dict",
+        "checkpoint", "ckpt", "safetensors", "model_path",
+        
+        # Text encoder paths
+        "text_encoder1", "text_encoder2", 
+        "caching_teo_text_encoder", "caching_teo_text_encoder1", "caching_teo_text_encoder2",
+        
+        # Resume and state paths  
+        "resume", "resume_from_huggingface",
+        
+        # Sample and prompt paths
+        "sample_prompts", "prompt_file", "from_file",
+        
+        # Config and tracker paths
+        "log_tracker_config", "dataset_config",
+        
+        # Output paths for specific file formats (only when used as input)
+        "jsonl_output_file", "image_jsonl_file", "video_jsonl_file",
+        
+        # Latent paths
+        "latent_path",
+        
+        # Generated paths that should not be saved when empty
+        "generated_toml_path",
+    ]
+    
     variables = {}
     for name, value in sorted(parameters, key=lambda x: x[0]):
         if name in exclusion or value is None:
@@ -1390,6 +1466,22 @@ def SaveConfigFileToRun(
         # Skip empty string for log_with parameter (causes accelerate error)
         if name == "log_with" and value == "":
             continue
+        
+        # Skip empty strings for file path parameters (prevents FileNotFoundError)
+        if isinstance(value, str) and value == "":
+            # Check if this is a known file path parameter
+            if name in FILE_PATH_PARAMETERS:
+                continue
+            # Check if parameter name suggests it's a file path
+            if any(keyword in name.lower() for keyword in ["path", "file", "weights", "model", "checkpoint", "ckpt"]):
+                # But allow some specific parameters that can be empty
+                if name not in ["output_dir", "output_name", "comment", "metadata_author", 
+                               "metadata_description", "metadata_license", "metadata_tags", 
+                               "metadata_title", "huggingface_repo_id", "huggingface_token",
+                               "huggingface_path_in_repo", "extra_accelerate_launch_args",
+                               "additional_parameters", "wandb_api_key", "tracker_name",
+                               "tracker_run_name", "log_tracker_name", "log_tracker_config"]:
+                    continue
         
         # Convert string representations of lists back to actual lists for specific parameters
         if name in ["network_args", "optimizer_args", "lr_scheduler_args"]:
