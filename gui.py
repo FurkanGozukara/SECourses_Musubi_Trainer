@@ -39,10 +39,6 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
         with gr.Tab("Qwen Image LoRA"):
             qwen_config = config_manager.get_config_for_tab("qwen_image")
             qwen_image_lora_tab(headless=headless, config=qwen_config)
-            
-        with gr.Tab("Musubi Tuner"):
-            musubi_config = config_manager.get_config_for_tab("musubi_tuner")
-            lora_tab(headless=headless, config=musubi_config)
         
         with gr.Tab("Image Captioning"):
             captioning_config = config_manager.get_config_for_tab("image_captioning")
@@ -50,6 +46,10 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
         
         with gr.Tab("Version History"):
             version_history_tab(headless=headless, config=None)
+            
+        with gr.Tab("Musubi Tuner (Deprecated)"):
+            musubi_config = config_manager.get_config_for_tab("musubi_tuner")
+            lora_tab(headless=headless, config=musubi_config)
 
     return ui_interface
 
