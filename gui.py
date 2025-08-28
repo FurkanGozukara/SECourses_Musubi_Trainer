@@ -8,6 +8,7 @@ import gradio as gr
 from musubi_tuner_gui.lora_gui import lora_tab
 from musubi_tuner_gui.qwen_image_lora_gui import qwen_image_lora_tab
 from musubi_tuner_gui.image_captioning_gui import image_captioning_tab
+from musubi_tuner_gui.changelog_gui import version_history_tab
 from musubi_tuner_gui.custom_logging import setup_logging
 from musubi_tuner_gui.class_gui_config import GUIConfig
 from musubi_tuner_gui.class_tab_config_manager import TabConfigManager
@@ -31,6 +32,9 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
     # Create the main Gradio Blocks interface
     ui_interface = gr.Blocks(css=css, title=f"Musubi Tuner GUI {release_info}", theme=gr.themes.Soft())
     with ui_interface:
+        # Add title with Patreon link
+        gr.Markdown("# SECourses Musubi Trainer V1 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
+        
         # Create tabs for different functionalities
         with gr.Tab("Qwen Image LoRA"):
             qwen_config = config_manager.get_config_for_tab("qwen_image")
@@ -44,14 +48,8 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
             captioning_config = config_manager.get_config_for_tab("image_captioning")
             image_captioning_tab(headless=headless, config=captioning_config)
         
-        with gr.Tab("About"):
-            # About tab to display release information and README content
-            gr.Markdown(f"Musubi Tuner GUI {release_info}")
-            with gr.Tab("README"):
-                gr.Markdown(readme_content)
-
-        # Display release information in a div element
-        gr.Markdown(f"<div class='ver-class'>{release_info}</div>")
+        with gr.Tab("Version History"):
+            version_history_tab(headless=headless, config=None)
 
     return ui_interface
 
