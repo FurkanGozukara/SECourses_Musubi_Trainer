@@ -282,6 +282,13 @@ def save_configuration(
         ],
     )
 
+    # Show success message with timestamp
+    config_name = os.path.basename(file_path)
+    save_time = datetime.now().strftime("%I:%M:%S %p")  # Format: 01:32:23 PM
+    success_msg = f"Configuration saved successfully to: {config_name} - Saved at {save_time}"
+    log.info(success_msg)
+    gr.Info(success_msg)
+
     # Return the file path of the saved configuration
     return file_path
 

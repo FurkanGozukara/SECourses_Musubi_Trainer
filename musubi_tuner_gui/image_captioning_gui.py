@@ -1,6 +1,7 @@
 import gradio as gr
 import os
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import List, Tuple, Optional
 
@@ -648,9 +649,10 @@ class ImageCaptioningTab:
                 exclusion=[""],
             )
             
-            # Show success message with Gradio Info
+            # Show success message with timestamp
             config_name = os.path.basename(config_file_path)
-            success_msg = f"✅ Configuration saved successfully to: {config_name}"
+            save_time = datetime.now().strftime("%I:%M:%S %p")  # Format: 01:32:23 PM
+            success_msg = f"✅ Configuration saved successfully to: {config_name} - Saved at {save_time}"
             log.info(success_msg)
             gr.Info(success_msg)
             

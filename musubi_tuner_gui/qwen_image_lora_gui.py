@@ -74,14 +74,17 @@ class QwenImageModel:
         # Folder structure mode
         with gr.Column(visible=self.config.get("dataset_config_mode", "Use TOML File") == "Generate from Folder Structure") as self.folder_mode_column:
             with gr.Row():
-                self.parent_folder_path = gr.Textbox(
-                    label="Parent Folder Path",
-                    info="Path to parent folder containing subfolders with images. Each subfolder can have format: [repeats]_[name] (e.g., 3_ohwx, 2_style)",
-                    placeholder="e.g., C:\\Users\\Name\\Pictures\\training_data",
-                    value=self.config.get("parent_folder_path", "")
-                )
+                with gr.Column(scale=8):
+                    self.parent_folder_path = gr.Textbox(
+                        label="Parent Folder Path",
+                        info="Path to parent folder containing subfolders with images. Each subfolder can have format: [repeats]_[name] (e.g., 3_ohwx, 2_style)",
+                        placeholder="e.g., C:\\Users\\Name\\Pictures\\training_data",
+                        value=self.config.get("parent_folder_path", "")
+                    )
                 self.parent_folder_button = gr.Button(
-                    "Browse", elem_id="parent_folder_button", size="sm"
+                    "📂", 
+                    elem_id="parent_folder_button", 
+                    size="sm"
                 )
             
             with gr.Row():
@@ -469,17 +472,8 @@ class QwenImageModel:
         
         def browse_parent_folder():
             """Browse for parent folder"""
-            try:
-                from tkinter import filedialog
-                import tkinter as tk
-                root = tk.Tk()
-                root.withdraw()
-                folder_path = filedialog.askdirectory(title="Select Parent Folder for Dataset")
-                root.destroy()
-                return folder_path if folder_path else gr.update()
-            except ImportError:
-                # If tkinter is not available, return a message
-                return gr.update(value="Please type the folder path manually (tkinter not available)")
+            folder_path = get_folder_path()
+            return folder_path if folder_path else gr.update()
         
         def generate_dataset_config(
             parent_folder,
@@ -943,9 +937,10 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
             ],
         )
         
-        # Show success message
+        # Show success message with timestamp
         config_name = os.path.basename(file_path)
-        success_msg = f"Configuration saved successfully to: {config_name}"
+        save_time = datetime.now().strftime("%I:%M:%S %p")  # Format: 01:32:23 PM
+        success_msg = f"Configuration saved successfully to: {config_name} - Saved at {save_time}"
         log.info(success_msg)
         gr.Info(success_msg)
         
@@ -1650,21 +1645,28 @@ class QwenImageTrainingSettings:
 
         # Logging settings
         with gr.Row():
-            self.logging_dir = gr.Textbox(
-                label="Logging Directory",
-                info="Directory for training logs and TensorBoard data. Leave empty to disable logging. Example: ./logs",
-                placeholder="e.g., ./logs or /path/to/logs",
-                value=self.config.get("logging_dir", ""),
+            with gr.Column(scale=4):
+                self.logging_dir = gr.Textbox(
+                    label="Logging Directory",
+                    info="Directory for training logs and TensorBoard data. Leave empty to disable logging. Example: ./logs",
+                    placeholder="e.g., ./logs or /path/to/logs",
+                    value=self.config.get("logging_dir", ""),
+                )
+            self.logging_dir_button = gr.Button(
+                "📂",
+                size="sm",
+                elem_id="logging_dir_button"
             )
 
-            self.log_with = gr.Dropdown(
-                label="Logging Tool",
-                info="TensorBoard = local logs, WandB = cloud tracking, 'all' = both, (none) = no logging. Requires logging_dir for TensorBoard",
-                choices=[("(none)", ""), ("tensorboard", "tensorboard"), ("wandb", "wandb"), ("all", "all")],
-                allow_custom_value=True,
-                value=self.config.get("log_with", ""),
-                interactive=True,
-            )
+            with gr.Column(scale=4):
+                self.log_with = gr.Dropdown(
+                    label="Logging Tool",
+                    info="TensorBoard = local logs, WandB = cloud tracking, 'all' = both, (none) = no logging. Requires logging_dir for TensorBoard",
+                    choices=[("(none)", ""), ("tensorboard", "tensorboard"), ("wandb", "wandb"), ("all", "all")],
+                    allow_custom_value=True,
+                    value=self.config.get("log_with", ""),
+                    interactive=True,
+                )
 
         with gr.Row():
             self.log_prefix = gr.Textbox(
@@ -1779,6 +1781,12 @@ class QwenImageTrainingSettings:
                 value=self.config.get("show_timesteps", ""),
                 interactive=True,
             )
+        
+        # Add click handler for logging directory folder button
+        self.logging_dir_button.click(
+            fn=lambda: get_folder_path(),
+            outputs=[self.logging_dir]
+        )
 
 
 class QwenImageOptimizerSettings:
