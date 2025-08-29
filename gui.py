@@ -85,7 +85,7 @@ def UI(**kwargs):
         "auth": (kwargs["username"], kwargs["password"]) if kwargs.get("username") and kwargs.get("password") else None,
         "server_port": kwargs.get("server_port", 0) if kwargs.get("server_port", 0) > 0 else None,
         "inbrowser": kwargs.get("inbrowser", True),
-        "share": False if kwargs.get("do_not_share", False) else kwargs.get("share", False),
+        "share": kwargs.get("share", False),
         "root_path": kwargs.get("root_path", None),
         "debug": kwargs.get("debug", False),
     }
