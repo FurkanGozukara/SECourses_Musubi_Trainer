@@ -767,6 +767,9 @@ def qwen_image_gui_actions(
     sample_steps,
     sample_guidance_scale,
     sample_seed,
+    sample_discrete_flow_shift,
+    sample_cfg_scale,
+    sample_negative_prompt,
     # Latent Caching
     caching_latent_device,
     caching_latent_batch_size,
@@ -882,7 +885,8 @@ def qwen_image_gui_actions(
         'num_processes', 'num_machines', 'num_cpu_threads_per_process', 'main_process_port',
         'caching_latent_batch_size', 'caching_latent_num_workers', 'caching_latent_console_width',
         'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers',
-        'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed'
+        'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed',
+        'sample_discrete_flow_shift', 'sample_cfg_scale'
     ]
     
     # Create parameters list, ensuring numeric fields are not lists
@@ -980,7 +984,8 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
         'num_processes', 'num_machines', 'num_cpu_threads_per_process', 'main_process_port',
         'caching_latent_batch_size', 'caching_latent_num_workers', 'caching_latent_console_width',
         'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers',
-        'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed'
+        'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed',
+        'sample_discrete_flow_shift', 'sample_cfg_scale'
     ]
     
     for key, value in parameters:
@@ -1144,7 +1149,8 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
         'num_processes', 'num_machines', 'num_cpu_threads_per_process', 'main_process_port',
         'caching_latent_batch_size', 'caching_latent_num_workers', 'caching_latent_console_width',
         'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers',
-        'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed'
+        'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed',
+        'sample_discrete_flow_shift', 'sample_cfg_scale'
     ]
     
     values = [file_path, gr.update(value=status_msg, visible=True)]
@@ -1243,7 +1249,10 @@ def generate_enhanced_prompt_file(
     sample_height: int = 1328,
     sample_steps: int = 20,
     sample_guidance_scale: float = 1.0,
-    sample_seed: int = -1
+    sample_seed: int = -1,
+    sample_discrete_flow_shift: float = 0,
+    sample_cfg_scale: float = 1.0,
+    sample_negative_prompt: str = ""
 ) -> str:
     """
     Generate an enhanced prompt file with GUI defaults added to prompts that don't have parameters.
@@ -1286,6 +1295,9 @@ def generate_enhanced_prompt_file(
             has_steps = '--s ' in line or '-s ' in line
             has_guidance = '--g ' in line or '-g ' in line
             has_seed = '--d ' in line or '-d ' in line
+            has_flow_shift = '--fs ' in line or '-fs ' in line
+            has_cfg_scale = '--l ' in line or '-l ' in line
+            has_negative = '--n ' in line or '-n ' in line
             
             # Build enhanced line with defaults for missing parameters
             enhanced_line = line
@@ -1303,6 +1315,18 @@ def generate_enhanced_prompt_file(
             # Add guidance if not present
             if not has_guidance:
                 enhanced_line += f" --g {sample_guidance_scale}"
+            
+            # Add flow shift if not present and not 0 (0 means use training value)
+            if not has_flow_shift and sample_discrete_flow_shift != 0:
+                enhanced_line += f" --fs {sample_discrete_flow_shift}"
+            
+            # Add cfg scale if not present and not 1.0 (1.0 means disabled)
+            if not has_cfg_scale and sample_cfg_scale != 1.0:
+                enhanced_line += f" --l {sample_cfg_scale}"
+            
+            # Add negative prompt if not present and not empty
+            if not has_negative and sample_negative_prompt and sample_negative_prompt.strip():
+                enhanced_line += f" --n {sample_negative_prompt}"
             
             # Add seed if not present and not random
             if not has_seed and sample_seed != -1:
@@ -1700,7 +1724,10 @@ def train_qwen_image_model(headless, print_only, parameters):
                 sample_height=param_dict.get('sample_height', 1328),
                 sample_steps=param_dict.get('sample_steps', 20),
                 sample_guidance_scale=param_dict.get('sample_guidance_scale', 1.0),
-                sample_seed=param_dict.get('sample_seed', -1)
+                sample_seed=param_dict.get('sample_seed', -1),
+                sample_discrete_flow_shift=param_dict.get('sample_discrete_flow_shift', 0),
+                sample_cfg_scale=param_dict.get('sample_cfg_scale', 1.0),
+                sample_negative_prompt=param_dict.get('sample_negative_prompt', '')
             )
             
             if enhanced_prompt_file:
@@ -2161,6 +2188,35 @@ class QwenImageSampleSettings:
                 maximum=2147483647,
                 step=1,
                 interactive=True,
+            )
+        
+        with gr.Row():
+            self.sample_discrete_flow_shift = gr.Number(
+                label="Default Flow Shift",
+                info="Discrete flow shift (0 = use training value, 2.2 = Qwen optimal)",
+                value=self.config.get("sample_discrete_flow_shift", 0),
+                minimum=0,
+                maximum=10.0,
+                step=0.1,
+                interactive=True,
+            )
+            
+            self.sample_cfg_scale = gr.Number(
+                label="Default CFG Scale",
+                info="CFG scale for negative prompt (1.0 = disabled)",
+                value=self.config.get("sample_cfg_scale", 1.0),
+                minimum=0.0,
+                maximum=10.0,
+                step=0.1,
+                interactive=True,
+            )
+        
+        with gr.Row():
+            self.sample_negative_prompt = gr.Textbox(
+                label="Default Negative Prompt",
+                info="Default negative prompt for all samples (can be overridden per prompt)",
+                placeholder="e.g., low quality, blurry, distorted",
+                value=self.config.get("sample_negative_prompt", ""),
             )
         
         # File browser button
@@ -2947,6 +3003,9 @@ def qwen_image_lora_tab(
         sampleSettings.sample_steps,
         sampleSettings.sample_guidance_scale,
         sampleSettings.sample_seed,
+        sampleSettings.sample_discrete_flow_shift,
+        sampleSettings.sample_cfg_scale,
+        sampleSettings.sample_negative_prompt,
         
         # Qwen Image Latent Caching
         qwenLatentCaching.caching_latent_device,

@@ -178,11 +178,14 @@ sample_prompts = ""  # Path to text file with prompts for sample generation
 # Default Sample Parameters
 # These will be automatically added to prompts that don't specify them
 # An enhanced prompt file will be saved to your output directory
-sample_width = 1328         # Default width (Qwen optimal: 1328)
-sample_height = 1328        # Default height (Qwen optimal: 1328)
-sample_steps = 20           # Number of denoising steps
-sample_guidance_scale = 1.0 # Guidance scale (higher = stronger prompt adherence)
-sample_seed = -1            # Random seed (-1 = random each time)
+sample_width = 1328                # Default width (Qwen optimal: 1328)
+sample_height = 1328               # Default height (Qwen optimal: 1328)
+sample_steps = 20                  # Number of denoising steps
+sample_guidance_scale = 1.0        # Guidance scale (higher = stronger prompt adherence)
+sample_seed = -1                   # Random seed (-1 = random each time)
+sample_discrete_flow_shift = 0     # Discrete flow shift (0 = use training value, 2.2 = Qwen optimal)
+sample_cfg_scale = 1.0             # CFG scale for negative prompt (1.0 = disabled)
+sample_negative_prompt = ""        # Default negative prompt for all samples
 
 # Metadata Settings
 metadata_author = ""
