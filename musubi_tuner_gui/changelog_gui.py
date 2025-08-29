@@ -8,6 +8,20 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 30 August 2025 - V7
+
+**Smart Sample Prompt Enhancement System - Automatically applies optimal Qwen Image resolution (1328x1328) to sample prompts.**
+
+Changes:
+- Implemented intelligent sample prompt enhancement system that automatically adds GUI-specified defaults to prompts
+- Sample Generation Settings moved to dedicated section with comprehensive configuration options
+- Default sample resolution changed from musubi's 256x256 to Qwen Image's optimal 1328x1328
+- Enhanced prompt files are saved to output directory for transparency and debugging
+- Simple prompts (e.g., "A cat sitting") now automatically get proper parameters added
+- Advanced users can still override any parameter per prompt using --w, --h, --s, --g, --d flags
+- Fixed AttributeError with sample_prompts_button in wrong class
+- Improved sample generation documentation with clear examples
+
 ### 30 August 2025 - V6
 
 **Config save and load were broken for Optimizer Arguments and Scheduler Arguments and this problem fixed. Stop training button now will appear much earlier than before when Text Encoder caching starts.**
