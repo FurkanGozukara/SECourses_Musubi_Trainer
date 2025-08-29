@@ -1405,7 +1405,8 @@ def SaveConfigFile(
                             value = value.strip("[]").split() if value.strip("[]") else []
                     else:
                         # Space-separated arguments like "conv_dim=4 conv_alpha=1"
-                        value = value.split() if value.strip() else []
+                        # Clean up each argument to remove any quotes or extra formatting
+                        value = [arg.strip().strip("'\"") for arg in value.split()] if value.strip() else []
             
             # Convert 0 to None for parameters that musubi tuner expects as None when disabled
             # This prevents ZeroDivisionError and other issues
@@ -1528,7 +1529,8 @@ def SaveConfigFileToRun(
                         value = value.strip("[]").split() if value.strip("[]") else []
                 else:
                     # Space-separated arguments like "conv_dim=4 conv_alpha=1"
-                    value = value.split() if value.strip() else []
+                    # Clean up each argument to remove any quotes or extra formatting
+                    value = [arg.strip().strip("'\"") for arg in value.split()] if value.strip() else []
         
         # Convert 0 to None for parameters that musubi tuner expects as None when disabled
         # This prevents ZeroDivisionError and other issues

@@ -61,7 +61,7 @@ class OptimizerAndScheduler:
 
             self.optimizer_args = gr.Textbox(
                 label="Optimizer Arguments",
-                placeholder='Additional arguments for optimizer (e.g., "weight_decay=0.01 betas=0.9,0.999")',
+                placeholder='Additional arguments for optimizer. Space separated. e.g. "scale_parameter=False relative_step=False weight_decay=0.01"',
                 value=self.config.get("optimizer_args", ""),
             )
 
@@ -143,6 +143,6 @@ class OptimizerAndScheduler:
         with gr.Row():
             self.lr_scheduler_args = gr.Textbox(
                 label="LR Scheduler Arguments",
-                placeholder='Additional arguments for scheduler (e.g., "T_max=100")',
+                placeholder='Additional arguments for scheduler. Space separated. e.g. "T_max=100 eta_min=1e-7 last_epoch=-1"',
                 value=" ".join(self.config.get("lr_scheduler_args", []) or []),
             )

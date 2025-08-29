@@ -1930,8 +1930,8 @@ class QwenImageOptimizerSettings:
         with gr.Row():
             self.optimizer_args = gr.Textbox(
                 label="Optimizer Arguments",
-                info="Extra optimizer parameters as key=value pairs. Common: weight_decay=0.01 (regularization), betas=0.9,0.999 (momentum)",
-                placeholder='e.g. "weight_decay=0.01 betas=0.9,0.999"',
+                info="Extra optimizer parameters as key=value pairs. Space separated. e.g. scale_parameter=False relative_step=False warmup_init=False weight_decay=0.01",
+                placeholder='e.g. "scale_parameter=False relative_step=False warmup_init=False weight_decay=0.01"',
                 value=self.config.get("optimizer_args", ""),
             )
 
@@ -2023,8 +2023,8 @@ class QwenImageOptimizerSettings:
         with gr.Row():
             self.lr_scheduler_args = gr.Textbox(
                 label="Scheduler Arguments",
-                info="Extra scheduler parameters as key=value pairs. Example: T_max=100 for CosineAnnealing, eta_min=1e-7 for minimum LR",
-                placeholder='e.g. "T_max=100 eta_min=1e-7"',
+                info="Extra scheduler parameters as key=value pairs. Space separated. e.g. T_max=100 eta_min=1e-7 last_epoch=-1",
+                placeholder='e.g. "T_max=100 eta_min=1e-7 last_epoch=-1"',
                 value=self.config.get("lr_scheduler_args", ""),
             )
 
@@ -2094,8 +2094,8 @@ class QwenImageNetworkSettings:
         with gr.Row():
             self.network_args = gr.Textbox(
                 label="Network Arguments (LoRA Args)",
-                info="Advanced LoRA parameters as key=value pairs. Common: conv_dim=4 (train convolution layers), conv_alpha=1",
-                placeholder='e.g. "conv_dim=4 conv_alpha=1"',
+                info="Advanced LoRA parameters as key=value pairs. Space separated. e.g. conv_dim=4 conv_alpha=1 algo=locon",
+                placeholder='e.g. "conv_dim=4 conv_alpha=1 algo=locon"',
                 value=self.config.get("network_args", ""),
             )
 
