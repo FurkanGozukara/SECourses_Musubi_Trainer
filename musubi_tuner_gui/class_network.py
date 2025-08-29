@@ -64,7 +64,7 @@ class Network:
             self.network_args = gr.Textbox(
                 label="Network Arguments (LoRA Args)",
                 placeholder="Additional LoRA network arguments. Space separated. e.g. \"conv_dim=4 conv_alpha=1 algo=locon\"",
-                value=self.config.get("network_args", ""),
+                value=" ".join(self.config.get("network_args", []) or []) if isinstance(self.config.get("network_args", []), list) else self.config.get("network_args", ""),
                 interactive=True,
             )
 

@@ -62,7 +62,7 @@ class OptimizerAndScheduler:
             self.optimizer_args = gr.Textbox(
                 label="Optimizer Arguments",
                 placeholder='Additional arguments for optimizer. Space separated. e.g. "scale_parameter=False relative_step=False weight_decay=0.01"',
-                value=self.config.get("optimizer_args", ""),
+                value=" ".join(self.config.get("optimizer_args", []) or []) if isinstance(self.config.get("optimizer_args", []), list) else self.config.get("optimizer_args", ""),
             )
 
             self.max_grad_norm = gr.Number(

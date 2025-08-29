@@ -1932,7 +1932,7 @@ class QwenImageOptimizerSettings:
                 label="Optimizer Arguments",
                 info="Extra optimizer parameters as key=value pairs. Space separated. e.g. scale_parameter=False relative_step=False warmup_init=False weight_decay=0.01",
                 placeholder='e.g. "scale_parameter=False relative_step=False warmup_init=False weight_decay=0.01"',
-                value=self.config.get("optimizer_args", ""),
+                value=" ".join(self.config.get("optimizer_args", []) or []) if isinstance(self.config.get("optimizer_args", []), list) else self.config.get("optimizer_args", ""),
             )
 
             self.max_grad_norm = gr.Number(
@@ -2025,7 +2025,7 @@ class QwenImageOptimizerSettings:
                 label="Scheduler Arguments",
                 info="Extra scheduler parameters as key=value pairs. Space separated. e.g. T_max=100 eta_min=1e-7 last_epoch=-1",
                 placeholder='e.g. "T_max=100 eta_min=1e-7 last_epoch=-1"',
-                value=self.config.get("lr_scheduler_args", ""),
+                value=" ".join(self.config.get("lr_scheduler_args", []) or []) if isinstance(self.config.get("lr_scheduler_args", []), list) else self.config.get("lr_scheduler_args", ""),
             )
 
 
@@ -2096,7 +2096,7 @@ class QwenImageNetworkSettings:
                 label="Network Arguments (LoRA Args)",
                 info="Advanced LoRA parameters as key=value pairs. Space separated. e.g. conv_dim=4 conv_alpha=1 algo=locon",
                 placeholder='e.g. "conv_dim=4 conv_alpha=1 algo=locon"',
-                value=self.config.get("network_args", ""),
+                value=" ".join(self.config.get("network_args", []) or []) if isinstance(self.config.get("network_args", []), list) else self.config.get("network_args", ""),
             )
 
             self.training_comment = gr.Textbox(
