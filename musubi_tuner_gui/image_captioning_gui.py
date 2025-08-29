@@ -63,7 +63,7 @@ class ImageCaptioningTab:
                         self.copy_caption_button = gr.Button("Copy Caption")
                         self.save_caption_button = gr.Button("Save as Text File")
             
-            gr.Markdown("**Note:** May not work on Windows yet, reported, meanwhile you can use Joy Caption: https://www.patreon.com/posts/118827960")
+            gr.Markdown("You can also test and use our amazing Joy Caption App: https://www.patreon.com/posts/118827960")
             gr.Markdown("Generate descriptive captions for images using the Qwen2.5-VL multimodal model.")
             
             # Top Row: Model Configuration and Caption Configuration in left, Configuration and Custom Prompt in right

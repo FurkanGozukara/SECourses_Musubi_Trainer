@@ -8,6 +8,16 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 29 August 2025 - V3
+
+**Model downloader improvements and Windows compatibility fixes.**
+
+Changes:
+- Model downloader file updated and made more robust with SHA256 verification
+- Image Captioning with Qwen2.5-VL works perfect now on Windows and Linux
+- Enhanced file integrity checks for downloaded models
+- Improved cross-platform compatibility
+
 ### 29 August 2025 - V2
 
 **Dataset generation method fixed and GUI improvements.**
