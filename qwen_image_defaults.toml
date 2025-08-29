@@ -70,11 +70,11 @@ sage_attn = false
 xformers = false
 flash3 = false               # EXPERIMENTAL: FlashAttention 3, not confirmed to work with Qwen Image
 split_attn = false           # REQUIRED if using flash_attn/sage_attn/xformers/flash3
-max_train_steps = 1600
-max_train_epochs = 16
+max_train_steps = 90000
+max_train_epochs = 200
 max_data_loader_n_workers = 2
 persistent_data_loader_workers = true
-seed = 42
+seed = 99
 gradient_checkpointing = true
 gradient_accumulation_steps = 1
 
