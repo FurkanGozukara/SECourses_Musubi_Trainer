@@ -173,7 +173,16 @@ ddp_static_graph = false
 sample_every_n_steps = 0   # 0 = disabled. 100-500 recommended for step-based sampling
 sample_every_n_epochs = 0  # 0 = disabled. 1 = generate samples every epoch (recommended)
 sample_at_first = false
-sample_prompts = ""  # Path to text file with prompts for sample generation (one per line)
+sample_prompts = ""  # Path to text file with prompts for sample generation
+
+# Default Sample Parameters
+# These will be automatically added to prompts that don't specify them
+# An enhanced prompt file will be saved to your output directory
+sample_width = 1328         # Default width (Qwen optimal: 1328)
+sample_height = 1328        # Default height (Qwen optimal: 1328)
+sample_steps = 20           # Number of denoising steps
+sample_guidance_scale = 1.0 # Guidance scale (higher = stronger prompt adherence)
+sample_seed = -1            # Random seed (-1 = random each time)
 
 # Metadata Settings
 metadata_author = ""

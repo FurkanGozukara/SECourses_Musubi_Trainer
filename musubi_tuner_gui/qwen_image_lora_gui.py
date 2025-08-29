@@ -762,6 +762,11 @@ def qwen_image_gui_actions(
     sample_at_first,
     sample_every_n_epochs,
     sample_prompts,
+    sample_width,
+    sample_height,
+    sample_steps,
+    sample_guidance_scale,
+    sample_seed,
     # Latent Caching
     caching_latent_device,
     caching_latent_batch_size,
@@ -876,7 +881,8 @@ def qwen_image_gui_actions(
         'num_timestep_buckets', 'ddp_timeout', 'max_data_loader_n_workers',
         'num_processes', 'num_machines', 'num_cpu_threads_per_process', 'main_process_port',
         'caching_latent_batch_size', 'caching_latent_num_workers', 'caching_latent_console_width',
-        'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers'
+        'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers',
+        'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed'
     ]
     
     # Create parameters list, ensuring numeric fields are not lists
@@ -973,7 +979,8 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
         'num_timestep_buckets', 'ddp_timeout', 'max_data_loader_n_workers',
         'num_processes', 'num_machines', 'num_cpu_threads_per_process', 'main_process_port',
         'caching_latent_batch_size', 'caching_latent_num_workers', 'caching_latent_console_width',
-        'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers'
+        'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers',
+        'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed'
     ]
     
     for key, value in parameters:
@@ -1136,7 +1143,8 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
         'num_timestep_buckets', 'ddp_timeout', 'max_data_loader_n_workers',
         'num_processes', 'num_machines', 'num_cpu_threads_per_process', 'main_process_port',
         'caching_latent_batch_size', 'caching_latent_num_workers', 'caching_latent_console_width',
-        'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers'
+        'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers',
+        'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed'
     ]
     
     values = [file_path, gr.update(value=status_msg, visible=True)]
@@ -1225,6 +1233,113 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
             result_values.append(v)
 
     return tuple(result_values)
+
+
+def generate_enhanced_prompt_file(
+    original_prompt_file: str,
+    output_dir: str,
+    output_name: str,
+    sample_width: int = 1328,
+    sample_height: int = 1328,
+    sample_steps: int = 20,
+    sample_guidance_scale: float = 1.0,
+    sample_seed: int = -1
+) -> str:
+    """
+    Generate an enhanced prompt file with GUI defaults added to prompts that don't have parameters.
+    
+    Args:
+        original_prompt_file: Path to the original prompt file
+        output_dir: Directory to save the enhanced prompt file
+        output_name: Base name for the output file
+        sample_width: Default width for samples
+        sample_height: Default height for samples
+        sample_steps: Default number of denoising steps
+        sample_guidance_scale: Default guidance scale
+        sample_seed: Default seed (-1 for random)
+        
+    Returns:
+        Path to the enhanced prompt file
+    """
+    try:
+        # Read original prompt file
+        if not os.path.exists(original_prompt_file):
+            log.error(f"Original prompt file not found: {original_prompt_file}")
+            return None
+            
+        with open(original_prompt_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+        
+        # Process each line
+        enhanced_lines = []
+        for line in lines:
+            line = line.strip()
+            
+            # Skip empty lines and comments
+            if not line or line.startswith('#'):
+                enhanced_lines.append(line)
+                continue
+            
+            # Check if line already has parameters
+            has_width = '--w ' in line or '-w ' in line
+            has_height = '--h ' in line or '-h ' in line
+            has_steps = '--s ' in line or '-s ' in line
+            has_guidance = '--g ' in line or '-g ' in line
+            has_seed = '--d ' in line or '-d ' in line
+            
+            # Build enhanced line with defaults for missing parameters
+            enhanced_line = line
+            
+            # Add width and height if not present (most important for Qwen)
+            if not has_width:
+                enhanced_line += f" --w {sample_width}"
+            if not has_height:
+                enhanced_line += f" --h {sample_height}"
+            
+            # Add steps if not present
+            if not has_steps:
+                enhanced_line += f" --s {sample_steps}"
+            
+            # Add guidance if not present
+            if not has_guidance:
+                enhanced_line += f" --g {sample_guidance_scale}"
+            
+            # Add seed if not present and not random
+            if not has_seed and sample_seed != -1:
+                enhanced_line += f" --d {sample_seed}"
+            
+            enhanced_lines.append(enhanced_line)
+        
+        # Create output directory if it doesn't exist
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+        
+        # Generate filename with timestamp
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        enhanced_filename = f"{output_name}_enhanced_prompts_{timestamp}.txt"
+        enhanced_path = os.path.join(output_dir, enhanced_filename)
+        
+        # Write enhanced prompt file
+        with open(enhanced_path, 'w', encoding='utf-8') as f:
+            f.write("# Enhanced prompt file generated by Qwen Image LoRA GUI\n")
+            f.write(f"# Original file: {original_prompt_file}\n")
+            f.write(f"# Defaults applied: width={sample_width}, height={sample_height}, steps={sample_steps}, guidance={sample_guidance_scale}\n")
+            if sample_seed != -1:
+                f.write(f"# Fixed seed: {sample_seed}\n")
+            f.write("#" + "="*70 + "\n\n")
+            
+            for line in enhanced_lines:
+                f.write(line + '\n')
+        
+        log.info(f"Enhanced prompt file created: {enhanced_path}")
+        return enhanced_path
+        
+    except Exception as e:
+        log.error(f"Failed to generate enhanced prompt file: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return None
 
 
 def train_qwen_image_model(headless, print_only, parameters):
@@ -1571,6 +1686,33 @@ def train_qwen_image_model(headless, print_only, parameters):
                 else:
                     modified_params.append((key, value))
             parameters = modified_params
+        else:
+            # Generate enhanced prompt file with GUI defaults
+            original_prompt_file = param_dict.get('sample_prompts')
+            output_dir = param_dict.get('output_dir')
+            
+            # Create enhanced prompt file
+            enhanced_prompt_file = generate_enhanced_prompt_file(
+                original_prompt_file=original_prompt_file,
+                output_dir=output_dir,
+                output_name=param_dict.get('output_name'),
+                sample_width=param_dict.get('sample_width', 1328),
+                sample_height=param_dict.get('sample_height', 1328),
+                sample_steps=param_dict.get('sample_steps', 20),
+                sample_guidance_scale=param_dict.get('sample_guidance_scale', 1.0),
+                sample_seed=param_dict.get('sample_seed', -1)
+            )
+            
+            if enhanced_prompt_file:
+                # Update parameters to use the enhanced prompt file
+                modified_params = []
+                for key, value in parameters:
+                    if key == 'sample_prompts':
+                        modified_params.append((key, enhanced_prompt_file))
+                        log.info(f"Using enhanced prompt file: {enhanced_prompt_file}")
+                    else:
+                        modified_params.append((key, value))
+                parameters = modified_params
 
         pattern_exclusion = []
         for key, _ in parameters:
@@ -1827,45 +1969,7 @@ class QwenImageTrainingSettings:
                 value=self.config.get("log_tracker_name", ""),
             )
 
-        # Sample generation settings
-        with gr.Row():
-            self.sample_every_n_steps = gr.Number(
-                label="Sample Every N Steps",
-                info="Generate test images every N training steps. 0 = disable, 100-500 recommended. Requires sample_prompts file",
-                value=self.config.get("sample_every_n_steps", 0),
-                minimum=0,
-                step=1,
-                interactive=True,
-            )
-
-            self.sample_every_n_epochs = gr.Number(
-                label="Sample Every N Epochs",
-                info="Generate test images every N epochs. 0 = disable, 1-4 recommended. Overrides sample_every_n_steps",
-                value=self.config.get("sample_every_n_epochs", 0),
-                minimum=0,
-                step=1,
-                interactive=True,
-            )
-
-        with gr.Row():
-            self.sample_at_first = gr.Checkbox(
-                label="Sample at First",
-                info="Generate test images before training starts. Useful to verify prompts and base model quality",
-                value=self.config.get("sample_at_first", False),
-            )
-
-            with gr.Column(scale=4):
-                self.sample_prompts = gr.Textbox(
-                    label="Sample Prompts File",
-                    info="Path to text file with prompts (one per line). Required for sample generation. Example: 'A cat\nA dog\nA house'",
-                    placeholder="e.g., /path/to/prompts.txt",
-                    value=self.config.get("sample_prompts", ""),
-                )
-            self.sample_prompts_button = gr.Button(
-                "📂",
-                size="sm",
-                elem_id="sample_prompts_button"
-            )
+        # These sample settings are moved to a dedicated section
 
         # Additional settings
         with gr.Row():
@@ -1937,8 +2041,129 @@ class QwenImageTrainingSettings:
             fn=lambda: get_folder_path(),
             outputs=[self.logging_dir]
         )
+
+
+class QwenImageSampleSettings:
+    """Qwen Image specific sample generation settings"""
+    def __init__(self, headless: bool, config: GUIConfig) -> None:
+        self.config = config
+        self.headless = headless
+        self.initialize_ui_components()
+    
+    def initialize_ui_components(self):
+        gr.Markdown("""
+        ### Sample Generation Configuration
+        Configure test image generation during training. Samples help monitor training progress and quality.
         
-        # Add click handler for sample prompts file button
+        **How it works:**
+        - Provide a simple prompt file (one prompt per line)
+        - GUI defaults below will be automatically added to prompts that don't specify parameters
+        - An enhanced prompt file will be saved to your output directory for reference
+        
+        **Prompt File Format:**
+        - Simple format: `A cat sitting` (will use GUI defaults below)
+        - Advanced format: `A cat sitting --w 512 --h 512` (overrides GUI defaults)
+        - Mixed: Some prompts can have parameters, others will use defaults
+        """)
+        
+        # Basic sample settings
+        with gr.Row():
+            self.sample_every_n_steps = gr.Number(
+                label="Sample Every N Steps",
+                info="Generate test images every N training steps. 0 = disable",
+                value=self.config.get("sample_every_n_steps", 0),
+                minimum=0,
+                step=1,
+                interactive=True,
+            )
+            
+            self.sample_every_n_epochs = gr.Number(
+                label="Sample Every N Epochs", 
+                info="Generate test images every N epochs. 0 = disable. Overrides sample_every_n_steps",
+                value=self.config.get("sample_every_n_epochs", 0),
+                minimum=0,
+                step=1,
+                interactive=True,
+            )
+            
+            self.sample_at_first = gr.Checkbox(
+                label="Sample at First",
+                info="Generate test images before training starts to verify setup",
+                value=self.config.get("sample_at_first", False),
+            )
+        
+        # Sample prompts file
+        with gr.Row():
+            with gr.Column(scale=4):
+                self.sample_prompts = gr.Textbox(
+                    label="Sample Prompts File",
+                    info="Path to text/TOML/JSON file with prompts. Required for sample generation",
+                    placeholder="e.g., /path/to/prompts.txt",
+                    value=self.config.get("sample_prompts", ""),
+                )
+            self.sample_prompts_button = gr.Button(
+                "📂",
+                size="sm",
+                elem_id="sample_prompts_button"
+            )
+        
+        # Default sample parameters
+        gr.Markdown("### Default Sample Parameters")
+        gr.Markdown("These values will be automatically added to prompts that don't specify them")
+        
+        with gr.Row():
+            self.sample_width = gr.Number(
+                label="Default Width",
+                info="Default width for samples (Qwen optimal: 1328)",
+                value=self.config.get("sample_width", 1328),
+                minimum=64,
+                maximum=4096,
+                step=8,
+                interactive=True,
+            )
+            
+            self.sample_height = gr.Number(
+                label="Default Height",
+                info="Default height for samples (Qwen optimal: 1328)",
+                value=self.config.get("sample_height", 1328),
+                minimum=64,
+                maximum=4096,
+                step=8,
+                interactive=True,
+            )
+            
+            self.sample_steps = gr.Number(
+                label="Default Steps",
+                info="Number of denoising steps",
+                value=self.config.get("sample_steps", 20),
+                minimum=1,
+                maximum=100,
+                step=1,
+                interactive=True,
+            )
+        
+        with gr.Row():
+            self.sample_guidance_scale = gr.Number(
+                label="Default Guidance",
+                info="Guidance scale (higher = stronger prompt adherence)",
+                value=self.config.get("sample_guidance_scale", 1.0),
+                minimum=0.1,
+                maximum=20.0,
+                step=0.1,
+                interactive=True,
+            )
+            
+            self.sample_seed = gr.Number(
+                label="Default Seed",
+                info="Random seed (-1 = random each time)",
+                value=self.config.get("sample_seed", -1),
+                minimum=-1,
+                maximum=2147483647,
+                step=1,
+                interactive=True,
+            )
+        
+        # File browser button
         self.sample_prompts_button.click(
             fn=lambda: get_file_path(file_path="", default_extension=".txt", extension_name="Text files"),
             outputs=[self.sample_prompts]
@@ -2628,6 +2853,12 @@ def qwen_image_lora_tab(
     with training_accordion:
         trainingSettings = QwenImageTrainingSettings(headless=headless, config=config)
 
+    # New Sample Generation Settings section
+    sample_accordion = gr.Accordion("Sample Generation Settings", open=False, elem_classes="samples_background")
+    accordions.append(sample_accordion)
+    with sample_accordion:
+        sampleSettings = QwenImageSampleSettings(headless=headless, config=config)
+
     advanced_accordion = gr.Accordion("Advanced Settings", open=False, elem_classes="samples_background")
     accordions.append(advanced_accordion)
     with advanced_accordion:
@@ -2707,10 +2938,15 @@ def qwen_image_lora_tab(
         trainingSettings.ddp_timeout,
         trainingSettings.ddp_gradient_as_bucket_view,
         trainingSettings.ddp_static_graph,
-        trainingSettings.sample_every_n_steps,
-        trainingSettings.sample_at_first,
-        trainingSettings.sample_every_n_epochs,
-        trainingSettings.sample_prompts,
+        sampleSettings.sample_every_n_steps,
+        sampleSettings.sample_at_first,
+        sampleSettings.sample_every_n_epochs,
+        sampleSettings.sample_prompts,
+        sampleSettings.sample_width,
+        sampleSettings.sample_height,
+        sampleSettings.sample_steps,
+        sampleSettings.sample_guidance_scale,
+        sampleSettings.sample_seed,
         
         # Qwen Image Latent Caching
         qwenLatentCaching.caching_latent_device,
