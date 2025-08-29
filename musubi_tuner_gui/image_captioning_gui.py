@@ -312,22 +312,16 @@ class ImageCaptioningTab:
                             )
                         
                         with gr.Row():
-                            self.recursive = gr.Checkbox(
-                                label="Recursive",
-                                info="Process subdirectories recursively",
-                                value=self.config.get("image_captioning.recursive", False),
-                            )
-                            
                             self.scan_subfolders = gr.Checkbox(
                                 label="Scan Subfolders",
                                 info="Include images from all subfolders recursively",
                                 value=self.config.get("image_captioning.scan_subfolders", False)
                             )
                             
-                            self.overwrite = gr.Checkbox(
-                                label="Overwrite Existing",
-                                info="Overwrite existing caption files",
-                                value=self.config.get("image_captioning.overwrite", False),
+                            self.overwrite_existing_captions = gr.Checkbox(
+                                label="Overwrite Existing Captions",
+                                info="Replace existing caption files. If unchecked, skips images that already have captions",
+                                value=self.config.get("image_captioning.overwrite_existing_captions", False)
                             )
                         
                         with gr.Row():
@@ -335,12 +329,6 @@ class ImageCaptioningTab:
                                 label="Copy Images",
                                 info="Copy images to output folder (preserves folder structure when scanning subfolders)",
                                 value=self.config.get("image_captioning.copy_images", False)
-                            )
-                            
-                            self.overwrite_existing_captions = gr.Checkbox(
-                                label="Overwrite Existing Captions",
-                                info="Replace existing caption files. If unchecked, skips images that already have captions",
-                                value=self.config.get("image_captioning.overwrite_existing_captions", False)
                             )
                         
                         with gr.Row():
