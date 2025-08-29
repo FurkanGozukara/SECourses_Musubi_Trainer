@@ -8,6 +8,19 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 29 August 2025 - V5
+
+**Fixed skip existing captions logic and improved batch captioning status display.**
+
+Changes:
+- Fixed skip existing captions functionality in Image Captioning with Qwen2.5-VL
+  - Previously skipping was happening after caption generation which was destroying the skip logic
+  - Now properly checks for existing captions before processing, significantly improving efficiency
+- Added full batch captioning status display in command line with progress tracking and ETA
+- Enhanced config save/load functionality for better reliability
+- Improved interface of Image Captioning with Qwen2.5-VL for better user experience
+- Various error fixes in the Qwen2.5-VL captioning pipeline
+
 ### 29 August 2025 - V4
 
 **Fixed sample prompts file selector error.**
