@@ -29,6 +29,7 @@
 *   **Easy Installation:** 1-click installers are available for Windows, RunPod, and Massed Compute.
     *   Includes a 1-click model downloader script for necessary models (`qwen_2.5_vl_7b_fp16.safetensors`, `qwen_image_bf16.safetensors`, `qwen_train_vae.safetensors`).
     *   **Important:** Please use the provided model downloader to avoid issues with incorrect model versions.
+    *   Moreover, the Musubi Tuner automatically does FP8 and FP8 scaled conversion while loading BF16 model into RAM
     *   The model downloader uses a UGET-like method for ultra-fast and robust downloads, replacing the standard Hugging Face downloader.
     *   Moreover, the Musubi Tuner automatically does FP8 and FP8 scaled conversion while loading BF16 model into RAM
     *   The Musubi Tuner automatically handles FP8 and FP8 scaled conversion when loading the BF16 model into RAM.
