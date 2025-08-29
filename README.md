@@ -19,7 +19,7 @@
 
 ## Latest Release
 
-**Latest Zip File:** [**SECourses_Musubi_Trainer_v1.zip**](https://www.patreon.com/file?h=137551634&m=523697733)
+**Latest Zip File:** [**SECourses_Musubi_Trainer_v3.zip**](https://www.patreon.com/posts/137551634)
 
 ### Release Notes (v1 - Initial Release)
 
@@ -30,6 +30,7 @@
     *   Includes a 1-click model downloader script for necessary models (`qwen_2.5_vl_7b_fp16.safetensors`, `qwen_image_bf16.safetensors`, `qwen_train_vae.safetensors`).
     *   **Important:** Please use the provided model downloader to avoid issues with incorrect model versions.
     *   The model downloader uses a UGET-like method for ultra-fast and robust downloads, replacing the standard Hugging Face downloader.
+    *   Moreover, the Musubi Tuner automatically does FP8 and FP8 scaled conversion while loading BF16 model into RAM
     *   The Musubi Tuner automatically handles FP8 and FP8 scaled conversion when loading the BF16 model into RAM.
 *   **Technical Foundation:** This app is an interface based on the official [Kohya Musubi Tuner](https://github.com/kohya-ss/musubi-tuner), incorporating all its features plus additional enhancements.
 *   **Modern Tech Stack:** The installer comes with Torch 2.7, CUDA 12.8, and pre-compiled libraries for xFormers, Triton, Flash Attention, and Sage Attention.
@@ -37,7 +38,7 @@
     *   *Note:* Flash Attention and Sage Attention may not work on RTX 2000 or 1000 series GPUs, but a solution is planned.
 *   **Current Capabilities:**
     *   Fully supports **Qwen Image model LoRA training**.
-    *   Supports **Qwen2.5-VL image captioning** (may not work on Windows yet due to a reported bug).
+    *   Supports **Qwen2.5-VL image captioning**
 *   **Important Note:** The original `Musubi Tuner` tab from the fork is not tested or supported. Please use the **Qwen Image LoRA** and **Image Captioning** tabs.
 *   The included `test1.toml` is a basic test file to confirm functionality and is not an optimal configuration.
 
@@ -96,3 +97,5 @@
 <img width="3535" height="2519" alt="10" src="https://github.com/user-attachments/assets/5abd7215-d374-485e-8600-7b25550b571a" />
 <img width="3840" height="4396" alt="11" src="https://github.com/user-attachments/assets/efa06248-ab99-4271-be9c-b67aa9bcb246" />
 <img width="2000" height="1159" alt="12" src="https://github.com/user-attachments/assets/95e5a65e-3902-44d8-8773-79025cc2caaf" />
+<img width="1600" height="1450" alt="13" src="https://github.com/user-attachments/assets/b83c9c6e-5357-4525-a576-538002535b90" />
+
