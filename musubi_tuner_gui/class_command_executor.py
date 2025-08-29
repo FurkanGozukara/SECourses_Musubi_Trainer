@@ -1,6 +1,7 @@
 import subprocess
 import psutil
 import time
+import os
 import gradio as gr
 
 from .custom_logging import setup_logging
@@ -69,14 +70,39 @@ class CommandExecutor:
         """
         if self.is_running():
             try:
-                # Get the parent process and kill all its children
+                # Get the parent process and kill all its children (including any text encoder caching)
                 parent = psutil.Process(self.process.pid)
-                for child in parent.children(recursive=True):
-                    child.kill()
+                children = parent.children(recursive=True)
+                
+                # Log which processes are being killed for debugging
+                if children:
+                    log.info(f"Terminating {len(children)} child process(es)...")
+                    for child in children:
+                        try:
+                            log.debug(f"Killing child process: PID={child.pid}, Name={child.name()}")
+                            child.kill()
+                        except (psutil.NoSuchProcess, psutil.AccessDenied) as e:
+                            log.debug(f"Could not kill child process {child.pid}: {e}")
+                
+                # Kill the parent process
                 parent.kill()
                 log.info("The running process has been terminated.")
-                gr.Warning("Training is being cancelled... Please wait for the process to stop.")
+                gr.Warning("Training/caching is being cancelled... Please wait for the process to stop.")
                 status_msg = "Training stopped by user"
+                
+                # Clean up any temporary script files that may have been created
+                import glob
+                import tempfile
+                temp_dir = tempfile.gettempdir()
+                for temp_script in glob.glob(os.path.join(temp_dir, "tmp*.bat")) + glob.glob(os.path.join(temp_dir, "tmp*.sh")):
+                    try:
+                        # Only delete if file is older than current session (safety check)
+                        if os.path.exists(temp_script) and os.path.getmtime(temp_script) < time.time() - 1:
+                            os.remove(temp_script)
+                            log.debug(f"Cleaned up temporary script: {temp_script}")
+                    except Exception as e:
+                        log.debug(f"Could not clean up {temp_script}: {e}")
+                        
             except psutil.NoSuchProcess:
                 # Explicitly handle the case where the process does not exist
                 log.info(

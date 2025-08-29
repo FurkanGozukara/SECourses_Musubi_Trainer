@@ -1507,21 +1507,12 @@ def train_qwen_image_model(headless, print_only, parameters):
         if param_dict.get("edit"):
             run_cache_teo_cmd.append("--edit")
 
-        log.info(f"Executing command: {run_cache_teo_cmd}")
-        log.info("Caching text encoder outputs...")
-        try:
-            # Run without capture_output to show progress in real-time
-            gr.Info("Starting text encoder output caching... This may take a while.")
-            result = subprocess.run(run_cache_teo_cmd, env=setup_environment(), check=True)
-            log.debug("Text encoder output caching completed.")
-            gr.Info("Text encoder output caching completed successfully!")
-        except subprocess.CalledProcessError as e:
-            log.error(f"Text encoder caching failed with return code {e.returncode}")
-            gr.Warning(f"Text encoder caching failed with return code {e.returncode}")
-            raise RuntimeError(f"Text encoder caching failed with return code {e.returncode}")
-        except FileNotFoundError as e:
-            log.error(f"Command not found: {e}")
-            raise RuntimeError(f"Python executable not found: {python_cmd}")
+        # Store the text encoder caching command to be run as part of training
+        teo_cache_cmd = run_cache_teo_cmd
+        teo_cache_env = setup_environment()
+    else:
+        teo_cache_cmd = None
+        teo_cache_env = None
 
     # Setup accelerate launch command
     run_cmd = AccelerateLaunch.run_cmd(
@@ -1619,10 +1610,66 @@ def train_qwen_image_model(headless, print_only, parameters):
 
         env = setup_environment()
 
-        executor.execute_command(run_cmd=run_cmd, env=env)
+        # Create a wrapper script that runs both text encoder caching and training
+        if teo_cache_cmd:
+            # Create a combined command that runs caching first, then training
+            import tempfile
+            import platform
+            
+            # Create a temporary script to run both commands
+            if platform.system() == "Windows":
+                script_ext = ".bat"
+                script_content = f"""@echo off
+echo Starting text encoder output caching...
+{' '.join(teo_cache_cmd)}
+if %errorlevel% neq 0 (
+    echo Text encoder caching failed with error code %errorlevel%
+    exit /b %errorlevel%
+)
+echo Text encoder caching completed successfully!
+echo Starting training...
+{' '.join(run_cmd)}
+"""
+            else:
+                script_ext = ".sh"
+                script_content = f"""#!/bin/bash
+echo "Starting text encoder output caching..."
+{' '.join(teo_cache_cmd)}
+if [ $? -ne 0 ]; then
+    echo "Text encoder caching failed with error code $?"
+    exit $?
+fi
+echo "Text encoder caching completed successfully!"
+echo "Starting training..."
+{' '.join(run_cmd)}
+"""
+            
+            # Write the script to a temporary file
+            with tempfile.NamedTemporaryFile(mode='w', suffix=script_ext, delete=False) as f:
+                temp_script = f.name
+                f.write(script_content)
+            
+            # Make script executable on Unix-like systems
+            if platform.system() != "Windows":
+                import stat
+                os.chmod(temp_script, os.stat(temp_script).st_mode | stat.S_IEXEC)
+            
+            # Execute the combined script
+            if platform.system() == "Windows":
+                final_cmd = [temp_script]
+            else:
+                final_cmd = ["bash", temp_script]
+            
+            log.info("Starting combined text encoder caching and training process...")
+            gr.Info("Starting text encoder caching followed by training...")
+            executor.execute_command(run_cmd=final_cmd, env=env, shell=True if platform.system() == "Windows" else False)
+        else:
+            # No text encoder caching needed, just run training
+            executor.execute_command(run_cmd=run_cmd, env=env)
 
         train_state_value = time.time()
 
+        # Return immediately to show stop button
         return (
             gr.Button(visible=False or headless),  # Hide start button
             gr.Row(visible=True),  # Show stop row
