@@ -183,7 +183,7 @@ sample_height = 1328               # Default height (Qwen optimal: 1328)
 sample_steps = 20                  # Number of denoising steps
 sample_guidance_scale = 1.0        # Guidance scale (higher = stronger prompt adherence)
 sample_seed = 99                   # Random seed (-1 = random each time)
-sample_discrete_flow_shift = 0     # Discrete flow shift (0 = use training value, 2.2 = Qwen optimal)
+sample_discrete_flow_shift = 2.2     # Discrete flow shift (0 = use training value, 2.2 = Qwen optimal)
 sample_cfg_scale = 1.0             # CFG scale for negative prompt (1.0 = disabled)
 sample_negative_prompt = ""        # Default negative prompt for all samples
 
