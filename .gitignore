@@ -19,6 +19,7 @@ lib/
 lib64/
 parts/
 musubi-tuner
+.vs/
 sdist/
 var/
 wheels/
