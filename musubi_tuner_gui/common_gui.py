@@ -1401,8 +1401,16 @@ def SaveConfigFile(
                             import json
                             value = json.loads(value)
                         except:
-                            # If JSON parsing fails, treat as space-separated arguments
-                            value = value.strip("[]").split() if value.strip("[]") else []
+                            # If JSON parsing fails, try to evaluate as Python literal
+                            try:
+                                import ast
+                                value = ast.literal_eval(value)
+                                # Ensure it's a list
+                                if not isinstance(value, list):
+                                    value = [value]
+                            except:
+                                # If both fail, treat as space-separated arguments
+                                value = value.strip("[]").split() if value.strip("[]") else []
                     else:
                         # Space-separated arguments like "conv_dim=4 conv_alpha=1"
                         # Clean up each argument to remove any quotes or extra formatting
@@ -1525,8 +1533,16 @@ def SaveConfigFileToRun(
                         import json
                         value = json.loads(value)
                     except:
-                        # If JSON parsing fails, treat as space-separated arguments
-                        value = value.strip("[]").split() if value.strip("[]") else []
+                        # If JSON parsing fails, try to evaluate as Python literal
+                        try:
+                            import ast
+                            value = ast.literal_eval(value)
+                            # Ensure it's a list
+                            if not isinstance(value, list):
+                                value = [value]
+                        except:
+                            # If both fail, treat as space-separated arguments
+                            value = value.strip("[]").split() if value.strip("[]") else []
                 else:
                     # Space-separated arguments like "conv_dim=4 conv_alpha=1"
                     # Clean up each argument to remove any quotes or extra formatting

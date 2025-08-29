@@ -1205,8 +1205,14 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
             elif param_name in ['optimizer_args', 'lr_scheduler_args', 'network_args', 
                                'base_weights', 'extra_accelerate_launch_args',
                                'gpu_ids', 'additional_parameters']:
-                # These should remain as lists
-                result_values.append(v)
+                # These should remain as lists, but optimizer_args, lr_scheduler_args, and network_args
+                # need to be converted to space-separated strings for the GUI textbox
+                if param_name in ['optimizer_args', 'lr_scheduler_args', 'network_args']:
+                    # Convert list to space-separated string for textbox display
+                    result_values.append(" ".join(v) if isinstance(v, list) else v)
+                else:
+                    # Keep as list for other parameters
+                    result_values.append(v)
             else:
                 # Unknown list - try to convert if it looks numeric
                 if v and len(v) == 1 and isinstance(v[0], (int, float, type(None))):
