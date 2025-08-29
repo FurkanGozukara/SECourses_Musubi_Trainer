@@ -11,6 +11,7 @@ from .common_gui import (
     get_file_path,
     get_folder_path,
     get_saveasfile_path,
+    get_file_path_or_save_as,
     SaveConfigFile,
 )
 from .custom_logging import setup_logging
@@ -383,9 +384,38 @@ class ImageCaptioningTab:
             outputs=self.jsonl_output_file,
         )
         
+        # Config file button - now handles both save and load with auto-load
         self.config_file_button.click(
-            fn=lambda: get_saveasfile_path(file_path="", defaultextension=".toml"),
-            outputs=self.config_file_path,
+            fn=self.handle_config_file_selection,
+            inputs=self.config_file_path,
+            outputs=[
+                self.config_file_path,
+                # Auto-load outputs if file exists
+                self.model_path,
+                self.fp8_vl,
+                self.max_size,
+                self.max_new_tokens,
+                self.prefix,
+                self.suffix,
+                self.replace_words,
+                self.replace_case_insensitive,
+                self.replace_whole_words_only,
+                self.custom_prompt,
+                self.batch_image_dir,
+                self.output_format,
+                self.jsonl_output_file,
+                self.batch_output_folder,
+                self.scan_subfolders,
+                self.copy_images,
+                self.overwrite_existing_captions,
+                # Generation parameters
+                self.do_sample,
+                self.temperature,
+                self.top_k,
+                self.top_p,
+                self.repetition_penalty,
+                self.config_status,
+            ],
         )
         
         
@@ -636,6 +666,33 @@ class ImageCaptioningTab:
     def update_output_format_visibility(self, output_format: str) -> gr.update:
         """Update visibility of JSONL output row based on format selection"""
         return gr.update(visible=(output_format == "jsonl"))
+    
+    def handle_config_file_selection(self, current_path: str) -> Tuple:
+        """Handle config file selection with auto-load if file exists"""
+        # Get the file path using the dialog
+        file_path = get_file_path_or_save_as(
+            file_path=current_path if current_path else "",
+            default_extension=".toml",
+            extension_name="TOML files"
+        )
+        
+        # If no file was selected, return current state (no changes)
+        if not file_path:
+            # Return None for all fields to keep current values
+            return (current_path,) + (gr.update(),) * 22 + ("No file selected",)
+        
+        # Check if the selected file exists
+        if os.path.isfile(file_path):
+            # File exists - auto-load it
+            log.info(f"Auto-loading existing configuration from: {file_path}")
+            # Call the load_configuration method and return its results with the file path
+            load_results = self.load_configuration(file_path)
+            return (file_path,) + load_results
+        else:
+            # File doesn't exist - it's a new file path for saving
+            log.info(f"New configuration file path selected: {file_path}")
+            # Return the new path but keep all other values unchanged
+            return (file_path,) + (gr.update(),) * 22 + (f"Ready to save configuration to: {os.path.basename(file_path)}",)
     
     def batch_caption_images(
         self,
