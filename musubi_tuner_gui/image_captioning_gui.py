@@ -112,7 +112,7 @@ class ImageCaptioningTab:
                     with gr.Accordion("Caption Configuration", open=True):
                         with gr.Row():
                             self.max_new_tokens = gr.Number(
-                                label="Max New Tokens",
+                                label="Max New Tokens - More Tokens Longer Processing Time",
                                 info="Maximum number of tokens to generate for each caption",
                                 value=self.config.get("image_captioning.max_new_tokens", 1024),
                                 minimum=64,

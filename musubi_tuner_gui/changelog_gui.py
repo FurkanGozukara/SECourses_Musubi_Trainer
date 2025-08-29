@@ -8,6 +8,17 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 29 August 2025 - V2
+
+**Dataset generation method fixed and GUI improvements.**
+
+Changes:
+- Fixed dataset generation error with `generate_dataset_config_from_folders()` function
+- Updated function parameters to use correct argument names (parent_folder instead of parent_folder_path)
+- Added example filenames to model path descriptions for better user guidance
+- Updated image captioning GUI label to clarify processing time impact
+- Minor GUI description improvements for better user experience
+
 ### 28 August 2025 - V1
 
 **Initial app release with Qwen Image LoRA training support and Qwen2.5-VL Image Captioning support.**

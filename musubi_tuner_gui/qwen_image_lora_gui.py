@@ -264,27 +264,23 @@ class QwenImageDataset:
                                         f.write(caption_text)
                 
                 # Generate the dataset configuration
-                config = generate_dataset_config_from_folders(
-                    parent_folder_path=parent_folder,
-                    width=int(width),
-                    height=int(height),
+                config, messages = generate_dataset_config_from_folders(
+                    parent_folder=parent_folder,
+                    resolution=(int(width), int(height)),
                     caption_extension=caption_ext,
+                    create_missing_captions=False,  # We already created them above
+                    caption_strategy="folder_name",
                     batch_size=int(batch_size),
                     enable_bucket=enable_bucket,
                     bucket_no_upscale=bucket_no_upscale,
-                    cache_latents_to_disk=True,
-                    cache_latents_to_memory=False,
-                    cache_text_encoder_outputs=False,
-                    cache_text_encoder_outputs_to_disk=True,
-                    cache_text_encoder_outputs_to_memory=False,
-                    cache_dir_name=cache_dir,
-                    control_dir_name=control_dir,
+                    cache_directory_name=cache_dir,
+                    control_directory_name=control_dir,
                     qwen_image_edit_no_resize_control=qwen_no_resize
                 )
                 
-                # Validate the configuration
-                if not validate_dataset_config(config):
-                    return "", "", "[ERROR] Generated configuration failed validation. Check your folder structure."
+                # Check if config generation was successful
+                if not config or not config.get("datasets"):
+                    return "", "", "[ERROR] Failed to generate configuration. Check your folder structure.\n" + "\n".join(messages)
                 
                 # Generate output filename with timestamp
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -301,15 +297,14 @@ class QwenImageDataset:
                 
                 # Get dataset info for status message
                 num_datasets = len(config.get("datasets", []))
-                total_images = sum(len(ds.get("image_paths", [])) for ds in config.get("datasets", []))
                 
                 status_msg = f"[SUCCESS] Generated dataset configuration:\n"
                 status_msg += f"  Output: {output_path}\n"
                 status_msg += f"  Datasets: {num_datasets}\n"
-                status_msg += f"  Total images: {total_images}\n"
+                status_msg += f"\n" + "\n".join(messages)
                 
                 if create_missing:
-                    status_msg += f"  Caption files created with strategy: {caption_strat}"
+                    status_msg += f"\n  Caption files created with strategy: {caption_strat}"
                 
                 # Return both paths - output_path for dataset_config field and display
                 return output_path, output_path, status_msg
@@ -412,7 +407,7 @@ class QwenImageModel:
                     label="DiT (Base Model) Checkpoint Path",
                     placeholder="Path to DiT base model checkpoint (qwen_image_bf16.safetensors)",
                     value=self.config.get("dit", ""),
-                    info="Must be standard bf16/fp16 model. FP8 pre-quantized models NOT supported. FP8 conversion happens automatically if enabled below"
+                    info="e.g. qwen_image_bf16.safetensors : Must be standard bf16/fp16 model. FP8 pre-quantized models NOT supported. FP8 conversion happens automatically if enabled below"
                 )
             self.dit_button = gr.Button(
                 "📁",
@@ -432,7 +427,7 @@ class QwenImageModel:
             with gr.Column(scale=4):
                 self.vae = gr.Textbox(
                     label="VAE Checkpoint Path",
-                    info="REQUIRED: Path to VAE model (diffusion_pytorch_model.safetensors from Qwen/Qwen-Image). NOT ComfyUI VAE!",
+                    info="e.g. qwen_train_vae.safetensors : REQUIRED: Path to VAE model (diffusion_pytorch_model.safetensors from Qwen/Qwen-Image). NOT ComfyUI VAE!",
                     placeholder="e.g., /path/to/vae/diffusion_pytorch_model.safetensors",
                     value=self.config.get("vae", ""),
                 )
@@ -455,7 +450,7 @@ class QwenImageModel:
             with gr.Column(scale=4):
                 self.text_encoder = gr.Textbox(
                     label="Text Encoder (Qwen2.5-VL) Path",
-                    info="REQUIRED: Path to Qwen2.5-VL text encoder model (qwen_2.5_vl_7b.safetensors from Comfy-Org/Qwen-Image_ComfyUI)",
+                    info="e.g. qwen_2.5_vl_7b_bf16.safetensors : REQUIRED: Path to Qwen2.5-VL text encoder model (qwen_2.5_vl_7b.safetensors from Comfy-Org/Qwen-Image_ComfyUI)",
                     placeholder="e.g., /path/to/text_encoder/qwen_2.5_vl_7b.safetensors",
                     value=self.config.get("text_encoder", ""),
                 )
