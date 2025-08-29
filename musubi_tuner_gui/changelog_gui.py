@@ -8,6 +8,15 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 29 August 2025 - V4
+
+**Fixed sample prompts file selector error.**
+
+Changes:
+- Fixed TypeError in sample prompts file button click handler
+- Corrected get_file_path() function call to use proper parameters (default_extension and extension_name instead of file_filter)
+- Sample prompts file selector now works correctly when clicking the folder icon
+
 ### 29 August 2025 - V3
 
 **Model downloader improvements and Windows compatibility fixes.**

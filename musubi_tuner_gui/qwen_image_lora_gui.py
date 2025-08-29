@@ -1887,7 +1887,7 @@ class QwenImageTrainingSettings:
         
         # Add click handler for sample prompts file button
         self.sample_prompts_button.click(
-            fn=lambda: get_file_path(file_path="", file_filter="Text files (*.txt)|*.txt|All files (*.*)|*.*"),
+            fn=lambda: get_file_path(file_path="", default_extension=".txt", extension_name="Text files"),
             outputs=[self.sample_prompts]
         )
 
