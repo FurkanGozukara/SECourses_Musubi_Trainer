@@ -342,7 +342,8 @@ class ImageCaptioningTab:
                             label="Batch Progress/Status",
                             value="Ready to start batch captioning",
                             interactive=False,
-                            lines=4,
+                            lines=8,
+                            max_lines=12,
                         )
         
         # Event handlers

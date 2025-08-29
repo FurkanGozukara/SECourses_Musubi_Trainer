@@ -3,6 +3,7 @@ import json
 import math
 import sys
 import subprocess
+import time
 from pathlib import Path
 from typing import List, Union, Optional, Tuple
 import gradio as gr
@@ -339,19 +340,60 @@ class ImageCaptioning:
             processed_count = 0
             error_count = 0
             skipped_count = 0
+            start_time = time.time()
+            processing_times = []  # To track average processing time per image
             
             # Process images and write results
             if output_format == "jsonl":
                 # JSONL output format
                 with open(output_file, "w", encoding="utf-8") as f:
                     for i, image_path in enumerate(image_files):
+                        current_item = i + 1
+                        total_items = len(image_files)
+                        
+                        # Calculate progress and ETA
+                        elapsed_time = time.time() - start_time
+                        items_done = processed_count + error_count + skipped_count
+                        
+                        # Calculate ETA based on actual processing
+                        if processing_times:
+                            avg_time_per_caption = sum(processing_times) / len(processing_times)
+                            items_remaining = total_items - current_item
+                            eta_seconds = items_remaining * avg_time_per_caption
+                            eta_str = f"ETA: {int(eta_seconds//60)}m {int(eta_seconds%60)}s"
+                        else:
+                            eta_str = "ETA: calculating..."
+                        
+                        # Format progress message for Gradio
+                        progress_msg = (
+                            f"[{current_item}/{total_items}] "
+                            f"Processing: {os.path.basename(image_path)}\n"
+                            f"Processed: {processed_count} | Errors: {error_count}\n"
+                            f"{eta_str} | Elapsed: {int(elapsed_time//60)}m {int(elapsed_time%60)}s"
+                        )
+                        
                         if progress:
-                            progress((i + 1) / len(image_files), f"Processing {os.path.basename(image_path)}")
+                            progress((current_item) / total_items, progress_msg)
+                        
+                        # Print to console
+                        filename = os.path.basename(image_path)[:50]
+                        print(f"\r[{current_item}/{total_items}] Processing: {filename:<50} | "
+                              f"Done: {processed_count} | Err: {error_count} | {eta_str}    ", end='', flush=True)
+                        
+                        # Track time for caption generation
+                        caption_start_time = time.time()
                         
                         success, caption = self.generate_caption(
                             image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix, replace_words,
                             replace_case_insensitive, replace_whole_words_only, do_sample, temperature, top_k, top_p, repetition_penalty
                         )
+                        
+                        # Track processing time for ETA calculation
+                        caption_time = time.time() - caption_start_time
+                        processing_times.append(caption_time)
+                        # Keep only last 10 times for moving average
+                        if len(processing_times) > 10:
+                            processing_times.pop(0)
                         
                         if success:
                             # Copy image if requested (for JSONL format)
@@ -386,15 +428,40 @@ class ImageCaptioning:
                             log.error(f"Failed to caption {image_path}: {caption}")
                             error_count += 1
                 
-                result_msg = f"Caption generation completed. Processed {processed_count} images"
+                # Print newline after progress bar
+                print()  # Move to new line after progress display
+                
+                # Calculate final statistics
+                total_time = time.time() - start_time
+                if processing_times:
+                    avg_time = sum(processing_times) / len(processing_times)
+                    avg_time_str = f"{avg_time:.2f}s"
+                else:
+                    avg_time_str = "N/A"
+                
+                result_msg = (
+                    f"✅ Caption generation completed!\n"
+                    f"📊 Statistics:\n"
+                    f"  • Total images: {len(image_files)}\n"
+                    f"  • Processed: {processed_count}\n"
+                )
+                
                 if error_count > 0:
-                    result_msg += f", {error_count} errors"
-                result_msg += f". Results saved to: {output_file}"
+                    result_msg += f"  • Errors: {error_count}\n"
+                
+                result_msg += (
+                    f"  • Total time: {int(total_time//60)}m {int(total_time%60)}s\n"
+                    f"  • Avg time per caption: {avg_time_str}\n"
+                    f"\n📁 Output: JSONL file saved to {output_file}"
+                )
                 
                 if copy_images and output_folder and output_folder.strip():
-                    result_msg += f". Images copied to: {output_folder}"
+                    result_msg += f"\n📁 Images copied to: {output_folder}"
                     if scan_subfolders:
                         result_msg += " (preserving folder structure)"
+                
+                # Also print summary to console
+                print(f"\n{result_msg}")
                 
             else:
                 # Text file output format
@@ -408,8 +475,43 @@ class ImageCaptioning:
                     save_to_output_folder = False
                 
                 for i, image_path in enumerate(image_files):
+                    current_item = i + 1
+                    total_items = len(image_files)
+                    
+                    # Calculate progress and ETA
+                    elapsed_time = time.time() - start_time
+                    items_done = processed_count + error_count + skipped_count
+                    
+                    # Calculate ETA based on actual processing (not skipped)
+                    if processing_times:
+                        avg_time_per_caption = sum(processing_times) / len(processing_times)
+                        items_remaining = total_items - current_item
+                        # Estimate how many will actually be processed (not skipped)
+                        if items_done > 0:
+                            skip_ratio = skipped_count / items_done
+                            estimated_to_process = items_remaining * (1 - skip_ratio)
+                        else:
+                            estimated_to_process = items_remaining
+                        eta_seconds = estimated_to_process * avg_time_per_caption
+                        eta_str = f"ETA: {int(eta_seconds//60)}m {int(eta_seconds%60)}s"
+                    else:
+                        eta_str = "ETA: calculating..."
+                    
+                    # Format progress message
+                    progress_msg = (
+                        f"[{current_item}/{total_items}] "
+                        f"Processing: {os.path.basename(image_path)}\n"
+                        f"Processed: {processed_count} | Skipped: {skipped_count} | Errors: {error_count}\n"
+                        f"{eta_str} | Elapsed: {int(elapsed_time//60)}m {int(elapsed_time%60)}s"
+                    )
+                    
                     if progress:
-                        progress((i + 1) / len(image_files), f"Processing {os.path.basename(image_path)}")
+                        progress((current_item) / total_items, progress_msg)
+                    
+                    # Print to console as well
+                    filename = os.path.basename(image_path)[:50]
+                    print(f"\r[{current_item}/{total_items}] Processing: {filename:<50} | "
+                          f"Done: {processed_count} | Skip: {skipped_count} | Err: {error_count} | {eta_str}    ", end='', flush=True)
                     
                     image_path_obj = Path(image_path)
                     
@@ -436,11 +538,21 @@ class ImageCaptioning:
                         skipped_count += 1
                         continue
                     
+                    # Track time for actual caption generation
+                    caption_start_time = time.time()
+                    
                     # Generate caption only if needed
                     success, caption = self.generate_caption(
                         image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix, replace_words,
                         replace_case_insensitive, replace_whole_words_only, do_sample, temperature, top_k, top_p, repetition_penalty
                     )
+                    
+                    # Track processing time for ETA calculation
+                    caption_time = time.time() - caption_start_time
+                    processing_times.append(caption_time)
+                    # Keep only last 10 times for moving average
+                    if len(processing_times) > 10:
+                        processing_times.pop(0)
                     
                     if success:
                         # Copy image if requested and saving to output folder
@@ -461,20 +573,46 @@ class ImageCaptioning:
                         log.error(f"Failed to caption {image_path}: {caption}")
                         error_count += 1
                 
-                result_msg = f"Caption generation completed. Processed {processed_count} images"
+                # Print newline after progress bar
+                print()  # Move to new line after progress display
+                
+                # Calculate final statistics
+                total_time = time.time() - start_time
+                if processing_times:
+                    avg_time = sum(processing_times) / len(processing_times)
+                    avg_time_str = f"{avg_time:.2f}s"
+                else:
+                    avg_time_str = "N/A"
+                
+                result_msg = (
+                    f"✅ Caption generation completed!\n"
+                    f"📊 Statistics:\n"
+                    f"  • Total images: {len(image_files)}\n"
+                    f"  • Processed: {processed_count}\n"
+                )
+                
                 if skipped_count > 0:
-                    result_msg += f", skipped {skipped_count} (already captioned)"
+                    result_msg += f"  • Skipped: {skipped_count} (already had captions)\n"
                 if error_count > 0:
-                    result_msg += f", {error_count} errors"
+                    result_msg += f"  • Errors: {error_count}\n"
+                
+                result_msg += (
+                    f"  • Total time: {int(total_time//60)}m {int(total_time%60)}s\n"
+                    f"  • Avg time per caption: {avg_time_str}\n"
+                )
                 
                 if save_to_output_folder:
-                    result_msg += f". Text files saved to: {output_dir}"
+                    result_msg += f"\n📁 Output: Text files saved to {output_dir}"
                     if copy_images:
-                        result_msg += ". Images also copied"
+                        result_msg += " (images also copied"
                         if scan_subfolders:
-                            result_msg += " (preserving folder structure)"
+                            result_msg += ", preserving folder structure"
+                        result_msg += ")"
                 else:
-                    result_msg += ". Text files saved alongside each image."
+                    result_msg += "\n📁 Output: Text files saved alongside each image"
+                
+                # Also print summary to console
+                print(f"\n{result_msg}")
             
             return True, result_msg
             
