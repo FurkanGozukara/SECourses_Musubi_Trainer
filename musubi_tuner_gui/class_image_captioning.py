@@ -338,6 +338,7 @@ class ImageCaptioning:
             
             processed_count = 0
             error_count = 0
+            skipped_count = 0
             
             # Process images and write results
             if output_format == "jsonl":
@@ -410,46 +411,47 @@ class ImageCaptioning:
                     if progress:
                         progress((i + 1) / len(image_files), f"Processing {os.path.basename(image_path)}")
                     
+                    image_path_obj = Path(image_path)
+                    
+                    # Determine where the caption file will be saved BEFORE generating caption
+                    if save_to_output_folder:
+                        # Save to specified output folder
+                        if scan_subfolders:
+                            # Preserve subfolder structure
+                            rel_path = os.path.relpath(image_path, image_dir)
+                            rel_dir = os.path.dirname(rel_path)
+                            output_subdir = output_dir / rel_dir
+                            output_subdir.mkdir(parents=True, exist_ok=True)
+                            text_file_path = output_subdir / f"{image_path_obj.stem}.txt"
+                        else:
+                            # No subfolder structure to preserve
+                            text_file_path = output_dir / f"{image_path_obj.stem}.txt"
+                    else:
+                        # Save alongside image (same directory as image)
+                        text_file_path = image_path_obj.with_suffix(".txt")
+                    
+                    # Check if caption already exists and skip if not overwriting (BEFORE generating caption)
+                    if text_file_path.exists() and not overwrite_existing_captions:
+                        log.info(f"Skipping {image_path} - caption already exists at {text_file_path}")
+                        skipped_count += 1
+                        continue
+                    
+                    # Generate caption only if needed
                     success, caption = self.generate_caption(
                         image_path, max_new_tokens, prompt, max_size, fp8_vl, prefix, suffix, replace_words,
-                        replace_case_insensitive, replace_whole_words_only
+                        replace_case_insensitive, replace_whole_words_only, do_sample, temperature, top_k, top_p, repetition_penalty
                     )
                     
                     if success:
-                        image_path_obj = Path(image_path)
-                        
-                        if save_to_output_folder:
-                            # Save to specified output folder
+                        # Copy image if requested and saving to output folder
+                        if save_to_output_folder and copy_images:
                             if scan_subfolders:
-                                # Preserve subfolder structure
-                                rel_path = os.path.relpath(image_path, image_dir)
-                                rel_dir = os.path.dirname(rel_path)
-                                output_subdir = output_dir / rel_dir
-                                output_subdir.mkdir(parents=True, exist_ok=True)
-                                text_file_path = output_subdir / f"{image_path_obj.stem}.txt"
-                                
-                                # Copy image if requested
-                                if copy_images:
-                                    image_output_path = output_subdir / image_path_obj.name
-                                    if not image_output_path.exists():
-                                        shutil.copy2(image_path, image_output_path)
+                                image_output_path = output_subdir / image_path_obj.name
                             else:
-                                # No subfolder structure to preserve
-                                text_file_path = output_dir / f"{image_path_obj.stem}.txt"
-                                
-                                # Copy image if requested
-                                if copy_images:
-                                    image_output_path = output_dir / image_path_obj.name
-                                    if not image_output_path.exists():
-                                        shutil.copy2(image_path, image_output_path)
-                        else:
-                            # Save alongside image (same directory as image)
-                            text_file_path = image_path_obj.with_suffix(".txt")
-                        
-                        # Check if caption already exists and skip if not overwriting
-                        if text_file_path.exists() and not overwrite_existing_captions:
-                            log.info(f"Skipping {image_path} - caption already exists")
-                            continue
+                                image_output_path = output_dir / image_path_obj.name
+                            
+                            if not image_output_path.exists():
+                                shutil.copy2(image_path, image_output_path)
                         
                         # Write caption to text file
                         with open(text_file_path, "w", encoding="utf-8") as f:
@@ -460,6 +462,8 @@ class ImageCaptioning:
                         error_count += 1
                 
                 result_msg = f"Caption generation completed. Processed {processed_count} images"
+                if skipped_count > 0:
+                    result_msg += f", skipped {skipped_count} (already captioned)"
                 if error_count > 0:
                     result_msg += f", {error_count} errors"
                 
