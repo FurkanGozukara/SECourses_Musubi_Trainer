@@ -82,6 +82,47 @@ class ImageCaptioning:
             log.error(error_msg)
             return False, error_msg
     
+    def unload_model(self) -> Tuple[bool, str]:
+        """Completely unload/destroy the model from VRAM"""
+        try:
+            if not self.model_loaded:
+                return True, "No model loaded"
+            
+            log.info("Unloading model from VRAM...")
+            
+            # Delete model and processor
+            if self.model is not None:
+                del self.model
+                self.model = None
+            
+            if self.processor is not None:
+                del self.processor
+                self.processor = None
+            
+            # Clear CUDA cache to free VRAM
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                torch.cuda.synchronize()
+            
+            self.model_loaded = False
+            self.device = None
+            
+            # Clear any stored model parameters
+            if hasattr(self, '_last_model_path'):
+                del self._last_model_path
+            if hasattr(self, '_last_max_size'):
+                del self._last_max_size
+            if hasattr(self, '_last_fp8_vl'):
+                del self._last_fp8_vl
+            
+            log.info("Model unloaded successfully from VRAM")
+            return True, "Model unloaded from VRAM"
+            
+        except Exception as e:
+            error_msg = f"Error unloading model: {str(e)}"
+            log.error(error_msg)
+            return False, error_msg
+    
     def resize_image(self, image: Image.Image, max_size: int = DEFAULT_MAX_SIZE) -> Image.Image:
         """Resize image to a suitable resolution"""
         # Import the dataset utilities

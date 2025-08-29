@@ -65,6 +65,19 @@ class ImageCaptioningTab:
                         self.save_caption_button = gr.Button("Save as Text File")
                     with gr.Row():
                         gr.Markdown("You can also test and use our amazing Joy Caption App: https://www.patreon.com/posts/118827960")
+                    
+                    # Add unload button and auto-unload checkbox
+                    with gr.Row():
+                        self.unload_model_button = gr.Button(
+                            "🗑️ Unload Model from VRAM",
+                            variant="secondary",
+                            size="sm"
+                        )
+                        self.auto_unload_after_caption = gr.Checkbox(
+                            label="Auto-unload model after captioning",
+                            info="Automatically unload model from VRAM after single/batch captioning completes",
+                            value=self.config.get("image_captioning.auto_unload_after_caption", False),
+                        )
             
             
             
@@ -403,6 +416,7 @@ class ImageCaptioningTab:
                 self.top_k,
                 self.top_p,
                 self.repetition_penalty,
+                self.auto_unload_after_caption,
                 self.config_status,
             ],
         )
@@ -440,8 +454,15 @@ class ImageCaptioningTab:
                 self.top_k,
                 self.top_p,
                 self.repetition_penalty,
+                self.auto_unload_after_caption,  # Add auto-unload setting
             ],
             outputs=[self.single_caption_output, self.model_status],
+        )
+        
+        # Unload model button
+        self.unload_model_button.click(
+            fn=self.unload_model,
+            outputs=self.model_status,
         )
         
         # Caption utilities
@@ -491,8 +512,9 @@ class ImageCaptioningTab:
                 self.top_k,
                 self.top_p,
                 self.repetition_penalty,
+                self.auto_unload_after_caption,  # Add auto-unload setting
             ],
-            outputs=self.batch_status,
+            outputs=[self.batch_status, self.model_status],  # Also update model status
         )
         
         # Configuration management
@@ -523,6 +545,7 @@ class ImageCaptioningTab:
                 self.top_k,
                 self.top_p,
                 self.repetition_penalty,
+                self.auto_unload_after_caption,
             ],
             outputs=[self.config_file_path, self.config_status],
         )
@@ -554,6 +577,7 @@ class ImageCaptioningTab:
                 self.top_k,
                 self.top_p,
                 self.repetition_penalty,
+                self.auto_unload_after_caption,
                 self.config_status,
             ],
         )
@@ -584,6 +608,14 @@ class ImageCaptioningTab:
         
         return success, message
     
+    def unload_model(self) -> str:
+        """Unload the model from VRAM"""
+        success, message = self.captioning.unload_model()
+        if success:
+            return message
+        else:
+            return f"Error: {message}"
+    
     def caption_single_image(
         self,
         image_path: Optional[str],
@@ -603,6 +635,7 @@ class ImageCaptioningTab:
         top_k: int,
         top_p: float,
         repetition_penalty: float,
+        auto_unload_after_caption: bool,
     ) -> Tuple[str, str]:
         """Generate caption for a single image with auto-loading"""
         if not image_path:
@@ -621,7 +654,15 @@ class ImageCaptioningTab:
         )
         
         if success:
-            return caption, "Model loaded and ready"
+            # Auto-unload if requested
+            if auto_unload_after_caption:
+                unload_success, unload_msg = self.captioning.unload_model()
+                if unload_success:
+                    return caption, "Caption generated. Model unloaded from VRAM"
+                else:
+                    return caption, f"Caption generated. Warning: {unload_msg}"
+            else:
+                return caption, "Model loaded and ready"
         else:
             return f"Error: {caption}", "Model loaded but caption generation failed"
     
@@ -667,8 +708,8 @@ class ImageCaptioningTab:
         
         # If no file was selected, return current state (no changes)
         if not file_path:
-            # Return None for all fields to keep current values
-            return (current_path,) + (gr.update(),) * 22 + ("No file selected",)
+            # Return None for all fields to keep current values (23 fields + status)
+            return (current_path,) + (gr.update(),) * 23 + ("No file selected",)
         
         # Check if the selected file exists
         if os.path.isfile(file_path):
@@ -680,8 +721,8 @@ class ImageCaptioningTab:
         else:
             # File doesn't exist - it's a new file path for saving
             log.info(f"New configuration file path selected: {file_path}")
-            # Return the new path but keep all other values unchanged
-            return (file_path,) + (gr.update(),) * 22 + (f"Ready to save configuration to: {os.path.basename(file_path)}",)
+            # Return the new path but keep all other values unchanged (23 fields + status)
+            return (file_path,) + (gr.update(),) * 23 + (f"Ready to save configuration to: {os.path.basename(file_path)}",)
     
     def batch_caption_images(
         self,
@@ -708,18 +749,19 @@ class ImageCaptioningTab:
         top_k: int,
         top_p: float,
         repetition_penalty: float,
-    ) -> str:
+        auto_unload_after_caption: bool,
+    ) -> Tuple[str, str]:
         """Process batch captioning with auto-loading"""
         if not image_dir:
-            return "Please provide an image directory"
+            return "Please provide an image directory", "Ready"
         
         if output_format == "jsonl" and not jsonl_output_file:
-            return "JSONL output file is required when output format is JSONL"
+            return "JSONL output file is required when output format is JSONL", "Ready"
         
         # Auto-load model if needed
         model_loaded, load_message = self.ensure_model_loaded(model_path, max_size, fp8_vl)
         if not model_loaded:
-            return f"Failed to load model: {load_message}"
+            return f"Failed to load model: {load_message}", f"Model load failed: {load_message}"
         
         prompt = custom_prompt if custom_prompt.strip() else DEFAULT_PROMPT
         
@@ -733,7 +775,15 @@ class ImageCaptioningTab:
             do_sample, temperature, top_k, top_p, repetition_penalty
         )
         
-        return message
+        # Auto-unload if requested
+        if auto_unload_after_caption:
+            unload_success, unload_msg = self.captioning.unload_model()
+            if unload_success:
+                return message, "Batch captioning completed. Model unloaded from VRAM"
+            else:
+                return message, f"Batch captioning completed. Warning: {unload_msg}"
+        else:
+            return message, "Model loaded and ready"
     
     def save_configuration(
         self,
@@ -761,6 +811,7 @@ class ImageCaptioningTab:
         top_k: int,
         top_p: float,
         repetition_penalty: float,
+        auto_unload_after_caption: bool,
     ) -> tuple:
         """Save current configuration to file"""
         if not config_file_path:
@@ -797,6 +848,7 @@ class ImageCaptioningTab:
                     "top_k": top_k,
                     "top_p": top_p,
                     "repetition_penalty": repetition_penalty,
+                    "auto_unload_after_caption": auto_unload_after_caption,
                 }
             }
             
@@ -824,16 +876,16 @@ class ImageCaptioningTab:
             gr.Error(error_msg)
             return config_file_path, error_msg
     
-    def load_configuration(self, config_file_path: str) -> Tuple[str, bool, int, int, str, str, str, bool, bool, str, str, str, str, str, bool, bool, bool, bool, float, int, float, float, str]:
+    def load_configuration(self, config_file_path: str) -> Tuple[str, bool, int, int, str, str, str, bool, bool, str, str, str, str, str, bool, bool, bool, bool, float, int, float, float, bool, str]:
         """Load configuration from file"""
         if not config_file_path:
-            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, True, 0.7, 50, 0.95, 1.05, "Please provide a configuration file path"
+            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, True, 0.7, 50, 0.95, 1.05, False, "Please provide a configuration file path"
         
         if not os.path.isfile(config_file_path):
             error_msg = f"❌ Configuration file does not exist: {config_file_path}"
             log.error(error_msg)
             gr.Error(error_msg)
-            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, True, 0.7, 50, 0.95, 1.05, error_msg
+            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, True, 0.7, 50, 0.95, 1.05, False, error_msg
         
         try:
             import toml
@@ -873,13 +925,14 @@ class ImageCaptioningTab:
                 captioning_config.get("top_k", 50),
                 captioning_config.get("top_p", 0.95),
                 captioning_config.get("repetition_penalty", 1.05),
+                captioning_config.get("auto_unload_after_caption", False),
                 success_msg,
             )
         except Exception as e:
             error_msg = f"❌ Error loading configuration: {str(e)}"
             log.error(error_msg)
             gr.Error(error_msg)
-            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, True, 0.7, 50, 0.95, 1.05, error_msg
+            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, True, 0.7, 50, 0.95, 1.05, False, error_msg
 
 
 def image_captioning_tab(headless: bool = False, config: GUIConfig = None) -> None:
