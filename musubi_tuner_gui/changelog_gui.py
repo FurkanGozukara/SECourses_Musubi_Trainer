@@ -8,6 +8,15 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 30 August 2025 - V6
+
+**Config save and load were broken for Optimizer Arguments and Scheduler Arguments and this problem fixed. Stop training button now will appear much earlier than before when Text Encoder caching starts.**
+
+Changes:
+- Fixed broken config save and load functionality for Optimizer Arguments and Scheduler Arguments
+- Improved Stop Training button responsiveness - now appears much earlier when Text Encoder caching starts
+- Enhanced training control for better user experience
+
 ### 29 August 2025 - V5
 
 **Fixed skip existing captions logic and improved batch captioning status display.**
