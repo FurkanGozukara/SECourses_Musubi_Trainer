@@ -68,8 +68,34 @@ class ImageCaptioningTab:
             
             # Top Row: Model Configuration and Caption Configuration in left, Configuration and Custom Prompt in right
             with gr.Row():
-                # Left Column: Model Configuration and Caption Configuration
+                # Left Column: Configuration (moved up) and Model Configuration
                 with gr.Column(scale=1):
+                    # Configuration panel moved above Model Configuration
+                    with gr.Accordion("Configuration", open=True):
+                        with gr.Row():
+                            self.config_file_path = gr.Textbox(
+                                label="Configuration File",
+                                placeholder="Path to save/load configuration",
+                                value="",
+                                scale=3
+                            )
+                            
+                            self.config_file_button = gr.Button(
+                                "📁",
+                                size="sm",
+                                scale=0
+                            )
+                        
+                        with gr.Row():
+                            self.save_config_button = gr.Button("Save Configuration")
+                            self.load_config_button = gr.Button("Load Configuration")
+                        
+                        self.config_status = gr.Textbox(
+                            label="Configuration Status",
+                            value="",
+                            interactive=False,
+                        )
+                    
                     with gr.Accordion("Model Configuration", open=True):
                         with gr.Row():
                             self.model_path = gr.Textbox(
@@ -108,7 +134,7 @@ class ImageCaptioningTab:
                             interactive=False,
                         )
                     
-                    # Caption Configuration moved here under Model Configuration
+                    # Caption Configuration kept here under Model Configuration
                     with gr.Accordion("Caption Configuration", open=True):
                         with gr.Row():
                             self.max_new_tokens = gr.Number(
@@ -167,7 +193,11 @@ class ImageCaptioningTab:
                                 step=0.05,
                             )
                         
-                        gr.Markdown("### Caption Modifications")
+                
+                # Right Column: Caption Modifications and Custom Prompt
+                with gr.Column(scale=1):
+                    # Caption Modifications panel (moved from Caption Configuration)
+                    with gr.Accordion("Caption Modifications", open=True):
                         with gr.Row():
                             self.prefix = gr.Textbox(
                                 label="Caption Prefix",
@@ -203,34 +233,6 @@ class ImageCaptioningTab:
                                 info="Only replace complete words (e.g., 'he' won't match 'her' or 'the')",
                                 value=self.config.get("image_captioning.replace_whole_words_only", True)
                             )
-                        
-                
-                # Right Column: Configuration and Custom Prompt
-                with gr.Column(scale=1):
-                    with gr.Accordion("Configuration", open=True):
-                        with gr.Row():
-                            self.config_file_path = gr.Textbox(
-                                label="Configuration File",
-                                placeholder="Path to save/load configuration",
-                                value="",
-                                scale=3
-                            )
-                            
-                            self.config_file_button = gr.Button(
-                                "📁",
-                                size="sm",
-                                scale=0
-                            )
-                        
-                        with gr.Row():
-                            self.save_config_button = gr.Button("Save Configuration")
-                            self.load_config_button = gr.Button("Load Configuration")
-                        
-                        self.config_status = gr.Textbox(
-                            label="Configuration Status",
-                            value="",
-                            interactive=False,
-                        )
                     
                     # Custom Prompt with buttons
                     self.custom_prompt = gr.Textbox(
