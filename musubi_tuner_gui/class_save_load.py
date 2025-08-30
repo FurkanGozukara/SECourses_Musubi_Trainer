@@ -106,6 +106,14 @@ class SaveLoadSettings:
                 interactive=True,
             )
         
+        with gr.Row():
+            self.mem_eff_save = gr.Checkbox(
+                label="Memory Efficient Save",
+                info="Reduces RAM usage during checkpoint saving. More beneficial for fine-tuning (~40GB savings) but can also help with LoRA. NOTE: When saving optimizer state with save_state=true, normal saving method is still used.",
+                value=self.config.get("mem_eff_save", False),
+                interactive=True,
+            )
+        
         # Add click handler for folder button
         self.output_dir_button.click(
             fn=lambda: get_folder_path(),

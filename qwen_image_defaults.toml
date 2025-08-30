@@ -89,6 +89,7 @@ optimizer_type = "adamw8bit"
 optimizer_args = []  # Additional optimizer arguments like ["weight_decay=0.01", "betas=0.9,0.999"]
 learning_rate = 5e-5  # RECOMMENDED: Changed from 1e-4 to 5e-5 per official documentation update
 max_grad_norm = 1.0
+fused_backward_pass = false  # [FINE-TUNING ONLY - NOT FOR LORA] Reduces VRAM during gradient computation with Adafactor. Has no effect on LoRA training (confirmed by kohya-ss)
 lr_scheduler = "constant"
 lr_warmup_steps = 0  # 0 = no warmup. Integer = steps, float <1 = ratio of total steps
 lr_decay_steps = 0   # 0 = no decay. Integer = steps, float <1 = ratio of total steps
@@ -131,6 +132,7 @@ save_last_n_steps = 0        # 0 = keep all. Positive integer = keep only last N
 save_last_n_steps_state = 0  # 0 = keep all. Positive integer = keep only last N step states
 save_state = false
 save_state_on_train_end = false
+mem_eff_save = false  # [MEMORY EFFICIENT] Reduces RAM usage during checkpoint saving. More beneficial for fine-tuning (~40GB savings) but can also help with LoRA. NOTE: When saving optimizer state with save_state=true, normal saving is still used
 
 # Caching Settings - Latents
 caching_latent_device = "cuda"

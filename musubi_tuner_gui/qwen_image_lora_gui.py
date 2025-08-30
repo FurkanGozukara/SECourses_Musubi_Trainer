@@ -852,6 +852,7 @@ def qwen_image_gui_actions(
     lr_scheduler_min_lr_ratio,
     lr_scheduler_type,
     lr_scheduler_args,
+    fused_backward_pass,
     dit,
     dit_dtype,
     dit_in_channels,
@@ -905,6 +906,7 @@ def qwen_image_gui_actions(
     save_last_n_steps_state,
     save_state,
     save_state_on_train_end,
+    mem_eff_save,
     huggingface_repo_id,
     huggingface_token,
     huggingface_repo_type,
@@ -2347,6 +2349,14 @@ class QwenImageOptimizerSettings:
                 step=0.1,
                 interactive=True,
             )
+        
+        # Fine-tuning only parameter (hidden for LoRA training)
+        with gr.Row(visible=False):  # Hidden for LoRA, will be visible for fine-tuning
+            self.fused_backward_pass = gr.Checkbox(
+                label="Fused Backward Pass",
+                info="[FINE-TUNING ONLY with ADAFACTOR] Reduces VRAM during gradient computation. NOT effective for LoRA training. Only works with optimizer_type='adafactor'. Disables gradient accumulation.",
+                value=self.config.get("fused_backward_pass", False),
+            )
 
         # Learning rate scheduler settings
         with gr.Row():
@@ -3114,6 +3124,7 @@ def qwen_image_lora_tab(
         OptimizerAndSchedulerSettings.lr_scheduler_min_lr_ratio,
         OptimizerAndSchedulerSettings.lr_scheduler_type,
         OptimizerAndSchedulerSettings.lr_scheduler_args,
+        OptimizerAndSchedulerSettings.fused_backward_pass,
         
         # Qwen Image model settings
         qwen_model.dit,
