@@ -1,6 +1,10 @@
-# Qwen Image LoRA Training - Optimal Defaults Configuration
-# This file contains the recommended default values for Qwen Image LoRA training
+# Qwen Image Training - Optimal Defaults Configuration
+# This file contains the recommended default values for Qwen Image training
+# Supports both LoRA (parameter-efficient) and DreamBooth (full fine-tuning) modes
 # Based on documentation examples and best practices
+
+# Training Mode Selection
+training_mode = "LoRA Training"  # Options: "LoRA Training" (8-16GB VRAM) or "DreamBooth Fine-Tuning" (24GB+ VRAM)
 
 # Model Settings - REQUIRED FIELDS MUST BE SET BY USER
 dit = ""  # REQUIRED: Path to DiT checkpoint (qwen_image_bf16.safetensors)
@@ -89,7 +93,7 @@ optimizer_type = "adamw8bit"
 optimizer_args = []  # Additional optimizer arguments like ["weight_decay=0.01", "betas=0.9,0.999"]
 learning_rate = 5e-5  # RECOMMENDED: Changed from 1e-4 to 5e-5 per official documentation update
 max_grad_norm = 1.0
-fused_backward_pass = false  # [FINE-TUNING ONLY - NOT FOR LORA] Reduces VRAM during gradient computation with Adafactor. Has no effect on LoRA training (confirmed by kohya-ss)
+fused_backward_pass = false  # [AUTO-SET] Automatically enabled for DreamBooth mode (reduces VRAM), disabled for LoRA mode (no effect)
 lr_scheduler = "constant"
 lr_warmup_steps = 0  # 0 = no warmup. Integer = steps, float <1 = ratio of total steps
 lr_decay_steps = 0   # 0 = no decay. Integer = steps, float <1 = ratio of total steps
@@ -100,13 +104,13 @@ lr_scheduler_min_lr_ratio = 0.0  # 0.0 = can reach zero LR. 0.1 = minimum 10% of
 lr_scheduler_type = ""
 lr_scheduler_args = []  # Additional scheduler arguments like ["T_max=100"]
 
-# Network Settings
+# Network Settings (LoRA Mode Only - Ignored in DreamBooth Mode)
 no_metadata = false
-network_weights = ""
-network_module = "networks.lora_qwen_image"
-network_dim = 16  # RECOMMENDED: Changed from 32 to 16 per official documentation update
-network_alpha = 16.0  # RECOMMENDED: Set equal to network_dim for best results (previously was 1.0)
-network_dropout = 0.0  # 0.0 = no dropout. 0.1 = 10% dropout for regularization
+network_weights = ""  # [LORA ONLY] Path to pretrained LoRA weights to continue training
+network_module = "networks.lora_qwen_image"  # [AUTO-SET] Set to empty for DreamBooth, networks.lora_qwen_image for LoRA
+network_dim = 16  # [LORA ONLY] Network dimension/rank. RECOMMENDED: 16 per official documentation
+network_alpha = 16.0  # [LORA ONLY] Alpha for scaling. RECOMMENDED: Equal to network_dim for best results
+network_dropout = 0.0  # [LORA ONLY] Dropout rate. 0.0 = no dropout, 0.1 = 10% dropout for regularization
 # Additional network arguments. Supported options:
 # - loraplus_lr_ratio=N: Enables LoRA+ with learning rate ratio for "up" matrices (e.g., "loraplus_lr_ratio=4")
 # - exclude_patterns=["regex"]: Regex patterns to exclude modules from LoRA (default excludes ".*(_mod_).*")

@@ -425,7 +425,19 @@ class QwenImageModel:
         self.initialize_ui_components()
 
     def initialize_ui_components(self) -> None:
-        # Qwen-Image-Edit mode toggle (placed at top for visibility)
+        # Training Mode Selection (placed at top for visibility)
+        with gr.Row():
+            gr.Markdown("## Training Mode Configuration")
+        
+        with gr.Row():
+            self.training_mode = gr.Radio(
+                label="Training Mode",
+                choices=["LoRA Training", "DreamBooth Fine-Tuning"],
+                value=self.config.get("training_mode", "LoRA Training"),
+                info="LoRA: Efficient parameter-efficient fine-tuning (recommended, 8-16GB VRAM) | DreamBooth: Full model fine-tuning (requires 24GB+ VRAM)"
+            )
+        
+        # Qwen-Image-Edit mode toggle (placed after training mode)
         with gr.Row():
             self.edit = gr.Checkbox(
                 label="Enable Qwen-Image-Edit Mode",
@@ -855,6 +867,7 @@ def qwen_image_gui_actions(
     lr_scheduler_type,
     lr_scheduler_args,
     fused_backward_pass,
+    training_mode,  # Add training mode parameter
     dit,
     dit_dtype,
     dit_in_channels,
@@ -1022,6 +1035,43 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
     if not os.path.exists(destination_directory):
         os.makedirs(destination_directory)
     
+    # Process parameters based on training mode
+    param_dict = dict(parameters)
+    training_mode = param_dict.get("training_mode", "LoRA Training")
+    
+    # Apply training mode specific modifications
+    modified_params = []
+    for key, value in parameters:
+        if training_mode == "DreamBooth Fine-Tuning":
+            # For DreamBooth/Fine-tuning, we need to disable network parameters
+            if key == "network_module":
+                # Set to empty or None to disable LoRA
+                modified_params.append((key, ""))
+                log.info("DreamBooth mode: Disabling network_module for full fine-tuning")
+            elif key in ["network_dim", "network_alpha", "network_dropout", "network_args", "network_weights"]:
+                # Skip network-specific parameters for DreamBooth
+                log.info(f"DreamBooth mode: Skipping LoRA parameter {key}")
+                continue
+            elif key == "fused_backward_pass":
+                # Enable fused_backward_pass for DreamBooth (reduces VRAM)
+                modified_params.append((key, True))
+                log.info("DreamBooth mode: Enabling fused_backward_pass for memory efficiency")
+            else:
+                modified_params.append((key, value))
+        else:
+            # LoRA Training mode - keep all parameters as is
+            if key == "network_module" and (not value or value == ""):
+                # Ensure network_module is set for LoRA
+                modified_params.append((key, "networks.lora_qwen_image"))
+                log.info("LoRA mode: Setting network_module to networks.lora_qwen_image")
+            elif key == "fused_backward_pass":
+                # Disable fused_backward_pass for LoRA (not effective)
+                modified_params.append((key, False))
+            else:
+                modified_params.append((key, value))
+    
+    parameters = modified_params
+    
     # Process parameters to handle list values properly
     processed_params = []
     # NOTE: Exclude fields that are legitimately lists like optimizer_args, lr_scheduler_args, network_args
@@ -1062,6 +1112,36 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
                 "file_path",
                 "save_as",
                 "save_as_bool",
+                "training_mode",  # GUI-only parameter, not a training parameter
+                "headless",
+                "print_only",
+                "num_cpu_threads_per_process",
+                "num_processes", 
+                "num_machines",
+                "multi_gpu",
+                "gpu_ids",
+                "main_process_port",
+                "dynamo_backend",
+                "dynamo_mode",
+                "dynamo_use_fullgraph",
+                "dynamo_use_dynamic",
+                "extra_accelerate_launch_args",
+                "caching_latent_device",
+                "caching_latent_batch_size",
+                "caching_latent_num_workers",
+                "caching_latent_skip_existing",
+                "caching_latent_keep_cache",
+                "caching_latent_debug_mode",
+                "caching_latent_console_width",
+                "caching_latent_console_back",
+                "caching_latent_console_num_images",
+                "caching_teo_text_encoder",
+                "caching_teo_device",
+                "caching_teo_fp8_vl",
+                "caching_teo_batch_size",
+                "caching_teo_num_workers",
+                "caching_teo_skip_existing",
+                "caching_teo_keep_cache",
             ],
         )
         
@@ -1800,10 +1880,48 @@ def train_qwen_image_model(headless, print_only, parameters):
                         modified_params.append((key, value))
                 parameters = modified_params
 
+        # Modify parameters based on training mode
+        training_mode = param_dict.get("training_mode", "LoRA Training")
+        modified_params = []
+        
+        for key, value in parameters:
+            if training_mode == "DreamBooth Fine-Tuning":
+                # For DreamBooth/Fine-tuning, we need to disable network parameters
+                if key == "network_module":
+                    # Set to empty or None to disable LoRA
+                    modified_params.append((key, ""))
+                    log.info("DreamBooth mode: Disabling network_module for full fine-tuning")
+                elif key in ["network_dim", "network_alpha", "network_dropout", "network_args", "network_weights"]:
+                    # Skip network-specific parameters for DreamBooth
+                    log.info(f"DreamBooth mode: Skipping LoRA parameter {key}")
+                    continue
+                elif key == "fused_backward_pass":
+                    # Enable fused_backward_pass for DreamBooth (reduces VRAM)
+                    modified_params.append((key, True))
+                    log.info("DreamBooth mode: Enabling fused_backward_pass for memory efficiency")
+                else:
+                    modified_params.append((key, value))
+            else:
+                # LoRA Training mode - keep all parameters as is
+                if key == "network_module" and (not value or value == ""):
+                    # Ensure network_module is set for LoRA
+                    modified_params.append((key, "networks.lora_qwen_image"))
+                    log.info("LoRA mode: Setting network_module to networks.lora_qwen_image")
+                elif key == "fused_backward_pass":
+                    # Disable fused_backward_pass for LoRA (not effective)
+                    modified_params.append((key, False))
+                else:
+                    modified_params.append((key, value))
+        
+        parameters = modified_params
+        
         pattern_exclusion = []
         for key, _ in parameters:
             if key.startswith('caching_latent_') or key.startswith('caching_teo_'):
                 pattern_exclusion.append(key)
+        
+        # Also exclude training_mode from the TOML as it's not a training parameter
+        pattern_exclusion.append("training_mode")
 
         SaveConfigFileToRun(
             parameters=parameters,
@@ -3129,6 +3247,7 @@ def qwen_image_lora_tab(
         OptimizerAndSchedulerSettings.fused_backward_pass,
         
         # Qwen Image model settings
+        qwen_model.training_mode,  # Add training mode selection
         qwen_model.dit,
         qwen_model.dit_dtype,
         qwen_model.dit_in_channels,
