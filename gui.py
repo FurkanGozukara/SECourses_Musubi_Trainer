@@ -36,7 +36,7 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
         gr.Markdown("# SECourses Musubi Trainer V8 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
         
         # Create tabs for different functionalities
-        with gr.Tab("Qwen Image LoRA"):
+        with gr.Tab("Qwen Image Training"):
             qwen_config = config_manager.get_config_for_tab("qwen_image")
             qwen_image_lora_tab(headless=headless, config=qwen_config)
         

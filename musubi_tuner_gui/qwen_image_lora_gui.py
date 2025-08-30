@@ -3043,8 +3043,15 @@ def qwen_image_lora_tab(
         gr.Markdown(config_status)
         configuration = ConfigurationFile(headless=headless, config=config)
 
-    # Add unified toggle button to control all accordions
+    # Add search functionality and unified toggle button
     with gr.Row():
+        with gr.Column(scale=2):
+            search_input = gr.Textbox(
+                label="🔍 Search Settings",
+                placeholder="Type to search and filter panels (e.g., 'block', 'learning', 'fp8', 'cache', 'epochs')",
+                lines=1,
+                interactive=True
+            )
         with gr.Column(scale=1):
             toggle_all_btn = gr.Button(
                 value="Open All Panels", 
@@ -3054,6 +3061,10 @@ def qwen_image_lora_tab(
             )
             # Hidden state to track if panels are open or closed
             panels_state = gr.State(value="closed")  # Default state is closed
+    
+    # Hidden elements for search functionality (not displayed)
+    search_results_row = gr.Row(visible=False)
+    search_results = gr.HTML(visible=False)
 
     # Create accordion references
     accordions = []
@@ -3334,25 +3345,345 @@ def qwen_image_lora_tab(
     global executor
     executor = CommandExecutor(headless=headless)
 
+    # Add handler for search functionality
+    def search_settings(query):
+        if not query or len(query.strip()) < 1:
+            return gr.Row(visible=False), ""
+        
+        query_lower = query.lower().strip()
+        results = []
+        
+        # Comprehensive parameter map with all actual parameters
+        parameter_map = {
+            # Model Settings - Main
+            "dit": ("Qwen Image Model Settings", "DiT (Base Model) Checkpoint Path"),
+            "vae": ("Qwen Image Model Settings", "VAE Checkpoint Path"),
+            "text_encoder": ("Qwen Image Model Settings", "Text Encoder (Qwen2.5-VL) Path"),
+            "dit_dtype": ("Qwen Image Model Settings", "DiT Computation Data Type"),
+            "vae_dtype": ("Qwen Image Model Settings", "VAE Data Type"),
+            "text_encoder_dtype": ("Qwen Image Model Settings", "Text Encoder Data Type"),
+            "dit_in_channels": ("Qwen Image Model Settings", "DiT Input Channels"),
+            "training_mode": ("Qwen Image Model Settings", "Training Mode (LoRA/DreamBooth)"),
+            "edit": ("Qwen Image Model Settings", "Enable Qwen-Image-Edit Mode"),
+            
+            # FP8 and Memory Settings
+            "fp8_base": ("Qwen Image Model Settings", "Use FP8 for Base Model (DiT)"),
+            "fp8_scaled": ("Qwen Image Model Settings", "Use Scaled FP8 for DiT"),
+            "fp8_vl": ("Qwen Image Model Settings", "Use FP8 for Text Encoder"),
+            "blocks_to_swap": ("Qwen Image Model Settings", "Blocks to Swap to CPU"),
+            "blocks": ("Qwen Image Model Settings", "Blocks to Swap to CPU"),
+            "swap": ("Qwen Image Model Settings", "Blocks to Swap to CPU"),
+            "cpu": ("Qwen Image Model Settings", "Blocks to Swap to CPU"),
+            
+            # VAE Optimization
+            "vae_tiling": ("Qwen Image Model Settings", "VAE Tiling"),
+            "vae_chunk_size": ("Qwen Image Model Settings", "VAE Chunk Size"),
+            "vae_spatial_tile_sample_min_size": ("Qwen Image Model Settings", "VAE Spatial Tile Min Size"),
+            
+            # Flow Matching and Guidance
+            "guidance_scale": ("Qwen Image Model Settings", "Guidance Scale"),
+            "img_in_txt_in_offloading": ("Qwen Image Model Settings", "Image-in-Text Input Offloading"),
+            "timestep_sampling": ("Qwen Image Model Settings", "Timestep Sampling Method"),
+            "discrete_flow_shift": ("Qwen Image Model Settings", "Discrete Flow Shift"),
+            "flow_shift": ("Qwen Image Model Settings", "Flow Shift (Advanced)"),
+            "weighting_scheme": ("Qwen Image Model Settings", "Weighting Scheme"),
+            "logit_mean": ("Qwen Image Model Settings", "Logit Mean"),
+            "logit_std": ("Qwen Image Model Settings", "Logit Std"),
+            "mode_scale": ("Qwen Image Model Settings", "Mode Scale"),
+            "sigmoid_scale": ("Qwen Image Model Settings", "Sigmoid Scale"),
+            "min_timestep": ("Qwen Image Model Settings", "Min Timestep"),
+            "max_timestep": ("Qwen Image Model Settings", "Max Timestep"),
+            "preserve_distribution_shape": ("Qwen Image Model Settings", "Preserve Distribution Shape"),
+            "num_timestep_buckets": ("Qwen Image Model Settings", "Number of Timestep Buckets"),
+            
+            # Dataset Settings
+            "dataset_config": ("Qwen Image Training Dataset", "Dataset Config File"),
+            "dataset_config_mode": ("Qwen Image Training Dataset", "Dataset Configuration Method"),
+            "parent_folder_path": ("Qwen Image Training Dataset", "Parent Folder Path"),
+            "dataset_resolution_width": ("Qwen Image Training Dataset", "Resolution Width"),
+            "dataset_resolution_height": ("Qwen Image Training Dataset", "Resolution Height"),
+            "dataset_caption_extension": ("Qwen Image Training Dataset", "Caption Extension"),
+            "dataset_batch_size": ("Qwen Image Training Dataset", "Batch Size"),
+            "create_missing_captions": ("Qwen Image Training Dataset", "Create Missing Captions"),
+            "caption_strategy": ("Qwen Image Training Dataset", "Caption Strategy"),
+            "dataset_enable_bucket": ("Qwen Image Training Dataset", "Enable Bucketing"),
+            "dataset_bucket_no_upscale": ("Qwen Image Training Dataset", "Bucket No Upscale"),
+            "dataset_cache_directory": ("Qwen Image Training Dataset", "Cache Directory Name"),
+            "dataset_control_directory": ("Qwen Image Training Dataset", "Control Directory Name (Edit Mode)"),
+            "dataset_qwen_image_edit_no_resize_control": ("Qwen Image Training Dataset", "Qwen Image Edit: No Resize Control"),
+            "dataset_qwen_image_edit_control_resolution_width": ("Qwen Image Training Dataset", "Control Image Width"),
+            "dataset_qwen_image_edit_control_resolution_height": ("Qwen Image Training Dataset", "Control Image Height"),
+            
+            # Training Settings
+            "sdpa": ("Training Settings", "Use SDPA for CrossAttention"),
+            "flash_attn": ("Training Settings", "Use FlashAttention"),
+            "sage_attn": ("Training Settings", "Use SageAttention"),
+            "xformers": ("Training Settings", "Use xformers"),
+            "flash3": ("Training Settings", "Use FlashAttention 3"),
+            "split_attn": ("Training Settings", "Split Attention"),
+            "max_train_steps": ("Training Settings", "Max Training Steps"),
+            "max_train_epochs": ("Training Settings", "Max Training Epochs"),
+            "max_data_loader_n_workers": ("Training Settings", "Max DataLoader Workers"),
+            "persistent_data_loader_workers": ("Training Settings", "Persistent DataLoader Workers"),
+            "seed": ("Training Settings", "Seed"),
+            "gradient_checkpointing": ("Training Settings", "Gradient Checkpointing"),
+            "gradient_accumulation_steps": ("Training Settings", "Gradient Accumulation Steps"),
+            "full_bf16": ("Training Settings", "Full BF16 Gradients"),
+            "full_fp16": ("Training Settings", "Full FP16 Gradients"),
+            
+            # Optimizer Settings
+            "optimizer_type": ("Optimizer and Scheduler Settings", "Optimizer Type"),
+            "learning_rate": ("Optimizer and Scheduler Settings", "Learning Rate"),
+            "optimizer_args": ("Optimizer and Scheduler Settings", "Optimizer Arguments"),
+            "max_grad_norm": ("Optimizer and Scheduler Settings", "Max Gradient Norm"),
+            "fused_backward_pass": ("Optimizer and Scheduler Settings", "Fused Backward Pass"),
+            "lr_scheduler": ("Optimizer and Scheduler Settings", "Learning Rate Scheduler"),
+            "lr_warmup_steps": ("Optimizer and Scheduler Settings", "LR Warmup Steps"),
+            "lr_decay_steps": ("Optimizer and Scheduler Settings", "LR Decay Steps"),
+            "lr_scheduler_num_cycles": ("Optimizer and Scheduler Settings", "LR Scheduler Cycles"),
+            "lr_scheduler_power": ("Optimizer and Scheduler Settings", "LR Scheduler Power"),
+            "lr_scheduler_timescale": ("Optimizer and Scheduler Settings", "LR Scheduler Timescale"),
+            "lr_scheduler_min_lr_ratio": ("Optimizer and Scheduler Settings", "LR Scheduler Min LR Ratio"),
+            
+            # Network/LoRA Settings
+            "network_module": ("Network Settings", "Network Module"),
+            "network_dim": ("Network Settings", "Network Dimension (Rank)"),
+            "network_alpha": ("Network Settings", "Network Alpha"),
+            "network_dropout": ("Network Settings", "Network Dropout"),
+            "network_args": ("Network Settings", "Network Arguments"),
+            "network_weights": ("Network Settings", "Network Weights"),
+            "dim_from_weights": ("Network Settings", "Dim from Weights"),
+            "scale_weight_norms": ("Network Settings", "Scale Weight Norms"),
+            "base_weights": ("Network Settings", "Base Weights"),
+            "base_weights_multiplier": ("Network Settings", "Base Weights Multiplier"),
+            
+            # Latent Caching
+            "caching_latent_device": ("Caching → Latent caching", "Caching Device"),
+            "caching_latent_batch_size": ("Caching → Latent caching", "Caching Batch Size"),
+            "caching_latent_num_workers": ("Caching → Latent caching", "Data Loading Workers"),
+            "caching_latent_skip_existing": ("Caching → Latent caching", "Skip Existing Cache Files"),
+            "caching_latent_keep_cache": ("Caching → Latent caching", "Keep Cache Files"),
+            "caching_latent_debug_mode": ("Caching → Latent caching", "Debug Mode"),
+            
+            # Text Encoder Caching
+            "caching_teo_text_encoder": ("Caching → Text encoder caching", "Text Encoder Path"),
+            "caching_teo_device": ("Caching → Text encoder caching", "Caching Device"),
+            "caching_teo_fp8_vl": ("Caching → Text encoder caching", "Use FP8 for VL Model"),
+            "caching_teo_batch_size": ("Caching → Text encoder caching", "Caching Batch Size"),
+            "caching_teo_num_workers": ("Caching → Text encoder caching", "Data Loading Workers"),
+            "caching_teo_skip_existing": ("Caching → Text encoder caching", "Skip Existing Cache Files"),
+            "caching_teo_keep_cache": ("Caching → Text encoder caching", "Keep Cache Files"),
+            
+            # Save/Load Settings
+            "output_dir": ("Save Load Settings", "Output Directory"),
+            "output_name": ("Save Load Settings", "Output Name"),
+            "resume": ("Save Load Settings", "Resume from State"),
+            "save_every_n_epochs": ("Save Load Settings", "Save Every N Epochs"),
+            "save_every_n_steps": ("Save Load Settings", "Save Every N Steps"),
+            "save_last_n_epochs": ("Save Load Settings", "Save Last N Epochs"),
+            "save_last_n_steps": ("Save Load Settings", "Save Last N Steps"),
+            "save_state": ("Save Load Settings", "Save State"),
+            "save_state_on_train_end": ("Save Load Settings", "Save State on Train End"),
+            "mem_eff_save": ("Save Load Settings", "Memory Efficient Save"),
+            
+            # Sample Generation
+            "sample_every_n_steps": ("Sample Generation Settings", "Sample Every N Steps"),
+            "sample_every_n_epochs": ("Sample Generation Settings", "Sample Every N Epochs"),
+            "sample_at_first": ("Sample Generation Settings", "Sample at First"),
+            "sample_prompts": ("Sample Generation Settings", "Sample Prompts File"),
+            "sample_width": ("Sample Generation Settings", "Default Width"),
+            "sample_height": ("Sample Generation Settings", "Default Height"),
+            "sample_steps": ("Sample Generation Settings", "Default Steps"),
+            "sample_guidance_scale": ("Sample Generation Settings", "Default Guidance"),
+            "sample_seed": ("Sample Generation Settings", "Default Seed"),
+            "sample_discrete_flow_shift": ("Sample Generation Settings", "Default Flow Shift"),
+            "sample_cfg_scale": ("Sample Generation Settings", "Default CFG Scale"),
+            "sample_negative_prompt": ("Sample Generation Settings", "Default Negative Prompt"),
+            
+            # Accelerate Settings
+            "mixed_precision": ("Accelerate launch Settings", "Mixed Precision"),
+            "num_processes": ("Accelerate launch Settings", "Number of Processes"),
+            "num_machines": ("Accelerate launch Settings", "Number of Machines"),
+            "multi_gpu": ("Accelerate launch Settings", "Multi GPU"),
+            "gpu_ids": ("Accelerate launch Settings", "GPU IDs"),
+            "dynamo_backend": ("Accelerate launch Settings", "Dynamo Backend"),
+        }
+        
+        # Search through parameter map
+        for param, (location, display_name) in parameter_map.items():
+            # More flexible matching
+            if query_lower in param.lower() or query_lower in display_name.lower() or param.lower() in query_lower:
+                score = 0
+                # Exact match gets highest score
+                if query_lower == param.lower():
+                    score = 100
+                # Starting with query gets high score
+                elif param.lower().startswith(query_lower):
+                    score = 80
+                # Query in param name
+                elif query_lower in param.lower():
+                    score = 60
+                # Query in display name
+                elif query_lower in display_name.lower():
+                    score = 40
+                
+                results.append((location, display_name, param, score))
+        
+        # Sort by score
+        results.sort(key=lambda x: x[3], reverse=True)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_results = []
+        for item in results:
+            key = (item[0], item[1])  # Use location and display_name as key
+            if key not in seen:
+                seen.add(key)
+                unique_results.append(item[:3])  # Remove score from final result
+        
+        if not unique_results:
+            # No results found
+            html = f"<div style='padding: 10px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 5px;'>"
+            html += f"<strong>No results found for '{query}'</strong><br>"
+            html += f"<span style='color: #666; font-size: 0.9em;'>Try searching for: learning, optimizer, fp8, vram, epochs, batch, cache, sample</span>"
+            html += "</div>"
+            return gr.Row(visible=True), html
+        
+        # Format results as HTML
+        html = f"<div style='padding: 10px; background: #f0f0f0; border-radius: 5px;'>"
+        html += f"<strong>Found {len(unique_results)} result(s) for '{query}':</strong><br><br>"
+        
+        # Get unique panels
+        unique_panels = set()
+        for location, display_name, param in unique_results:
+            panel_name = location.split('→')[0].strip()
+            unique_panels.add(panel_name)
+        
+        html += f"<div style='margin-bottom: 10px; padding: 8px; background: #d4edda; border: 1px solid #c3e6cb; border-radius: 3px; color: #155724;'>"
+        html += f"✅ <strong>Opening {len(unique_panels)} relevant panel{'s' if len(unique_panels) > 1 else ''}:</strong> "
+        html += ", ".join(sorted(unique_panels))
+        html += "</div>"
+        
+        for location, display_name, param in unique_results[:10]:  # Limit to 10 results
+            html += f"<div style='margin-bottom: 8px; padding: 8px; background: white; border-radius: 3px; border-left: 3px solid #007bff;'>"
+            html += f"📍 <strong>{location}</strong><br>"
+            html += f"<span style='margin-left: 20px; color: #333;'>→ {display_name}</span>"
+            html += f"</div>"
+        
+        if len(unique_results) > 10:
+            html += f"<div style='color: #666; margin-top: 5px;'>... and {len(unique_results) - 10} more results</div>"
+        
+        html += "<div style='margin-top: 10px; padding: 8px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 3px;'>"
+        html += "💡 <strong>Note:</strong> Only panels with matching settings are opened. Clear search to reset."
+        html += "</div>"
+        html += "</div>"
+        
+        return gr.Row(visible=True), html
+    
+    # Modified search functionality to open relevant panels
+    def search_and_open_panels(query):
+        if not query or len(query.strip()) < 1:
+            # If search is cleared, close all panels
+            accordion_states = [gr.Accordion(open=False) for _ in accordions]
+            return [gr.Row(visible=False), "", gr.Button(value="Open All Panels"), "closed"] + accordion_states
+        
+        # Get search results (but we won't display them)
+        results_row, results_html = search_settings(query)
+        
+        # Parse which panels should be opened based on search results
+        panels_to_open = set()
+        
+        # Map panel names to their indices
+        panel_map = {
+            "Accelerate launch Settings": 0,
+            "Save Load Settings": 1,
+            "Qwen Image Training Dataset": 2,
+            "Qwen Image Model Settings": 3,
+            "Caching": 4,
+            "Optimizer and Scheduler Settings": 5,
+            "Training Settings": 6,
+            "Network Settings": 7,
+            "Advanced Training Settings": 8,
+            "Sample Generation Settings": 9,
+            "Logging Settings": 10,
+            "HuggingFace Settings": 11,
+            "Metadata Settings": 12,
+        }
+        
+        # Extract panel names from results HTML
+        import re
+        panel_pattern = r'📍 <strong>([^<]+)</strong>'
+        matches = re.findall(panel_pattern, results_html)
+        
+        for match in matches:
+            # Clean up the match and find the base panel name
+            base_panel = match.split('→')[0].strip()
+            if base_panel in panel_map:
+                panels_to_open.add(panel_map[base_panel])
+            # Handle special case for Caching with sub-tabs
+            elif "Caching" in base_panel:
+                panels_to_open.add(panel_map.get("Caching", 4))
+        
+        # Create accordion states - open only panels with results
+        accordion_states = []
+        for i in range(len(accordions)):
+            if i in panels_to_open:
+                accordion_states.append(gr.Accordion(open=True))
+            else:
+                accordion_states.append(gr.Accordion(open=False))
+        
+        # Update button text based on state
+        if panels_to_open:
+            button_text = f"Reset Search ({len(panels_to_open)} panel{'s' if len(panels_to_open) > 1 else ''} filtered)"
+            state = "search"
+        else:
+            button_text = "Open All Panels"
+            state = "closed"
+        
+        # Hide the results display - we just open the panels
+        return [gr.Row(visible=False), "", gr.Button(value=button_text), state] + accordion_states
+    
+    # Connect search functionality with panel control
+    search_input.change(
+        search_and_open_panels,
+        inputs=[search_input],
+        outputs=[search_results_row, search_results, toggle_all_btn, panels_state] + accordions,
+        show_progress=False,
+    )
+    
     # Add handler for unified toggle button
     def toggle_all_panels(current_state):
-        if current_state == "closed":
+        if current_state == "search":
+            # If in search mode, close all panels and clear search
+            new_state = "closed"
+            new_button_text = "Open All Panels"
+            accordion_states = [gr.Accordion(open=False) for _ in accordions]
+            search_value = ""  # Clear search
+            results_visibility = gr.Row(visible=False)
+            results_content = ""
+        elif current_state == "closed":
             # Open all panels and update button text
             new_state = "open"
             new_button_text = "Hide All Panels"
             accordion_states = [gr.Accordion(open=True) for _ in accordions]
-        else:
+            search_value = gr.Textbox(value="")  # Keep search as is
+            results_visibility = gr.Row(visible=False)
+            results_content = ""
+        else:  # current_state == "open"
             # Close all panels and update button text
             new_state = "closed"
             new_button_text = "Open All Panels"
             accordion_states = [gr.Accordion(open=False) for _ in accordions]
+            search_value = gr.Textbox(value="")  # Keep search as is
+            results_visibility = gr.Row(visible=False)
+            results_content = ""
         
-        return [new_state, gr.Button(value=new_button_text)] + accordion_states
+        return [new_state, gr.Button(value=new_button_text), search_value, results_visibility, results_content] + accordion_states
     
     toggle_all_btn.click(
         toggle_all_panels,
         inputs=[panels_state],
-        outputs=[panels_state, toggle_all_btn] + accordions,
+        outputs=[panels_state, toggle_all_btn, search_input, search_results_row, search_results] + accordions,
         show_progress=False,
     )
 

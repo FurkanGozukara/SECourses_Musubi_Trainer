@@ -14,6 +14,8 @@ def version_history_tab(headless=False, config=None):
 
 Changes:
 - Added comprehensive parameter support for Qwen Image training with 100% coverage of Musubi Tuner parameters
+- **NEW: Integrated search bar in Qwen Image Training tab** - quickly find any setting without opening all panels
+- **Tab renamed from "Qwen Image LoRA" to "Qwen Image Training"** to reflect both LoRA and Fine-tuning support
 - Implemented Qwen-Image-Edit mode support for control image training (experimental - not fully tested)
 - Added control image resolution settings for Edit mode (dataset_qwen_image_edit_control_resolution_width/height)
 - Introduced dataset_qwen_image_edit_no_resize_control option for maintaining original control image sizes
