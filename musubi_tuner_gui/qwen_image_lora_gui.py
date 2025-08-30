@@ -154,16 +154,34 @@ class QwenImageDataset:
                     info="Cache folder name (relative) or full path (absolute). Each dataset gets its own cache directory to avoid conflicts"
                 )
                 self.dataset_control_directory = gr.Textbox(
-                    label="Control Directory Name",
+                    label="Control Directory Name (Edit Mode)",
                     value=self.config.get("dataset_control_directory", "edit_images"),
-                    info="Name for control/edit images directory (for image editing). Expected inside each dataset folder"
+                    info="[EDIT MODE] Directory containing control/reference images for Qwen-Image-Edit training. Only used when edit=true in Model Settings. Place control images in this subfolder within each dataset folder."
                 )
             
             with gr.Row():
                 self.dataset_qwen_image_edit_no_resize_control = gr.Checkbox(
                     label="Qwen Image Edit: No Resize Control",
                     value=self.config.get("dataset_qwen_image_edit_no_resize_control", False),
-                    info="Don't resize control images to target resolution (keeps original control image size)"
+                    info="[EDIT MODE ONLY] When checked, control images keep their original size (no resizing). Use when your control images are already the correct size. Ignored in normal LoRA training."
+                )
+                
+                self.dataset_qwen_image_edit_control_resolution_width = gr.Number(
+                    label="Control Image Width",
+                    value=self.config.get("dataset_qwen_image_edit_control_resolution_width", 0),
+                    minimum=0,
+                    maximum=4096,
+                    step=64,
+                    info="[EDIT MODE ONLY] Width for control images. 0 = use training resolution. 1024 = Official Qwen-Image-Edit default. Only used when edit=true. Cannot be used with 'No Resize Control'."
+                )
+                
+                self.dataset_qwen_image_edit_control_resolution_height = gr.Number(
+                    label="Control Image Height",
+                    value=self.config.get("dataset_qwen_image_edit_control_resolution_height", 0),
+                    minimum=0,
+                    maximum=4096,
+                    step=64,
+                    info="[EDIT MODE ONLY] Height for control images. 0 = use training resolution. 1024 = Official Qwen-Image-Edit default. Set both width & height for custom control resolution."
                 )
             
             with gr.Row():
@@ -224,6 +242,8 @@ class QwenImageDataset:
             cache_dir,
             control_dir,
             qwen_no_resize,
+            control_res_width,  # Add control resolution width
+            control_res_height,  # Add control resolution height
             output_dir  # Add output_dir parameter
         ):
             """Generate dataset configuration from folder structure"""
@@ -359,6 +379,8 @@ class QwenImageDataset:
                         self.dataset_cache_directory,
                         self.dataset_control_directory,
                         self.dataset_qwen_image_edit_no_resize_control,
+                        self.dataset_qwen_image_edit_control_resolution_width,
+                        self.dataset_qwen_image_edit_control_resolution_height,
                         saveLoadSettings.output_dir  # Pass output_dir
                     ],
                     outputs=[self.dataset_config, self.generated_toml_path, self.dataset_status]
@@ -366,7 +388,7 @@ class QwenImageDataset:
             else:
                 # Fallback without output_dir
                 self.generate_toml_button.click(
-                    fn=lambda *args: generate_dataset_config(*args, None),  # Pass None for output_dir
+                    fn=lambda *args: generate_dataset_config(*args, None),  # Pass all args + None for output_dir
                     inputs=[
                         self.parent_folder_path,
                         self.dataset_resolution_width,
@@ -380,6 +402,8 @@ class QwenImageDataset:
                         self.dataset_cache_directory,
                         self.dataset_control_directory,
                         self.dataset_qwen_image_edit_no_resize_control,
+                        self.dataset_qwen_image_edit_control_resolution_width,
+                        self.dataset_qwen_image_edit_control_resolution_height,
                     ],
                     outputs=[self.dataset_config, self.generated_toml_path, self.dataset_status]
                 )
@@ -422,6 +446,18 @@ class QwenImageModel:
                     value=self.config.get("dit_dtype", "bfloat16"),
                     interactive=False,  # Hardcoded for Qwen Image
                 )
+        
+        # Add DiT input channels parameter
+        with gr.Row():
+            self.dit_in_channels = gr.Number(
+                label="DiT Input Channels",
+                info="[DO NOT CHANGE] VAE latent channels that DiT expects. MUST be 16 for Qwen Image (VAE encodes images to 16-channel latents). Different from SD (4 channels). Changing this will cause training to fail. This represents the depth of encoded image data.",
+                value=self.config.get("dit_in_channels", 16),
+                minimum=1,
+                maximum=32,
+                step=1,
+                interactive=True,
+            )
 
         with gr.Row():
             with gr.Column(scale=4):
@@ -573,6 +609,16 @@ class QwenImageModel:
                 label="Discrete Flow Shift",
                 info="[NOTE] Only used with 'shift' method. Qwen Image optimal: 2.2. 'qwen_shift' automatically calculates dynamic shift (0.5-0.9) based on image resolution",
                 value=self.config.get("discrete_flow_shift", 2.2),
+                step=0.1,
+                interactive=True,
+            )
+            
+            self.flow_shift = gr.Number(
+                label="Flow Shift (Advanced)",
+                info="[ADVANCED] Controls noise schedule in flow matching. Default 7.0 is optimal for most cases. Higher values (8-10) = smoother but slower convergence. Lower values (5-6) = faster but may be unstable. Only change if you understand flow matching theory.",
+                value=self.config.get("flow_shift", 7.0),
+                minimum=0.0,
+                maximum=20.0,
                 step=0.1,
                 interactive=True,
             )
@@ -733,6 +779,8 @@ def qwen_image_gui_actions(
     dataset_cache_directory,
     dataset_control_directory,
     dataset_qwen_image_edit_no_resize_control,
+    dataset_qwen_image_edit_control_resolution_width,
+    dataset_qwen_image_edit_control_resolution_height,
     generated_toml_path,
     sdpa,
     flash_attn,
@@ -747,6 +795,8 @@ def qwen_image_gui_actions(
     seed,
     gradient_checkpointing,
     gradient_accumulation_steps,
+    full_bf16,
+    full_fp16,
     logging_dir,
     log_with,
     log_prefix,
@@ -804,6 +854,7 @@ def qwen_image_gui_actions(
     lr_scheduler_args,
     dit,
     dit_dtype,
+    dit_in_channels,
     text_encoder_dtype,
     vae,
     vae_dtype,
@@ -820,6 +871,7 @@ def qwen_image_gui_actions(
     edit,
     timestep_sampling,
     discrete_flow_shift,
+    flow_shift,
     weighting_scheme,
     logit_mean,
     logit_std,
@@ -874,8 +926,9 @@ def qwen_image_gui_actions(
         'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
         'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',  # base_weights_multiplier is a Number in Qwen Image GUI
         'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap',
-        'min_timestep', 'max_timestep', 'discrete_flow_shift', 'network_dropout',
+        'min_timestep', 'max_timestep', 'discrete_flow_shift', 'flow_shift', 'dit_in_channels', 'network_dropout',
         'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
+        'dataset_qwen_image_edit_control_resolution_width', 'dataset_qwen_image_edit_control_resolution_height',
         'dataset_batch_size', 'max_train_steps', 'max_train_epochs', 'seed',
         'gradient_accumulation_steps', 'sample_every_n_steps', 'sample_every_n_epochs',
         'save_every_n_steps', 'save_every_n_epochs', 'save_last_n_epochs',
@@ -973,8 +1026,9 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
         'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
         'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',  # base_weights_multiplier is a Number in Qwen Image GUI
         'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap',
-        'min_timestep', 'max_timestep', 'discrete_flow_shift', 'network_dropout',
+        'min_timestep', 'max_timestep', 'discrete_flow_shift', 'flow_shift', 'dit_in_channels', 'network_dropout',
         'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
+        'dataset_qwen_image_edit_control_resolution_width', 'dataset_qwen_image_edit_control_resolution_height',
         'dataset_batch_size', 'max_train_steps', 'max_train_epochs', 'seed',
         'gradient_accumulation_steps', 'sample_every_n_steps', 'sample_every_n_epochs',
         'save_every_n_steps', 'save_every_n_epochs', 'save_last_n_epochs',
@@ -1138,8 +1192,9 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
         'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
         'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',  # base_weights_multiplier is a Number in Qwen Image GUI
         'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap',
-        'min_timestep', 'max_timestep', 'discrete_flow_shift', 'network_dropout',
+        'min_timestep', 'max_timestep', 'discrete_flow_shift', 'flow_shift', 'dit_in_channels', 'network_dropout',
         'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
+        'dataset_qwen_image_edit_control_resolution_width', 'dataset_qwen_image_edit_control_resolution_height',
         'dataset_batch_size', 'max_train_steps', 'max_train_epochs', 'seed',
         'gradient_accumulation_steps', 'sample_every_n_steps', 'sample_every_n_epochs',
         'save_every_n_steps', 'save_every_n_epochs', 'save_last_n_epochs',
@@ -1954,6 +2009,20 @@ class QwenImageTrainingSettings:
                 maximum=32,
                 step=1,
                 interactive=True,
+            )
+        
+        # Add full precision training options
+        with gr.Row():
+            self.full_bf16 = gr.Checkbox(
+                label="Full BF16 Training",
+                info="[EXPERIMENTAL] Stores gradients in BF16 instead of FP32. Saves ~30% VRAM but may cause training instability. Good for large batch sizes. Monitor loss carefully. Incompatible with mixed_precision='bf16'.",
+                value=self.config.get("full_bf16", False),
+            )
+            
+            self.full_fp16 = gr.Checkbox(
+                label="Full FP16 Training", 
+                info="[EXPERIMENTAL] Stores gradients in FP16 instead of FP32. Saves ~30% VRAM but higher risk of gradient underflow. Use only if full_bf16 isn't available. Requires careful learning rate tuning. Incompatible with mixed_precision='fp16'.",
+                value=self.config.get("full_fp16", False),
             )
 
         # Logging settings
@@ -2967,6 +3036,8 @@ def qwen_image_lora_tab(
         qwen_dataset.dataset_cache_directory,
         qwen_dataset.dataset_control_directory,
         qwen_dataset.dataset_qwen_image_edit_no_resize_control,
+        qwen_dataset.dataset_qwen_image_edit_control_resolution_width,
+        qwen_dataset.dataset_qwen_image_edit_control_resolution_height,
         qwen_dataset.generated_toml_path,
         
         # trainingSettings
@@ -2983,6 +3054,8 @@ def qwen_image_lora_tab(
         trainingSettings.seed,
         trainingSettings.gradient_checkpointing,
         trainingSettings.gradient_accumulation_steps,
+        trainingSettings.full_bf16,
+        trainingSettings.full_fp16,
         trainingSettings.logging_dir,
         trainingSettings.log_with,
         trainingSettings.log_prefix,
@@ -3045,6 +3118,7 @@ def qwen_image_lora_tab(
         # Qwen Image model settings
         qwen_model.dit,
         qwen_model.dit_dtype,
+        qwen_model.dit_in_channels,
         qwen_model.text_encoder_dtype,
         qwen_model.vae,
         qwen_model.vae_dtype,
@@ -3061,6 +3135,7 @@ def qwen_image_lora_tab(
         qwen_model.edit,
         qwen_model.timestep_sampling,
         qwen_model.discrete_flow_shift,
+        qwen_model.flow_shift,
         qwen_model.weighting_scheme,
         qwen_model.logit_mean,
         qwen_model.logit_std,

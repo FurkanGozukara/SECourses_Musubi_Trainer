@@ -92,6 +92,20 @@ class TrainingSettings:
                 value=self.config.get("gradient_accumulation_steps", 1),
                 interactive=True,
             )
+        
+        # Add full precision training options
+        with gr.Row():
+            self.full_bf16 = gr.Checkbox(
+                label="Full BF16 Training",
+                info="[EXPERIMENTAL] Stores gradients in BF16 instead of FP32. Saves ~30% VRAM but may cause training instability. Good for large batch sizes. Monitor loss carefully. Incompatible with mixed_precision='bf16'.",
+                value=self.config.get("full_bf16", False),
+            )
+            
+            self.full_fp16 = gr.Checkbox(
+                label="Full FP16 Training", 
+                info="[EXPERIMENTAL] Stores gradients in FP16 instead of FP32. Saves ~30% VRAM but higher risk of gradient underflow. Use only if full_bf16 isn't available. Requires careful learning rate tuning. Incompatible with mixed_precision='fp16'.",
+                value=self.config.get("full_fp16", False),
+            )
 
         with gr.Row():
             self.logging_dir = gr.Textbox(

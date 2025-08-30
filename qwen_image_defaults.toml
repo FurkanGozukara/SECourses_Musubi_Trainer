@@ -20,11 +20,14 @@ dataset_batch_size = 1  # Batch size for dataset processing
 dataset_enable_bucket = false  # Enable bucketing for variable aspect ratios
 dataset_bucket_no_upscale = false  # Prevent upscaling in bucket mode
 dataset_cache_directory = "cache_dir"  # Directory for caching processed data
-dataset_control_directory = "edit_images"  # Directory for control images (Qwen-Image-Edit mode)
-dataset_qwen_image_edit_no_resize_control = false  # Don't resize control images in edit mode
+dataset_control_directory = "edit_images"  # [EDIT MODE] Directory name for control/reference images (only used when edit=true)
+dataset_qwen_image_edit_no_resize_control = false  # [EDIT MODE] Keep control images at original size. Only used when edit=true. Cannot be used with control resolution settings
+dataset_qwen_image_edit_control_resolution_width = 0  # [EDIT MODE] Control image width. 0=same as training images, 1024=official Qwen default. Only when edit=true
+dataset_qwen_image_edit_control_resolution_height = 0  # [EDIT MODE] Control image height. 0=same as training images, 1024=official Qwen default. Only when edit=true
 generated_toml_path = ""  # Path where generated TOML will be saved (auto-set)
 
 dit_dtype = "bfloat16"  # HARDCODED: Must be bfloat16 for Qwen Image
+dit_in_channels = 16  # [DO NOT CHANGE] VAE latent channel count. MUST be 16 for Qwen (different from SD's 4). Changing breaks training!
 text_encoder_dtype = "float16"  # Data type for Qwen2.5-VL. float16=faster, bfloat16=better precision
 vae_dtype = "bfloat16"       # Data type for VAE. bfloat16=Qwen Image default, float16=faster
 
@@ -45,7 +48,8 @@ edit = false  # Enable Qwen-Image-Edit mode for training with control images
 
 # Flow Matching Settings
 timestep_sampling = "qwen_shift"  # Use Qwen-specific resolution-aware sampling
-discrete_flow_shift = 2.2
+discrete_flow_shift = 2.2  # Discrete flow shift for training (used with 'shift' method)
+flow_shift = 7.0  # [ADVANCED] Noise schedule control. 7.0 is optimal. Higher (8-10)=smoother/slower, Lower (5-6)=faster/unstable
 weighting_scheme = "none"  # Set to "mode" if you want to use mode_scale
 logit_mean = 0.0
 logit_std = 1.0
@@ -77,6 +81,8 @@ persistent_data_loader_workers = true
 seed = 99
 gradient_checkpointing = true
 gradient_accumulation_steps = 1
+full_bf16 = false  # [EXPERIMENTAL] Store gradients in BF16. Saves ~30% VRAM but may be unstable. Monitor loss. Incompatible with mixed_precision='bf16'
+full_fp16 = false  # [EXPERIMENTAL] Store gradients in FP16. Saves ~30% VRAM but risk of underflow. Use full_bf16 instead if possible
 
 # Optimizer Settings
 optimizer_type = "adamw8bit"
