@@ -59,13 +59,7 @@ def UI(**kwargs):
     log.info(f"headless: {kwargs.get('headless', False)}")
 
     # Load release and README information
-    release_info = "Unknown version"
-    try:
-        with open("./pyproject.toml", "r", encoding="utf-8") as f:
-            pyproject_data = toml.load(f)
-            release_info = pyproject_data.get("project", {}).get("version", release_info)
-    except (FileNotFoundError, toml.TomlDecodeError, KeyError) as e:
-        log.error(f"Error loading release information: {e}")
+    release_info = "v7.1"  # Hardcoded version since pyproject.toml is not needed
     
     readme_content = read_file_content("./README.md")
     

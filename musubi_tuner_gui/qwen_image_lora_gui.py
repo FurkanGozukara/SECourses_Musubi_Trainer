@@ -425,6 +425,14 @@ class QwenImageModel:
         self.initialize_ui_components()
 
     def initialize_ui_components(self) -> None:
+        # Qwen-Image-Edit mode toggle (placed at top for visibility)
+        with gr.Row():
+            self.edit = gr.Checkbox(
+                label="Enable Qwen-Image-Edit Mode",
+                info="Enable image editing training with control images. Requires control_image_path in dataset configuration and Qwen-Image-Edit DiT model",
+                value=self.config.get("edit", False),
+            )
+        
         with gr.Row():
             with gr.Column(scale=4):
                 self.dit = gr.Textbox(
@@ -587,12 +595,6 @@ class QwenImageModel:
                 label="Image-in-Text Input Offloading",
                 info="Memory optimization for mixed image-text inputs. Enable for VRAM savings with complex inputs",
                 value=self.config.get("img_in_txt_in_offloading", False),
-            )
-
-            self.edit = gr.Checkbox(
-                label="Enable Qwen-Image-Edit Mode",
-                info="Enable image editing training with control images. Requires control_image_path in dataset configuration and Qwen-Image-Edit DiT model",
-                value=self.config.get("edit", False),
             )
 
         # Flow matching parameters
@@ -3184,6 +3186,7 @@ def qwen_image_lora_tab(
         saveLoadSettings.save_last_n_steps_state,
         saveLoadSettings.save_state,
         saveLoadSettings.save_state_on_train_end,
+        gr.Checkbox(value=False, visible=False),  # mem_eff_save placeholder
         
         # huggingface
         huggingface.huggingface_repo_id,
