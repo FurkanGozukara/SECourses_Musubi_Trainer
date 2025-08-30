@@ -570,13 +570,13 @@ class QwenImageModel:
         
         with gr.Row():
             self.fp8_base = gr.Checkbox(
-                label="Use FP8 for Base Model (DiT)",
+                label="FP8 for Base Model (DiT) (BF16 Model On The Fly Converted)",
                 info="Converts bf16 model to FP8 on-the-fly, saving ~12GB VRAM (24GB→12GB). INPUT: Requires standard bf16 model. OUTPUT: Cannot save FP8 models. Always enable with fp8_scaled below",
                 value=self.config.get("fp8_base", False),
             )
             
             self.fp8_scaled = gr.Checkbox(
-                label="Use Scaled FP8 for DiT",
+                label="Scaled FP8 for Base Model (DiT) (BF16 Model On The Fly Converted - Better FP8 Precision)",
                 info="REQUIRED with fp8_base for best quality. RTX 4000: native support (fast). RTX 2000/3000: automatic fallback (same quality, slightly slower)",
                 value=self.config.get("fp8_scaled", False),
             )
@@ -3367,8 +3367,8 @@ def qwen_image_lora_tab(
             "edit": ("Qwen Image Model Settings", "Enable Qwen-Image-Edit Mode"),
             
             # FP8 and Memory Settings
-            "fp8_base": ("Qwen Image Model Settings", "Use FP8 for Base Model (DiT)"),
-            "fp8_scaled": ("Qwen Image Model Settings", "Use Scaled FP8 for DiT"),
+            "fp8_base": ("Qwen Image Model Settings", "FP8 for Base Model (DiT) (BF16 Model On The Fly Converted)"),
+            "fp8_scaled": ("Qwen Image Model Settings", "Scaled FP8 for Base Model (DiT) (BF16 Model On The Fly Converted - Better FP8 Precision)"),
             "fp8_vl": ("Qwen Image Model Settings", "Use FP8 for Text Encoder"),
             "blocks_to_swap": ("Qwen Image Model Settings", "Blocks to Swap to CPU"),
             "blocks": ("Qwen Image Model Settings", "Blocks to Swap to CPU"),

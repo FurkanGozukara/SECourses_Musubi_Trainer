@@ -108,8 +108,8 @@ lr_scheduler_args = []  # Additional scheduler arguments like ["T_max=100"]
 no_metadata = false
 network_weights = ""  # [LORA ONLY] Path to pretrained LoRA weights to continue training
 network_module = "networks.lora_qwen_image"  # [AUTO-SET] Set to empty for DreamBooth, networks.lora_qwen_image for LoRA
-network_dim = 16  # [LORA ONLY] Network dimension/rank. RECOMMENDED: 16 per official documentation
-network_alpha = 16.0  # [LORA ONLY] Alpha for scaling. RECOMMENDED: Equal to network_dim for best results
+network_dim = 128  # [LORA ONLY] Network dimension/rank. RECOMMENDED: 16 per official documentation
+network_alpha = 128.0  # [LORA ONLY] Alpha for scaling. RECOMMENDED: Equal to network_dim for best results
 network_dropout = 0.0  # [LORA ONLY] Dropout rate. 0.0 = no dropout, 0.1 = 10% dropout for regularization
 # Additional network arguments. Supported options:
 # - loraplus_lr_ratio=N: Enables LoRA+ with learning rate ratio for "up" matrices (e.g., "loraplus_lr_ratio=4")

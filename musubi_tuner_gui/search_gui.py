@@ -58,14 +58,14 @@ class ParameterSearcher:
             
             # FP8 Quantization
             "fp8_base": {
-                "display_name": "Use FP8 for Base Model (DiT)",
+                "display_name": "FP8 for Base Model (DiT) (BF16 Model On The Fly Converted)",
                 "tab": "Qwen Image LoRA",
                 "section": "FP8 Quantization",
                 "keywords": ["fp8", "quantization", "dit", "base", "memory", "vram"],
                 "description": "Converts bf16 model to FP8 on-the-fly, saving ~12GB VRAM"
             },
             "fp8_scaled": {
-                "display_name": "Use Scaled FP8 for DiT",
+                "display_name": "Scaled FP8 for Base Model (DiT) (BF16 Model On The Fly Converted - Better FP8 Precision)",
                 "tab": "Qwen Image LoRA",
                 "section": "FP8 Quantization",
                 "keywords": ["fp8", "scaled", "quantization", "quality"],
