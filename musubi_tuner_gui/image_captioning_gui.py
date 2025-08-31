@@ -348,7 +348,16 @@ class ImageCaptioningTab:
                             self.batch_caption_button = gr.Button(
                                 "Start Batch Captioning",
                                 variant="primary",
-                                size="lg"
+                                size="lg",
+                                scale=2
+                            )
+                            
+                            self.stop_batch_button = gr.Button(
+                                "⏹️ Stop Processing",
+                                variant="stop",
+                                size="lg",
+                                interactive=False,
+                                scale=1
                             )
                         
                         self.batch_status = gr.Textbox(
@@ -487,7 +496,7 @@ class ImageCaptioningTab:
         
         # Batch captioning
         self.batch_caption_button.click(
-            fn=self.batch_caption_images,
+            fn=self.batch_caption_wrapper,
             inputs=[
                 self.batch_image_dir,
                 self.output_format,
@@ -514,7 +523,13 @@ class ImageCaptioningTab:
                 self.repetition_penalty,
                 self.auto_unload_after_caption,  # Add auto-unload setting
             ],
-            outputs=[self.batch_status, self.model_status],  # Also update model status
+            outputs=[self.batch_status, self.model_status, self.batch_caption_button, self.stop_batch_button],
+        )
+        
+        # Stop batch processing
+        self.stop_batch_button.click(
+            fn=self.stop_batch_processing,
+            outputs=[self.batch_status, self.batch_caption_button, self.stop_batch_button],
         )
         
         # Configuration management
@@ -724,6 +739,55 @@ class ImageCaptioningTab:
             # Return the new path but keep all other values unchanged (23 fields + status)
             return (file_path,) + (gr.update(),) * 23 + (f"Ready to save configuration to: {os.path.basename(file_path)}",)
     
+    def batch_caption_wrapper(
+        self,
+        image_dir: str,
+        output_format: str,
+        jsonl_output_file: str,
+        output_folder: str,
+        max_new_tokens: int,
+        custom_prompt: str,
+        max_size: int,
+        fp8_vl: bool,
+        prefix: str,
+        suffix: str,
+        replace_words: str,
+        replace_case_insensitive: bool,
+        replace_whole_words_only: bool,
+        scan_subfolders: bool,
+        copy_images: bool,
+        overwrite_existing_captions: bool,
+        model_path: str,
+        # Generation parameters
+        do_sample: bool,
+        temperature: float,
+        top_k: int,
+        top_p: float,
+        repetition_penalty: float,
+        auto_unload_after_caption: bool,
+    ) -> Tuple[str, str, gr.update, gr.update]:
+        """Wrapper for batch captioning that manages button states during processing"""
+        
+        # Set button states at start (disable batch, enable stop)
+        yield (
+            "🔄 Starting batch captioning...",
+            "Preparing...",
+            gr.update(interactive=False),  # Disable batch caption button
+            gr.update(interactive=True)    # Enable stop button
+        )
+        
+        # Call the actual batch processing method
+        result = self.batch_caption_images(
+            image_dir, output_format, jsonl_output_file, output_folder, max_new_tokens,
+            custom_prompt, max_size, fp8_vl, prefix, suffix, replace_words,
+            replace_case_insensitive, replace_whole_words_only, scan_subfolders,
+            copy_images, overwrite_existing_captions, model_path,
+            do_sample, temperature, top_k, top_p, repetition_penalty, auto_unload_after_caption
+        )
+        
+        # Return final result with proper button states
+        yield result
+    
     def batch_caption_images(
         self,
         image_dir: str,
@@ -750,20 +814,38 @@ class ImageCaptioningTab:
         top_p: float,
         repetition_penalty: float,
         auto_unload_after_caption: bool,
-    ) -> Tuple[str, str]:
+    ) -> Tuple[str, str, gr.update, gr.update]:
         """Process batch captioning with auto-loading"""
         if not image_dir:
-            return "Please provide an image directory", "Ready"
+            return (
+                "Please provide an image directory", 
+                "Ready",
+                gr.update(interactive=True),  # Keep batch caption button enabled
+                gr.update(interactive=False)  # Keep stop button disabled
+            )
         
         if output_format == "jsonl" and not jsonl_output_file:
-            return "JSONL output file is required when output format is JSONL", "Ready"
+            return (
+                "JSONL output file is required when output format is JSONL", 
+                "Ready",
+                gr.update(interactive=True),  # Keep batch caption button enabled
+                gr.update(interactive=False)  # Keep stop button disabled
+            )
         
         # Auto-load model if needed
         model_loaded, load_message = self.ensure_model_loaded(model_path, max_size, fp8_vl)
         if not model_loaded:
-            return f"Failed to load model: {load_message}", f"Model load failed: {load_message}"
+            return (
+                f"Failed to load model: {load_message}",
+                f"Model load failed: {load_message}",
+                gr.update(interactive=True),  # Keep batch caption button enabled
+                gr.update(interactive=False)  # Keep stop button disabled
+            )
         
         prompt = custom_prompt if custom_prompt.strip() else DEFAULT_PROMPT
+        
+        # Update button states at start of processing
+        # Note: This won't show immediately as it's during processing, but sets the states
         
         # Create a progress object
         progress = gr.Progress()
@@ -779,11 +861,35 @@ class ImageCaptioningTab:
         if auto_unload_after_caption:
             unload_success, unload_msg = self.captioning.unload_model()
             if unload_success:
-                return message, "Batch captioning completed. Model unloaded from VRAM"
+                return (
+                    message,
+                    "Batch captioning completed. Model unloaded from VRAM",
+                    gr.update(interactive=True),   # Re-enable batch caption button
+                    gr.update(interactive=False)   # Disable stop button
+                )
             else:
-                return message, f"Batch captioning completed. Warning: {unload_msg}"
+                return (
+                    message,
+                    f"Batch captioning completed. Warning: {unload_msg}",
+                    gr.update(interactive=True),   # Re-enable batch caption button
+                    gr.update(interactive=False)   # Disable stop button
+                )
         else:
-            return message, "Model loaded and ready"
+            return (
+                message,
+                "Model loaded and ready",
+                gr.update(interactive=True),   # Re-enable batch caption button
+                gr.update(interactive=False)   # Disable stop button
+            )
+    
+    def stop_batch_processing(self) -> Tuple[str, gr.update, gr.update]:
+        """Stop the current batch processing operation"""
+        self.captioning.stop_batch_processing()
+        return (
+            "⏹️ Stop requested - processing will halt after current image...",
+            gr.update(interactive=True),  # Re-enable batch caption button
+            gr.update(interactive=False)  # Disable stop button
+        )
     
     def save_configuration(
         self,

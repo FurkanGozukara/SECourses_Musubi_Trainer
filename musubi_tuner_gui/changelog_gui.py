@@ -8,6 +8,22 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 31 August 2025 - V11
+
+**Professional Stop Button Implementation for Batch Image Captioning - Allows safe interruption of long-running batch operations.**
+
+Changes:
+- **NEW: Professional Stop Button for Batch Captioning** - Added comprehensive stop functionality to Image Captioning tab
+- **Enhanced User Control** - Stop button becomes available immediately when batch processing starts
+- **Safe Processing Halt** - Stops after completing current image to prevent data corruption or incomplete caption files  
+- **Smart Button State Management** - Batch button disabled during processing, stop button enabled, automatic state restoration
+- **Comprehensive Stop Integration** - Works for both text file and JSONL output formats with proper progress tracking
+- **Immediate Response** - Stop requests are processed quickly with clear user feedback and status updates
+- **Graceful Termination** - Properly updates statistics, saves completed work, and shows clear "stopped by user" messaging
+- **Professional UX** - Clean interface with proper button states and visual feedback throughout the process
+- Processing can be safely interrupted at any point without losing completed captions or corrupting the output
+- All batch processing statistics and progress information remain accurate even when stopped mid-process
+
 ### 31 August 2025 - V10
 
 **Critical Checkpoint Management Bug Fix - Prevents immediate deletion of saved checkpoints.**

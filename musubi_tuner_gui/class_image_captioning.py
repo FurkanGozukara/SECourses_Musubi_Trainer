@@ -40,6 +40,7 @@ class ImageCaptioning:
         self.processor = None
         self.device = None
         self.model_loaded = False
+        self.stop_processing = False  # Flag to stop batch processing
         
     def load_model_and_processor(self, model_path: str, max_size: int = DEFAULT_MAX_SIZE, fp8_vl: bool = False) -> Tuple[bool, str]:
         """Load Qwen2.5-VL model and processor"""
@@ -81,6 +82,15 @@ class ImageCaptioning:
             error_msg = f"Error loading model: {str(e)}"
             log.error(error_msg)
             return False, error_msg
+    
+    def stop_batch_processing(self) -> None:
+        """Stop the current batch processing operation"""
+        self.stop_processing = True
+        log.info("Stop batch processing requested")
+    
+    def reset_stop_flag(self) -> None:
+        """Reset the stop processing flag"""
+        self.stop_processing = False
     
     def unload_model(self) -> Tuple[bool, str]:
         """Completely unload/destroy the model from VRAM"""
@@ -330,6 +340,9 @@ class ImageCaptioning:
     ) -> Tuple[bool, str]:
         """Batch caption images in a directory"""
         try:
+            # Reset stop flag at the beginning of batch processing
+            self.reset_stop_flag()
+            
             # Model loading is now handled by the GUI layer
                 
             if not os.path.exists(image_dir):
@@ -389,6 +402,12 @@ class ImageCaptioning:
                 # JSONL output format
                 with open(output_file, "w", encoding="utf-8") as f:
                     for i, image_path in enumerate(image_files):
+                        # Check if stop was requested
+                        if self.stop_processing:
+                            print(f"\n⏹️ Processing stopped by user at image {i+1}/{len(image_files)}")
+                            log.info(f"Batch processing stopped by user at image {i+1}/{len(image_files)}")
+                            break
+                        
                         current_item = i + 1
                         total_items = len(image_files)
                         
@@ -480,8 +499,14 @@ class ImageCaptioning:
                 else:
                     avg_time_str = "N/A"
                 
+                # Check if processing was stopped
+                if self.stop_processing:
+                    status_msg = "⏹️ Caption generation stopped by user!"
+                else:
+                    status_msg = "✅ Caption generation completed!"
+                
                 result_msg = (
-                    f"✅ Caption generation completed!\n"
+                    f"{status_msg}\n"
                     f"📊 Statistics:\n"
                     f"  • Total images: {len(image_files)}\n"
                     f"  • Processed: {processed_count}\n"
@@ -516,6 +541,12 @@ class ImageCaptioning:
                     save_to_output_folder = False
                 
                 for i, image_path in enumerate(image_files):
+                    # Check if stop was requested
+                    if self.stop_processing:
+                        print(f"\n⏹️ Processing stopped by user at image {i+1}/{len(image_files)}")
+                        log.info(f"Batch processing stopped by user at image {i+1}/{len(image_files)}")
+                        break
+                    
                     current_item = i + 1
                     total_items = len(image_files)
                     
@@ -625,8 +656,14 @@ class ImageCaptioning:
                 else:
                     avg_time_str = "N/A"
                 
+                # Check if processing was stopped
+                if self.stop_processing:
+                    status_msg = "⏹️ Caption generation stopped by user!"
+                else:
+                    status_msg = "✅ Caption generation completed!"
+                
                 result_msg = (
-                    f"✅ Caption generation completed!\n"
+                    f"{status_msg}\n"
                     f"📊 Statistics:\n"
                     f"  • Total images: {len(image_files)}\n"
                     f"  • Processed: {processed_count}\n"
