@@ -3345,6 +3345,10 @@ def qwen_image_lora_tab(
     with gr.Column(), gr.Group():
         with gr.Row():
             button_print = gr.Button("Print training command")
+            toggle_all_btn_bottom = gr.Button(
+                value="Open All Panels", 
+                variant="secondary"
+            )
 
     global executor
     executor = CommandExecutor(headless=headless)
@@ -3645,13 +3649,13 @@ def qwen_image_lora_tab(
             state = "closed"
         
         # Hide the results display - we just open the panels
-        return [gr.Row(visible=False), "", gr.Button(value=button_text), state] + accordion_states
+        return [gr.Row(visible=False), "", gr.Button(value=button_text), gr.Button(value=button_text), state] + accordion_states
     
     # Connect search functionality with panel control
     search_input.change(
         search_and_open_panels,
         inputs=[search_input],
-        outputs=[search_results_row, search_results, toggle_all_btn, panels_state] + accordions,
+        outputs=[search_results_row, search_results, toggle_all_btn, toggle_all_btn_bottom, panels_state] + accordions,
         show_progress=False,
     )
     
@@ -3682,12 +3686,46 @@ def qwen_image_lora_tab(
             results_visibility = gr.Row(visible=False)
             results_content = ""
         
-        return [new_state, gr.Button(value=new_button_text), search_value, results_visibility, results_content] + accordion_states
+        return [new_state, gr.Button(value=new_button_text), gr.Button(value=new_button_text), search_value, results_visibility, results_content] + accordion_states
     
     toggle_all_btn.click(
         toggle_all_panels,
         inputs=[panels_state],
-        outputs=[panels_state, toggle_all_btn, search_input, search_results_row, search_results] + accordions,
+        outputs=[panels_state, toggle_all_btn, toggle_all_btn_bottom, search_input, search_results_row, search_results] + accordions,
+        show_progress=False,
+    )
+
+    # Add handler for bottom toggle button - same functionality as top button
+    def toggle_all_panels_bottom(current_state):
+        # Same logic as toggle_all_panels but returns both button states
+        if current_state == "search":
+            new_state = "closed"
+            new_button_text = "Open All Panels"
+            accordion_states = [gr.Accordion(open=False) for _ in accordions]
+            search_value = ""
+            results_visibility = gr.Row(visible=False)
+            results_content = ""
+        elif current_state == "closed":
+            new_state = "open"
+            new_button_text = "Hide All Panels"
+            accordion_states = [gr.Accordion(open=True) for _ in accordions]
+            search_value = gr.Textbox(value="")
+            results_visibility = gr.Row(visible=False)
+            results_content = ""
+        else:
+            new_state = "closed"
+            new_button_text = "Open All Panels"
+            accordion_states = [gr.Accordion(open=False) for _ in accordions]
+            search_value = gr.Textbox(value="")
+            results_visibility = gr.Row(visible=False)
+            results_content = ""
+        
+        return [new_state, gr.Button(value=new_button_text), gr.Button(value=new_button_text), search_value, results_visibility, results_content] + accordion_states
+    
+    toggle_all_btn_bottom.click(
+        toggle_all_panels_bottom,
+        inputs=[panels_state],
+        outputs=[panels_state, toggle_all_btn, toggle_all_btn_bottom, search_input, search_results_row, search_results] + accordions,
         show_progress=False,
     )
 
