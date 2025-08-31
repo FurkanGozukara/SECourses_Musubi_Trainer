@@ -101,8 +101,19 @@ caching_teo_num_workers = null
 caching_teo_skip_existing = false
 caching_teo_keep_cache = false
 
-# Mixed Precision (Accelerate Launch) - Updated default
+# Accelerate Launch Settings - Updated defaults
 mixed_precision = "bf16"
+multi_gpu = false           # Enable distributed multi-GPU training
+gpu_ids = ""                # GPU IDs for distributed training (e.g., "0,1,2,3")
+num_processes = 1           # Number of processes for distributed training
+num_machines = 1            # Number of machines for distributed training
+num_cpu_threads_per_process = 2  # CPU threads per process
+main_process_port = 0       # Port for distributed training communication (0 = auto)
+dynamo_backend = "no"       # no = disabled (recommended). Use inductor for PyTorch 2.0+ optimization
+dynamo_mode = ""            # Empty = default. Options: "default", "reduce-overhead", "max-autotune"
+dynamo_use_fullgraph = false   # Use fullgraph mode for dynamo
+dynamo_use_dynamic = false     # Use dynamic mode for dynamo
+extra_accelerate_launch_args = ""  # Additional accelerate launch arguments
 
 # Logging Settings
 logging_dir = ""

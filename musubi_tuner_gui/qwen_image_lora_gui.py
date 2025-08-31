@@ -1119,7 +1119,7 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
                 "num_processes", 
                 "num_machines",
                 "multi_gpu",
-                "gpu_ids",
+                # "gpu_ids",  # REMOVED from exclusion - should be saved for single GPU selection too
                 "main_process_port",
                 "dynamo_backend",
                 "dynamo_mode",
@@ -1249,11 +1249,11 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
         "gradient_accumulation_steps": 1,
         "sample_every_n_steps": 1,
         "sample_every_n_epochs": 1,
-        "ddp_timeout": 1,
+        # "ddp_timeout": 1,  # REMOVED - 0 is valid (use default 30min timeout)
         "lr_scheduler_num_cycles": 1,
         "network_dim": 1,
         "save_every_n_steps": 1,
-        "save_last_n_epochs": 1,
+        # "save_last_n_epochs": 1,  # REMOVED - 0 is valid (keep all epochs)
         "caching_latent_batch_size": 1,
         "caching_teo_batch_size": 1,
         # Components with minimum=100
@@ -1265,9 +1265,13 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
     }
 
     # Parameters that should be None when their value is 0 (optional parameters)
+    # NOTE: Only include parameters where 0 truly means "disabled/not set"
+    # DO NOT include parameters where 0 is a valid functional value
     optional_parameters = {
-        "ddp_timeout", "sample_every_n_steps", "sample_every_n_epochs", 
-        "save_every_n_steps", "save_last_n_epochs", "max_timestep", "min_timestep"
+        "sample_every_n_steps", "sample_every_n_epochs", 
+        "save_every_n_steps", "max_timestep", "min_timestep"
+        # Removed: "ddp_timeout" (0 = use default 30min timeout - VALID)
+        # Removed: "save_last_n_epochs" (0 = keep all epochs - VALID)
     }
 
     # NOTE: Exclude fields that are legitimately lists like optimizer_args, lr_scheduler_args, network_args

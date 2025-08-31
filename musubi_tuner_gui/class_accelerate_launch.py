@@ -116,17 +116,16 @@ class AccelerateLaunch:
                 def validate_gpu_ids(value):
                     if value == "":
                         return
-                    if not (
-                        value.isdigit() and int(value) >= 0 and int(value) <= 128
-                    ):
-                        log.error("GPU IDs must be an integer between 0 and 128")
-                        return
-                    else:
-                        for id in value.split(","):
-                            if not id.isdigit() or int(id) < 0 or int(id) > 128:
-                                log.error(
-                                    "GPU IDs must be an integer between 0 and 128"
-                                )
+                    
+                    # Handle both single GPU ID and comma-separated GPU IDs
+                    gpu_ids = value.split(",")
+                    for gpu_id in gpu_ids:
+                        gpu_id = gpu_id.strip()  # Remove whitespace
+                        if not gpu_id.isdigit() or int(gpu_id) < 0 or int(gpu_id) > 128:
+                            log.error(
+                                f"GPU ID '{gpu_id}' must be an integer between 0 and 128"
+                            )
+                            return
 
                 self.gpu_ids.blur(fn=validate_gpu_ids, inputs=self.gpu_ids)
 

@@ -8,6 +8,19 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 31 August 2025 - V9
+
+**Critical Configuration Save/Load Bug Fixes - Ensures proper parameter handling and GPU selection.**
+
+Changes:
+- **FIXED: ddp_timeout parameter being incorrectly forced to minimum value 1** - Now properly saves/loads 0 (use default 30min timeout)
+- **FIXED: save_last_n_epochs parameter being incorrectly forced to minimum value 1** - Now properly saves/loads 0 (keep all epochs)
+- **FIXED: GPU IDs not being saved to TOML configuration files** - Now properly saves/loads gpu_ids for single GPU selection
+- Enhanced parameter constraint validation to respect valid zero values for optional parameters
+- Improved compatibility with musubi tuner parameter expectations (None vs 0 handling)
+- Configuration double-save corruption issues resolved - parameters maintain correct values through multiple save/load cycles
+- GPU selection now persists properly in configuration files, allowing single GPU training setups to be saved and restored
+
 ### 31 August 2025 - V8
 
 **Enhanced parameter support for Qwen Image models with Edit mode and Fine-Tuning preparation.**
