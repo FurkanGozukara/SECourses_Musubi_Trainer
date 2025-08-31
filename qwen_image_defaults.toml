@@ -161,7 +161,7 @@ caching_teo_keep_cache = true
 # Accelerate Launch Settings
 mixed_precision = "bf16"    # RECOMMENDED for Qwen Image. fp16 may cause instability, fp8 not supported
 multi_gpu = false           # Enable distributed multi-GPU training
-gpu_ids = ""                # GPU IDs for distributed training (e.g., "0,1,2,3")
+gpu_ids = "0"                # GPU IDs for distributed training (e.g., "0,1,2,3")
 num_processes = 1           # Number of processes for distributed training
 num_machines = 1            # Number of machines for distributed training
 num_cpu_threads_per_process = 2  # CPU threads per process
