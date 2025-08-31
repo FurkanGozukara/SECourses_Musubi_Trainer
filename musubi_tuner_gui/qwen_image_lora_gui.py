@@ -2703,9 +2703,9 @@ class QwenImageSaveLoadSettings:
             with gr.Column(scale=4):
                 self.output_name = gr.Textbox(
                     label="Output Name",
-                    info="REQUIRED: Base filename for saved LoRA (without extension). Example: 'my-qwen-lora' creates 'my-qwen-lora.safetensors'",
+                    info="REQUIRED: Base filename for saved LoRA (WITHOUT .safetensors extension). Musubi will automatically add .safetensors. Example: 'my-qwen-lora' → 'my-qwen-lora.safetensors'",
                     placeholder="e.g., my-qwen-lora or character-style-v1",
-                    value=self.config.get("output_name", ""),
+                    value=self.config.get("output_name", "my-qwen-lora"),
                 )
 
         with gr.Row():
@@ -2738,8 +2738,8 @@ class QwenImageSaveLoadSettings:
 
         with gr.Row():
             self.save_last_n_epochs = gr.Number(
-                label="Save Last N Epochs",
-                info="Keep only last N epoch checkpoints (removes older ones). 0 = keep all, 3 = keep only last 3 checkpoints",
+                label="Keep Last N Checkpoints",
+                info="Keep only last N checkpoint files (removes older ones). 0 = keep all, 3 = keep only last 3 checkpoint files",
                 value=self.config.get("save_last_n_epochs", 0),
                 minimum=0,
                 step=1,
@@ -2747,8 +2747,8 @@ class QwenImageSaveLoadSettings:
             )
 
             self.save_last_n_epochs_state = gr.Number(
-                label="Save Last N Epochs State",
-                info="Keep last N optimizer states (larger files). 0=keep all. Overrides save_last_n_epochs for state files only",
+                label="Keep Last N State Files",
+                info="Keep last N optimizer state files (larger files). 0=keep all. Separate control for state files only",
                 value=self.config.get("save_last_n_epochs_state", 0),
                 minimum=0,
                 step=1,
@@ -2757,8 +2757,8 @@ class QwenImageSaveLoadSettings:
 
         with gr.Row():
             self.save_last_n_steps = gr.Number(
-                label="Save Last N Steps",
-                info="Keep only last N step checkpoints. 0=keep all. Example: 3=keep only last 3 step saves, delete older ones",
+                label="Keep Last N Checkpoints (Alt)",
+                info="Alternative checkpoint cleanup for step-based saves. Keep only last N checkpoint files. 0=keep all. Only active if 'Save Every N Steps' is used",
                 value=self.config.get("save_last_n_steps", 0),
                 minimum=0,
                 step=1,
@@ -2766,8 +2766,8 @@ class QwenImageSaveLoadSettings:
             )
 
             self.save_last_n_steps_state = gr.Number(
-                label="Save Last N Steps State",
-                info="Keep last N optimizer states for step saves. 0=keep all. Overrides save_last_n_steps for state files only",
+                label="Keep Last N State Files (Alt)",
+                info="Alternative state file cleanup for step-based saves. Keep last N state files. 0=keep all. Only active if 'Save Every N Steps' is used",
                 value=self.config.get("save_last_n_steps_state", 0),
                 minimum=0,
                 step=1,
@@ -3080,7 +3080,7 @@ def qwen_image_lora_tab(
         # Note: bf16 mixed precision is STRONGLY recommended for Qwen Image
         
     # Save Load Settings - moved before Model Settings for better workflow
-    save_load_accordion = gr.Accordion("Save Load Settings", open=False, elem_classes="samples_background")
+    save_load_accordion = gr.Accordion("Save Models and Resume Training Settings", open=False, elem_classes="samples_background")
     accordions.append(save_load_accordion)
     with save_load_accordion:
         saveLoadSettings = QwenImageSaveLoadSettings(headless=headless, config=config)
@@ -3479,16 +3479,16 @@ def qwen_image_lora_tab(
             "caching_teo_keep_cache": ("Caching → Text encoder caching", "Keep Cache Files"),
             
             # Save/Load Settings
-            "output_dir": ("Save Load Settings", "Output Directory"),
-            "output_name": ("Save Load Settings", "Output Name"),
-            "resume": ("Save Load Settings", "Resume from State"),
-            "save_every_n_epochs": ("Save Load Settings", "Save Every N Epochs"),
-            "save_every_n_steps": ("Save Load Settings", "Save Every N Steps"),
-            "save_last_n_epochs": ("Save Load Settings", "Save Last N Epochs"),
-            "save_last_n_steps": ("Save Load Settings", "Save Last N Steps"),
-            "save_state": ("Save Load Settings", "Save State"),
-            "save_state_on_train_end": ("Save Load Settings", "Save State on Train End"),
-            "mem_eff_save": ("Save Load Settings", "Memory Efficient Save"),
+            "output_dir": ("Save Models and Resume Training Settings", "Output Directory"),
+            "output_name": ("Save Models and Resume Training Settings", "Output Name"),
+            "resume": ("Save Models and Resume Training Settings", "Resume from State"),
+            "save_every_n_epochs": ("Save Models and Resume Training Settings", "Save Every N Epochs"),
+            "save_every_n_steps": ("Save Models and Resume Training Settings", "Save Every N Steps"),
+            "save_last_n_epochs": ("Save Models and Resume Training Settings", "Save Last N Epochs"),
+            "save_last_n_steps": ("Save Models and Resume Training Settings", "Save Last N Steps"),
+            "save_state": ("Save Models and Resume Training Settings", "Save State"),
+            "save_state_on_train_end": ("Save Models and Resume Training Settings", "Save State on Train End"),
+            "mem_eff_save": ("Save Models and Resume Training Settings", "Memory Efficient Save"),
             
             # Sample Generation
             "sample_every_n_steps": ("Sample Generation Settings", "Sample Every N Steps"),
@@ -3600,7 +3600,7 @@ def qwen_image_lora_tab(
         # Map panel names to their indices
         panel_map = {
             "Accelerate launch Settings": 0,
-            "Save Load Settings": 1,
+            "Save Models and Resume Training Settings": 1,
             "Qwen Image Training Dataset": 2,
             "Qwen Image Model Settings": 3,
             "Caching": 4,

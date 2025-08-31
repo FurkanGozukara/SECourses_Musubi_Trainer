@@ -8,6 +8,22 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 31 August 2025 - V10
+
+**Critical Checkpoint Management Bug Fix - Prevents immediate deletion of saved checkpoints.**
+
+Changes:
+- **FIXED: Critical checkpoint removal bug** - Checkpoints were being deleted immediately after saving when save_last_n_epochs=0
+- **FIXED: Parameter translation for save_last_n_* parameters** - GUI now properly converts 0→None for musubi tuner compatibility
+- Enhanced parameter handling in SaveConfigFileToRun() to translate user-friendly values to musubi tuner expectations
+- Added save_last_n_epochs, save_last_n_steps, save_last_n_epochs_state, save_last_n_steps_state to zero_to_none_params list
+- **UI Improvement: Renamed "Save Load Settings" to "Save Models and Resume Training Settings"** for better clarity
+- **Enhanced output_name field** with better default value "my-qwen-lora" and clearer instructions about .safetensors auto-extension
+- **Improved checkpoint management labels** - Simplified confusing "Save Last N Epochs/Steps" to clearer "Keep Last N Checkpoints/State Files"
+- Removed misleading epoch/step terminology from checkpoint cleanup labels for better user understanding
+- Fixed checkpoint management logic where 0 (keep all) was incorrectly triggering immediate checkpoint removal
+- Training now properly preserves all checkpoints when save_last_n_epochs=0 as intended
+
 ### 31 August 2025 - V9
 
 **Critical Configuration Save/Load Bug Fixes - Ensures proper parameter handling and GPU selection.**

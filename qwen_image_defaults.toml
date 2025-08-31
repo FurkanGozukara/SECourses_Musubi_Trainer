@@ -126,7 +126,7 @@ base_weights_multiplier = 1.0  # Strength multiplier for base weights (1.0 = ful
 
 # Save/Load Settings
 output_dir = ""
-output_name = ""
+output_name = "my-qwen-lora"  # Base filename without .safetensors extension - musubi auto-adds it
 resume = ""
 save_every_n_epochs = 10
 save_every_n_steps = 0        # 0 = disabled. Positive integer = save every N steps
