@@ -3593,7 +3593,7 @@ def qwen_image_lora_tab(
         if not query or len(query.strip()) < 1:
             # If search is cleared, close all panels
             accordion_states = [gr.Accordion(open=False) for _ in accordions]
-            return [gr.Row(visible=False), "", gr.Button(value="Open All Panels"), "closed"] + accordion_states
+            return [gr.Row(visible=False), "", gr.Button(value="Open All Panels"), gr.Button(value="Open All Panels"), "closed"] + accordion_states
         
         # Get search results (but we won't display them)
         results_row, results_html = search_settings(query)
