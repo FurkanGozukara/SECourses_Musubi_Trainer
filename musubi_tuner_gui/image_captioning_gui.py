@@ -230,10 +230,11 @@ class ImageCaptioningTab:
                         
                         self.replace_words = gr.Textbox(
                             label="Replace Words",
-                            info="Word pairs to replace in captions. Format: orgword:replaceword;orgword2:replaceword2 (e.g., 'man:ohwx man;person:ohwx person'). Applied after prefix/suffix.",
-                            placeholder="e.g., man:ohwx man;person:ohwx person",
+                            info="Word pairs to replace in captions. Format: orgword;replaceword (each line is one replacement pair). Applied after prefix/suffix.",
+                            placeholder="Line 1: man;ohwx man\nLine 2: person;ohwx person\nLine 3: he;ohwx man\nLine 4: woman;ohwx woman\nLine 5: girl;ohwx woman",
                             value=self.config.get("image_captioning.replace_words", ""),
-                            lines=2,
+                            lines=5,
+                            max_lines=5,
                         )
                         
                         with gr.Row():

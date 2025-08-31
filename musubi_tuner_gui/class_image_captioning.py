@@ -268,11 +268,12 @@ class ImageCaptioning:
             if replace_words:
                 try:
                     import re
-                    # Parse replace_words format: "word1:replacement1;word2:replacement2"
-                    pairs = replace_words.split(";")
-                    for pair in pairs:
-                        if ":" in pair:
-                            parts = pair.split(":", 1)  # Split only on first colon
+                    # Parse replace_words format: each line has "word;replacement"
+                    lines = replace_words.strip().split('\n')
+                    for line in lines:
+                        line = line.strip()
+                        if line and ";" in line:
+                            parts = line.split(";", 1)  # Split only on first semicolon
                             if len(parts) == 2:
                                 org_word = parts[0].strip()
                                 replace_word = parts[1].strip()
