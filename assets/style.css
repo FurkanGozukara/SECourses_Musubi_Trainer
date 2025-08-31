@@ -1,3 +1,7 @@
+* {
+    font-family: Tahoma, sans-serif !important;
+}
+
 #open_folder_small {
     min-width: auto;
     flex-grow: 0;
