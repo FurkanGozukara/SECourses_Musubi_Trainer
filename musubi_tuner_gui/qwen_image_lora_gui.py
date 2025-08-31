@@ -3108,7 +3108,7 @@ def qwen_image_lora_tab(
         with gr.Tab("Text encoder caching"):
             qwenTeoCaching = QwenImageTextEncoderOutputsCaching(headless=headless, config=config)
         
-    optimizer_accordion = gr.Accordion("Optimizer and Scheduler Settings", open=False, elem_classes="flux1_rank_layers_background")
+    optimizer_accordion = gr.Accordion("Learning Rate, Optimizer and Scheduler Settings", open=False, elem_classes="flux1_rank_layers_background")
     accordions.append(optimizer_accordion)
     with optimizer_accordion:
         OptimizerAndSchedulerSettings = QwenImageOptimizerSettings(headless=headless, config=config)
@@ -3440,18 +3440,18 @@ def qwen_image_lora_tab(
             "full_fp16": ("Training Settings", "Full FP16 Gradients"),
             
             # Optimizer Settings
-            "optimizer_type": ("Optimizer and Scheduler Settings", "Optimizer Type"),
-            "learning_rate": ("Optimizer and Scheduler Settings", "Learning Rate"),
-            "optimizer_args": ("Optimizer and Scheduler Settings", "Optimizer Arguments"),
-            "max_grad_norm": ("Optimizer and Scheduler Settings", "Max Gradient Norm"),
-            "fused_backward_pass": ("Optimizer and Scheduler Settings", "Fused Backward Pass"),
-            "lr_scheduler": ("Optimizer and Scheduler Settings", "Learning Rate Scheduler"),
-            "lr_warmup_steps": ("Optimizer and Scheduler Settings", "LR Warmup Steps"),
-            "lr_decay_steps": ("Optimizer and Scheduler Settings", "LR Decay Steps"),
-            "lr_scheduler_num_cycles": ("Optimizer and Scheduler Settings", "LR Scheduler Cycles"),
-            "lr_scheduler_power": ("Optimizer and Scheduler Settings", "LR Scheduler Power"),
-            "lr_scheduler_timescale": ("Optimizer and Scheduler Settings", "LR Scheduler Timescale"),
-            "lr_scheduler_min_lr_ratio": ("Optimizer and Scheduler Settings", "LR Scheduler Min LR Ratio"),
+            "optimizer_type": ("Learning Rate, Optimizer and Scheduler Settings", "Optimizer Type"),
+            "learning_rate": ("Learning Rate, Optimizer and Scheduler Settings", "Learning Rate"),
+            "optimizer_args": ("Learning Rate, Optimizer and Scheduler Settings", "Optimizer Arguments"),
+            "max_grad_norm": ("Learning Rate, Optimizer and Scheduler Settings", "Max Gradient Norm"),
+            "fused_backward_pass": ("Learning Rate, Optimizer and Scheduler Settings", "Fused Backward Pass"),
+            "lr_scheduler": ("Learning Rate, Optimizer and Scheduler Settings", "Learning Rate Scheduler"),
+            "lr_warmup_steps": ("Learning Rate, Optimizer and Scheduler Settings", "LR Warmup Steps"),
+            "lr_decay_steps": ("Learning Rate, Optimizer and Scheduler Settings", "LR Decay Steps"),
+            "lr_scheduler_num_cycles": ("Learning Rate, Optimizer and Scheduler Settings", "LR Scheduler Cycles"),
+            "lr_scheduler_power": ("Learning Rate, Optimizer and Scheduler Settings", "LR Scheduler Power"),
+            "lr_scheduler_timescale": ("Learning Rate, Optimizer and Scheduler Settings", "LR Scheduler Timescale"),
+            "lr_scheduler_min_lr_ratio": ("Learning Rate, Optimizer and Scheduler Settings", "LR Scheduler Min LR Ratio"),
             
             # Network/LoRA Settings
             "network_module": ("Network Settings", "Network Module"),
@@ -3608,7 +3608,7 @@ def qwen_image_lora_tab(
             "Qwen Image Training Dataset": 2,
             "Qwen Image Model Settings": 3,
             "Caching": 4,
-            "Optimizer and Scheduler Settings": 5,
+            "Learning Rate, Optimizer and Scheduler Settings": 5,
             "Training Settings": 6,
             "Network Settings": 7,
             "Advanced Training Settings": 8,

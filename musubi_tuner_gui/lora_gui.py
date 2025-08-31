@@ -618,7 +618,7 @@ def lora_tab(
     with gr.Accordion("Save Load Settings", open=True, elem_classes="samples_background"):
         saveLoadSettings = SaveLoadSettings(headless=headless, config=config)
         
-    with gr.Accordion("Optimizer and Scheduler Settings", open=True, elem_classes="flux1_rank_layers_background"):
+    with gr.Accordion("Learning Rate, Optimizer and Scheduler Settings", open=True, elem_classes="flux1_rank_layers_background"):
         OptimizerAndSchedulerSettings = OptimizerAndScheduler(headless=headless, config=config)
         
     with gr.Accordion("LoRA Settings", open=True, elem_classes="flux1_background"):
