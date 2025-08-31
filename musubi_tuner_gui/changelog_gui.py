@@ -23,6 +23,7 @@ Changes:
 - **Professional UX** - Clean interface with proper button states and visual feedback throughout the process
 - Processing can be safely interrupted at any point without losing completed captions or corrupting the output
 - All batch processing statistics and progress information remain accurate even when stopped mid-process
+- **FIXED: Caption prefix/suffix timing issue** - Prefix and suffix are now applied AFTER word replacement instead of before, ensuring word replacement works on the original generated text for both single and batch captioning
 
 ### 31 August 2025 - V10
 

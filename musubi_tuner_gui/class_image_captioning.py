@@ -264,13 +264,7 @@ class ImageCaptioning:
             # Get caption as string
             caption_text = caption[0] if caption else ""
             
-            # Add prefix and suffix if provided
-            if prefix:
-                caption_text = prefix + caption_text
-            if suffix:
-                caption_text = caption_text + suffix
-            
-            # Apply word replacements if provided
+            # Apply word replacements if provided FIRST
             if replace_words:
                 try:
                     import re
@@ -304,6 +298,12 @@ class ImageCaptioning:
                                             caption_text = caption_text.replace(org_word, replace_word)
                 except Exception as e:
                     log.warning(f"Error applying word replacements: {str(e)}")
+            
+            # Add prefix and suffix AFTER word replacements
+            if prefix:
+                caption_text = prefix + caption_text
+            if suffix:
+                caption_text = caption_text + suffix
             
             return True, caption_text
             
