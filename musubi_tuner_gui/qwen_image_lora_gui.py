@@ -651,8 +651,8 @@ class QwenImageModel:
                 label="Logit Mean",
                 info="Mean for 'logit_normal' weighting. 0.0=balanced, negative=favor early timesteps, positive=favor late timesteps",
                 value=self.config.get("logit_mean", 0.0),
-                minimum=-3.0,
-                maximum=3.0,
+                minimum=-10.0,
+                maximum=10.0,
                 step=0.001,
                 interactive=True,
             )
