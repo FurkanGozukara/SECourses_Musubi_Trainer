@@ -163,6 +163,8 @@ class Model:
                 label="Logit Mean",
                 info="Mean for 'logit_normal' weighting scheme",
                 value=self.config.get("logit_mean", 0.0),
+                minimum=-10.0,
+                maximum=10.0,
                 step=0.001,
                 interactive=True,
             )
