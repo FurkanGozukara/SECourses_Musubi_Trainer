@@ -138,8 +138,8 @@ class GUIConfig:
             "max_train_steps": 100,
             # Components with minimum=1e-7
             "learning_rate": 1e-7,
-            # Components with minimum=-3.0
-            "logit_mean": -3.0
+            # Components with minimum=-10.0
+            "logit_mean": -10.0
         }
         
         # Parameters that should be None when their value is 0 (optional parameters)
