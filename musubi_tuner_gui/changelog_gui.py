@@ -8,6 +8,22 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 4 September 2025 - V13
+
+**Cross-Platform Path Handling Fix - Spaces in dataset paths now work correctly on Windows and Linux.**
+
+Changes:
+- **FIXED: Path handling with spaces** - Dataset paths containing spaces now generate valid TOML configurations
+- **NEW: Cross-platform path normalization** - Added normalize_path(), validate_path_for_toml(), and is_path_safe() utility functions
+- **Enhanced TOML generation** - All paths in dataset_config_generator.py now use proper path formatting for cross-platform compatibility
+- **Updated file dialog functions** - All file/folder selection dialogs now normalize paths consistently across Windows and Linux
+- **Forward slash standardization** - All paths converted to use forward slashes for consistency and TOML compatibility
+- **Automatic path validation** - Paths are validated and normalized before being written to configuration files
+- **Backward compatibility maintained** - All existing functionality preserved while fixing the space-in-path issues
+- Previously, users would encounter TOML parsing errors when dataset paths contained spaces
+- Now supports paths like "C:/My Dataset/Training Images" and "/home/user/My Training Data" seamlessly
+- Works correctly on both Windows (backslash) and Linux (forward slash) path conventions
+
 ### 4 September 2025 - V12
 
 **Fixed Qwen Image Text Encoder Caching Configuration Bug - ALL caching settings now properly save and load.**

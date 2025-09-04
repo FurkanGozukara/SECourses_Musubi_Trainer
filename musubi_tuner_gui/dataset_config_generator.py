@@ -4,6 +4,7 @@ import toml
 import glob
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
+from .common_gui import validate_path_for_toml, normalize_path, is_path_safe
 
 
 def extract_repeat_count(folder_name: str) -> Tuple[int, str]:
@@ -77,6 +78,9 @@ def generate_dataset_config_from_folders(
         messages_list: List of status/warning messages
     """
     messages = []
+    
+    # Normalize parent folder path
+    parent_folder = normalize_path(parent_folder)
     
     if not os.path.exists(parent_folder):
         raise ValueError(f"Parent folder does not exist: {parent_folder}")
@@ -154,9 +158,9 @@ def generate_dataset_config_from_folders(
         if missing_captions:
             messages.append(f"[WARNING] '{subdir}': {len(missing_captions)} images missing caption files")
         
-        # Build dataset entry
+        # Build dataset entry with normalized paths
         dataset_entry = {
-            "image_directory": subdir_path,
+            "image_directory": validate_path_for_toml(subdir_path),
             "num_repeats": repeat_count
         }
         
@@ -164,15 +168,17 @@ def generate_dataset_config_from_folders(
         if cache_directory_name:
             if os.path.isabs(cache_directory_name):
                 # Absolute path provided - append subdir name to make it unique
-                dataset_entry["cache_directory"] = os.path.join(cache_directory_name, subdir)
+                cache_path = os.path.join(cache_directory_name, subdir)
+                dataset_entry["cache_directory"] = validate_path_for_toml(cache_path)
             else:
                 # Relative path - put inside subdirectory (each dataset gets its own)
-                dataset_entry["cache_directory"] = os.path.join(subdir_path, cache_directory_name)
+                cache_path = os.path.join(subdir_path, cache_directory_name)
+                dataset_entry["cache_directory"] = validate_path_for_toml(cache_path)
         
         # Check for control directory
         control_dir_path = os.path.join(subdir_path, control_directory_name)
         if os.path.exists(control_dir_path) and os.path.isdir(control_dir_path):
-            dataset_entry["control_directory"] = control_dir_path
+            dataset_entry["control_directory"] = validate_path_for_toml(control_dir_path)
             
             # Add Qwen Image Edit specific settings if control directory exists
             if qwen_image_edit_no_resize_control:

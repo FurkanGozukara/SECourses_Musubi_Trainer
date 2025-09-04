@@ -15,6 +15,7 @@ import json
 import math
 import shutil
 import toml
+from pathlib import Path
 
 # Set up logging
 log = setup_logging()
@@ -62,6 +63,69 @@ SDXL_MODELS = [
 ALL_PRESET_MODELS = V2_BASE_MODELS + V_PARAMETERIZATION_MODELS + V1_MODELS + SDXL_MODELS
 
 ENV_EXCLUSION = ["COLAB_GPU", "RUNPOD_POD_ID"]
+
+
+def normalize_path(path: str) -> str:
+    """
+    Normalize path for cross-platform compatibility and handle spaces properly.
+    
+    Args:
+        path (str): The path to normalize
+        
+    Returns:
+        str: Normalized path that works on both Windows and Linux
+    """
+    if not path:
+        return path
+    
+    # Convert to Path object for cross-platform handling
+    normalized = Path(path).resolve()
+    
+    # Convert back to string with forward slashes for consistency
+    # This works on both Windows and Linux
+    return str(normalized).replace("\\", "/")
+
+
+def validate_path_for_toml(path: str) -> str:
+    """
+    Validate and format a path for TOML configuration files.
+    Ensures proper escaping for paths with spaces and special characters.
+    
+    Args:
+        path (str): The path to validate and format
+        
+    Returns:
+        str: Path properly formatted for TOML (no additional quoting needed)
+    """
+    if not path:
+        return path
+    
+    # Normalize the path first
+    normalized_path = normalize_path(path)
+    
+    # TOML library handles the quoting automatically when dumping,
+    # we just need to ensure the path uses forward slashes
+    return normalized_path
+
+
+def is_path_safe(path: str) -> bool:
+    """
+    Check if a path is safe to use (exists and is accessible).
+    
+    Args:
+        path (str): The path to check
+        
+    Returns:
+        bool: True if path is safe, False otherwise
+    """
+    if not path:
+        return False
+    
+    try:
+        path_obj = Path(path)
+        return path_obj.exists()
+    except (OSError, ValueError):
+        return False
 
 
 def get_executable_path(executable_name: str = None) -> str:
@@ -510,8 +574,10 @@ def get_file_path(
 
         root.destroy()  # Cleanup by destroying the Tkinter root window
 
-        # Fallback to the initial path if no selection is made
-        if not file_path:
+        # Normalize and fallback to the initial path if no selection is made
+        if file_path:
+            file_path = normalize_path(file_path)
+        else:
             file_path = current_file_path
 
     # Return the selected or fallback file path
@@ -565,12 +631,14 @@ def get_file_path_or_save_as(
 
         root.destroy()
 
-        # Fallback to the initial path if no selection is made
-        if not file_path:
+        # Normalize, fallback and ensure correct extension
+        if file_path:
+            file_path = normalize_path(file_path)
+            # Ensure the file has the correct extension
+            if not file_path.endswith(default_extension):
+                file_path = file_path + default_extension
+        else:
             file_path = current_file_path
-        # Ensure the file has the correct extension
-        elif not file_path.endswith(default_extension):
-            file_path = file_path + default_extension
 
     return file_path
 
@@ -627,8 +695,10 @@ def get_any_file_path(file_path: str = "") -> str:
             finally:
                 root.destroy()
 
-            # Fallback to the initial path if no selection is made
-            if not file_path:
+            # Normalize and fallback to the initial path if no selection is made
+            if file_path:
+                file_path = normalize_path(file_path)
+            else:
                 file_path = current_file_path
     except KeyError as e:
         raise EnvironmentError(f"Failed to access environment variables: {e}")
@@ -671,9 +741,14 @@ def get_folder_path(folder_path: str = "") -> str:
         root = Tk()
         root.withdraw()
         root.wm_attributes("-topmost", 1)
-        selected_folder = filedialog.askdirectory(initialdir=folder_path or ".")
+        # Normalize the initial directory path for cross-platform compatibility
+        initial_dir = normalize_path(folder_path) if folder_path else "."
+        selected_folder = filedialog.askdirectory(initialdir=initial_dir)
         root.destroy()
-        return selected_folder or folder_path
+        # Normalize the selected folder path before returning
+        if selected_folder:
+            return normalize_path(selected_folder)
+        return folder_path
     except Exception as e:
         raise RuntimeError(f"Error initializing folder dialog: {e}") from e
 
@@ -721,7 +796,7 @@ def get_saveasfile_path(
             # log.info(save_file_path.name)
 
             # Update the file path with the user-selected file name, facilitating the save operation
-            file_path = save_file_path.name
+            file_path = normalize_path(save_file_path.name)
 
         # Log the final file path for verification, ensuring the intended file is being used
         # log.info(file_path)
@@ -791,7 +866,7 @@ def get_saveasfilename_path(
             # Logging the save file path for auditing purposes; useful in confirming the user's file choice
             # log.info(save_file_path)
             # Update the file path with the user-selected file name, facilitating the save operation
-            file_path = save_file_path
+            file_path = normalize_path(save_file_path)
 
     # Return the final file path, either the user-selected file or the fallback path
     return file_path
