@@ -8,6 +8,15 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 4 September 2025 - V12
+
+**Fixed Qwen Image Text Encoder FP8 Configuration Bug - FP8 VL setting now properly saves and loads.**
+
+Changes:
+- **FIXED: caching_teo_fp8_vl parameter not saving** - "Use FP8 for VL Model" checkbox in Text Encoder Caching tab now properly saves to configuration files
+- Removed caching_teo_fp8_vl from the exclusion list in qwen_image_lora_gui.py that was preventing it from being saved
+- The FP8 setting for text encoder caching in Qwen Image now correctly persists across save/load operations
+
 ### 31 August 2025 - V11
 
 **Professional Stop Button Implementation for Batch Image Captioning - Allows safe interruption of long-running batch operations.**
