@@ -2433,7 +2433,7 @@ class QwenImageOptimizerSettings:
         with gr.Row():
             self.optimizer_type = gr.Dropdown(
                 label="Optimizer Type",
-                info="[RECOMMENDED] adamw8bit for Qwen Image (memory efficient, confirmed in official examples). AdamW = standard, AdaFactor = adaptive LR",
+                info="[RECOMMENDED] Use what preset has unless you are an expert.",
                 choices=[
                     "adamw8bit", 
                     "AdamW", 
@@ -2449,7 +2449,7 @@ class QwenImageOptimizerSettings:
 
             self.learning_rate = gr.Number(
                 label="Learning Rate",
-                info="[RECOMMENDED] 5e-5 (0.00005) for Qwen Image. Too high = instability, too low = slow learning. Typical range: 1e-6 to 1e-3",
+                info="[RECOMMENDED] Don't change what preset has unless you are an expert. Lower value may learn more details in longer training, higher value may learn faster but lower quality.",
                 value=self.config.get("learning_rate", 5e-5),
                 minimum=1e-7,
                 maximum=1e-2,
@@ -2600,7 +2600,7 @@ class QwenImageNetworkSettings:
 
             self.network_dim = gr.Number(
                 label="Network Dimension (LoRA Rank)",
-                info="[RECOMMENDED] LoRA rank/dimension. 16 for Qwen Image. Higher = more capacity but larger files. Range: 8-128",
+                info="[RECOMMENDED] LoRA rank/dimension. Higher is better but uses more VRAM and LoRA size increases. Don't change what preset has unless you are an expert.",
                 value=self.config.get("network_dim", 16),
                 minimum=1,
                 maximum=512,
@@ -2611,7 +2611,7 @@ class QwenImageNetworkSettings:
         with gr.Row():
             self.network_alpha = gr.Number(
                 label="Network Alpha (LoRA Alpha)",
-                info="[RECOMMENDED] LoRA scaling factor. 1.0 for Qwen Image. Higher = stronger LoRA effect. Formula: alpha/rank = final scaling",
+                info="[RECOMMENDED] LoRA scaling factor. Don't change what preset has unless you are an expert.",
                 value=self.config.get("network_alpha", 1.0),
                 minimum=0.1,
                 maximum=512.0,
