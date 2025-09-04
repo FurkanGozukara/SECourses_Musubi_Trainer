@@ -85,8 +85,28 @@
 
 ## Updates
 
-<img width="1989" height="1577" alt="15" src="https://github.com/user-attachments/assets/cca96d96-ed7d-44e9-970f-19412b39e586" />
-<img width="1866" height="1583" alt="16" src="https://github.com/user-attachments/assets/f021efbe-2e14-46d4-806b-b564efa87734" />
+![005](https://github.com/user-attachments/assets/fc0f58c5-bdda-499a-9983-1db1f80236a1)
+<img width="1502" height="1000" alt="0010" src="https://github.com/user-attachments/assets/696f344a-d904-4005-bdef-d9ab2520272a" />
+
+
+<img width="1572" height="1695" alt="44" src="https://github.com/user-attachments/assets/ad6b8c54-cbf2-4cc1-b8cb-91f4ae70d5ab" />
+<img width="2803" height="1526" alt="43" src="https://github.com/user-attachments/assets/b801e2ee-c4a1-4cbc-b83d-4cde74b40fab" />
+<img width="1825" height="1526" alt="42" src="https://github.com/user-attachments/assets/2bf3cfbc-b943-4268-8f2e-7fce65d23eed" />
+<img width="2763" height="1478" alt="41" src="https://github.com/user-attachments/assets/b6b5f050-65d6-4dc6-acb5-bb68fe2bec49" />
+<img width="1829" height="1487" alt="40" src="https://github.com/user-attachments/assets/acae6299-1d28-44b2-920a-1d04a3b85a3c" />
+
+
+## Stage 1 Training Published Config Results Examples
+
+30+ examples shared here : https://medium.com/@furkangozukara/qwen-image-lora-trainings-stage-1-results-and-pre-made-configs-published-as-low-as-training-with-ba0d41d76a05
+
+<img width="1328" height="1328" alt="04" src="https://github.com/user-attachments/assets/3c7c5fd0-fc0d-4978-8800-ed485054db22" />
+<img width="2656" height="2656" alt="03" src="https://github.com/user-attachments/assets/1e73012e-06f3-4181-ac49-ef10294d4119" />
+<img width="2656" height="2656" alt="02" src="https://github.com/user-attachments/assets/ce432e3f-5f74-4df2-bb43-0f911ab55184" />
+<img width="2656" height="2656" alt="01" src="https://github.com/user-attachments/assets/fe40513f-cfb9-4c91-9eb3-cfe45689e7a6" />
+<img width="2656" height="2656" alt="06" src="https://github.com/user-attachments/assets/f254bd98-1171-46e6-b1cb-8c5e1837dd5c" />
+<img width="2656" height="2656" alt="05" src="https://github.com/user-attachments/assets/cfa561ef-6323-4040-a8e2-05b43109ee1c" />
+
 
 
 ## App Screenshots
