@@ -1135,13 +1135,14 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
                 "caching_latent_console_width",
                 "caching_latent_console_back",
                 "caching_latent_console_num_images",
-                "caching_teo_text_encoder",
-                "caching_teo_device",
-                # "caching_teo_fp8_vl",  # REMOVED from exclusion - should be saved!
-                "caching_teo_batch_size",
-                "caching_teo_num_workers",
-                "caching_teo_skip_existing",
-                "caching_teo_keep_cache",
+                # ALL Text Encoder Caching parameters removed from exclusion - they should all be saved!
+                # "caching_teo_text_encoder",
+                # "caching_teo_device",
+                # "caching_teo_fp8_vl",
+                # "caching_teo_batch_size",
+                # "caching_teo_num_workers",
+                # "caching_teo_skip_existing",
+                # "caching_teo_keep_cache",
             ],
         )
         

@@ -10,12 +10,19 @@ def version_history_tab(headless=False, config=None):
 
 ### 4 September 2025 - V12
 
-**Fixed Qwen Image Text Encoder FP8 Configuration Bug - FP8 VL setting now properly saves and loads.**
+**Fixed Qwen Image Text Encoder Caching Configuration Bug - ALL caching settings now properly save and load.**
 
 Changes:
-- **FIXED: caching_teo_fp8_vl parameter not saving** - "Use FP8 for VL Model" checkbox in Text Encoder Caching tab now properly saves to configuration files
-- Removed caching_teo_fp8_vl from the exclusion list in qwen_image_lora_gui.py that was preventing it from being saved
-- The FP8 setting for text encoder caching in Qwen Image now correctly persists across save/load operations
+- **FIXED: Text Encoder Caching parameters not saving** - ALL settings in the Text Encoder Caching tab now properly save to configuration files
+- Removed all caching_teo_* parameters from the exclusion list in qwen_image_lora_gui.py:
+  - caching_teo_text_encoder (Text Encoder Path)
+  - caching_teo_device (Caching Device)
+  - caching_teo_fp8_vl (Use FP8 for VL Model)
+  - caching_teo_batch_size (Caching Batch Size)
+  - caching_teo_num_workers (Data Loading Workers)
+  - caching_teo_skip_existing (Skip Existing)
+  - caching_teo_keep_cache (Keep Cache)
+- All Text Encoder Caching settings in Qwen Image now correctly persist across save/load operations
 
 ### 31 August 2025 - V11
 
