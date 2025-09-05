@@ -8,6 +8,23 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 5 September 2025 - V14
+
+**Sample Prompt Enhancement Control - Added checkbox to disable automatic Kohya format parameter enhancement.**
+
+Changes:
+- **NEW: Disable Prompt Enhancement Checkbox** - Added user control to prevent automatic sample prompt formatting
+- **Enhanced User Control** - Users can now choose to use original prompt files without automatic Kohya format parameter additions
+- **Configurable Behavior** - Checkbox setting is saved and loaded with configuration files for persistence
+- **Default Safe Setting** - Enhancement remains enabled by default, preserving existing workflow compatibility
+- **Clear User Interface** - Added informative checkbox with clear labeling explaining the feature functionality
+- **Intelligent Logic** - When disabled, the system logs the choice and uses original prompts exactly as provided by the user
+- **Backward Compatibility** - All existing configurations continue to work exactly as before without any changes required
+- Previously, all sample prompts were automatically enhanced with GUI default parameters (width, height, steps, etc.)
+- Now users can opt out of this behavior when they want to use their original prompt files without modification
+- Particularly useful when users have pre-formatted prompts or want complete control over sampling parameters
+- Located in Qwen Image Training tab after the Sample Prompts File selection for logical workflow integration
+
 ### 4 September 2025 - V13
 
 **Cross-Platform Path Handling Fix - Spaces in dataset paths now work correctly on Windows and Linux.**

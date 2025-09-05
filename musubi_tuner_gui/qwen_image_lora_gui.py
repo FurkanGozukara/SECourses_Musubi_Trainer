@@ -826,6 +826,7 @@ def qwen_image_gui_actions(
     sample_at_first,
     sample_every_n_epochs,
     sample_prompts,
+    disable_prompt_enhancement,
     sample_width,
     sample_height,
     sample_steps,
@@ -1855,35 +1856,42 @@ def train_qwen_image_model(headless, print_only, parameters):
                     modified_params.append((key, value))
             parameters = modified_params
         else:
-            # Generate enhanced prompt file with GUI defaults
-            original_prompt_file = param_dict.get('sample_prompts')
-            output_dir = param_dict.get('output_dir')
+            # Check if prompt enhancement is disabled
+            disable_enhancement = param_dict.get('disable_prompt_enhancement', False)
             
-            # Create enhanced prompt file
-            enhanced_prompt_file = generate_enhanced_prompt_file(
-                original_prompt_file=original_prompt_file,
-                output_dir=output_dir,
-                output_name=param_dict.get('output_name'),
-                sample_width=param_dict.get('sample_width', 1328),
-                sample_height=param_dict.get('sample_height', 1328),
-                sample_steps=param_dict.get('sample_steps', 20),
-                sample_guidance_scale=param_dict.get('sample_guidance_scale', 1.0),
-                sample_seed=param_dict.get('sample_seed', -1),
-                sample_discrete_flow_shift=param_dict.get('sample_discrete_flow_shift', 0),
-                sample_cfg_scale=param_dict.get('sample_cfg_scale', 1.0),
-                sample_negative_prompt=param_dict.get('sample_negative_prompt', '')
-            )
-            
-            if enhanced_prompt_file:
-                # Update parameters to use the enhanced prompt file
-                modified_params = []
-                for key, value in parameters:
-                    if key == 'sample_prompts':
-                        modified_params.append((key, enhanced_prompt_file))
-                        log.info(f"Using enhanced prompt file: {enhanced_prompt_file}")
-                    else:
-                        modified_params.append((key, value))
-                parameters = modified_params
+            if disable_enhancement:
+                # Use original prompts without enhancement
+                log.info("Prompt enhancement disabled - using original prompts without Kohya format parameters")
+            else:
+                # Generate enhanced prompt file with GUI defaults
+                original_prompt_file = param_dict.get('sample_prompts')
+                output_dir = param_dict.get('output_dir')
+                
+                # Create enhanced prompt file
+                enhanced_prompt_file = generate_enhanced_prompt_file(
+                    original_prompt_file=original_prompt_file,
+                    output_dir=output_dir,
+                    output_name=param_dict.get('output_name'),
+                    sample_width=param_dict.get('sample_width', 1328),
+                    sample_height=param_dict.get('sample_height', 1328),
+                    sample_steps=param_dict.get('sample_steps', 20),
+                    sample_guidance_scale=param_dict.get('sample_guidance_scale', 1.0),
+                    sample_seed=param_dict.get('sample_seed', -1),
+                    sample_discrete_flow_shift=param_dict.get('sample_discrete_flow_shift', 0),
+                    sample_cfg_scale=param_dict.get('sample_cfg_scale', 1.0),
+                    sample_negative_prompt=param_dict.get('sample_negative_prompt', '')
+                )
+                
+                if enhanced_prompt_file:
+                    # Update parameters to use the enhanced prompt file
+                    modified_params = []
+                    for key, value in parameters:
+                        if key == 'sample_prompts':
+                            modified_params.append((key, enhanced_prompt_file))
+                            log.info(f"Using enhanced prompt file: {enhanced_prompt_file}")
+                        else:
+                            modified_params.append((key, value))
+                    parameters = modified_params
 
         # Modify parameters based on training mode
         training_mode = param_dict.get("training_mode", "LoRA Training")
@@ -2329,6 +2337,13 @@ class QwenImageSampleSettings:
                 size="sm",
                 elem_id="sample_prompts_button"
             )
+        
+        # Prompt enhancement control
+        self.disable_prompt_enhancement = gr.Checkbox(
+            label="Disable Automatic Prompt Enhancement",
+            info="When enabled, uses original prompts without adding Kohya format parameters",
+            value=self.config.get("disable_prompt_enhancement", False),
+        )
         
         # Default sample parameters
         gr.Markdown("### Default Sample Parameters")
@@ -3217,6 +3232,7 @@ def qwen_image_lora_tab(
         sampleSettings.sample_at_first,
         sampleSettings.sample_every_n_epochs,
         sampleSettings.sample_prompts,
+        sampleSettings.disable_prompt_enhancement,
         sampleSettings.sample_width,
         sampleSettings.sample_height,
         sampleSettings.sample_steps,
