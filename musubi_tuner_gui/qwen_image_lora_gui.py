@@ -1514,6 +1514,8 @@ def generate_enhanced_prompt_file(
 def train_qwen_image_model(headless, print_only, parameters):
     import sys
     import json
+    import os
+    import time
     
     # Use Python directly instead of uv for better compatibility
     python_cmd = sys.executable
@@ -1929,8 +1931,6 @@ def train_qwen_image_model(headless, print_only, parameters):
         parameters = modified_params
         
         # Handle logging_dir intelligently based on log_with setting
-        import os
-        import time
         modified_params = []
         for key, value in parameters:
             if key == "logging_dir":

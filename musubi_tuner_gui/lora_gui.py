@@ -385,6 +385,9 @@ def train_model(
     print_only,
     parameters,
 ):
+    import os
+    import time
+    
     # Get list of function parameters and their values
     # parameters = list(locals().items())
     
@@ -537,8 +540,6 @@ def train_model(
         log.info(f"Saving training config to {file_path}...")
 
         # Handle logging_dir intelligently based on log_with setting
-        import os
-        import time
         modified_params = []
         for key, value in parameters:
             if key == "logging_dir":
