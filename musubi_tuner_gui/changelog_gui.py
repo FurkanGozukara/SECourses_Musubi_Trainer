@@ -8,6 +8,25 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 12 September 2025 - V15
+
+**Intelligent Logging Directory Management - Automatic path resolution for training logs with proper permissions.**
+
+Changes:
+- **FIXED: PermissionError when creating logging directory** - System no longer tries to create directories at root filesystem
+- **NEW: Smart logging_dir path handling** - Automatically manages logging paths based on user configuration:
+  - Empty logging_dir with logging enabled: Auto-creates `{output_dir}/logs/session_{timestamp}` directory
+  - Relative path (e.g., "mylogs"): Converts to `{output_dir}/mylogs` for proper organization
+  - Absolute path: Uses the exact path specified by the user
+- **Cross-platform compatibility** - Works correctly on both Windows and Linux with proper path normalization
+- **Intelligent defaults** - When logging tool (tensorboard/wandb) is selected but directory is empty, automatically generates appropriate path
+- **Fallback safety** - If output_dir is not set, falls back to current directory with `./logs/session_{timestamp}`
+- **Permission-aware** - Ensures logging directories are created in user-writable locations, preventing permission errors
+- **Forward slash standardization** - All paths converted to forward slashes for TOML compatibility across platforms
+- Previously, empty or "/" logging_dir values would cause training to fail with permission errors
+- Now seamlessly handles all logging directory scenarios with smart path resolution
+- Particularly useful for users who enable logging but forget to specify a directory
+
 ### 5 September 2025 - V14
 
 **Sample Prompt Enhancement Control - Added checkbox to disable automatic Kohya format parameter enhancement.**
