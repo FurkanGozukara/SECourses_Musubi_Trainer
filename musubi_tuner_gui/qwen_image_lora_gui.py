@@ -543,7 +543,7 @@ class QwenImageModel:
             )
             
             self.vae_spatial_tile_sample_min_size = gr.Number(
-                label="VAE Spatial Tile Min Size", 
+                label="VAE Spatial Tile Min Size",
                 info="Minimum spatial tile size for VAE. Auto-enables vae_tiling if set. 0 = disabled, 256 = typical",
                 value=self.config.get("vae_spatial_tile_sample_min_size", 0),
                 minimum=0,
@@ -552,11 +552,11 @@ class QwenImageModel:
                 interactive=True,
             )
 
-            self.fp8_vl = gr.Checkbox(
-                label="Use FP8 for Text Encoder",
-                info="FP8 quantization for Qwen2.5-VL saves ~8GB VRAM with minimal quality loss. Enable for GPUs with <16GB VRAM",
-                value=self.config.get("fp8_vl", False),
-            )
+        self.fp8_vl = gr.Checkbox(
+            label="Use FP8 for Text Encoder (Qwen2.5-VL)",
+            info="[🔥 RECOMMENDED for <16GB VRAM] FP8 quantization for Qwen2.5-VL text encoder. Saves ~8GB VRAM with <1% quality loss. MUST match caching_teo_fp8_vl setting if using cached text encoder outputs. RTX 4000+ has native FP8 support",
+            value=self.config.get("fp8_vl", False),
+        )
 
         # Qwen Image specific options
         gr.Markdown("""
@@ -570,14 +570,14 @@ class QwenImageModel:
         
         with gr.Row():
             self.fp8_base = gr.Checkbox(
-                label="FP8 for Base Model (DiT) (BF16 Model On The Fly Converted)",
-                info="Converts bf16 model to FP8 on-the-fly, saving ~12GB VRAM (24GB→12GB). INPUT: Requires standard bf16 model. OUTPUT: Cannot save FP8 models. Always enable with fp8_scaled below",
+                label="FP8 for Base Model (DiT) [On-The-Fly Conversion]",
+                info="[⚠️ ALWAYS USE WITH fp8_scaled] Converts BF16 model → FP8 during loading. Saves ~12GB VRAM (24GB→12GB). INPUT: Standard BF16 model file. OUTPUT: Cannot save as FP8. For pre-quantized FP8 models, leave this OFF",
                 value=self.config.get("fp8_base", False),
             )
-            
+
             self.fp8_scaled = gr.Checkbox(
-                label="Scaled FP8 for Base Model (DiT) (BF16 Model On The Fly Converted - Better FP8 Precision)",
-                info="REQUIRED with fp8_base for best quality. RTX 4000: native support (fast). RTX 2000/3000: automatic fallback (same quality, slightly slower)",
+                label="Scaled FP8 (Block-wise Scaling) [🎯 CRITICAL for Quality]",
+                info="[✅ MUST ENABLE with fp8_base] Implements block-wise FP8 scaling for ~2-3% better quality vs naive FP8. RTX 4000+: Hardware accelerated. RTX 3000: Software emulation (same quality, 5-10% slower). Without this, expect visible quality degradation",
                 value=self.config.get("fp8_scaled", False),
             )
             
@@ -590,6 +590,35 @@ class QwenImageModel:
                 step=1,
                 interactive=True,
             )
+
+        # FP8 validation warning
+        with gr.Row():
+            self.fp8_warning = gr.Markdown(
+                "",
+                visible=False,
+                elem_classes=["warning-text"]
+            )
+
+        # Add FP8 validation
+        def validate_fp8_settings(fp8_base, fp8_scaled, fp8_vl):
+            warnings = []
+            if fp8_base and not fp8_scaled:
+                warnings.append("🔴 **CRITICAL WARNING**: Using fp8_base without fp8_scaled will cause significant quality degradation! Always enable both together for proper block-wise scaling.")
+            if warnings:
+                return gr.update(value="\n\n".join(warnings), visible=True)
+            return gr.update(value="", visible=False)
+
+        # Connect FP8 validation
+        self.fp8_base.change(
+            fn=validate_fp8_settings,
+            inputs=[self.fp8_base, self.fp8_scaled, self.fp8_vl],
+            outputs=[self.fp8_warning]
+        )
+        self.fp8_scaled.change(
+            fn=validate_fp8_settings,
+            inputs=[self.fp8_base, self.fp8_scaled, self.fp8_vl],
+            outputs=[self.fp8_warning]
+        )
 
         # Additional model settings
         with gr.Row():
@@ -902,6 +931,7 @@ def qwen_image_gui_actions(
     no_metadata,
     network_weights,
     network_module,
+    custom_network_module,  # NEW parameter
     network_dim,
     network_alpha,
     network_dropout,
@@ -922,6 +952,10 @@ def qwen_image_gui_actions(
     save_last_n_steps_state,
     save_state,
     save_state_on_train_end,
+    convert_to_diffusers,  # NEW parameter
+    diffusers_output_dir,  # NEW parameter
+    convert_to_safetensors,  # NEW parameter
+    safetensors_output_dir,  # NEW parameter
     mem_eff_save,
     huggingface_repo_id,
     huggingface_token,
@@ -1918,10 +1952,33 @@ def train_qwen_image_model(headless, print_only, parameters):
                     modified_params.append((key, value))
             else:
                 # LoRA Training mode - keep all parameters as is
-                if key == "network_module" and (not value or value == ""):
-                    # Ensure network_module is set for LoRA
-                    modified_params.append((key, "networks.lora_qwen_image"))
-                    log.info("LoRA mode: Setting network_module to networks.lora_qwen_image")
+                if key == "network_module":
+                    # Handle custom network module selection
+                    if value == "custom":
+                        # Use the custom_network_module value instead
+                        custom_module = param_dict.get("custom_network_module", "")
+                        if custom_module and custom_module.strip():
+                            modified_params.append((key, custom_module))
+                            log.info(f"LoRA mode: Using custom network module: {custom_module}")
+                        else:
+                            # Fallback to default if custom module not specified
+                            modified_params.append((key, "networks.lora_qwen_image"))
+                            log.warning("LoRA mode: Custom module selected but not specified, using default networks.lora_qwen_image")
+                    elif not value or value == "":
+                        # Ensure network_module is set for LoRA
+                        modified_params.append((key, "networks.lora_qwen_image"))
+                        log.info("LoRA mode: Setting network_module to networks.lora_qwen_image")
+                    else:
+                        # Use the selected module directly
+                        modified_params.append((key, value))
+                        log.info(f"LoRA mode: Using network module: {value}")
+                elif key == "custom_network_module":
+                    # Skip this parameter as it's handled above
+                    continue
+                elif key in ["convert_to_diffusers", "diffusers_output_dir", "convert_to_safetensors", "safetensors_output_dir"]:
+                    # Skip conversion parameters - they are post-training operations
+                    log.info(f"Skipping post-training conversion parameter: {key}")
+                    continue
                 elif key == "fused_backward_pass":
                     # Disable fused_backward_pass for LoRA (not effective)
                     modified_params.append((key, False))
@@ -2200,9 +2257,38 @@ class QwenImageTrainingSettings:
             )
             
             self.full_fp16 = gr.Checkbox(
-                label="Full FP16 Training", 
+                label="Full FP16 Training",
                 info="[EXPERIMENTAL] Stores gradients in FP16 instead of FP32. Saves ~30% VRAM but higher risk of gradient underflow. Use only if full_bf16 isn't available. Requires careful learning rate tuning. Incompatible with mixed_precision='fp16'.",
                 value=self.config.get("full_fp16", False),
+            )
+
+        # Dtype compatibility warning
+        with gr.Row():
+            self.dtype_warning = gr.Markdown(
+                "",
+                visible=False,
+                elem_classes=["warning-text"]
+            )
+
+        # Add validation function for dtype conflicts
+        def validate_dtype_settings(full_bf16, full_fp16):
+            warnings = []
+
+            # Check full_bf16 and full_fp16 conflict
+            if full_bf16 and full_fp16:
+                warnings.append("⚠️ **CONFLICT**: Cannot use both full_bf16 and full_fp16 simultaneously. Choose one.")
+                warnings.append("💡 **TIP**: Use full_bf16 for better stability, or full_fp16 only if BF16 is not available on your GPU.")
+
+            if warnings:
+                return gr.update(value="\n\n".join(warnings), visible=True)
+            return gr.update(value="", visible=False)
+
+        # Connect validation to relevant inputs
+        for component in [self.full_bf16, self.full_fp16]:
+            component.change(
+                fn=validate_dtype_settings,
+                inputs=[self.full_bf16, self.full_fp16],
+                outputs=[self.dtype_warning]
             )
 
         # Logging settings
@@ -2650,17 +2736,31 @@ class QwenImageNetworkSettings:
             )
 
         with gr.Row():
-            self.network_module = gr.Textbox(
-                label="Network Module (LoRA Type)",
-                info="[AUTO-SET] LoRA implementation for Qwen Image. 'networks.lora_qwen_image' is automatically selected. Do not change",
-                placeholder="networks.lora_qwen_image",
+            self.network_module = gr.Dropdown(
+                label="Network Module (LoRA Architecture Type)",
+                info="[ADVANCED] LoRA implementation module. 'networks.lora_qwen_image' is the standard Qwen Image LoRA. 'networks.dylora' enables Dynamic LoRA (trains multiple ranks). 'networks.lora_fa' uses LoRA-FA (Frozen-A) for better stability. Custom modules can be specified via text input below",
+                choices=[
+                    "networks.lora_qwen_image",
+                    "networks.dylora",
+                    "networks.lora_fa",
+                    "custom"
+                ],
                 value=self.config.get("network_module", "networks.lora_qwen_image"),
-                interactive=False,  # Will be auto-selected
+                interactive=True,
+            )
+
+            self.custom_network_module = gr.Textbox(
+                label="Custom Network Module Path",
+                info="[EXPERT] Full Python module path for custom LoRA implementation. Only used when 'custom' is selected above. Example: 'my_networks.custom_lora_implementation'",
+                placeholder="e.g., my_custom_module.QwenImageLoRA",
+                value=self.config.get("custom_network_module", ""),
+                visible=self.config.get("network_module", "networks.lora_qwen_image") == "custom",
+                interactive=True,
             )
 
             self.network_dim = gr.Number(
                 label="Network Dimension (LoRA Rank)",
-                info="[RECOMMENDED] LoRA rank/dimension. Higher is better but uses more VRAM and LoRA size increases. Don't change what preset has unless you are an expert.",
+                info="[CRITICAL] LoRA rank/dimension. QwenImage: 4-8 (low detail), 16-32 (balanced quality/size), 64-128 (high quality). DyLoRA: set to max rank you want to train. Higher = more VRAM + larger file size",
                 value=self.config.get("network_dim", 16),
                 minimum=1,
                 maximum=512,
@@ -2671,7 +2771,7 @@ class QwenImageNetworkSettings:
         with gr.Row():
             self.network_alpha = gr.Number(
                 label="Network Alpha (LoRA Alpha)",
-                info="[RECOMMENDED] LoRA scaling factor. Don't change what preset has unless you are an expert.",
+                info="[CRITICAL] LoRA scaling factor. BEST PRACTICE: Set alpha = rank/2 for stability (e.g., rank 16 → alpha 8). Setting alpha = rank (e.g., 16/16) is common but may need lower learning rates. Lower alpha = stronger regularization",
                 value=self.config.get("network_alpha", 1.0),
                 minimum=0.1,
                 maximum=512.0,
@@ -2691,9 +2791,9 @@ class QwenImageNetworkSettings:
 
         with gr.Row():
             self.network_args = gr.Textbox(
-                label="Network Arguments (LoRA Args)",
-                info="Advanced LoRA parameters as key=value pairs. Space separated. e.g. conv_dim=4 conv_alpha=1 algo=locon",
-                placeholder='e.g. "conv_dim=4 conv_alpha=1 algo=locon"',
+                label="Network Arguments (Advanced LoRA Parameters)",
+                info="[EXPERT] Space-separated key=value pairs. DyLoRA: 'unit=8' (rank increments). LoRA-FA: 'use_tucker=True tucker_rank=8'. LyCORIS: 'algo=locon conv_dim=4 conv_alpha=1'. Block-wise: 'block_dims=2,4,4,8,8,8,8,12,12,12,12,16,16,16,16' 'block_alphas=2,2,2,4,4,4,4,6,6,6,6,8,8,8,8'",
+                placeholder='e.g. "conv_dim=4 conv_alpha=1 algo=locon" or "unit=8" for DyLoRA',
                 value=" ".join(self.config.get("network_args", []) or []) if isinstance(self.config.get("network_args", []), list) else self.config.get("network_args", ""),
             )
 
@@ -2737,6 +2837,13 @@ class QwenImageNetworkSettings:
                 step=0.1,
                 interactive=True,
             )
+
+        # Add event handler for network module selection
+        self.network_module.change(
+            fn=lambda x: gr.update(visible=(x == "custom")),
+            inputs=[self.network_module],
+            outputs=[self.custom_network_module]
+        )
 
 
 class QwenImageSaveLoadSettings:
@@ -2847,7 +2954,54 @@ class QwenImageSaveLoadSettings:
                 info="Save complete training state when training finishes, even if 'Save Optimizer States' is disabled. Useful for resuming training later",
                 value=self.config.get("save_state_on_train_end", False),
             )
-        
+
+        # Conversion Options for Qwen Image LoRA
+        with gr.Row():
+            gr.Markdown("### 🔄 LoRA Format Conversion Options\n**Note**: These conversion features will be executed automatically after successful training completion. The trained LoRA will be converted to the selected formats for better compatibility with different inference tools.")
+
+        with gr.Row():
+            self.convert_to_diffusers = gr.Checkbox(
+                label="Convert to Diffusers Format",
+                info="[NEW] Automatically convert trained LoRA to Diffusers format after training. Creates additional files compatible with diffusers library. Useful for integration with other tools",
+                value=self.config.get("convert_to_diffusers", False),
+            )
+
+            self.diffusers_output_dir = gr.Textbox(
+                label="Diffusers Output Directory",
+                info="Directory for converted Diffusers format files. If empty, uses '{output_dir}/diffusers_format'. Only used when conversion is enabled",
+                placeholder="e.g., ./models/diffusers or leave empty for auto",
+                value=self.config.get("diffusers_output_dir", ""),
+                visible=self.config.get("convert_to_diffusers", False),
+            )
+
+        with gr.Row():
+            self.convert_to_safetensors = gr.Checkbox(
+                label="Convert to Safetensors (Alternative Format)",
+                info="[ADVANCED] Convert LoRA to alternative safetensors format with different key naming. Useful for compatibility with certain inference tools",
+                value=self.config.get("convert_to_safetensors", False),
+            )
+
+            self.safetensors_output_dir = gr.Textbox(
+                label="Alternative Safetensors Output Directory",
+                info="Directory for alternative safetensors format. If empty, uses '{output_dir}/safetensors_alt'. Only used when conversion is enabled",
+                placeholder="e.g., ./models/safetensors_alt or leave empty",
+                value=self.config.get("safetensors_output_dir", ""),
+                visible=self.config.get("convert_to_safetensors", False),
+            )
+
+        # Event handlers for conversion options
+        self.convert_to_diffusers.change(
+            fn=lambda x: gr.update(visible=x),
+            inputs=[self.convert_to_diffusers],
+            outputs=[self.diffusers_output_dir]
+        )
+
+        self.convert_to_safetensors.change(
+            fn=lambda x: gr.update(visible=x),
+            inputs=[self.convert_to_safetensors],
+            outputs=[self.safetensors_output_dir]
+        )
+
         # Add click handler for output directory folder button
         self.output_dir_button.click(
             fn=lambda: get_folder_path(),
@@ -3360,6 +3514,7 @@ def qwen_image_lora_tab(
         network.no_metadata,
         network.network_weights,
         network.network_module,
+        network.custom_network_module,  # NEW parameter
         network.network_dim,
         network.network_alpha,
         network.network_dropout,
@@ -3382,6 +3537,10 @@ def qwen_image_lora_tab(
         saveLoadSettings.save_last_n_steps_state,
         saveLoadSettings.save_state,
         saveLoadSettings.save_state_on_train_end,
+        saveLoadSettings.convert_to_diffusers,  # NEW parameter
+        saveLoadSettings.diffusers_output_dir,  # NEW parameter
+        saveLoadSettings.convert_to_safetensors,  # NEW parameter
+        saveLoadSettings.safetensors_output_dir,  # NEW parameter
         gr.Checkbox(value=False, visible=False),  # mem_eff_save placeholder
         
         # huggingface
@@ -3516,16 +3675,19 @@ def qwen_image_lora_tab(
             "lr_scheduler_min_lr_ratio": ("Learning Rate, Optimizer and Scheduler Settings", "LR Scheduler Min LR Ratio"),
             
             # Network/LoRA Settings
-            "network_module": ("Network Settings", "Network Module"),
-            "network_dim": ("Network Settings", "Network Dimension (Rank)"),
-            "network_alpha": ("Network Settings", "Network Alpha"),
-            "network_dropout": ("Network Settings", "Network Dropout"),
-            "network_args": ("Network Settings", "Network Arguments"),
-            "network_weights": ("Network Settings", "Network Weights"),
-            "dim_from_weights": ("Network Settings", "Dim from Weights"),
-            "scale_weight_norms": ("Network Settings", "Scale Weight Norms"),
-            "base_weights": ("Network Settings", "Base Weights"),
-            "base_weights_multiplier": ("Network Settings", "Base Weights Multiplier"),
+            "network_module": ("LoRA Settings", "Network Module (LoRA Architecture Type)"),
+            "custom_network_module": ("LoRA Settings", "Custom Network Module Path"),
+            "network_dim": ("LoRA Settings", "Network Dimension (LoRA Rank)"),
+            "network_alpha": ("LoRA Settings", "Network Alpha (LoRA Alpha)"),
+            "network_dropout": ("LoRA Settings", "Network Dropout (LoRA Dropout)"),
+            "network_args": ("LoRA Settings", "Network Arguments (Advanced LoRA Parameters)"),
+            "network_weights": ("LoRA Settings", "Network Weights (LoRA Weights)"),
+            "dim_from_weights": ("LoRA Settings", "Auto-Determine Rank from Weights"),
+            "scale_weight_norms": ("LoRA Settings", "Scale Weight Norms"),
+            "base_weights": ("LoRA Settings", "LoRA Base Weights"),
+            "base_weights_multiplier": ("LoRA Settings", "Base Weights Multiplier"),
+            "training_comment": ("LoRA Settings", "Training Comment"),
+            "no_metadata": ("LoRA Settings", "No Metadata"),
             
             # Latent Caching
             "caching_latent_device": ("Caching → Latent caching", "Caching Device"),
@@ -3552,8 +3714,12 @@ def qwen_image_lora_tab(
             "save_every_n_steps": ("Save Models and Resume Training Settings", "Save Every N Steps"),
             "save_last_n_epochs": ("Save Models and Resume Training Settings", "Save Last N Epochs"),
             "save_last_n_steps": ("Save Models and Resume Training Settings", "Save Last N Steps"),
-            "save_state": ("Save Models and Resume Training Settings", "Save State"),
-            "save_state_on_train_end": ("Save Models and Resume Training Settings", "Save State on Train End"),
+            "save_state": ("Save Models and Resume Training Settings", "Save Optimizer States with Checkpoints"),
+            "save_state_on_train_end": ("Save Models and Resume Training Settings", "Save State on Training End"),
+            "convert_to_diffusers": ("Save Models and Resume Training Settings", "Convert to Diffusers Format"),
+            "diffusers_output_dir": ("Save Models and Resume Training Settings", "Diffusers Output Directory"),
+            "convert_to_safetensors": ("Save Models and Resume Training Settings", "Convert to Safetensors (Alternative Format)"),
+            "safetensors_output_dir": ("Save Models and Resume Training Settings", "Alternative Safetensors Output Directory"),
             "mem_eff_save": ("Save Models and Resume Training Settings", "Memory Efficient Save"),
             
             # Sample Generation

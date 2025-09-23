@@ -8,6 +8,50 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 23 September 2025 - V16
+
+**Enhanced Qwen Image LoRA Training with Advanced Network Architectures and Format Conversions - Based on latest Musubi Tuner updates.**
+
+Changes:
+- **NEW: Advanced LoRA Architecture Selection** - Dropdown menu for selecting different LoRA implementations:
+  - Standard `networks.lora_qwen_image` - Default Qwen Image LoRA implementation
+  - `networks.dylora` - Dynamic LoRA that trains multiple ranks simultaneously
+  - `networks.lora_fa` - LoRA with Frozen-A for improved training stability
+  - Custom module support - Specify any custom LoRA implementation path
+- **NEW: Custom Network Module Field** - Dynamic text field appears when "custom" is selected for advanced users
+- **NEW: Post-Training Format Conversion Options** - Automatic conversion to different formats after training:
+  - Convert to Diffusers format - Compatible with diffusers library and various inference tools
+  - Convert to alternative SafeTensors format - Different key naming for compatibility
+  - Configurable output directories for each conversion format
+  - Dynamic UI - conversion directories only show when conversion is enabled
+- **ENHANCED: FP8 Optimization Descriptions** - Comprehensive guidance for FP8 settings:
+  - fp8_vl - Now clearly indicates Qwen2.5-VL text encoder with ~8GB VRAM savings
+  - fp8_base - Clarifies on-the-fly BF16→FP8 conversion process
+  - fp8_scaled - Emphasizes CRITICAL importance for quality with block-wise scaling
+  - Added hardware compatibility notes (RTX 4000+ native, RTX 3000 emulation)
+- **NEW: Real-time FP8 Configuration Validation** - Automatic warning system:
+  - Critical red warning when fp8_base enabled without fp8_scaled
+  - Prevents significant quality degradation from improper FP8 configuration
+  - Dynamic warning appears/disappears based on settings
+- **NEW: Dtype Conflict Detection** - Validation system for training precision:
+  - Warns about full_bf16 + full_fp16 simultaneous usage conflict
+  - Provides helpful tips for choosing between BF16 and FP16
+  - Real-time validation with clear warning messages
+- **ENHANCED: Network Parameter Descriptions** - Detailed guidance for all LoRA settings:
+  - Network Dimension - Specific recommendations for Qwen Image (4-8 low, 16-32 balanced, 64-128 high)
+  - Network Alpha - Best practice formula (alpha = rank/2 for stability)
+  - Network Args - Comprehensive examples for DyLoRA, LoRA-FA, LyCORIS, block-wise configurations
+- **IMPROVED: Parameter Search Integration** - All new parameters fully searchable:
+  - custom_network_module, convert_to_diffusers, diffusers_output_dir
+  - convert_to_safetensors, safetensors_output_dir
+  - Enhanced parameter descriptions in search results
+- **FIXED: Dtype validation scope error** - Removed external reference that caused startup crash
+- **Full TOML Configuration Support** - All new parameters integrate seamlessly with save/load system
+- **Smart Parameter Handling** - Automatic handling of custom modules and post-training operations
+- **Backward Compatibility** - All existing configurations continue to work without modification
+- Based on latest Musubi Tuner repository updates (August-September 2025)
+- Includes VRAM optimizations, bug fixes, and stability improvements from upstream
+
 ### 12 September 2025 - V15
 
 **Intelligent Logging Directory Management - Automatic path resolution for training logs with proper permissions.**
