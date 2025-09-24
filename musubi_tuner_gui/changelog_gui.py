@@ -46,6 +46,10 @@ Changes:
   - convert_to_safetensors, safetensors_output_dir
   - Enhanced parameter descriptions in search results
 - **FIXED: Dtype validation scope error** - Removed external reference that caused startup crash
+- **CRITICAL FIX: DreamBooth Fine-Tuning Script Selection** - Fixed GUI to properly switch between training scripts based on mode:
+  - DreamBooth Fine-Tuning mode now correctly uses `qwen_image_train.py` for full model fine-tuning
+  - LoRA Training mode uses `qwen_image_train_network.py` for parameter-efficient training
+  - Previously, DreamBooth mode incorrectly used the LoRA script with disabled network modules
 - **Full TOML Configuration Support** - All new parameters integrate seamlessly with save/load system
 - **Smart Parameter Handling** - Automatic handling of custom modules and post-training operations
 - **Backward Compatibility** - All existing configurations continue to work without modification

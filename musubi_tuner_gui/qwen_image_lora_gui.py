@@ -1851,8 +1851,16 @@ def train_qwen_image_model(headless, print_only, parameters):
         extra_accelerate_launch_args=param_dict.get("extra_accelerate_launch_args"),
     )
 
-    # Use Qwen Image specific training script
-    run_cmd.append(f"{scriptdir}/musubi-tuner/src/musubi_tuner/qwen_image_train_network.py")
+    # Select the appropriate Qwen Image training script based on training mode
+    training_mode = param_dict.get("training_mode", "LoRA Training")
+    if training_mode == "DreamBooth Fine-Tuning":
+        # Use full fine-tuning script for DreamBooth mode
+        run_cmd.append(f"{scriptdir}/musubi-tuner/src/musubi_tuner/qwen_image_train.py")
+        log.info("Using qwen_image_train.py for full DreamBooth fine-tuning")
+    else:
+        # Use network training script for LoRA mode
+        run_cmd.append(f"{scriptdir}/musubi-tuner/src/musubi_tuner/qwen_image_train_network.py")
+        log.info("Using qwen_image_train_network.py for LoRA training")
 
     if print_only:
         print_command_and_toml(run_cmd, "")
