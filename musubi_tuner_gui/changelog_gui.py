@@ -37,8 +37,17 @@ Changes:
   - Warns about full_bf16 + full_fp16 simultaneous usage conflict
   - Provides helpful tips for choosing between BF16 and FP16
   - Real-time validation with clear warning messages
+- **NEW: Advanced Attention Mechanism Support** - Extended CrossAttention options for optimized performance:
+  - SageAttention - Alternative attention implementation for memory efficiency (requires SageAttention library)
+  - FlashAttention 3 - [EXPERIMENTAL] Latest FA3 support for cutting-edge performance
+  - Enhanced attention priority system - SDPA → FlashAttention → SageAttention → xformers priority
+  - Automatic attention validation - Warns when no attention mechanism is selected and enables SDPA by default
+- **NEW: Intelligent Auto-Detection System** - Smart parameter handling for advanced users:
+  - Number of DiT Layers - Auto-detection for standard Qwen Image models (60 layers default)
+  - Network Dimension - 0 value enables auto-detection from model architecture
+  - Backend validation - Proper handling of None values for auto-detected parameters
 - **ENHANCED: Network Parameter Descriptions** - Detailed guidance for all LoRA settings:
-  - Network Dimension - Specific recommendations for Qwen Image (4-8 low, 16-32 balanced, 64-128 high)
+  - Network Dimension - Specific recommendations for Qwen Image (4-8 low, 16-32 balanced, 64-128 high) with auto-detection support
   - Network Alpha - Best practice formula (alpha = rank/2 for stability)
   - Network Args - Comprehensive examples for DyLoRA, LoRA-FA, LyCORIS, block-wise configurations
 - **IMPROVED: Parameter Search Integration** - All new parameters fully searchable:
