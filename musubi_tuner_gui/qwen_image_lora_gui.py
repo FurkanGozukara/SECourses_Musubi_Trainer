@@ -837,6 +837,7 @@ def qwen_image_gui_actions(
     persistent_data_loader_workers,
     seed,
     gradient_checkpointing,
+    gradient_checkpointing_cpu_offload,
     gradient_accumulation_steps,
     full_bf16,
     full_fp16,
@@ -1076,6 +1077,10 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
     
     # Apply training mode specific modifications
     modified_params = []
+
+    # Always include training_mode so it persists in saved configs
+    modified_params.append(("training_mode", training_mode))
+
     for key, value in parameters:
         if training_mode == "DreamBooth Fine-Tuning":
             # For DreamBooth/Fine-tuning, we need to disable network parameters
@@ -1147,7 +1152,6 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
                 "file_path",
                 "save_as",
                 "save_as_bool",
-                "training_mode",  # GUI-only parameter, not a training parameter
                 "headless",
                 "print_only",
                 "num_cpu_threads_per_process",
@@ -1939,7 +1943,7 @@ def train_qwen_image_model(headless, print_only, parameters):
 
         # Modify parameters based on training mode
         training_mode = param_dict.get("training_mode", "LoRA Training")
-        modified_params = []
+        modified_params = [("training_mode", training_mode)]
         
         for key, value in parameters:
             if training_mode == "DreamBooth Fine-Tuning":
@@ -2044,7 +2048,6 @@ def train_qwen_image_model(headless, print_only, parameters):
                 pattern_exclusion.append(key)
         
         # Also exclude training_mode from the TOML as it's not a training parameter
-        pattern_exclusion.append("training_mode")
 
         SaveConfigFileToRun(
             parameters=parameters,
@@ -2244,6 +2247,12 @@ class QwenImageTrainingSettings:
                 label="Enable Gradient Checkpointing",
                 info="[ENABLED] Trades computation for memory. Essential for Qwen Image training. Saves ~50% VRAM but increases training time ~20%",
                 value=self.config.get("gradient_checkpointing", True),
+            )
+
+            self.gradient_checkpointing_cpu_offload = gr.Checkbox(
+                label="Gradient Checkpointing CPU Offload",
+                info="Offload activations to CPU when using gradient checkpointing. Reduces VRAM usage but slows training",
+                value=self.config.get("gradient_checkpointing_cpu_offload", False),
             )
 
             self.gradient_accumulation_steps = gr.Number(
@@ -2753,7 +2762,8 @@ class QwenImageNetworkSettings:
                     "networks.lora_fa",
                     "custom"
                 ],
-                value=self.config.get("network_module", "networks.lora_qwen_image"),
+                value=self.config.get("network_module", "") or "networks.lora_qwen_image",
+                allow_custom_value=True,
                 interactive=True,
             )
 
@@ -3421,6 +3431,7 @@ def qwen_image_lora_tab(
         trainingSettings.persistent_data_loader_workers,
         trainingSettings.seed,
         trainingSettings.gradient_checkpointing,
+        trainingSettings.gradient_checkpointing_cpu_offload,
         trainingSettings.gradient_accumulation_steps,
         trainingSettings.full_bf16,
         trainingSettings.full_fp16,
@@ -3664,6 +3675,7 @@ def qwen_image_lora_tab(
             "persistent_data_loader_workers": ("Training Settings", "Persistent DataLoader Workers"),
             "seed": ("Training Settings", "Seed"),
             "gradient_checkpointing": ("Training Settings", "Gradient Checkpointing"),
+            "gradient_checkpointing_cpu_offload": ("Training Settings", "Gradient Checkpointing CPU Offload"),
             "gradient_accumulation_steps": ("Training Settings", "Gradient Accumulation Steps"),
             "full_bf16": ("Training Settings", "Full BF16 Gradients"),
             "full_fp16": ("Training Settings", "Full FP16 Gradients"),

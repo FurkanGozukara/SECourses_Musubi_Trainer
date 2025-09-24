@@ -27,10 +27,14 @@ class Network:
                 value=self.config.get("network_weights", None),
             )
 
+            default_module = self.config.get("network_module", "")
+            if not default_module:
+                default_module = "networks.lora"
+
             self.network_module = gr.Textbox(
                 label="Network Module (LoRA Type)",
                 placeholder="LoRA module type to train",
-                value=self.config.get("network_module", None),
+                value=default_module,
             )
 
         with gr.Row():

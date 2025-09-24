@@ -86,6 +86,12 @@ class TrainingSettings:
                 value=self.config.get("gradient_checkpointing", False),
             )
 
+            self.gradient_checkpointing_cpu_offload = gr.Checkbox(
+                label="Gradient Checkpointing CPU Offload",
+                info="Offload activations to CPU when using gradient checkpointing. Reduces VRAM at the cost of speed",
+                value=self.config.get("gradient_checkpointing_cpu_offload", False),
+            )
+
             self.gradient_accumulation_steps = gr.Number(
                 label="Gradient Accumulation Steps",
                 info="Number of steps to accumulate gradients before backward pass",

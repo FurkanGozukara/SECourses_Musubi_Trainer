@@ -1645,7 +1645,7 @@ def SaveConfigFileToRun(
             if isinstance(value, str) and value == "":
                 value = None
         
-        variables[name] = value
+            variables[name] = value
 
     folder_path = os.path.dirname(file_path)
     if not os.path.exists(folder_path):
