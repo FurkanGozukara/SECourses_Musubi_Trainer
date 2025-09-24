@@ -1496,7 +1496,9 @@ def SaveConfigFile(
             zero_to_none_params = [
                 "sample_every_n_steps", "sample_every_n_epochs", "save_every_n_steps",
                 "blocks_to_swap", "min_timestep", "num_timestep_buckets", 
-                "vae_chunk_size", "vae_spatial_tile_sample_min_size"
+                "vae_chunk_size", "vae_spatial_tile_sample_min_size",
+                "network_dim", "num_layers",  # NEW: 0 means auto-detection = None
+                "max_train_epochs"  # NEW: 0 means use max_train_steps instead = None
             ]
             if name in zero_to_none_params:
                 if value == 0:
@@ -1514,7 +1516,7 @@ def SaveConfigFile(
             variables[name] = value
 
     folder_path = os.path.dirname(file_path)
-    if not os.path.exists(folder_path):
+    if folder_path and not os.path.exists(folder_path):
         os.makedirs(folder_path)
         log.info(f"Creating folder {folder_path} for the configuration file...")
 
@@ -1525,6 +1527,7 @@ def SaveConfigFileToRun(
     parameters,
     file_path: str,
     exclusion: list = ["file_path", "save_as", "headless", "print_only"],
+    mandatory_keys: list | None = None,
 ) -> None:
     """
     Saves the configuration parameters to a TOML file, excluding specified keys.
@@ -1570,7 +1573,7 @@ def SaveConfigFileToRun(
     
     variables = {}
     for name, value in sorted(parameters, key=lambda x: x[0]):
-        if name in exclusion or value is None:
+        if name in exclusion:
             continue
         # Skip empty string for log_with parameter (causes accelerate error)
         if name == "log_with" and value == "":
@@ -1630,25 +1633,38 @@ def SaveConfigFileToRun(
             "save_last_n_epochs", "save_last_n_steps",  # FIX: 0 = keep all = None for musubi tuner
             "save_last_n_epochs_state", "save_last_n_steps_state",  # Same pattern for state files
             "blocks_to_swap", "min_timestep", "num_timestep_buckets", 
-            "vae_chunk_size", "vae_spatial_tile_sample_min_size"
+            "vae_chunk_size", "vae_spatial_tile_sample_min_size",
+            "network_dim", "num_layers",  # NEW: 0 means auto-detection = None
+            "max_train_epochs"  # NEW: 0 means use max_train_steps instead = None
         ]
-        if name in zero_to_none_params:
-            if value == 0:
-                value = None
+        if name in zero_to_none_params and value == 0:
+            value = None
         
         # Convert empty strings to None for parameters that musubi tuner expects as None
         empty_to_none_params = [
             "base_weights", "dit", "vae", "network_weights",
             "log_tracker_config", "metadata_title", "wandb_api_key"
         ]
-        if name in empty_to_none_params:
-            if isinstance(value, str) and value == "":
-                value = None
+        if name in empty_to_none_params and isinstance(value, str) and value == "":
+            value = None
         
-            variables[name] = value
+        variables[name] = value
+
+    # Ensure mandatory keys exist (skip if exclusion removes them)
+    if mandatory_keys:
+        mandatory_set = set(mandatory_keys)
+        present_keys = set(variables.keys())
+        missing = mandatory_set - present_keys
+        for key in missing:
+            value = next((value for name, value in parameters if name == key), None)
+            if key == "dataset_config" and not value:
+                raise ValueError("dataset_config missing for training run; please retry saving configuration.")
+            if key in ["dit", "vae", "text_encoder"] and (not value or value == ""):
+                raise ValueError(f"{key} path is required for Qwen Image training but is missing or empty.")
+            variables[key] = value
 
     folder_path = os.path.dirname(file_path)
-    if not os.path.exists(folder_path):
+    if folder_path and not os.path.exists(folder_path):
         os.makedirs(folder_path)
         log.info(f"Creating folder {folder_path} for the configuration file...")
 

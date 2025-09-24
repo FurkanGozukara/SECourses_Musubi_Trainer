@@ -46,6 +46,25 @@ huggingface = None
 train_state_value = time.time()
 
 
+def upsert_parameter(parameters, key: str, value):
+    """Return a new parameter list where `key` is set to `value` exactly once."""
+    updated: list[tuple] = []
+    replaced = False
+    for k, v in parameters:
+        if k == key:
+            if not replaced:
+                updated.append((k, value))
+                replaced = True
+            # Skip duplicate instances of the same key
+        else:
+            updated.append((k, v))
+
+    if not replaced:
+        updated.append((key, value))
+
+    return updated
+
+
 class QwenImageDataset:
     """Qwen Image dataset configuration settings"""
     def __init__(self, headless: bool, config: GUIConfig) -> None:
@@ -473,8 +492,18 @@ class QwenImageModel:
                 label="DiT Input Channels",
                 info="[DO NOT CHANGE] VAE latent channels that DiT expects. MUST be 16 for Qwen Image (VAE encodes images to 16-channel latents). Different from SD (4 channels). Changing this will cause training to fail. This represents the depth of encoded image data.",
                 value=self.config.get("dit_in_channels", 16),
-                minimum=1,
-                maximum=32,
+                # minimum=1,  # Removed: Let backend handle validation
+                # maximum=32,
+                step=1,
+                interactive=True,
+            )
+            
+            self.num_layers = gr.Number(
+                label="Number of DiT Layers",
+                info="🔧 ADVANCED: Number of transformer layers in the DiT model. Leave empty for auto-detection (60 layers for standard Qwen Image models). Only modify when using custom or pruned models. Incorrect values will cause training failure. Supported range: 1-60 layers.",
+                value=self.config.get("num_layers", None) if self.config.get("num_layers") not in ["", None] else None,
+                # minimum=1,  # Removed: Let backend handle validation
+                # maximum=60,
                 step=1,
                 interactive=True,
             )
@@ -732,7 +761,7 @@ class QwenImageModel:
                 label="Max Timestep", 
                 info="Maximum timestep for training (1-1000). Leave empty for default (1000). Constrains timestep sampling range",
                 value=self.config.get("max_timestep", None),
-                minimum=1,
+                minimum=0,
                 maximum=1000,
                 step=1,
                 interactive=True,
@@ -749,8 +778,8 @@ class QwenImageModel:
                 label="Num Timestep Buckets",
                 info="Number of buckets for uniform timestep sampling. 0=disabled (default), 4-10=bucketed sampling for better training stability",
                 value=self.config.get("num_timestep_buckets", 0),
-                minimum=0,
-                maximum=100,
+                # minimum=0,  # Removed: Let backend handle validation
+                # maximum=100,
                 step=1,
                 interactive=True,
             )
@@ -902,6 +931,7 @@ def qwen_image_gui_actions(
     dit,
     dit_dtype,
     dit_in_channels,
+    num_layers,
     text_encoder_dtype,
     vae,
     vae_dtype,
@@ -979,7 +1009,7 @@ def qwen_image_gui_actions(
         'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
         'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',  # base_weights_multiplier is a Number in Qwen Image GUI
         'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap',
-        'min_timestep', 'max_timestep', 'discrete_flow_shift', 'flow_shift', 'dit_in_channels', 'network_dropout',
+        'min_timestep', 'max_timestep', 'discrete_flow_shift', 'flow_shift', 'dit_in_channels', 'num_layers', 'network_dropout',
         'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
         'dataset_qwen_image_edit_control_resolution_width', 'dataset_qwen_image_edit_control_resolution_height',
         'dataset_batch_size', 'max_train_steps', 'max_train_epochs', 'seed',
@@ -1068,7 +1098,7 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
 
     destination_directory = os.path.dirname(file_path)
 
-    if not os.path.exists(destination_directory):
+    if destination_directory and not os.path.exists(destination_directory):
         os.makedirs(destination_directory)
     
     # Process parameters based on training mode
@@ -1093,9 +1123,12 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
                 log.info(f"DreamBooth mode: Skipping LoRA parameter {key}")
                 continue
             elif key == "fused_backward_pass":
-                # Enable fused_backward_pass for DreamBooth (reduces VRAM)
-                modified_params.append((key, True))
-                log.info("DreamBooth mode: Enabling fused_backward_pass for memory efficiency")
+                # Respect user's choice for fused_backward_pass (DreamBooth only)
+                if value:
+                    log.info("DreamBooth mode: fused_backward_pass enabled by user (reduces VRAM with AdaFactor)")
+                else:
+                    log.info("DreamBooth mode: fused_backward_pass disabled by user")
+                modified_params.append((key, value))
             else:
                 modified_params.append((key, value))
         else:
@@ -1105,8 +1138,10 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
                 modified_params.append((key, "networks.lora_qwen_image"))
                 log.info("LoRA mode: Setting network_module to networks.lora_qwen_image")
             elif key == "fused_backward_pass":
-                # Disable fused_backward_pass for LoRA (not effective)
+                # For LoRA mode, always disable (not effective) regardless of user setting
                 modified_params.append((key, False))
+                if value:
+                    log.info("LoRA mode: fused_backward_pass disabled (not effective for LoRA training)")
             else:
                 modified_params.append((key, value))
     
@@ -1120,7 +1155,7 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
         'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
         'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',  # base_weights_multiplier is a Number in Qwen Image GUI
         'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap',
-        'min_timestep', 'max_timestep', 'discrete_flow_shift', 'flow_shift', 'dit_in_channels', 'network_dropout',
+        'min_timestep', 'max_timestep', 'discrete_flow_shift', 'flow_shift', 'dit_in_channels', 'num_layers', 'network_dropout',
         'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
         'dataset_qwen_image_edit_control_resolution_width', 'dataset_qwen_image_edit_control_resolution_height',
         'dataset_batch_size', 'max_train_steps', 'max_train_epochs', 'seed',
@@ -1259,57 +1294,18 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
             status_msg = "Load cancelled"
             gr.Info(status_msg)
 
-    # Define minimum value constraints to prevent validation errors
-    # Based on actual Gradio component definitions
-    minimum_constraints = {
-        # Accelerate Launch components (shared with Musubi Tuner)
-        "num_processes": 1,           # minimum=1
-        "num_machines": 1,           # minimum=1
-        "num_cpu_threads_per_process": 1,  # minimum=1 (Slider)
-        "main_process_port": 0,      # minimum=0
-        # Components with minimum=0
-        "vae_chunk_size": 0,
-        "vae_spatial_tile_sample_min_size": 0,
-        "blocks_to_swap": 0,
-        "min_timestep": 0,
-        "max_data_loader_n_workers": 0,
-        "seed": 0,
-        "max_grad_norm": 0.0,
-        "lr_warmup_steps": 0,
-        # Components with minimum=0.1
-        "guidance_scale": 0.1,
-        "logit_std": 0.1,
-        "mode_scale": 0.1,
-        "sigmoid_scale": 0.1,
-        "lr_scheduler_power": 0.1,
-        "network_alpha": 0.1,
-        # Components with minimum=1
-        "max_timestep": 1,
-        "max_train_epochs": 1,
-        "gradient_accumulation_steps": 1,
-        "sample_every_n_steps": 1,
-        "sample_every_n_epochs": 1,
-        # "ddp_timeout": 1,  # REMOVED - 0 is valid (use default 30min timeout)
-        "lr_scheduler_num_cycles": 1,
-        "network_dim": 1,
-        "save_every_n_steps": 1,
-        # "save_last_n_epochs": 1,  # REMOVED - 0 is valid (keep all epochs)
-        "caching_latent_batch_size": 1,
-        "caching_teo_batch_size": 1,
-        # Components with minimum=100
-        "max_train_steps": 100,
-        # Components with minimum=1e-7
-        "learning_rate": 1e-7,
-        # Components with minimum=-10.0
-        "logit_mean": -10.0
-    }
+    # REMOVED: All minimum constraints to prevent Gradio bounds errors
+    # Backend will handle parameter validation
+    minimum_constraints = {}
 
     # Parameters that should be None when their value is 0 (optional parameters)
     # NOTE: Only include parameters where 0 truly means "disabled/not set"
     # DO NOT include parameters where 0 is a valid functional value
     optional_parameters = {
         "sample_every_n_steps", "sample_every_n_epochs", 
-        "save_every_n_steps", "max_timestep", "min_timestep"
+        "save_every_n_steps", "max_timestep", "min_timestep",
+        "network_dim", "num_layers",  # NEW: These can be None for auto-detection
+        "max_train_epochs"  # NEW: 0 means use max_train_steps instead
         # Removed: "ddp_timeout" (0 = use default 30min timeout - VALID)
         # Removed: "save_last_n_epochs" (0 = keep all epochs - VALID)
     }
@@ -1320,7 +1316,7 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
         'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
         'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',  # base_weights_multiplier is a Number in Qwen Image GUI
         'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap',
-        'min_timestep', 'max_timestep', 'discrete_flow_shift', 'flow_shift', 'dit_in_channels', 'network_dropout',
+        'min_timestep', 'max_timestep', 'discrete_flow_shift', 'flow_shift', 'dit_in_channels', 'num_layers', 'network_dropout',
         'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
         'dataset_qwen_image_edit_control_resolution_width', 'dataset_qwen_image_edit_control_resolution_height',
         'dataset_batch_size', 'max_train_steps', 'max_train_epochs', 'seed',
@@ -1350,8 +1346,11 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
                                                                   'gpu_ids', 'additional_parameters']:
                     log.warning(f"[CONFIG] Unexpected list value for field '{key}': {toml_value} (type: {type(toml_value)})")
                 
-                # Convert 0 to None for optional parameters to avoid minimum constraint violations
-                if key in optional_parameters and toml_value == 0:
+                # Convert empty strings to None for optional numeric parameters
+                if key == "num_layers" and (toml_value == "" or toml_value is None):
+                    toml_value = None
+                # Convert 0 to None for optional parameters to avoid minimum constraint violations  
+                elif key in optional_parameters and toml_value == 0:
                     toml_value = None
                 elif key in minimum_constraints and toml_value is not None:
                     # Apply minimum constraints if the parameter has one
@@ -1632,6 +1631,10 @@ def train_qwen_image_model(headless, print_only, parameters):
     
     # Update param_dict with effective config
     param_dict["dataset_config"] = effective_dataset_config
+
+    # Ensure the validated dataset config path is propagated to downstream saves/commands
+    parameters = upsert_parameter(parameters, "dataset_config", effective_dataset_config)
+
     # Validate VAE checkpoint
     vae_path = param_dict.get("vae")
     if not vae_path:
@@ -1957,9 +1960,12 @@ def train_qwen_image_model(headless, print_only, parameters):
                     log.info(f"DreamBooth mode: Skipping LoRA parameter {key}")
                     continue
                 elif key == "fused_backward_pass":
-                    # Enable fused_backward_pass for DreamBooth (reduces VRAM)
-                    modified_params.append((key, True))
-                    log.info("DreamBooth mode: Enabling fused_backward_pass for memory efficiency")
+                    # Respect user's choice for fused_backward_pass (DreamBooth only)
+                    if value:
+                        log.info("DreamBooth mode: fused_backward_pass enabled by user (reduces VRAM with AdaFactor)")
+                    else:
+                        log.info("DreamBooth mode: fused_backward_pass disabled by user")
+                    modified_params.append((key, value))
                 else:
                     modified_params.append((key, value))
             else:
@@ -2042,6 +2048,36 @@ def train_qwen_image_model(headless, print_only, parameters):
         
         parameters = modified_params
         
+        # Ensure at least one attention option is enabled for training
+        attention_opts = ["sdpa", "flash_attn", "flash3", "sage_attn", "xformers"]
+        if not any(bool(param_dict.get(opt)) for opt in attention_opts):
+            log.warning("No attention option selected; enabling SDPA by default for DreamBooth fine-tuning")
+            param_dict["sdpa"] = True
+        else:
+            # Sanity check: ensure at least one option carries through the parameter list
+            if all(not bool(value) for key, value in param_dict.items() if key in attention_opts):
+                log.warning("Attention options provided empty/false. Forcing sdpa True to avoid training failure.")
+                param_dict["sdpa"] = True
+
+        # Normalize attention values in parameters to match param_dict after all toggles
+        normalized_parameters = []
+        seen_attn_keys = set()
+        for key, value in parameters:
+            if key in attention_opts:
+                seen_attn_keys.add(key)
+                normalized_parameters.append((key, bool(param_dict.get(key))))
+            else:
+                normalized_parameters.append((key, value))
+
+        for opt in attention_opts:
+            if opt not in seen_attn_keys:
+                normalized_parameters = upsert_parameter(normalized_parameters, opt, bool(param_dict.get(opt)))
+
+        parameters = normalized_parameters
+
+        # Ensure dataset_config entry survives all transformations
+        parameters = upsert_parameter(parameters, "dataset_config", effective_dataset_config)
+
         pattern_exclusion = []
         for key, _ in parameters:
             if key.startswith('caching_latent_') or key.startswith('caching_teo_'):
@@ -2068,7 +2104,9 @@ def train_qwen_image_model(headless, print_only, parameters):
                 "dynamo_use_fullgraph",
                 "dynamo_use_dynamic",
                 "extra_accelerate_launch_args",
+                "training_mode",  # Exclude training_mode as it's GUI-only
             ] + pattern_exclusion,
+            mandatory_keys=["dataset_config", "dit", "vae", "text_encoder"],
         )
         
         run_cmd.append("--config_file")
@@ -2202,17 +2240,17 @@ class QwenImageTrainingSettings:
                 label="Max Training Steps",
                 info="Total training steps. 1600 steps ≈ 1-2 hours on RTX 4090. Ignored if Max Training Epochs is set",
                 value=self.config.get("max_train_steps", 1600),
-                minimum=100,
+                # minimum=100,  # Removed: Let backend handle validation
                 step=100,
                 interactive=True,
             )
 
             self.max_train_epochs = gr.Number(
                 label="Max Training Epochs",
-                info="[RECOMMENDED] 16 epochs for Qwen Image. Overrides max_train_steps. 1 epoch = full pass through dataset",
+                info="[RECOMMENDED] 16 epochs for Qwen Image. Overrides max_train_steps. 1 epoch = full pass through dataset. 0 = use max_train_steps instead",
                 value=self.config.get("max_train_epochs", 16),
-                minimum=1,
-                maximum=9999,
+                # minimum=0,  # Removed: Let backend handle validation
+                # maximum=9999,
                 step=1,
                 interactive=True,
             )
@@ -2259,7 +2297,7 @@ class QwenImageTrainingSettings:
                 label="Gradient Accumulation Steps",
                 info="Simulate larger batch size. 1 = update every step, 4 = accumulate 4 steps then update. Useful for small VRAM",
                 value=self.config.get("gradient_accumulation_steps", 1),
-                minimum=1,
+                minimum=0,
                 maximum=32,
                 step=1,
                 interactive=True,
@@ -2522,8 +2560,8 @@ class QwenImageSampleSettings:
                 label="Default Steps",
                 info="Number of denoising steps",
                 value=self.config.get("sample_steps", 20),
-                minimum=1,
-                maximum=100,
+                # minimum=0,  # Removed: Let backend handle validation
+                # maximum=100,
                 step=1,
                 interactive=True,
             )
@@ -2614,7 +2652,7 @@ class QwenImageOptimizerSettings:
                 label="Learning Rate",
                 info="[RECOMMENDED] Don't change what preset has unless you are an expert. Lower value may learn more details in longer training, higher value may learn faster but lower quality.",
                 value=self.config.get("learning_rate", 5e-5),
-                minimum=1e-7,
+                # minimum=1e-7,  # Removed: Let backend handle validation
                 maximum=1e-2,
                 step=1e-6,
                 interactive=True,
@@ -2638,12 +2676,12 @@ class QwenImageOptimizerSettings:
                 interactive=True,
             )
         
-        # Fine-tuning only parameter (hidden for LoRA training)
-        with gr.Row(visible=False):  # Hidden for LoRA, will be visible for fine-tuning
+        # Fused Backward Pass - now visible with smart auto-management
+        with gr.Row():
             self.fused_backward_pass = gr.Checkbox(
-                label="Fused Backward Pass",
-                info="[FINE-TUNING ONLY with ADAFACTOR] Reduces VRAM during gradient computation. NOT effective for LoRA training. Only works with optimizer_type='adafactor'. Disables gradient accumulation.",
-                value=self.config.get("fused_backward_pass", False),
+                label="Fused Backward Pass [🎯 DreamBooth Only]",
+                info="💾 [DreamBooth Exclusive] Advanced memory optimization that reduces VRAM usage during gradient computation by using fused operations with AdaFactor optimizer. 🎯 AUTOMATICALLY ENABLED for DreamBooth Fine-Tuning mode and DISABLED for LoRA mode (not effective). ⚠️ Requirements: Must use AdaFactor optimizer. Limitations: Disables gradient accumulation, max_grad_norm should be 0. VRAM Savings: Significant during backward pass.",
+                value=self.config.get("fused_backward_pass", True),  # Default True (will be auto-managed)
             )
 
         # Learning rate scheduler settings
@@ -2678,8 +2716,8 @@ class QwenImageOptimizerSettings:
                 label="LR Scheduler Cycles",
                 info="Number of restart cycles for 'cosine_with_restarts' scheduler. More cycles = more LR restarts during training",
                 value=self.config.get("lr_scheduler_num_cycles", 1),
-                minimum=1,
-                maximum=10,
+                # minimum=0,  # Removed: Let backend handle validation
+                # maximum=10,
                 step=1,
                 interactive=True,
             )
@@ -2778,10 +2816,10 @@ class QwenImageNetworkSettings:
 
             self.network_dim = gr.Number(
                 label="Network Dimension (LoRA Rank)",
-                info="[CRITICAL] LoRA rank/dimension. QwenImage: 4-8 (low detail), 16-32 (balanced quality/size), 64-128 (high quality). DyLoRA: set to max rank you want to train. Higher = more VRAM + larger file size",
+                info="[CRITICAL] LoRA rank/dimension. QwenImage: 4-8 (low detail), 16-32 (balanced quality/size), 64-128 (high quality). DyLoRA: set to max rank you want to train. Higher = more VRAM + larger file size. 0 = auto-detection.",
                 value=self.config.get("network_dim", 16),
-                minimum=1,
-                maximum=512,
+                # minimum=0,  # Removed: Let backend handle validation  
+                # maximum=512,
                 step=1,
                 interactive=True,
             )
@@ -2972,6 +3010,12 @@ class QwenImageSaveLoadSettings:
                 info="Save complete training state when training finishes, even if 'Save Optimizer States' is disabled. Useful for resuming training later",
                 value=self.config.get("save_state_on_train_end", False),
             )
+            
+            self.mem_eff_save = gr.Checkbox(
+                label="Memory Efficient Save",
+                info="💾 [DreamBooth Only] Dramatically reduces RAM usage during checkpoint saving (from ~40GB to ~20GB). Essential for systems with limited RAM when doing DreamBooth fine-tuning. ⚠️ Only effective with DreamBooth mode, ignored for LoRA training. Note: Optimizer state saves still use normal method and require full RAM.",
+                value=self.config.get("mem_eff_save", False),
+            )
 
         # Conversion Options for Qwen Image LoRA
         with gr.Row():
@@ -3066,8 +3110,8 @@ class QwenImageLatentCaching:
                 label="Caching Batch Size",
                 info="How many images to process at once. 4=conservative for 16GB VRAM, 8-16=faster with more VRAM. Reduce if OOM errors",
                 value=self.config.get("caching_latent_batch_size", 4),
-                minimum=1,
-                maximum=64,
+                # minimum=1,  # Removed: Let backend handle validation
+                # maximum=64,
                 step=1,
                 interactive=True,
             )
@@ -3192,8 +3236,8 @@ class QwenImageTextEncoderOutputsCaching:
                 label="Caching Batch Size",
                 info="Text encoder batch size. 16=good default. Higher=faster but more VRAM. Reduce if getting OOM errors",
                 value=self.config.get("caching_teo_batch_size", 16),
-                minimum=1,
-                maximum=128,
+                # minimum=1,  # Removed: Let backend handle validation
+                # maximum=128,
                 step=1,
                 interactive=True,
             )
@@ -3501,6 +3545,7 @@ def qwen_image_lora_tab(
         qwen_model.dit,
         qwen_model.dit_dtype,
         qwen_model.dit_in_channels,
+        qwen_model.num_layers,
         qwen_model.text_encoder_dtype,
         qwen_model.vae,
         qwen_model.vae_dtype,
@@ -3560,7 +3605,7 @@ def qwen_image_lora_tab(
         saveLoadSettings.diffusers_output_dir,  # NEW parameter
         saveLoadSettings.convert_to_safetensors,  # NEW parameter
         saveLoadSettings.safetensors_output_dir,  # NEW parameter
-        gr.Checkbox(value=False, visible=False),  # mem_eff_save placeholder
+        saveLoadSettings.mem_eff_save,
         
         # huggingface
         huggingface.huggingface_repo_id,

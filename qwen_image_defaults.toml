@@ -32,6 +32,7 @@ generated_toml_path = ""  # Path where generated TOML will be saved (auto-set)
 
 dit_dtype = "bfloat16"  # HARDCODED: Must be bfloat16 for Qwen Image
 dit_in_channels = 16  # [DO NOT CHANGE] VAE latent channel count. MUST be 16 for Qwen (different from SD's 4). Changing breaks training!
+# num_layers = 60  # [ADVANCED] Number of DiT transformer layers. Leave commented out for auto-detection (60 for standard Qwen). Uncomment and change value only for custom/pruned models
 text_encoder_dtype = "bfloat16"  # Data type for Qwen2.5-VL. float16=faster, bfloat16=better precision
 vae_dtype = "bfloat16"       # Data type for VAE. bfloat16=Qwen Image default, float16=faster
 
@@ -93,7 +94,7 @@ optimizer_type = "adamw8bit"
 optimizer_args = []  # Additional optimizer arguments like ["weight_decay=0.01", "betas=0.9,0.999"]
 learning_rate = 5e-5  # RECOMMENDED: Changed from 1e-4 to 5e-5 per official documentation update
 max_grad_norm = 1.0
-fused_backward_pass = false  # [AUTO-SET] Automatically enabled for DreamBooth mode (reduces VRAM), disabled for LoRA mode (no effect)
+fused_backward_pass = true  # [DREAMBOOT EXCLUSIVE] Advanced memory optimization for DreamBooth fine-tuning. Automatically enabled for DreamBooth mode, disabled for LoRA mode. Requires AdaFactor optimizer. Reduces VRAM during gradient computation
 lr_scheduler = "constant"
 lr_warmup_steps = 0  # 0 = no warmup. Integer = steps, float <1 = ratio of total steps
 lr_decay_steps = 0   # 0 = no decay. Integer = steps, float <1 = ratio of total steps
@@ -136,7 +137,7 @@ save_last_n_steps = 0        # 0 = keep all. Positive integer = keep only last N
 save_last_n_steps_state = 0  # 0 = keep all. Positive integer = keep only last N step states
 save_state = false
 save_state_on_train_end = false
-mem_eff_save = false  # [MEMORY EFFICIENT] Reduces RAM usage during checkpoint saving. More beneficial for fine-tuning (~40GB savings) but can also help with LoRA. NOTE: When saving optimizer state with save_state=true, normal saving is still used
+mem_eff_save = false  # [DreamBooth Only] Dramatically reduces RAM usage during checkpoint saving (from ~40GB to ~20GB). Essential for low-RAM systems doing DreamBooth fine-tuning. Ignored for LoRA training. NOTE: Optimizer state saves still require full RAM
 
 # Caching Settings - Latents
 caching_latent_device = "cuda"
