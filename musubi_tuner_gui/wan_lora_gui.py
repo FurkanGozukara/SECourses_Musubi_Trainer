@@ -1055,14 +1055,332 @@ def wan_gui_actions(
             args
         )))
     elif action == "train_model":
-        # TODO: Implement actual training logic here
-        log.info("Starting Wan model training...")
-        if print_only:
-            return "Training command printed"
-        else:
-            return "Training started"
+        log.info("Train WAN model...")
+        gr.Info("Training is starting... Please check the console for progress.")
+        return train_wan_model(
+            headless=headless,
+            print_only=print_only,
+            parameters=parameters,
+        )
     
     return "Unknown action"
+
+
+def train_wan_model(headless, print_only, parameters):
+    import sys
+    import json
+    import os
+    import time
+
+    # Use Python directly instead of uv for better compatibility
+    python_cmd = sys.executable
+
+    # Find accelerate using shutil.which (like Kohya does)
+    accelerate_path = shutil.which("accelerate")
+
+    if accelerate_path:
+        # Found accelerate in PATH
+        log.debug(f"Found accelerate at: {accelerate_path}")
+        run_cmd = [rf"{accelerate_path}", "launch"]
+    else:
+        # Fallback: try to find accelerate in the venv's Scripts/bin directory
+        python_dir = os.path.dirname(python_cmd)
+        if sys.platform == "win32":
+            accelerate_fallback = os.path.join(python_dir, "accelerate.exe")
+        else:
+            accelerate_fallback = os.path.join(python_dir, "accelerate")
+
+        if os.path.exists(accelerate_fallback) and os.access(accelerate_fallback, os.X_OK):
+            log.debug(f"Found accelerate via fallback at: {accelerate_fallback}")
+            run_cmd = [rf"{accelerate_fallback}", "launch"]
+        else:
+            # Last resort: run accelerate through Python using the commands.launch module
+            log.warning("Accelerate binary not found, using Python module fallback")
+            run_cmd = [python_cmd, "-m", "accelerate.commands.launch"]
+
+    param_dict = dict(parameters)
+
+    # Initialize variables that might be needed
+    teo_cache_cmd = None  # WAN doesn't use text encoder caching like Qwen
+
+    # Always use the Dataset Config File path for training
+    effective_dataset_config = param_dict.get("dataset_config")
+    dataset_mode = param_dict.get("dataset_config_mode", "Use TOML File")
+
+    # Validate dataset config path
+    if dataset_mode == "Use TOML File" and (not effective_dataset_config or effective_dataset_config == ""):
+        log.error("Dataset config file is required for WAN training")
+        gr.Error("Dataset config file is required for WAN training")
+        return
+
+    # Setup accelerate launch command
+    run_cmd = AccelerateLaunch.run_cmd(
+        run_cmd=run_cmd,
+        dynamo_backend=param_dict.get("dynamo_backend"),
+        dynamo_mode=param_dict.get("dynamo_mode"),
+        dynamo_use_fullgraph=param_dict.get("dynamo_use_fullgraph"),
+        dynamo_use_dynamic=param_dict.get("dynamo_use_dynamic"),
+        num_processes=param_dict.get("num_processes"),
+        num_machines=param_dict.get("num_machines"),
+        multi_gpu=param_dict.get("multi_gpu"),
+        gpu_ids=param_dict.get("gpu_ids"),
+        main_process_port=param_dict.get("main_process_port"),
+        num_cpu_threads_per_process=param_dict.get("num_cpu_threads_per_process"),
+        mixed_precision=param_dict.get("mixed_precision"),
+        extra_accelerate_launch_args=param_dict.get("extra_accelerate_launch_args"),
+    )
+
+    # Select the appropriate WAN training script based on training mode
+    training_mode = param_dict.get("training_mode", "LoRA Training")
+    if training_mode == "DreamBooth Fine-Tuning":
+        # Use full fine-tuning script for DreamBooth mode
+        run_cmd.append(f"{scriptdir}/musubi-tuner/src/musubi_tuner/wan_train.py")
+        log.info("Using wan_train.py for full DreamBooth fine-tuning")
+    else:
+        # Use network training script for LoRA mode
+        run_cmd.append(f"{scriptdir}/musubi-tuner/src/musubi_tuner/wan_train_network.py")
+        log.info("Using wan_train_network.py for LoRA training")
+
+    if print_only:
+        print_command_and_toml(run_cmd, "")
+    else:
+        # Save config file for model
+        current_datetime = datetime.now()
+        formatted_datetime = current_datetime.strftime("%Y%m%d-%H%M%S")
+        file_path = os.path.join(param_dict.get('output_dir'), f"{param_dict.get('output_name')}_{formatted_datetime}.toml")
+
+        log.info(f"Saving training config to {file_path}...")
+
+        # Validate sample generation settings
+        # If sample_prompts is empty or missing, disable sample generation to avoid errors
+        sample_prompts_provided = False
+        for key, value in parameters:
+            if key == 'sample_prompts' and value and value.strip():
+                sample_prompts_provided = True
+                break
+
+        if not sample_prompts_provided:
+            # Disable sample generation if no prompt file is provided
+            modified_params = []
+            for key, value in parameters:
+                if key in ['sample_every_n_epochs', 'sample_every_n_steps', 'sample_at_first']:
+                    if key == 'sample_every_n_epochs' and value and value != 0:
+                        log.warning(f"Disabling {key}={value} because no sample_prompts file was provided")
+                        modified_params.append((key, 0))
+                    elif key == 'sample_every_n_steps' and value and value != 0:
+                        log.warning(f"Disabling {key}={value} because no sample_prompts file was provided")
+                        modified_params.append((key, 0))
+                    elif key == 'sample_at_first' and value:
+                        log.warning(f"Disabling {key}={value} because no sample_prompts file was provided")
+                        modified_params.append((key, False))
+                    else:
+                        modified_params.append((key, value))
+                else:
+                    modified_params.append((key, value))
+            parameters = modified_params
+
+        # Modify parameters based on training mode
+        training_mode = param_dict.get("training_mode", "LoRA Training")
+        modified_params = [("training_mode", training_mode)]
+
+        for key, value in parameters:
+            if training_mode == "DreamBooth Fine-Tuning":
+                # For DreamBooth/Fine-tuning, we need to disable network parameters
+                if key == "network_module":
+                    # Set to empty or None to disable LoRA
+                    modified_params.append((key, ""))
+                    log.info("DreamBooth mode: Disabling network_module for full fine-tuning")
+                elif key in ["network_dim", "network_alpha", "network_dropout", "network_args", "network_weights"]:
+                    # Skip network-specific parameters for DreamBooth
+                    log.info(f"DreamBooth mode: Skipping LoRA parameter {key}")
+                    continue
+                else:
+                    modified_params.append((key, value))
+            else:
+                # LoRA Training mode - keep all parameters as is
+                if key == "network_module":
+                    # Handle custom network module selection
+                    if value == "custom":
+                        # Use the custom_network_module value instead
+                        custom_module = param_dict.get("custom_network_module", "")
+                        if custom_module and custom_module.strip():
+                            modified_params.append((key, custom_module))
+                            log.info(f"LoRA mode: Using custom network module: {custom_module}")
+                        else:
+                            # Fallback to default if custom module not specified
+                            modified_params.append((key, "networks.lora_wan"))
+                            log.warning("LoRA mode: Custom module selected but not specified, using default networks.lora_wan")
+                    elif not value or value == "":
+                        # Ensure network_module is set for LoRA
+                        modified_params.append((key, "networks.lora_wan"))
+                        log.info("LoRA mode: Setting network_module to networks.lora_wan")
+                    else:
+                        # Use the selected module directly
+                        modified_params.append((key, value))
+                        log.info(f"LoRA mode: Using network module: {value}")
+                elif key == "custom_network_module":
+                    # Skip this parameter as it's handled above
+                    continue
+                else:
+                    modified_params.append((key, value))
+
+        parameters = modified_params
+
+        # Handle logging_dir intelligently based on log_with setting
+        modified_params = []
+        for key, value in parameters:
+            if key == "logging_dir":
+                log_with = param_dict.get("log_with", "")
+                output_dir = param_dict.get("output_dir", "")
+
+                # If logging is enabled (log_with is not empty/none)
+                if log_with and log_with != "":
+                    # If logging_dir is empty or just a slash, create automatic path
+                    if not value or value == "" or value == "/":
+                        # Use output_dir as base with a 'logs' subdirectory
+                        if output_dir:
+                            timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+                            value = os.path.join(output_dir, "logs", f"session_{timestamp}")
+                            log.info(f"Auto-generating logging directory: {value}")
+                        else:
+                            # Fallback to current directory if output_dir is not set
+                            timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+                            value = os.path.join(".", "logs", f"session_{timestamp}")
+                            log.info(f"Auto-generating logging directory in current folder: {value}")
+                    # If it's a relative path (doesn't start with / on Linux or drive letter on Windows)
+                    elif not os.path.isabs(value):
+                        # Make it relative to output_dir
+                        if output_dir:
+                            value = os.path.join(output_dir, value)
+                            log.info(f"Using relative logging directory under output_dir: {value}")
+                        else:
+                            # Keep as is if no output_dir
+                            log.info(f"Using relative logging directory: {value}")
+                    else:
+                        # It's an absolute path, use as is
+                        log.info(f"Using absolute logging directory: {value}")
+
+                    # Ensure the path uses forward slashes for compatibility
+                    value = value.replace("\\", "/") if value else ""
+
+                modified_params.append((key, value))
+            else:
+                modified_params.append((key, value))
+
+        parameters = modified_params
+
+        # Ensure dataset_config entry survives all transformations
+        parameters = upsert_parameter(parameters, "dataset_config", effective_dataset_config)
+
+        pattern_exclusion = []
+        for key, _ in parameters:
+            if key.startswith('caching_latent_') or key.startswith('caching_teo_'):
+                pattern_exclusion.append(key)
+
+        # Also exclude training_mode from the TOML as it's not a training parameter
+        SaveConfigFileToRun(
+            parameters=parameters,
+            file_path=file_path,
+            exclusion=[
+                "file_path",
+                "save_as",
+                "save_as_bool",
+                "headless",
+                "print_only",
+                "num_cpu_threads_per_process",
+                "num_processes",
+                "num_machines",
+                "multi_gpu",
+                "gpu_ids",
+                "main_process_port",
+                "dynamo_backend",
+                "dynamo_mode",
+                "dynamo_use_fullgraph",
+                "dynamo_use_dynamic",
+                "extra_accelerate_launch_args",
+                "training_mode",  # Exclude training_mode as it's GUI-only
+            ] + pattern_exclusion,
+            mandatory_keys=["dataset_config", "dit", "vae", "t5", "clip"],
+        )
+
+        run_cmd.append("--config_file")
+        run_cmd.append(f"{file_path}")
+
+        run_cmd_params = {
+            "additional_parameters": param_dict.get("additional_parameters"),
+        }
+
+        run_cmd = run_cmd_advanced_training(run_cmd=run_cmd, **run_cmd_params)
+
+        env = setup_environment()
+
+        # Create a wrapper script that runs both text encoder caching and training
+        if teo_cache_cmd:
+            # Create a combined command that runs caching first, then training
+            import tempfile
+            import platform
+
+            # Create a temporary script to run both commands
+            if platform.system() == "Windows":
+                script_ext = ".bat"
+                script_content = f"""@echo off
+echo Starting text encoder output caching...
+{' '.join(teo_cache_cmd)}
+if %errorlevel% neq 0 (
+    echo Text encoder caching failed with error code %errorlevel%
+    exit /b %errorlevel%
+)
+echo Text encoder caching completed successfully.
+echo Starting training...
+{' '.join(run_cmd)}
+"""
+            else:
+                script_ext = ".sh"
+                script_content = f"""#!/bin/bash
+echo "Starting text encoder output caching..."
+{' '.join(teo_cache_cmd)}
+if [ $? -ne 0 ]; then
+    echo "Text encoder caching failed with error code $?"
+    exit $?
+fi
+echo "Text encoder caching completed successfully."
+echo "Starting training..."
+{' '.join(run_cmd)}
+"""
+
+            # Write the script to a temporary file
+            temp_script = tempfile.NamedTemporaryFile(mode='w', suffix=script_ext, delete=False)
+            temp_script.write(script_content)
+            temp_script.close()
+
+            # Make the script executable on Unix systems
+            if platform.system() != "Windows":
+                import stat
+                os.chmod(temp_script.name, os.stat(temp_script.name).st_mode | stat.S_I_EXEC)
+
+            # Execute the combined script
+            if platform.system() == "Windows":
+                final_cmd = [temp_script.name]
+            else:
+                final_cmd = ["bash", temp_script.name]
+
+            log.info("Starting combined text encoder caching and training process...")
+            gr.Info("Starting text encoder caching followed by training...")
+            executor.execute_command(run_cmd=final_cmd, env=env, shell=True if platform.system() == "Windows" else False)
+        else:
+            # No text encoder caching needed, just run training
+            executor.execute_command(run_cmd=run_cmd, env=env)
+
+        train_state_value = time.time()
+
+        # Return immediately to show stop button
+        return (
+            gr.Button(visible=False or headless),  # Hide start button
+            gr.Row(visible=True),  # Show stop row
+            gr.Button(interactive=True),  # Enable stop button by default
+            gr.Textbox(value="Training in progress..."),  # Update status
+            gr.Textbox(value=train_state_value),  # Trigger state change
+        )
 
 
 def open_wan_configuration(ask_for_file, file_path, parameters):
