@@ -1137,9 +1137,11 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
         "save_every_n_steps", "max_timestep", "min_timestep",
         "network_dim", "num_layers",  # These can be None for auto-detection
         "max_train_epochs",  # 0 means use max_train_steps instead
-        "dit_in_channels", "sample_num_frames", "num_timestep_buckets"  # WAN-specific optional params
+        "dit_in_channels", "sample_num_frames", "num_timestep_buckets",  # WAN-specific optional params
+        "save_last_n_epochs", "save_last_n_steps",  # 0 = keep all = None for musubi tuner
+        "save_last_n_epochs_state", "save_last_n_steps_state",  # Same pattern for state files
+        "blocks_to_swap", "vae_chunk_size", "vae_spatial_tile_sample_min_size"  # Memory optimization params
         # Removed: "ddp_timeout" (0 = use default 30min timeout - VALID)
-        # Removed: "save_last_n_epochs" (0 = keep all epochs - VALID)
     }
 
     # NOTE: Exclude fields that are legitimately lists like optimizer_args, lr_scheduler_args, network_args
@@ -1159,7 +1161,7 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
         'caching_latent_batch_size', 'caching_latent_num_workers', 'caching_latent_console_width',
         'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers',
         'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed',
-        'timestep_boundary', 'num_frames',
+        'timestep_boundary', 'num_frames', 'vae_spatial_tile_sample_min_size',
         # ADD MISSING WAN-SPECIFIC NUMERIC FIELDS:
         'dit_in_channels', 'num_layers', 'network_dropout', 'sample_num_frames', 'num_timestep_buckets'
     ]
@@ -1353,7 +1355,7 @@ def save_wan_configuration(save_as_bool, file_path, parameters):
         'caching_latent_batch_size', 'caching_latent_num_workers', 'caching_latent_console_width',
         'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers',
         'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed',
-        'timestep_boundary', 'num_frames',
+        'timestep_boundary', 'num_frames', 'vae_spatial_tile_sample_min_size',
         # ADD MISSING WAN-SPECIFIC NUMERIC FIELDS:
         'dit_in_channels', 'num_layers', 'network_dropout', 'sample_num_frames', 'num_timestep_buckets'
     ]
@@ -1376,36 +1378,6 @@ def save_wan_configuration(save_as_bool, file_path, parameters):
                 "save_as_bool",
                 "headless",
                 "print_only",
-                "num_cpu_threads_per_process",
-                "num_processes",
-                "num_machines",
-                "multi_gpu",
-                # "gpu_ids",  # REMOVED from exclusion - should be saved for single GPU selection too
-                "main_process_port",
-                "dynamo_backend",
-                "dynamo_mode",
-                "dynamo_use_fullgraph",
-                "dynamo_use_dynamic",
-                "extra_accelerate_launch_args",
-                # ALL Caching parameters removed from exclusion - they should all be saved when configured!
-                # "caching_latent_device",
-                # "caching_latent_batch_size",
-                # "caching_latent_num_workers",
-                # "caching_latent_skip_existing",
-                # "caching_latent_keep_cache",
-                # "caching_latent_debug_mode",
-                # "caching_latent_console_width",
-                # "caching_latent_console_back",
-                # "caching_latent_console_num_images",
-                # "caching_teo_text_encoder1",
-                # "caching_teo_text_encoder2",
-                # "caching_teo_text_encoder_dtype",
-                # "caching_teo_device",
-                # "caching_teo_fp8_llm",
-                # "caching_teo_batch_size",
-                # "caching_teo_num_workers",
-                # "caching_teo_skip_existing",
-                # "caching_teo_keep_cache",
             ],
         )
 
@@ -1446,6 +1418,86 @@ def wan_lora_tab(
     dummy_true = gr.Checkbox(value=True, visible=False)
     dummy_false = gr.Checkbox(value=False, visible=False)
     dummy_headless = gr.Checkbox(value=headless, visible=False)
+
+    # Apply WAN-specific defaults if not already configured
+    wan_defaults = {
+        "task": "t2v-14B",
+        "training_mode": "LoRA Training",
+        "dataset_config_mode": "Generate from Folder Structure",
+        "dataset_resolution_width": 960,
+        "dataset_resolution_height": 960,
+        "dataset_caption_extension": ".txt",
+        "create_missing_captions": True,
+        "caption_strategy": "folder_name",
+        "dataset_batch_size": 1,
+        "dataset_enable_bucket": False,
+        "dataset_bucket_no_upscale": False,
+        "dataset_cache_directory": "cache_dir",
+        "dit_dtype": "bfloat16",
+        "text_encoder_dtype": "bfloat16",
+        "vae_dtype": "bfloat16",
+        "clip_vision_dtype": "bfloat16",
+        "fp8_base": False,
+        "fp8_scaled": False,
+        "fp8_t5": False,
+        "blocks_to_swap": 0,
+        "vae_tiling": False,
+        "vae_chunk_size": 0,
+        "vae_spatial_tile_sample_min_size": 0,
+        "vae_cache_cpu": False,
+        "force_v2_1_time_embedding": False,
+        "num_frames": 81,
+        "one_frame": False,
+        "timestep_boundary": 0.0,
+        "offload_inactive_dit": False,
+        "network_module": "networks.lora_wan",
+        "network_dim": 16,
+        "network_alpha": 16.0,
+        "network_dropout": 0.0,
+        "max_train_steps": 90000,
+        "max_train_epochs": 200,
+        "learning_rate": 1e-4,
+        "optimizer_type": "adamw8bit",
+        "lr_scheduler": "constant",
+        "max_grad_norm": 1.0,
+        "gradient_accumulation_steps": 1,
+        "sdpa": True,
+        "seed": 99,
+        "gradient_checkpointing": True,
+        "mixed_precision": "bf16",
+        "sample_width": 960,
+        "sample_height": 960,
+        "sample_num_frames": 81,
+        "sample_steps": 20,
+        "sample_guidance_scale": 7.0,
+        "sample_seed": 99,
+        "sample_scheduler": "unipc",
+        "caching_latent_device": "cuda",
+        "caching_latent_batch_size": 4,
+        "caching_latent_num_workers": 8,
+        "caching_latent_skip_existing": True,
+        "caching_latent_keep_cache": True,
+        "caching_teo_device": "cuda",
+        "caching_teo_fp8_llm": False,
+        "caching_teo_batch_size": 16,
+        "caching_teo_num_workers": 8,
+        "caching_teo_skip_existing": True,
+        "caching_teo_keep_cache": True,
+        "output_name": "my-wan-lora",
+    }
+
+    # Handle different config types
+    if isinstance(config, dict):
+        # If config is a dict (default case), apply WAN defaults
+        config.update({k: v for k, v in wan_defaults.items() if k not in config})
+        # Create a GUIConfig-like object
+        config = type('GUIConfig', (), {'config': config, 'get': config.get})()
+    elif hasattr(config, 'config'):
+        # If config is a GUIConfig object, update its config dict
+        if not config.config:
+            config.config = wan_defaults.copy()
+        else:
+            config.config.update({k: v for k, v in wan_defaults.items() if k not in config.config})
 
     # Setup Configuration Files Gradio
     with gr.Accordion("Configuration file Settings", open=True):
