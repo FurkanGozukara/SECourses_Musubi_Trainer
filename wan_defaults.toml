@@ -1,0 +1,218 @@
+# Wan Models Training - Optimal Defaults Configuration
+# This file contains the recommended default values for Wan model training
+# Supports all Wan models: T2V, I2V, T2I, FLF2V, Fun-Control, and Wan 2.2 Advanced models
+# Based on Wan documentation and best practices
+
+# Training Mode Selection
+training_mode = "LoRA Training"  # Options: "LoRA Training" (8-16GB VRAM) or "DreamBooth Fine-Tuning" (24GB+ VRAM)
+
+# Wan Model Selection - REQUIRED
+task = "t2v-14B"  # REQUIRED: Wan model type (t2v-14B, t2v-1.3B, i2v-14B, t2i-14B, flf2v-14B, t2v-1.3B-FC, t2v-14B-FC, i2v-14B-FC, t2v-A14B, i2v-A14B)
+
+# Model Settings - REQUIRED FIELDS MUST BE SET BY USER
+dit = ""  # REQUIRED: Path to DiT checkpoint (.safetensors)
+vae = ""  # REQUIRED: Path to VAE checkpoint (Wan2.1_VAE.pth or wan_2.1_vae.safetensors)
+text_encoder = ""  # REQUIRED: Path to T5 text encoder (umt5-xxl-enc-bf16.safetensors)
+clip_vision = ""  # REQUIRED: Path to CLIP vision encoder (models_clip_open-clip-xlm-roberta-large-vit-huge-14.safetensors)
+dataset_config = ""  # Path to dataset TOML configuration (required if using "Use TOML File" mode)
+dataset_config_mode = "Generate from Folder Structure"  # Default to auto-generate from folder structure
+
+# Wan 2.2 Advanced Models (A14B) - Dual Model System
+dit_high_noise = ""  # [WAN 2.2 ONLY] Path to high noise DiT model for Wan 2.2 Advanced models (t2v-A14B, i2v-A14B)
+timestep_boundary = 0.0  # [WAN 2.2 ONLY] Timestep boundary for dual model system. Auto-detected from model config if not set
+offload_inactive_dit = false  # [WAN 2.2 ONLY] Offload inactive DiT to CPU to save VRAM during dual model training
+
+# Folder Structure Settings (used when dataset_config_mode = "Generate from Folder Structure")
+parent_folder_path = ""  # REQUIRED when using folder structure mode: Path to parent folder containing training images/videos
+dataset_resolution_width = 960  # Target width for training. Optimal resolutions: 960×960, 1280×720, 720×1280
+dataset_resolution_height = 960  # Target height for training. Optimal resolutions: 960×960, 1280×720, 720×1280
+dataset_caption_extension = ".txt"  # Extension for caption files
+create_missing_captions = true  # Auto-create empty captions for images without caption files
+caption_strategy = "folder_name"  # How to handle missing captions: "folder_name" or "empty"
+dataset_batch_size = 1  # Batch size for dataset processing
+dataset_enable_bucket = false  # Enable bucketing for variable aspect ratios
+dataset_bucket_no_upscale = false  # Prevent upscaling in bucket mode
+dataset_cache_directory = "cache_dir"  # Directory for caching processed data
+generated_toml_path = ""  # Path where generated TOML will be saved (auto-set)
+
+# Video-specific Settings (for T2V, I2V, FLF2V models)
+num_frames = 81  # Number of frames for video training (81 is default for Wan models)
+one_frame = false  # Enable one-frame training mode for image-like training on video models
+
+# I2V/FLF2V Specific Settings
+i2v_frames_conditioning_path = ""  # [I2V/FLF2V] Path to conditioning frames for I2V training
+i2v_frames_conditioning_type = "concat"  # [I2V/FLF2V] Type of conditioning: "concat", "add", "cross_attn"
+
+# Data Types and Precision
+dit_dtype = "bfloat16"  # DiT model data type. bfloat16=best quality, float16=faster
+text_encoder_dtype = "bfloat16"  # T5 text encoder data type
+vae_dtype = "bfloat16"  # VAE data type
+clip_vision_dtype = "bfloat16"  # CLIP vision encoder data type
+
+# Memory Optimization Settings
+fp8_base = false  # Enable FP8 for DiT model to save ~12GB VRAM (requires fp8_scaled=true)
+fp8_scaled = false  # REQUIRED when fp8_base=true, provides better quality than standard FP8
+fp8_vl = false  # Enable FP8 for text encoder to save ~8GB VRAM
+blocks_to_swap = 0  # 0=disabled. Max varies by model. 16=save ~8GB VRAM, higher values save more but require more RAM
+
+# VAE Optimization Settings
+vae_tiling = false  # Enable spatial tiling to reduce VRAM usage during VAE operations
+vae_chunk_size = 0  # 0=auto/disabled. Higher=faster but more VRAM
+vae_spatial_tile_sample_min_size = 0  # 0=disabled. 256=typical. Auto-enables vae_tiling if set
+
+# Flow Matching Settings (Wan uses Flow Matching instead of diffusion)
+timestep_sampling = "uniform"  # Timestep sampling method: "uniform", "sigmoid", "shift"
+discrete_flow_shift = 1.0  # Discrete flow shift parameter
+weighting_scheme = "none"  # Loss weighting scheme: "none", "mode"
+logit_mean = 0.0  # Logit mean for timestep sampling
+logit_std = 1.0  # Logit standard deviation for timestep sampling
+mode_scale = 1.29  # Mode scale for weighting scheme
+
+# Advanced Timestep Parameters
+sigmoid_scale = 1.0  # Scale factor for sigmoid timestep sampling
+min_timestep = 0  # Minimum timestep constraint (0=no constraint)
+max_timestep = 1000  # Maximum timestep constraint (1000=no constraint)
+preserve_distribution_shape = false  # Preserve original distribution when using min/max constraints
+num_timestep_buckets = 0  # 0=disabled. 4-10=bucketed sampling for uniform distribution
+
+# Training Settings
+sdpa = true  # Use PyTorch's scaled dot product attention (recommended)
+flash_attn = false  # Use Flash Attention (requires installation)
+sage_attn = false  # Use Sage Attention (inference only)
+xformers = false  # Use xFormers attention
+flash3 = false  # EXPERIMENTAL: FlashAttention 3
+split_attn = false  # REQUIRED if using flash_attn/sage_attn/xformers/flash3
+max_train_steps = 90000  # Maximum training steps
+max_train_epochs = 200  # Maximum training epochs
+max_data_loader_n_workers = 2  # Number of data loader workers
+persistent_data_loader_workers = true  # Keep data loader workers persistent
+seed = 99  # Random seed for reproducibility
+gradient_checkpointing = true  # Enable gradient checkpointing to save VRAM
+gradient_accumulation_steps = 1  # Number of gradient accumulation steps
+full_bf16 = false  # EXPERIMENTAL: Store gradients in BF16 to save VRAM (currently disabled in backend)
+full_fp16 = false  # EXPERIMENTAL: Store gradients in FP16 to save VRAM (currently disabled in backend)
+
+# Optimizer Settings
+optimizer_type = "adamw8bit"  # Optimizer type (adamw8bit recommended for memory efficiency)
+optimizer_args = []  # Additional optimizer arguments
+learning_rate = 1e-4  # Learning rate (1e-4 is good default for Wan models)
+max_grad_norm = 1.0  # Maximum gradient norm for clipping
+fused_backward_pass = true  # Advanced memory optimization for DreamBooth
+lr_scheduler = "constant"  # Learning rate scheduler type
+lr_warmup_steps = 0  # Number of warmup steps (0=no warmup)
+lr_decay_steps = 0  # Number of decay steps (0=no decay)
+lr_scheduler_num_cycles = 1  # Number of scheduler cycles
+lr_scheduler_power = 1.0  # Scheduler power parameter
+lr_scheduler_timescale = 0  # Scheduler timescale (0=auto)
+lr_scheduler_min_lr_ratio = 0.0  # Minimum learning rate ratio
+lr_scheduler_type = ""  # Additional scheduler type
+lr_scheduler_args = []  # Additional scheduler arguments
+
+# Network Settings (LoRA Mode Only - Ignored in DreamBooth Mode)
+no_metadata = false  # Disable metadata saving
+network_weights = ""  # Path to pretrained LoRA weights to continue training
+network_module = "networks.lora_wan"  # Network module for LoRA (auto-set based on training mode)
+network_dim = 16  # LoRA network dimension/rank (16 recommended for Wan models)
+network_alpha = 16.0  # LoRA alpha parameter (typically equal to network_dim)
+network_dropout = 0.0  # LoRA dropout rate (0.0=no dropout)
+network_args = []  # Additional network arguments
+training_comment = ""  # Training comment for metadata
+dim_from_weights = false  # Extract dimensions from existing weights
+scale_weight_norms = 0.0  # Scale weight norms (0.0=disabled)
+base_weights = ""  # Path to base LoRA weights to merge
+base_weights_multiplier = 1.0  # Multiplier for base weights
+
+# Save/Load Settings
+output_dir = ""  # Output directory for saved models
+output_name = "my-wan-lora"  # Base filename for saved models
+resume = ""  # Path to checkpoint to resume training from
+save_every_n_epochs = 10  # Save checkpoint every N epochs
+save_every_n_steps = 0  # Save checkpoint every N steps (0=disabled)
+save_last_n_epochs = 0  # Keep only last N epoch checkpoints (0=keep all)
+save_last_n_epochs_state = 0  # Keep only last N epoch states (0=keep all)
+save_last_n_steps = 0  # Keep only last N step checkpoints (0=keep all)
+save_last_n_steps_state = 0  # Keep only last N step states (0=keep all)
+save_state = false  # Save training state
+save_state_on_train_end = false  # Save state when training ends
+mem_eff_save = false  # Memory efficient saving for DreamBooth fine-tuning mode
+
+# Caching Settings - Latents
+caching_latent_device = "cuda"  # Device for latent caching
+caching_latent_batch_size = 4  # Batch size for latent caching
+caching_latent_num_workers = 8  # Number of workers for latent caching
+caching_latent_skip_existing = true  # Skip existing cached latents
+caching_latent_keep_cache = true  # Keep cache after training
+caching_latent_debug_mode = ""  # Debug mode for latent caching
+caching_latent_console_width = 80  # Console width for debug output
+caching_latent_console_back = ""  # Console background for debug
+caching_latent_console_num_images = 0  # Number of images in debug console (0=no limit)
+
+# Caching Settings - Text Encoder
+caching_teo_text_encoder = ""  # Text encoder for caching
+caching_teo_device = "cuda"  # Device for text encoder caching
+caching_teo_fp8_vl = false  # Use FP8 for text encoder caching
+caching_teo_batch_size = 16  # Batch size for text encoder caching
+caching_teo_num_workers = 8  # Number of workers for text encoder caching
+caching_teo_skip_existing = true  # Skip existing cached outputs
+caching_teo_keep_cache = true  # Keep cache after training
+
+# Accelerate Launch Settings
+mixed_precision = "bf16"  # Mixed precision training (bf16 recommended for Wan)
+multi_gpu = false  # Enable multi-GPU training
+gpu_ids = "0"  # GPU IDs for distributed training
+num_processes = 1  # Number of processes for distributed training
+num_machines = 1  # Number of machines for distributed training
+num_cpu_threads_per_process = 2  # CPU threads per process
+main_process_port = 0  # Port for distributed communication (0=auto)
+dynamo_backend = "no"  # PyTorch dynamo backend (no=disabled)
+dynamo_mode = ""  # Dynamo optimization mode
+dynamo_use_fullgraph = false  # Use fullgraph mode for dynamo
+dynamo_use_dynamic = false  # Use dynamic mode for dynamo
+extra_accelerate_launch_args = ""  # Additional accelerate launch arguments
+
+# Logging Settings
+logging_dir = ""  # Directory for training logs
+log_prefix = ""  # Prefix for log files
+log_tracker_name = ""  # Name for experiment tracking
+wandb_run_name = ""  # Weights & Biases run name
+log_tracker_config = ""  # Configuration for experiment tracking
+wandb_api_key = ""  # Weights & Biases API key
+log_config = false  # Log configuration to tracker
+
+# DDP Settings (Distributed Training)
+ddp_timeout = 0  # DDP timeout in minutes (0=default)
+ddp_gradient_as_bucket_view = false  # Use gradient as bucket view
+ddp_static_graph = false  # Use static graph for DDP
+
+# Sample Generation Settings
+sample_every_n_steps = 0  # Generate samples every N steps (0=disabled)
+sample_every_n_epochs = 0  # Generate samples every N epochs (0=disabled)
+sample_at_first = false  # Generate samples before training starts
+sample_prompts = ""  # Path to file with sample prompts
+
+# Default Sample Parameters for Video Generation
+sample_width = 960  # Sample video width. Optimal resolutions: 960×960, 1280×720, 720×1280
+sample_height = 960  # Sample video height. Optimal resolutions: 960×960, 1280×720, 720×1280
+sample_num_frames = 81  # Number of frames in sample videos
+sample_steps = 20  # Number of inference steps for samples
+sample_guidance_scale = 7.0  # Guidance scale for sample generation
+sample_seed = 99  # Seed for sample generation (-1=random)
+sample_scheduler = "unipc"  # Scheduler for sample generation
+sample_negative_prompt = ""  # Default negative prompt for samples
+
+# Metadata Settings
+metadata_author = ""  # Author metadata
+metadata_description = ""  # Description metadata
+metadata_license = ""  # License metadata
+metadata_tags = ""  # Tags metadata
+metadata_title = ""  # Title metadata
+
+# HuggingFace Settings
+huggingface_repo_id = ""  # HuggingFace repository ID
+huggingface_token = ""  # HuggingFace API token
+huggingface_repo_type = ""  # Repository type
+huggingface_repo_visibility = ""  # Repository visibility
+huggingface_path_in_repo = ""  # Path within repository
+save_state_to_huggingface = false  # Save training state to HuggingFace
+resume_from_huggingface = false  # Resume training from HuggingFace
+async_upload = false  # Use async upload to HuggingFace

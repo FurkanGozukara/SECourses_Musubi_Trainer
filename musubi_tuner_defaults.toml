@@ -9,9 +9,9 @@ text_encoder_dtype = "float16"
 fp8_llm = false
 fp8_base = false
 vae_tiling = false
-vae_chunk_size = null
+vae_chunk_size = 0
 vae_spatial_tile_sample_min_size = 256
-blocks_to_swap = null
+blocks_to_swap = 0
 img_in_txt_in_offloading = false
 guidance_scale = 1.0
 
@@ -22,7 +22,7 @@ weighting_scheme = "none"
 logit_mean = 0.0
 logit_std = 1.0
 mode_scale = 1.29
-show_timesteps = null
+show_timesteps = ""
 
 # Training Settings (HunyuanVideo defaults)
 sdpa = false
@@ -31,10 +31,10 @@ sage_attn = false
 xformers = false
 split_attn = false
 max_train_steps = 1600
-max_train_epochs = null
+max_train_epochs = 1
 max_data_loader_n_workers = 8
 persistent_data_loader_workers = false
-seed = null
+seed = 0
 gradient_checkpointing = false
 gradient_accumulation_steps = 1
 
@@ -47,8 +47,8 @@ lr_warmup_steps = 0
 lr_decay_steps = 0
 lr_scheduler_num_cycles = 1
 lr_scheduler_power = 1.0
-lr_scheduler_timescale = null
-lr_scheduler_min_lr_ratio = null
+lr_scheduler_timescale = 0
+lr_scheduler_min_lr_ratio = 0.0
 lr_scheduler_type = ""
 lr_scheduler_args = ""
 
@@ -56,39 +56,39 @@ lr_scheduler_args = ""
 no_metadata = false
 network_weights = ""
 network_module = "networks.lora"
-network_dim = null
+network_dim = 1
 network_alpha = 1.0
-network_dropout = null
+network_dropout = 0.0
 network_args = ""
 training_comment = ""
 dim_from_weights = false
-scale_weight_norms = null
+scale_weight_norms = 0.0
 base_weights = ""
-base_weights_multiplier = null
+base_weights_multiplier = 1.0
 
 # Save/Load Settings
 output_dir = ""
 output_name = ""
 resume = ""
-save_every_n_epochs = null
-save_every_n_steps = null
-save_last_n_epochs = null
-save_last_n_epochs_state = null
-save_last_n_steps = null
-save_last_n_steps_state = null
+save_every_n_epochs = 0
+save_every_n_steps = 0
+save_last_n_epochs = 0
+save_last_n_epochs_state = 0
+save_last_n_steps = 0
+save_last_n_steps_state = 0
 save_state = false
 save_state_on_train_end = false
 
 # Caching Settings - Latents (HunyuanVideo)
 caching_latent_device = "cuda"
-caching_latent_batch_size = null
-caching_latent_num_workers = null
+caching_latent_batch_size = 1
+caching_latent_num_workers = 1
 caching_latent_skip_existing = false
 caching_latent_keep_cache = false
-caching_latent_debug_mode = null
+caching_latent_debug_mode = ""
 caching_latent_console_width = 80
-caching_latent_console_back = null
-caching_latent_console_num_images = null
+caching_latent_console_back = ""
+caching_latent_console_num_images = 0
 
 # Caching Settings - Text Encoder (HunyuanVideo dual encoders)
 caching_teo_text_encoder1 = ""
@@ -96,8 +96,8 @@ caching_teo_text_encoder2 = ""
 caching_teo_text_encoder_dtype = "float16"
 caching_teo_fp8_llm = false
 caching_teo_device = "cuda"
-caching_teo_batch_size = null
-caching_teo_num_workers = null
+caching_teo_batch_size = 1
+caching_teo_num_workers = 1
 caching_teo_skip_existing = false
 caching_teo_keep_cache = false
 
@@ -117,7 +117,7 @@ extra_accelerate_launch_args = ""  # Additional accelerate launch arguments
 
 # Logging Settings
 logging_dir = ""
-log_with = null
+log_with = ""
 log_prefix = ""
 log_tracker_name = ""
 wandb_run_name = ""
@@ -126,13 +126,13 @@ wandb_api_key = ""
 log_config = false
 
 # DDP Settings
-ddp_timeout = null
+ddp_timeout = 0
 ddp_gradient_as_bucket_view = false
 ddp_static_graph = false
 
 # Sample Generation
-sample_every_n_steps = null
-sample_every_n_epochs = null
+sample_every_n_steps = 0
+sample_every_n_epochs = 0
 sample_at_first = false
 sample_prompts = ""
 

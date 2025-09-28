@@ -14,6 +14,7 @@ class TabConfigManager:
         self.user_loaded_config = False
         self.configs = {
             "qwen_image": None,
+            "wan": None,
             "musubi_tuner": None,
             "image_captioning": None
         }
@@ -48,11 +49,12 @@ class TabConfigManager:
                     self.configs[tab_name] = self._load_tab_defaults(tab_name)
                 return self.configs[tab_name]
         
-        # For other tabs, if user has loaded their own config, use it
-        if self.user_loaded_config:
+        # For other tabs, check if user loaded a custom config or if it's just the default startup config
+        if self.user_loaded_config and not self.config_file_path.endswith(("qwen_image_defaults.toml", "wan_defaults.toml", "musubi_tuner_defaults.toml")):
+            # User loaded a truly custom config, use it for all tabs
             return self.base_config
             
-        # If no user config and we haven't initialized this tab's config yet
+        # If no user config or using default configs, load tab-specific defaults
         if self.configs[tab_name] is None:
             self.configs[tab_name] = self._load_tab_defaults(tab_name)
             
@@ -62,6 +64,7 @@ class TabConfigManager:
         """Load default configuration for specific tab"""
         default_files = {
             "qwen_image": "qwen_image_defaults.toml",
+            "wan": "wan_defaults.toml",
             "musubi_tuner": "musubi_tuner_defaults.toml",
             "image_captioning": "image_captioning_defaults.toml"
         }
@@ -93,7 +96,7 @@ class TabConfigManager:
             self.base_config = GUIConfig(config_file_path)
             self.user_loaded_config = True
             # Clear tab-specific configs so they use the user config
-            self.configs = {"qwen_image": None, "musubi_tuner": None, "image_captioning": None}
+            self.configs = {"qwen_image": None, "wan": None, "musubi_tuner": None, "image_captioning": None}
             log.info(f"User configuration loaded from {config_file_path}")
         except Exception as e:
             log.error(f"Error loading user config: {e}")
