@@ -1664,7 +1664,11 @@ def SaveConfigFileToRun(
             # Wan/Qwen specific parameters
             "fp8_llm", "vae_tiling", "fp8_vl", "fp8_base", "fp8_scaled", "fp8_t5",
             "edit", "edit_plus", "full_bf16", "full_fp16", "offload_inactive_dit", "vae_cache_cpu",
-            "force_v2_1_time_embedding", "one_frame"
+            "force_v2_1_time_embedding", "one_frame",
+            # Multi-GPU parameter - should not be passed when False
+            "multi_gpu",
+            # Additional Wan parameters that should not be passed when False
+            "fp8_llm"  # This was already in the list but ensuring it's complete
         ]
         if name in store_true_params and value is False:
             continue
