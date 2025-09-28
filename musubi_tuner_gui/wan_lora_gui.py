@@ -23,6 +23,10 @@ from .common_gui import (
     get_file_path_or_save_as,
     get_folder_path,
     get_saveasfile_path,
+    get_dit_model_path,
+    get_vae_model_path,
+    get_text_encoder_path,
+    get_clip_vision_path,
     print_command_and_toml,
     run_cmd_advanced_training,
     SaveConfigFile,
@@ -625,12 +629,14 @@ class WanDataset:
                 # Generate output filename with timestamp
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
 
-                # Use output_dir if available
+                # Save in Output Directory if set, otherwise in dataset_tomls directory
                 if output_dir and os.path.exists(output_dir):
                     output_path = os.path.join(output_dir, f"wan_dataset_config_{timestamp}.toml")
                 else:
-                    # Default to parent folder
-                    output_path = os.path.join(parent_folder, f"wan_dataset_config_{timestamp}.toml")
+                    # Create dataset_tomls directory if it doesn't exist
+                    dataset_tomls_dir = os.path.join(scriptdir, "dataset_tomls")
+                    os.makedirs(dataset_tomls_dir, exist_ok=True)
+                    output_path = os.path.join(dataset_tomls_dir, f"wan_dataset_config_{timestamp}.toml")
 
                 # Save the configuration
                 save_dataset_config(config, output_path)
@@ -1007,11 +1013,11 @@ class WanModelSettings:
             )
 
         # Set up file browser button handlers
-        self.dit_button.click(fn=lambda: get_file_path(), outputs=[self.dit])
-        self.vae_button.click(fn=lambda: get_file_path(), outputs=[self.vae])
-        self.t5_button.click(fn=lambda: get_file_path(), outputs=[self.t5])
-        self.clip_button.click(fn=lambda: get_file_path(), outputs=[self.clip])
-        self.dit_high_noise_button.click(fn=lambda: get_file_path(), outputs=[self.dit_high_noise])
+        self.dit_button.click(fn=lambda: get_dit_model_path(), outputs=[self.dit])
+        self.vae_button.click(fn=lambda: get_vae_model_path(), outputs=[self.vae])
+        self.t5_button.click(fn=lambda: get_text_encoder_path(), outputs=[self.t5])
+        self.clip_button.click(fn=lambda: get_clip_vision_path(), outputs=[self.clip])
+        self.dit_high_noise_button.click(fn=lambda: get_dit_model_path(), outputs=[self.dit_high_noise])
 
         # Set up conditional visibility for FP8 settings
         self.fp8_base.change(

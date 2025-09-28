@@ -707,6 +707,88 @@ def get_any_file_path(file_path: str = "") -> str:
     return file_path
 
 
+def get_model_file_path(file_path: str = "", model_extensions: list = None) -> str:
+    """
+    Opens a file dialog to select model files with specific extensions.
+
+    Parameters:
+    - file_path (str): The initial file path or empty string by default
+    - model_extensions (list): List of file extensions to filter (e.g., ['.safetensors', '.pth'])
+
+    Returns:
+    - str: The path of the model file selected by the user
+    """
+    if model_extensions is None:
+        model_extensions = ['.safetensors', '.pth', '.pt', '.ckpt']
+
+    # Create filetypes tuple for tkinter dialog
+    filetypes = []
+    for ext in model_extensions:
+        ext_name = f"{ext.upper()[1:]} files"
+        filetypes.append((ext_name, f"*{ext}"))
+
+    # Add "All supported model files" option
+    all_patterns = " ".join([f"*{ext}" for ext in model_extensions])
+    filetypes.insert(0, ("All supported model files", all_patterns))
+
+    # Add "All files" as fallback
+    filetypes.append(("All files", "*.*"))
+
+    # Validate parameter types
+    if not isinstance(file_path, str):
+        raise TypeError("file_path must be a string")
+    if not isinstance(model_extensions, list):
+        raise TypeError("model_extensions must be a list")
+
+    # Environment and platform check
+    if not any(var in os.environ for var in ENV_EXCLUSION) and sys.platform != "darwin":
+        current_file_path = file_path
+
+        initial_dir, initial_file = get_dir_and_file(file_path)
+
+        # Initialize Tkinter window
+        root = Tk()
+        root.wm_attributes("-topmost", 1)
+        root.withdraw()
+
+        # Open file dialog with model-specific filetypes
+        file_path = filedialog.askopenfilename(
+            filetypes=tuple(filetypes),
+            initialfile=initial_file,
+            initialdir=initial_dir,
+        )
+
+        root.destroy()
+
+        # Normalize path
+        if file_path:
+            file_path = normalize_path(file_path)
+        else:
+            file_path = current_file_path
+
+    return file_path
+
+
+def get_dit_model_path(file_path: str = "") -> str:
+    """Get DiT model file path (.safetensors, .pth, .pt, .ckpt)"""
+    return get_model_file_path(file_path, ['.safetensors', '.pth', '.pt', '.ckpt'])
+
+
+def get_vae_model_path(file_path: str = "") -> str:
+    """Get VAE model file path (.pth, .safetensors)"""
+    return get_model_file_path(file_path, ['.pth', '.safetensors'])
+
+
+def get_text_encoder_path(file_path: str = "") -> str:
+    """Get text encoder model file path (.safetensors, .pth)"""
+    return get_model_file_path(file_path, ['.safetensors', '.pth'])
+
+
+def get_clip_vision_path(file_path: str = "") -> str:
+    """Get CLIP vision model file path (.safetensors, .pth)"""
+    return get_model_file_path(file_path, ['.safetensors', '.pth'])
+
+
 def get_folder_path(folder_path: str = "") -> str:
     """
     Opens a folder dialog to select a folder, allowing the user to navigate and choose a folder.
