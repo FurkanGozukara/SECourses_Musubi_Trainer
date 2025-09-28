@@ -1645,7 +1645,8 @@ def SaveConfigFileToRun(
         # Convert empty strings to None for parameters that musubi tuner expects as None
         empty_to_none_params = [
             "base_weights", "dit", "vae", "network_weights",
-            "log_tracker_config", "metadata_title", "wandb_api_key"
+            "log_tracker_config", "metadata_title", "wandb_api_key",
+            "dit_high_noise", "t5", "clip", "text_encoder"
         ]
         if name in empty_to_none_params and isinstance(value, str) and value == "":
             value = None
@@ -1659,10 +1660,10 @@ def SaveConfigFileToRun(
             "ddp_gradient_as_bucket_view", "ddp_static_graph", "sample_at_first",
             "img_in_txt_in_offloading", "preserve_distribution_shape", "no_metadata",
             "save_state", "save_state_on_train_end", "save_state_to_huggingface",
-            "resume_from_huggingface", "async_upload",
+            "resume_from_huggingface", "async_upload", "fused_backward_pass",
             # Wan/Qwen specific parameters
             "fp8_llm", "vae_tiling", "fp8_vl", "fp8_base", "fp8_scaled", "fp8_t5",
-            "edit", "full_bf16", "full_fp16", "offload_inactive_dit", "vae_cache_cpu",
+            "edit", "edit_plus", "full_bf16", "full_fp16", "offload_inactive_dit", "vae_cache_cpu",
             "force_v2_1_time_embedding", "one_frame"
         ]
         if name in store_true_params and value is False:

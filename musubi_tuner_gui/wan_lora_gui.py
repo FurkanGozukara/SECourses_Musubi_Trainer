@@ -1299,6 +1299,7 @@ def train_wan_model(headless, print_only, parameters):
                 "dynamo_use_dynamic",
                 "extra_accelerate_launch_args",
                 "training_mode",  # Exclude training_mode as it's GUI-only
+                "num_frames",  # Not used in Wan training, only for sample generation
             ] + pattern_exclusion,
             mandatory_keys=["dataset_config", "dit", "vae", "t5", "clip"],
         )
