@@ -1122,7 +1122,9 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
     optional_parameters = {
         "sample_every_n_steps", "sample_every_n_epochs",
         "save_every_n_steps", "max_timestep", "min_timestep",
-        "network_dim", "max_train_epochs"  # NEW: 0 means use max_train_steps instead
+        "network_dim", "num_layers",  # These can be None for auto-detection
+        "max_train_epochs",  # 0 means use max_train_steps instead
+        "dit_in_channels", "sample_num_frames", "num_timestep_buckets"  # WAN-specific optional params
         # Removed: "ddp_timeout" (0 = use default 30min timeout - VALID)
         # Removed: "save_last_n_epochs" (0 = keep all epochs - VALID)
     }
@@ -1144,7 +1146,9 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
         'caching_latent_batch_size', 'caching_latent_num_workers', 'caching_latent_console_width',
         'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers',
         'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed',
-        'timestep_boundary', 'num_frames'
+        'timestep_boundary', 'num_frames',
+        # ADD MISSING WAN-SPECIFIC NUMERIC FIELDS:
+        'dit_in_channels', 'num_layers', 'network_dropout', 'sample_num_frames', 'num_timestep_buckets'
     ]
 
     values = [file_path, gr.update(value=status_msg, visible=True)]
@@ -1203,12 +1207,37 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
             # Get parameter name for this index
             param_name = "unknown"
             if i > 0 and i <= len(parameters):
-                for j, (k, _) in enumerate(parameters):
-                    if j == i-1:  # -1 because values[0] is file_path
-                        param_name = k
-                        break
-            log.warning(f"[VALIDATION] Final validation found list value at index {i} (param: {param_name}): {v}")
-        result_values.append(v)
+                param_name = parameters[i-1][0]  # -1 because values[0] is file_path
+
+            # Only log verbose error if it's not the parameters list itself
+            if param_name != 'parameters' and 'parameters' not in str(v)[:50]:
+                log.debug(f"[VALIDATION] Processing list value at index {i} (param: {param_name})")
+            # Try to fix it
+            if param_name in numeric_fields:
+                fixed_value = v[0] if v else None
+                log.info(f"[VALIDATION FIX] Converted {param_name} to: {fixed_value}")
+                result_values.append(fixed_value)
+            elif param_name in ['optimizer_args', 'lr_scheduler_args', 'network_args',
+                               'base_weights', 'extra_accelerate_launch_args',
+                               'gpu_ids', 'additional_parameters']:
+                # These should remain as lists, but optimizer_args, lr_scheduler_args, and network_args
+                # need to be converted to space-separated strings for the GUI textbox
+                if param_name in ['optimizer_args', 'lr_scheduler_args', 'network_args']:
+                    # Convert list to space-separated string for textbox display
+                    result_values.append(" ".join(v) if isinstance(v, list) else v)
+                else:
+                    # Keep as list for other parameters
+                    result_values.append(v)
+            else:
+                # Unknown list - try to convert if it looks numeric
+                if v and len(v) == 1 and isinstance(v[0], (int, float, type(None))):
+                    log.warning(f"[VALIDATION] Converting unexpected single-element list {param_name}: {v} -> {v[0]}")
+                    result_values.append(v[0])
+                else:
+                    log.warning(f"[VALIDATION] Keeping list for param {param_name}")
+                    result_values.append(v)
+        else:
+            result_values.append(v)
 
     return tuple(result_values)
 
@@ -1311,7 +1340,9 @@ def save_wan_configuration(save_as_bool, file_path, parameters):
         'caching_latent_batch_size', 'caching_latent_num_workers', 'caching_latent_console_width',
         'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers',
         'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed',
-        'timestep_boundary', 'num_frames'
+        'timestep_boundary', 'num_frames',
+        # ADD MISSING WAN-SPECIFIC NUMERIC FIELDS:
+        'dit_in_channels', 'num_layers', 'network_dropout', 'sample_num_frames', 'num_timestep_buckets'
     ]
 
     for key, value in parameters:
@@ -1336,25 +1367,28 @@ def save_wan_configuration(save_as_bool, file_path, parameters):
                 "num_processes",
                 "num_machines",
                 "multi_gpu",
+                # "gpu_ids",  # REMOVED from exclusion - should be saved for single GPU selection too
                 "main_process_port",
                 "dynamo_backend",
                 "dynamo_mode",
                 "dynamo_use_fullgraph",
                 "dynamo_use_dynamic",
                 "extra_accelerate_launch_args",
-                "caching_latent_device",
-                "caching_latent_batch_size",
-                "caching_latent_num_workers",
-                "caching_latent_skip_existing",
-                "caching_latent_keep_cache",
-                "caching_latent_debug_mode",
-                "caching_latent_console_width",
-                "caching_latent_console_back",
-                "caching_latent_console_num_images",
-                # ALL Text Encoder Caching parameters removed from exclusion - they should all be saved!
-                # "caching_teo_text_encoder",
+                # ALL Caching parameters removed from exclusion - they should all be saved when configured!
+                # "caching_latent_device",
+                # "caching_latent_batch_size",
+                # "caching_latent_num_workers",
+                # "caching_latent_skip_existing",
+                # "caching_latent_keep_cache",
+                # "caching_latent_debug_mode",
+                # "caching_latent_console_width",
+                # "caching_latent_console_back",
+                # "caching_latent_console_num_images",
+                # "caching_teo_text_encoder1",
+                # "caching_teo_text_encoder2",
+                # "caching_teo_text_encoder_dtype",
                 # "caching_teo_device",
-                # "caching_teo_fp8_vl",
+                # "caching_teo_fp8_llm",
                 # "caching_teo_batch_size",
                 # "caching_teo_num_workers",
                 # "caching_teo_skip_existing",
