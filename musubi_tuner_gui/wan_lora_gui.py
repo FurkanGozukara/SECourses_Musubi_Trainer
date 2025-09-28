@@ -35,6 +35,7 @@ from .class_metadata import MetaData
 from .custom_logging import setup_logging
 from .dataset_config_generator import (
     generate_dataset_config_from_folders,
+    generate_wan_dataset_config_from_folders,
     save_dataset_config,
     validate_dataset_config
 )
@@ -172,11 +173,32 @@ class WanDataset:
                     value=self.config.get("dataset_cache_directory", "cache_dir"),
                     info="Cache folder name (relative) or full path (absolute). Each dataset gets its own cache directory to avoid conflicts"
                 )
+
+            with gr.Row():
+                self.generate_toml_button = gr.Button(
+                    "Generate Dataset Configuration",
+                    variant="primary"
+                )
                 self.generated_toml_path = gr.Textbox(
                     label="Generated TOML Path",
                     value=self.config.get("generated_toml_path", ""),
-                    info="Path where the generated TOML configuration will be saved (auto-set when generating)"
+                    info="Display only. This path is auto-copied to 'Dataset Config File' field. Training ALWAYS uses the 'Dataset Config File' path.",
+                    interactive=False
                 )
+
+            with gr.Row():
+                self.copy_generated_path_button = gr.Button(
+                    "📋 Copy Generated TOML Path to Dataset Config",
+                    variant="secondary"
+                )
+
+            self.dataset_status = gr.Textbox(
+                label="Dataset Generation Status",
+                value="",
+                info="Shows the status and results of dataset configuration generation",
+                interactive=False,
+                lines=6
+            )
         
         # Dataset Preparation Details Section
         with gr.Accordion("📋 Dataset Preparation Details", open=False):
@@ -526,6 +548,167 @@ class WanDataset:
             inputs=[self.create_missing_captions],
             outputs=[self.caption_strategy]
         )
+
+    def setup_dataset_ui_events(self, saveLoadSettings=None):
+        """Setup event handlers for dataset configuration UI"""
+
+        # Define generate dataset config function
+        def generate_dataset_config(
+            parent_folder,
+            width, height,
+            caption_ext,
+            create_missing,
+            caption_strat,
+            batch_size,
+            enable_bucket,
+            bucket_no_upscale,
+            cache_dir,
+            output_dir  # Add output_dir parameter
+        ):
+            """Generate WAN dataset configuration from folder structure"""
+            try:
+                if not parent_folder:
+                    return "", "", "[ERROR] Please specify a parent folder path containing your dataset folders"
+
+                if not os.path.exists(parent_folder):
+                    return "", "", f"[ERROR] Parent folder does not exist: {parent_folder}"
+
+                # Create caption files if requested
+                if create_missing:
+                    subfolder_paths = [os.path.join(parent_folder, d) for d in os.listdir(parent_folder)
+                                     if os.path.isdir(os.path.join(parent_folder, d))]
+
+                    for folder_path in subfolder_paths:
+                        # Parse folder name to get name without repeat count
+                        folder_name = os.path.basename(folder_path)
+                        match = re.match(r"^(\d+)_(.+)$", folder_name)
+
+                        if match and caption_strat == "folder_name":
+                            # Use the name part only (without repeat count)
+                            caption_text = match.group(2)
+                        elif caption_strat == "folder_name":
+                            # Use full folder name if no repeat format
+                            caption_text = folder_name
+                        else:
+                            # Empty caption
+                            caption_text = ""
+
+                        # Create caption files for all media files (images and videos)
+                        for file_name in os.listdir(folder_path):
+                            file_path = os.path.join(folder_path, file_name)
+                            if os.path.isfile(file_path) and (
+                                file_name.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.bmp', '.gif',
+                                                          '.mp4', '.avi', '.mov', '.webm', '.mkv', '.flv', '.wmv'))
+                            ):
+                                caption_path = os.path.splitext(file_path)[0] + caption_ext
+                                if not os.path.exists(caption_path):
+                                    with open(caption_path, 'w', encoding='utf-8') as f:
+                                        f.write(caption_text)
+
+                # Generate the WAN dataset configuration
+                config, messages = generate_wan_dataset_config_from_folders(
+                    parent_folder=parent_folder,
+                    resolution=(int(width), int(height)),
+                    caption_extension=caption_ext,
+                    create_missing_captions=False,  # We already created them above
+                    caption_strategy="folder_name",
+                    batch_size=int(batch_size),
+                    enable_bucket=enable_bucket,
+                    bucket_no_upscale=bucket_no_upscale,
+                    cache_directory_name=cache_dir
+                )
+
+                # Check if config generation was successful
+                if not config or not config.get("datasets"):
+                    return "", "", "[ERROR] Failed to generate configuration. Check your folder structure.\n" + "\n".join(messages)
+
+                # Generate output filename with timestamp
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+
+                # Use output_dir if available
+                if output_dir and os.path.exists(output_dir):
+                    output_path = os.path.join(output_dir, f"wan_dataset_config_{timestamp}.toml")
+                else:
+                    # Default to parent folder
+                    output_path = os.path.join(parent_folder, f"wan_dataset_config_{timestamp}.toml")
+
+                # Save the configuration
+                save_dataset_config(config, output_path)
+
+                # Get dataset info for status message
+                num_datasets = len(config.get("datasets", []))
+
+                status_msg = f"[SUCCESS] Generated WAN dataset configuration:\n"
+                status_msg += f"  Output: {output_path}\n"
+                status_msg += f"  Datasets: {num_datasets}\n"
+                status_msg += f"\n" + "\n".join(messages)
+
+                if create_missing:
+                    status_msg += f"\n  Caption files created with strategy: {caption_strat}"
+
+                # Return both paths - output_path for dataset_config field and display
+                return output_path, output_path, status_msg
+
+            except Exception as e:
+                error_msg = f"[ERROR] Failed to generate WAN dataset configuration:\n{str(e)}"
+                log.error(error_msg)
+                import traceback
+                traceback.print_exc()
+                return "", "", error_msg
+
+        def copy_generated_path(generated_path):
+            """Copy generated TOML path to dataset config field"""
+            if generated_path:
+                return generated_path
+            return gr.update()
+
+        # Bind generate button
+        if hasattr(self, 'generate_toml_button'):
+            # Pass output_dir from saveLoadSettings if available
+            if saveLoadSettings and hasattr(saveLoadSettings, 'output_dir'):
+                self.generate_toml_button.click(
+                    fn=generate_dataset_config,
+                    inputs=[
+                        self.parent_folder_path,
+                        self.dataset_resolution_width,
+                        self.dataset_resolution_height,
+                        self.dataset_caption_extension,
+                        self.create_missing_captions,
+                        self.caption_strategy,
+                        self.dataset_batch_size,
+                        self.dataset_enable_bucket,
+                        self.dataset_bucket_no_upscale,
+                        self.dataset_cache_directory,
+                        saveLoadSettings.output_dir  # Pass output_dir
+                    ],
+                    outputs=[self.dataset_config, self.generated_toml_path, self.dataset_status]
+                )
+            else:
+                # Fallback without output_dir
+                self.generate_toml_button.click(
+                    fn=lambda *args: generate_dataset_config(*args, None),  # Pass all args + None for output_dir
+                    inputs=[
+                        self.parent_folder_path,
+                        self.dataset_resolution_width,
+                        self.dataset_resolution_height,
+                        self.dataset_caption_extension,
+                        self.create_missing_captions,
+                        self.caption_strategy,
+                        self.dataset_batch_size,
+                        self.dataset_enable_bucket,
+                        self.dataset_bucket_no_upscale,
+                        self.dataset_cache_directory,
+                    ],
+                    outputs=[self.dataset_config, self.generated_toml_path, self.dataset_status]
+                )
+
+        # Bind copy button
+        if hasattr(self, 'copy_generated_path_button'):
+            self.copy_generated_path_button.click(
+                fn=copy_generated_path,
+                inputs=[self.generated_toml_path],
+                outputs=[self.dataset_config]
+            )
 
     def _toggle_dataset_mode(self, mode):
         """Toggle between TOML file mode and folder structure mode"""
@@ -1892,6 +2075,7 @@ def wan_lora_tab(
     accordions.append(wan_dataset_accordion)
     with wan_dataset_accordion:
         wan_dataset = WanDataset(headless=headless, config=config)
+        wan_dataset.setup_dataset_ui_events(saveLoadSettings)  # Pass saveLoadSettings for output_dir access
 
     # Wan Model Settings accordion
     wan_model_accordion = gr.Accordion("Wan Model Settings", open=False, elem_classes="model_background")
