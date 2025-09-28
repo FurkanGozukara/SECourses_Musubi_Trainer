@@ -710,11 +710,11 @@ class WanModelSettings:
         with gr.Row():
             self.timestep_boundary = gr.Number(
                 label="Timestep Boundary (Dual-Model Switch Point)",
-                value=self.config.get("timestep_boundary", 0.0),
+                value=self.config.get("timestep_boundary", None),
                 minimum=0.0,
                 maximum=1.0,
                 step=0.01,
-                info="⚡ SWITCH POINT: When to switch from high→low noise model. 0.0=auto-detect, 0.3=switch at 30%, 0.5=switch at 50%. Only used when High Noise DiT path is provided."
+                info="⚡ SWITCH POINT: When to switch from high→low noise model. Leave empty for auto-detect (uses model default), 0.3=switch at 30%, 0.5=switch at 50%. Only used when High Noise DiT path is provided."
             )
             self.offload_inactive_dit = gr.Checkbox(
                 label="Offload Inactive DiT to CPU",
@@ -1766,7 +1766,7 @@ def wan_lora_tab(
         "force_v2_1_time_embedding": False,
         "num_frames": 81,
         "one_frame": False,
-        "timestep_boundary": 0.0,
+        "timestep_boundary": None,
         "offload_inactive_dit": False,
         "network_module": "networks.lora_wan",
         "network_dim": 16,

@@ -1495,10 +1495,11 @@ def SaveConfigFile(
             # This prevents ZeroDivisionError and other issues
             zero_to_none_params = [
                 "sample_every_n_steps", "sample_every_n_epochs", "save_every_n_steps",
-                "blocks_to_swap", "min_timestep", "num_timestep_buckets", 
+                "blocks_to_swap", "min_timestep", "num_timestep_buckets",
                 "vae_chunk_size", "vae_spatial_tile_sample_min_size",
                 "network_dim", "num_layers",  # NEW: 0 means auto-detection = None
-                "max_train_epochs"  # NEW: 0 means use max_train_steps instead = None
+                "max_train_epochs",  # NEW: 0 means use max_train_steps instead = None
+                "timestep_boundary"  # NEW: 0.0 means auto-detect = None
             ]
             if name in zero_to_none_params:
                 if value == 0:
@@ -1632,10 +1633,11 @@ def SaveConfigFileToRun(
             "sample_every_n_steps", "sample_every_n_epochs", "save_every_n_steps",
             "save_last_n_epochs", "save_last_n_steps",  # FIX: 0 = keep all = None for musubi tuner
             "save_last_n_epochs_state", "save_last_n_steps_state",  # Same pattern for state files
-            "blocks_to_swap", "min_timestep", "num_timestep_buckets", 
+            "blocks_to_swap", "min_timestep", "num_timestep_buckets",
             "vae_chunk_size", "vae_spatial_tile_sample_min_size",
             "network_dim", "num_layers",  # NEW: 0 means auto-detection = None
-            "max_train_epochs"  # NEW: 0 means use max_train_steps instead = None
+            "max_train_epochs",  # NEW: 0 means use max_train_steps instead = None
+            "timestep_boundary"  # NEW: 0.0 means auto-detect = None
         ]
         if name in zero_to_none_params and value == 0:
             value = None
