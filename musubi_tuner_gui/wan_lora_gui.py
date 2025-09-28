@@ -645,25 +645,25 @@ class WanModelSettings:
             with gr.Column():
                 with gr.Row():
                     with gr.Column(scale=8):
-                        self.text_encoder = gr.Textbox(
+                        self.t5 = gr.Textbox(
                             label="T5 Text Encoder Path",
                             info="REQUIRED: Path to T5 text encoder. Supports both .safetensors and .pth formats (recommended: umt5-xxl-enc-bf16.safetensors)",
                             placeholder="e.g., /path/to/umt5-xxl-enc-bf16.safetensors",
-                            value=str(self.config.get("text_encoder", ""))
+                            value=str(self.config.get("t5", ""))
                         )
                     with gr.Column(scale=1):
-                        self.text_encoder_button = gr.Button("📂", size="sm")
+                        self.t5_button = gr.Button("📂", size="sm")
             with gr.Column():
                 with gr.Row():
                     with gr.Column(scale=8):
-                        self.clip_vision = gr.Textbox(
+                        self.clip = gr.Textbox(
                             label="CLIP Vision Model Path",
                             info="REQUIRED: Path to CLIP vision encoder. Supports both .safetensors and .pth formats (recommended: models_clip_open-clip-xlm-roberta-large-vit-huge-14.safetensors)",
                             placeholder="e.g., /path/to/models_clip_open-clip-xlm-roberta-large-vit-huge-14.safetensors",
-                            value=str(self.config.get("clip_vision", ""))
+                            value=str(self.config.get("clip", ""))
                         )
                     with gr.Column(scale=1):
-                        self.clip_vision_button = gr.Button("📂", size="sm")
+                        self.clip_button = gr.Button("📂", size="sm")
 
         # Wan 2.2 Advanced Models Settings
         with gr.Row():
@@ -765,10 +765,10 @@ class WanModelSettings:
             )
 
         with gr.Row():
-            self.fp8_vl = gr.Checkbox(
-                label="FP8 Vision-Language",
-                value=self.config.get("fp8_vl", False),
-                info="Enable FP8 for text encoder to reduce memory usage"
+            self.fp8_t5 = gr.Checkbox(
+                label="FP8 T5 Text Encoder",
+                value=self.config.get("fp8_t5", False),
+                info="Enable FP8 for T5 text encoder to reduce memory usage"
             )
             self.blocks_to_swap = gr.Number(
                 label="Blocks to Swap",
@@ -794,6 +794,19 @@ class WanModelSettings:
                 info="0=auto/disabled. Higher=faster but more memory usage"
             )
 
+        # Additional Wan-specific options
+        with gr.Row():
+            self.vae_cache_cpu = gr.Checkbox(
+                label="Cache VAE Features on CPU",
+                value=self.config.get("vae_cache_cpu", False),
+                info="Cache VAE features on CPU to reduce GPU memory usage"
+            )
+            self.force_v2_1_time_embedding = gr.Checkbox(
+                label="Force Wan 2.1 Time Embedding",
+                value=self.config.get("force_v2_1_time_embedding", False),
+                info="Force using 2.1 style time embedding even for Wan 2.2 models"
+            )
+
         # Video-specific Settings
         with gr.Row():
             self.num_frames = gr.Number(
@@ -813,8 +826,8 @@ class WanModelSettings:
         # Set up file browser button handlers
         self.dit_button.click(fn=lambda: get_file_path(), outputs=[self.dit])
         self.vae_button.click(fn=lambda: get_file_path(), outputs=[self.vae])
-        self.text_encoder_button.click(fn=lambda: get_file_path(), outputs=[self.text_encoder])
-        self.clip_vision_button.click(fn=lambda: get_file_path(), outputs=[self.clip_vision])
+        self.t5_button.click(fn=lambda: get_file_path(), outputs=[self.t5])
+        self.clip_button.click(fn=lambda: get_file_path(), outputs=[self.clip])
         self.dit_high_noise_button.click(fn=lambda: get_file_path(), outputs=[self.dit_high_noise])
 
         # Set up conditional visibility for FP8 settings
@@ -943,10 +956,10 @@ def wan_gui_actions(
                 "create_missing_captions", "caption_strategy", "dataset_enable_bucket",
                 "dataset_bucket_no_upscale", "dataset_cache_directory", "generated_toml_path",
                 # Wan Model settings
-                "training_mode", "task", "dit", "vae", "text_encoder", "clip_vision",
+                "training_mode", "task", "dit", "vae", "t5", "clip",
                 "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
                 "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
-                "fp8_vl", "blocks_to_swap", "vae_tiling", "vae_chunk_size", "num_frames", "one_frame",
+                "fp8_t5", "blocks_to_swap", "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
                 # training_settings
                 "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
                 "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
@@ -999,10 +1012,10 @@ def wan_gui_actions(
                 "create_missing_captions", "caption_strategy", "dataset_enable_bucket",
                 "dataset_bucket_no_upscale", "dataset_cache_directory", "generated_toml_path",
                 # Wan Model settings
-                "training_mode", "task", "dit", "vae", "text_encoder", "clip_vision",
+                "training_mode", "task", "dit", "vae", "t5", "clip",
                 "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
                 "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
-                "fp8_vl", "blocks_to_swap", "vae_tiling", "vae_chunk_size", "num_frames", "one_frame",
+                "fp8_t5", "blocks_to_swap", "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
                 # training_settings
                 "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
                 "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
@@ -1718,8 +1731,8 @@ def wan_lora_tab(
         wan_model_settings.task,
         wan_model_settings.dit,
         wan_model_settings.vae,
-        wan_model_settings.text_encoder,
-        wan_model_settings.clip_vision,
+        wan_model_settings.t5,
+        wan_model_settings.clip,
         wan_model_settings.dit_high_noise,
         wan_model_settings.timestep_boundary,
         wan_model_settings.offload_inactive_dit,
@@ -1729,10 +1742,12 @@ def wan_lora_tab(
         wan_model_settings.clip_vision_dtype,
         wan_model_settings.fp8_base,
         wan_model_settings.fp8_scaled,
-        wan_model_settings.fp8_vl,
+        wan_model_settings.fp8_t5,
         wan_model_settings.blocks_to_swap,
         wan_model_settings.vae_tiling,
         wan_model_settings.vae_chunk_size,
+        wan_model_settings.vae_cache_cpu,
+        wan_model_settings.force_v2_1_time_embedding,
         wan_model_settings.num_frames,
         wan_model_settings.one_frame,
 
