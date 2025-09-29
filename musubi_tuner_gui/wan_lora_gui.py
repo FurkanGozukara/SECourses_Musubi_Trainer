@@ -1833,13 +1833,13 @@ def train_wan_model(headless, print_only, parameters):
         if sample_prompts_provided:
             # Check if prompt enhancement is disabled
             disable_enhancement = param_dict.get('disable_prompt_enhancement', False)
-            
+
             if disable_enhancement:
                 # Use original prompts without enhancement
-                log.info("Prompt enhancement disabled - using original prompts without Kohya format parameters")
+                log.info("Prompt enhancement disabled - using original prompts without WAN format parameters")
             else:
                 original_prompt_file = param_dict.get('sample_prompts')
-                
+
                 # Use custom sample output directory if provided, otherwise use output directory
                 sample_output_dir = param_dict.get('sample_output_dir', '').strip()
                 if sample_output_dir:
@@ -1865,7 +1865,7 @@ def train_wan_model(headless, print_only, parameters):
 
                 if enhanced_prompt_file:
                     # Update parameters to use the enhanced prompt file
-                    log.info(f"Using enhanced prompt file for training: {enhanced_prompt_file}")
+                    log.info(f"Using enhanced prompt file for WAN training: {enhanced_prompt_file}")
                     parameters = upsert_parameter(parameters, "sample_prompts", enhanced_prompt_file)
                 else:
                     log.warning("Failed to create enhanced prompt file, using original file")
@@ -2406,6 +2406,21 @@ def save_wan_configuration(save_as_bool, file_path, parameters):
         if isinstance(value, list) and len(value) > 0 and key in numeric_fields:
             # These should be single numeric values
             value = value[0] if value else None
+        # Convert string values to appropriate numeric types for numeric fields
+        elif isinstance(value, str) and key in numeric_fields:
+            try:
+                # Try to convert to float first, then to int if it's a whole number
+                float_value = float(value)
+                if float_value.is_integer():
+                    value = int(float_value)
+                else:
+                    value = float_value
+            except (ValueError, AttributeError):
+                # If conversion fails, keep as string but log warning
+                log.warning(f"Failed to convert string '{value}' to number for field '{key}', keeping as string")
+        # Clean up optimizer_args to remove trailing commas that could break parsing
+        elif key == "optimizer_args" and isinstance(value, list):
+            value = [arg.rstrip(',') for arg in value]
         processed_params.append((key, value))
 
     try:
