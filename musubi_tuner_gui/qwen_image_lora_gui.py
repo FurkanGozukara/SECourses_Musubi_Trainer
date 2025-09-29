@@ -1994,43 +1994,40 @@ def train_qwen_image_model(headless, print_only, parameters):
         
         parameters = modified_params
         
-        # Handle logging_dir intelligently based on log_with setting
+        # Handle logging_dir intelligently - create automatic path when empty since training script enables logging automatically
         modified_params = []
         for key, value in parameters:
             if key == "logging_dir":
-                log_with = param_dict.get("log_with", "")
                 output_dir = param_dict.get("output_dir", "")
-                
-                # If logging is enabled (log_with is not empty/none)
-                if log_with and log_with != "":
-                    # If logging_dir is empty or just a slash, create automatic path
-                    if not value or value == "" or value == "/":
-                        # Use output_dir as base with a 'logs' subdirectory
-                        if output_dir:
-                            timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-                            value = os.path.join(output_dir, "logs", f"session_{timestamp}")
-                            log.info(f"Auto-generating logging directory: {value}")
-                        else:
-                            # Fallback to current directory if output_dir is not set
-                            timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
-                            value = os.path.join(".", "logs", f"session_{timestamp}")
-                            log.info(f"Auto-generating logging directory in current folder: {value}")
-                    # If it's a relative path (doesn't start with / on Linux or drive letter on Windows)
-                    elif not os.path.isabs(value):
-                        # Make it relative to output_dir
-                        if output_dir:
-                            value = os.path.join(output_dir, value)
-                            log.info(f"Using relative logging directory under output_dir: {value}")
-                        else:
-                            # Keep as is if no output_dir
-                            log.info(f"Using relative logging directory: {value}")
+
+                # If logging_dir is empty, create automatic path (training script enables TensorBoard when logging_dir is not None)
+                if not value or value == "" or value == "/":
+                    # Use output_dir as base with a 'logs' subdirectory
+                    if output_dir:
+                        timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+                        value = os.path.join(output_dir, "logs", f"session_{timestamp}")
+                        log.info(f"Auto-generating logging directory: {value}")
                     else:
-                        # It's an absolute path, use as is
-                        log.info(f"Using absolute logging directory: {value}")
-                    
-                    # Ensure the path uses forward slashes for compatibility
-                    value = value.replace("\\", "/") if value else ""
-                
+                        # Fallback to current directory if output_dir is not set
+                        timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+                        value = os.path.join(".", "logs", f"session_{timestamp}")
+                        log.info(f"Auto-generating logging directory in current folder: {value}")
+                # If it's a relative path (doesn't start with / on Linux or drive letter on Windows)
+                elif not os.path.isabs(value):
+                    # Make it relative to output_dir
+                    if output_dir:
+                        value = os.path.join(output_dir, value)
+                        log.info(f"Using relative logging directory under output_dir: {value}")
+                    else:
+                        # Keep as is if no output_dir
+                        log.info(f"Using relative logging directory: {value}")
+                else:
+                    # It's an absolute path, use as is
+                    log.info(f"Using absolute logging directory: {value}")
+
+                # Ensure the path uses forward slashes for compatibility
+                value = value.replace("\\", "/") if value else ""
+
                 modified_params.append((key, value))
             else:
                 modified_params.append((key, value))
