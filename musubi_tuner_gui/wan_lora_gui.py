@@ -39,7 +39,6 @@ from .class_metadata import MetaData
 from .custom_logging import setup_logging
 from .dataset_config_generator import (
     generate_dataset_config_from_folders,
-    generate_wan_dataset_config_from_folders,
     save_dataset_config,
     validate_dataset_config
 )
@@ -610,7 +609,7 @@ class WanDataset:
                                         f.write(caption_text)
 
                 # Generate the WAN dataset configuration
-                config, messages = generate_wan_dataset_config_from_folders(
+                config, messages = generate_dataset_config_from_folders(
                     parent_folder=parent_folder,
                     resolution=(int(width), int(height)),
                     caption_extension=caption_ext,
@@ -809,50 +808,50 @@ class WanModelSettings:
         with gr.Row():
             with gr.Column():
                 with gr.Row():
-                    with gr.Column(scale=8):
+                    with gr.Column(scale=2):
                         self.dit = gr.Textbox(
                             label="DiT Model Path (Low Noise / Main Model)",
                             info="✨ REQUIRED: Path to main DiT checkpoint (.safetensors). For Wan 2.2 dual training, this serves as the LOW NOISE model (fine details). For single model training, this is the only model used.",
                             placeholder="e.g., /path/to/wan_t2v_14b.safetensors",
-                            value=str(self.config.get("dit", ""))
+                            value=str(self.config.get("dit", "")), lines=3
                         )
-                    with gr.Column(scale=1):
-                        self.dit_button = gr.Button("📂", size="sm")
+                    with gr.Column(min_width=60):
+                        self.dit_button = gr.Button("📂", size="md")
             with gr.Column():
                 with gr.Row():
-                    with gr.Column(scale=8):
+                    with gr.Column(scale=2):
                         self.vae = gr.Textbox(
                             label="VAE Model Path",
                             info="REQUIRED: Use Wan2.1_VAE.pth for ALL models (including Wan 2.2 Advanced). Supports .pth and .safetensors formats.",
                             placeholder="e.g., /path/to/Wan2.1_VAE.pth",
-                            value=str(self.config.get("vae", ""))
+                            value=str(self.config.get("vae", "")), lines=3
                         )
-                    with gr.Column(scale=1):
-                        self.vae_button = gr.Button("📂", size="sm")
+                    with gr.Column(min_width=60):
+                        self.vae_button = gr.Button("📂", size="md")
 
         with gr.Row():
             with gr.Column():
                 with gr.Row():
-                    with gr.Column(scale=8):
+                    with gr.Column(scale=2):
                         self.t5 = gr.Textbox(
                             label="T5 Text Encoder Path",
                             info="REQUIRED: Path to T5 text encoder. Supports both .safetensors and .pth formats (recommended: umt5-xxl-enc-bf16.safetensors)",
                             placeholder="e.g., /path/to/umt5-xxl-enc-bf16.safetensors",
-                            value=str(self.config.get("t5", ""))
+                            value=str(self.config.get("t5", "")), lines=3
                         )
-                    with gr.Column(scale=1):
-                        self.t5_button = gr.Button("📂", size="sm")
+                    with gr.Column(min_width=60):
+                        self.t5_button = gr.Button("📂", size="md")
             with gr.Column():
                 with gr.Row():
-                    with gr.Column(scale=8):
+                    with gr.Column(scale=2):
                         self.clip = gr.Textbox(
                             label="CLIP Vision Model Path",
                             info="REQUIRED: Path to CLIP vision encoder. Supports both .safetensors and .pth formats (recommended: models_clip_open-clip-xlm-roberta-large-vit-huge-14.safetensors)",
                             placeholder="e.g., /path/to/models_clip_open-clip-xlm-roberta-large-vit-huge-14.safetensors",
-                            value=str(self.config.get("clip", ""))
+                            value=str(self.config.get("clip", "")), lines=3
                         )
-                    with gr.Column(scale=1):
-                        self.clip_button = gr.Button("📂", size="sm")
+                    with gr.Column(min_width=60):
+                        self.clip_button = gr.Button("📂", size="md")
 
         # Wan 2.2 Advanced Models Settings
         with gr.Row():
@@ -1289,8 +1288,9 @@ def train_wan_model(headless, print_only, parameters):
 
     param_dict = dict(parameters)
 
-    # Initialize variables that might be needed
-    teo_cache_cmd = None  # WAN doesn't use text encoder caching like Qwen
+    # Initialize variables that might be needed for caching
+    latent_cache_cmd = None
+    teo_cache_cmd = None
 
     # Always use the Dataset Config File path for training
     effective_dataset_config = param_dict.get("dataset_config")
@@ -1301,6 +1301,114 @@ def train_wan_model(headless, print_only, parameters):
         log.error("Dataset config file is required for WAN training")
         gr.Error("Dataset config file is required for WAN training")
         return
+
+    # Setup latent caching command for WAN
+    if param_dict.get("caching_latent_skip_existing") is not False:  # Only cache if skip_existing is not explicitly disabled
+        run_cache_latent_cmd = [python_cmd, "./musubi-tuner/src/musubi_tuner/wan_cache_latents.py",
+                                "--dataset_config", str(effective_dataset_config)]
+
+        # Add VAE path (required for WAN latent caching)
+        vae_path = param_dict.get("vae", "")
+        if vae_path and vae_path != "":
+            run_cache_latent_cmd.append("--vae")
+            run_cache_latent_cmd.append(str(vae_path))
+        else:
+            log.warning("VAE path not provided for latent caching")
+            gr.Warning("VAE path not provided - latent caching may fail")
+
+        # Add CLIP path if provided (for I2V models)
+        clip_path = param_dict.get("clip", "")
+        if clip_path and clip_path != "":
+            run_cache_latent_cmd.append("--clip")
+            run_cache_latent_cmd.append(str(clip_path))
+
+        # Add latent caching parameters
+        if param_dict.get("caching_latent_device"):
+            run_cache_latent_cmd.append("--device")
+            run_cache_latent_cmd.append(str(param_dict.get("caching_latent_device")))
+
+        if param_dict.get("caching_latent_batch_size"):
+            run_cache_latent_cmd.append("--batch_size")
+            run_cache_latent_cmd.append(str(param_dict.get("caching_latent_batch_size")))
+
+        if param_dict.get("caching_latent_num_workers"):
+            run_cache_latent_cmd.append("--num_workers")
+            run_cache_latent_cmd.append(str(param_dict.get("caching_latent_num_workers")))
+
+        if param_dict.get("caching_latent_skip_existing"):
+            run_cache_latent_cmd.append("--skip_existing")
+
+        if param_dict.get("caching_latent_keep_cache"):
+            run_cache_latent_cmd.append("--keep_cache")
+
+        # Determine if this is I2V training
+        task = param_dict.get("task", "t2v-14B")
+        if "i2v" in task.lower():
+            run_cache_latent_cmd.append("--i2v")
+
+        # Check for one_frame training
+        if param_dict.get("one_frame", False):
+            run_cache_latent_cmd.append("--one_frame")
+
+        # VAE cache CPU setting
+        if param_dict.get("vae_cache_cpu", False):
+            run_cache_latent_cmd.append("--vae_cache_cpu")
+
+        latent_cache_cmd = run_cache_latent_cmd
+        log.info(f"WAN latent caching command: {latent_cache_cmd}")
+    else:
+        log.info("Latent caching skipped (caching_latent_skip_existing is False)")
+
+    # Setup text encoder outputs caching command for WAN
+    if param_dict.get("caching_teo_skip_existing") is not False:  # Only cache if skip_existing is not explicitly disabled
+        run_cache_teo_cmd = [python_cmd, "./musubi-tuner/src/musubi_tuner/wan_cache_text_encoder_outputs.py",
+                            "--dataset_config", str(effective_dataset_config)]
+
+        # Add T5 text encoder path (required for WAN text encoder caching)
+        t5_path = param_dict.get("t5", "")
+        if not t5_path or t5_path == "":
+            # Try to get from text encoder 1 directory
+            t5_path = param_dict.get("caching_teo_text_encoder1", "")
+
+        if t5_path and t5_path != "":
+            run_cache_teo_cmd.append("--t5")
+            run_cache_teo_cmd.append(str(t5_path))
+
+            # Add text encoder caching parameters
+            if param_dict.get("caching_teo_device"):
+                run_cache_teo_cmd.append("--device")
+                run_cache_teo_cmd.append(str(param_dict.get("caching_teo_device")))
+
+            if param_dict.get("caching_teo_fp8_llm"):
+                run_cache_teo_cmd.append("--fp8_t5")
+
+            if param_dict.get("caching_teo_batch_size"):
+                run_cache_teo_cmd.append("--batch_size")
+                run_cache_teo_cmd.append(str(param_dict.get("caching_teo_batch_size")))
+
+            if param_dict.get("caching_teo_num_workers"):
+                run_cache_teo_cmd.append("--num_workers")
+                run_cache_teo_cmd.append(str(param_dict.get("caching_teo_num_workers")))
+
+            if param_dict.get("caching_teo_skip_existing"):
+                run_cache_teo_cmd.append("--skip_existing")
+
+            if param_dict.get("caching_teo_keep_cache"):
+                run_cache_teo_cmd.append("--keep_cache")
+
+            # Add text encoder dtype if specified
+            if param_dict.get("caching_teo_text_encoder_dtype"):
+                run_cache_teo_cmd.append("--text_encoder_dtype")
+                run_cache_teo_cmd.append(str(param_dict.get("caching_teo_text_encoder_dtype")))
+
+            teo_cache_cmd = run_cache_teo_cmd
+            log.info(f"WAN text encoder caching command: {teo_cache_cmd}")
+        else:
+            log.warning("T5 text encoder path not provided for text encoder caching")
+            gr.Warning("T5 text encoder path not provided - text encoder caching will be skipped")
+            teo_cache_cmd = None
+    else:
+        log.info("Text encoder caching skipped (caching_teo_skip_existing is False)")
 
     # Setup accelerate launch command
     run_cmd = AccelerateLaunch.run_cmd(
@@ -1504,7 +1612,24 @@ def train_wan_model(headless, print_only, parameters):
 
         env = setup_environment()
 
-        # Create a wrapper script that runs both text encoder caching and training
+        # Run latent caching first (if needed)
+        if latent_cache_cmd:
+            log.info("Running latent caching...")
+            try:
+                gr.Info("Starting latent caching... This may take a while.")
+                result = subprocess.run(latent_cache_cmd, env=setup_environment(), check=True)
+                log.debug("Latent caching completed.")
+                gr.Info("Latent caching completed successfully!")
+            except subprocess.CalledProcessError as e:
+                log.error(f"Latent caching failed with return code {e.returncode}")
+                gr.Warning(f"Latent caching failed with return code {e.returncode}")
+                raise RuntimeError(f"Latent caching failed with return code {e.returncode}")
+            except FileNotFoundError as e:
+                log.error(f"Command not found: {e}")
+                log.error("Please ensure Python is installed and accessible in your PATH")
+                raise RuntimeError(f"Python executable not found: {python_cmd}")
+
+        # Create a wrapper script that runs text encoder caching and training
         if teo_cache_cmd:
             # Create a combined command that runs caching first, then training
             import tempfile
@@ -1557,6 +1682,11 @@ echo "Starting training..."
             log.info("Starting combined text encoder caching and training process...")
             gr.Info("Starting text encoder caching followed by training...")
             executor.execute_command(run_cmd=final_cmd, env=env, shell=True if platform.system() == "Windows" else False)
+        elif latent_cache_cmd:
+            # Only latent caching was run, now run training
+            log.info("Latent caching completed, starting training...")
+            gr.Info("Starting training...")
+            executor.execute_command(run_cmd=run_cmd, env=env)
         else:
             # No text encoder caching needed, just run training
             executor.execute_command(run_cmd=run_cmd, env=env)
@@ -1991,6 +2121,7 @@ def wan_lora_tab(
         "caching_teo_num_workers": 8,
         "caching_teo_skip_existing": True,
         "caching_teo_keep_cache": True,
+        "caching_teo_text_encoder_dtype": "bfloat16",
         "output_name": "my-wan-lora",
     }
 

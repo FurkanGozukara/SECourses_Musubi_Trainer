@@ -31,9 +31,9 @@ class TextEncoderOutputsCaching:
             self.caching_teo_text_encoder_dtype = gr.Dropdown(
                 label="Text Encoder Data Type",
                 choices=["float16", "bfloat16"],
-                value=self.config.get("caching_teo_text_encoder_dtype", "float16"),
+                value=self.config.get("caching_teo_text_encoder_dtype", "bfloat16"),
                 interactive=True,
-                info="Default is float16"
+                info="Default is bfloat16"
             )
 
         with gr.Row():
