@@ -1174,6 +1174,28 @@ class WanSampleSettings:
                 size="sm",
                 elem_id="sample_prompts_button"
             )
+        
+        # Custom output path for samples
+        with gr.Row():
+            with gr.Column(scale=4):
+                self.sample_output_dir = gr.Textbox(
+                    label="Custom Sample Output Directory",
+                    info="Optional: Custom directory to save samples. If empty, uses output directory where model files will be saved",
+                    placeholder="e.g., /path/to/sample/output",
+                    value=self.config.get("sample_output_dir", ""),
+                )
+            self.sample_output_dir_button = gr.Button(
+                "📂",
+                size="sm",
+                elem_id="sample_output_dir_button"
+            )
+        
+        # Prompt enhancement control
+        self.disable_prompt_enhancement = gr.Checkbox(
+            label="Disable Automatic Prompt Enhancement",
+            info="When enabled, uses original prompts without adding Kohya format parameters",
+            value=self.config.get("disable_prompt_enhancement", False),
+        )
 
         # Default sample parameters
         gr.Markdown("### Default Sample Parameters")
@@ -1247,6 +1269,17 @@ class WanSampleSettings:
                 value=self.config.get("sample_negative_prompt", ""),
                 placeholder="e.g., blurry, low quality, distorted",
             )
+        
+        # Set up button handlers
+        self.sample_prompts_button.click(
+            fn=lambda: get_file_path(file_path="", default_extension=".txt", extension_name="Text files"),
+            outputs=[self.sample_prompts]
+        )
+        
+        self.sample_output_dir_button.click(
+            fn=lambda: get_folder_path(folder_path=""),
+            outputs=[self.sample_output_dir]
+        )
 
 
 def generate_enhanced_prompt_file(
@@ -1797,29 +1830,44 @@ def train_wan_model(headless, print_only, parameters):
 
         # Enhance sample prompts file with GUI defaults if sample generation is enabled
         if sample_prompts_provided:
-            original_prompt_file = param_dict.get('sample_prompts')
-            output_dir = param_dict.get('output_dir')
-
-            # Create enhanced prompt file
-            enhanced_prompt_file = generate_enhanced_prompt_file(
-                original_prompt_file=original_prompt_file,
-                output_dir=output_dir,
-                output_name=param_dict.get('output_name'),
-                sample_width=param_dict.get('sample_width', 960),
-                sample_height=param_dict.get('sample_height', 960),
-                sample_num_frames=param_dict.get('sample_num_frames', 81),
-                sample_steps=param_dict.get('sample_steps', 20),
-                sample_guidance_scale=param_dict.get('sample_guidance_scale', 7.0),
-                sample_seed=param_dict.get('sample_seed', 99),
-                sample_negative_prompt=param_dict.get('sample_negative_prompt', '')
-            )
-
-            if enhanced_prompt_file:
-                # Update parameters to use the enhanced prompt file
-                log.info(f"Using enhanced prompt file for training: {enhanced_prompt_file}")
-                parameters = upsert_parameter(parameters, "sample_prompts", enhanced_prompt_file)
+            # Check if prompt enhancement is disabled
+            disable_enhancement = param_dict.get('disable_prompt_enhancement', False)
+            
+            if disable_enhancement:
+                # Use original prompts without enhancement
+                log.info("Prompt enhancement disabled - using original prompts without Kohya format parameters")
             else:
-                log.warning("Failed to create enhanced prompt file, using original file")
+                original_prompt_file = param_dict.get('sample_prompts')
+                
+                # Use custom sample output directory if provided, otherwise use output directory
+                sample_output_dir = param_dict.get('sample_output_dir', '').strip()
+                if sample_output_dir:
+                    output_dir = sample_output_dir
+                    log.info(f"Using custom sample output directory: {sample_output_dir}")
+                else:
+                    output_dir = param_dict.get('output_dir')
+                    log.info(f"Using default output directory for samples: {output_dir}")
+
+                # Create enhanced prompt file
+                enhanced_prompt_file = generate_enhanced_prompt_file(
+                    original_prompt_file=original_prompt_file,
+                    output_dir=output_dir,
+                    output_name=param_dict.get('output_name'),
+                    sample_width=param_dict.get('sample_width', 960),
+                    sample_height=param_dict.get('sample_height', 960),
+                    sample_num_frames=param_dict.get('sample_num_frames', 81),
+                    sample_steps=param_dict.get('sample_steps', 20),
+                    sample_guidance_scale=param_dict.get('sample_guidance_scale', 7.0),
+                    sample_seed=param_dict.get('sample_seed', 99),
+                    sample_negative_prompt=param_dict.get('sample_negative_prompt', '')
+                )
+
+                if enhanced_prompt_file:
+                    # Update parameters to use the enhanced prompt file
+                    log.info(f"Using enhanced prompt file for training: {enhanced_prompt_file}")
+                    parameters = upsert_parameter(parameters, "sample_prompts", enhanced_prompt_file)
+                else:
+                    log.warning("Failed to create enhanced prompt file, using original file")
 
         # Modify parameters based on training mode
         training_mode = param_dict.get("training_mode", "LoRA Training")
@@ -2695,6 +2743,8 @@ def wan_lora_tab(
         sampleSettings.sample_every_n_epochs,
         sampleSettings.sample_at_first,
         sampleSettings.sample_prompts,
+        sampleSettings.sample_output_dir,
+        sampleSettings.disable_prompt_enhancement,
         sampleSettings.sample_width,
         sampleSettings.sample_height,
         sampleSettings.sample_num_frames,

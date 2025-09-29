@@ -885,6 +885,7 @@ def qwen_image_gui_actions(
     sample_at_first,
     sample_every_n_epochs,
     sample_prompts,
+    sample_output_dir,
     disable_prompt_enhancement,
     sample_width,
     sample_height,
@@ -1888,7 +1889,15 @@ def train_qwen_image_model(headless, print_only, parameters):
             else:
                 # Generate enhanced prompt file with GUI defaults
                 original_prompt_file = param_dict.get('sample_prompts')
-                output_dir = param_dict.get('output_dir')
+                
+                # Use custom sample output directory if provided, otherwise use output directory
+                sample_output_dir = param_dict.get('sample_output_dir', '').strip()
+                if sample_output_dir:
+                    output_dir = sample_output_dir
+                    log.info(f"Using custom sample output directory: {sample_output_dir}")
+                else:
+                    output_dir = param_dict.get('output_dir')
+                    log.info(f"Using default output directory for samples: {output_dir}")
                 
                 # Create enhanced prompt file
                 enhanced_prompt_file = generate_enhanced_prompt_file(
@@ -2496,6 +2505,21 @@ class QwenImageSampleSettings:
                 elem_id="sample_prompts_button"
             )
         
+        # Custom output path for samples
+        with gr.Row():
+            with gr.Column(scale=4):
+                self.sample_output_dir = gr.Textbox(
+                    label="Custom Sample Output Directory",
+                    info="Optional: Custom directory to save samples. If empty, uses output directory where model files will be saved",
+                    placeholder="e.g., /path/to/sample/output",
+                    value=self.config.get("sample_output_dir", ""),
+                )
+            self.sample_output_dir_button = gr.Button(
+                "📂",
+                size="sm",
+                elem_id="sample_output_dir_button"
+            )
+        
         # Prompt enhancement control
         self.disable_prompt_enhancement = gr.Checkbox(
             label="Disable Automatic Prompt Enhancement",
@@ -2588,10 +2612,15 @@ class QwenImageSampleSettings:
                 value=self.config.get("sample_negative_prompt", ""),
             )
         
-        # File browser button
+        # File browser buttons
         self.sample_prompts_button.click(
             fn=lambda: get_file_path(file_path="", default_extension=".txt", extension_name="Text files"),
             outputs=[self.sample_prompts]
+        )
+        
+        self.sample_output_dir_button.click(
+            fn=lambda: get_folder_path(folder_path=""),
+            outputs=[self.sample_output_dir]
         )
 
 
@@ -3466,6 +3495,7 @@ def qwen_image_lora_tab(
         sampleSettings.sample_at_first,
         sampleSettings.sample_every_n_epochs,
         sampleSettings.sample_prompts,
+        sampleSettings.sample_output_dir,
         sampleSettings.disable_prompt_enhancement,
         sampleSettings.sample_width,
         sampleSettings.sample_height,

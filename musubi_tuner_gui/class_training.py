@@ -185,27 +185,3 @@ class TrainingSettings:
                 value=self.config.get("ddp_static_graph", False),
             )
 
-        with gr.Row():
-            self.sample_every_n_steps = gr.Number(
-                label="Sample Every N Steps",
-                info="Generate sample images every N steps",
-                value=self.config.get("sample_every_n_steps", None),
-            )
-
-            self.sample_at_first = gr.Checkbox(
-                label="Sample Before Training",
-                value=self.config.get("sample_at_first", False),
-            )
-
-            self.sample_every_n_epochs = gr.Number(
-                label="Sample Every N Epochs",
-                info="Generate sample images every N epochs (overrides N steps)",
-                value=self.config.get("sample_every_n_epochs", None),
-            )
-
-        with gr.Row():
-            self.sample_prompts = gr.Textbox(
-                label="Sample Prompts",
-                placeholder="File containing prompts to generate sample images",
-                value=self.config.get("sample_prompts", ""),
-            )

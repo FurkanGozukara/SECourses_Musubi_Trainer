@@ -90,10 +90,6 @@ def gui_actions(
     ddp_timeout,
     ddp_gradient_as_bucket_view,
     ddp_static_graph,
-    sample_every_n_steps,
-    sample_at_first,
-    sample_every_n_epochs,
-    sample_prompts,
     # Latent Caching
     caching_latent_device,
     caching_latent_batch_size,
@@ -730,10 +726,6 @@ def lora_tab(
         trainingSettings.ddp_timeout,
         trainingSettings.ddp_gradient_as_bucket_view,
         trainingSettings.ddp_static_graph,
-        trainingSettings.sample_every_n_steps,
-        trainingSettings.sample_at_first,
-        trainingSettings.sample_every_n_epochs,
-        trainingSettings.sample_prompts,
         
         # Latent Caching
         latentCaching.caching_latent_device,
