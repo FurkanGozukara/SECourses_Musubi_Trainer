@@ -1628,9 +1628,16 @@ def train_wan_model(headless, print_only, parameters):
             run_cache_latent_cmd.append(str(clip_path))
 
         # Add latent caching parameters
-        if param_dict.get("caching_latent_device"):
+        caching_device = param_dict.get("caching_latent_device")
+        if caching_device == "cuda" and param_dict.get("gpu_ids"):
+            # If gpu_ids is specified in accelerate config, use the first GPU ID
+            gpu_ids = str(param_dict.get("gpu_ids")).split(",")
+            caching_device = f"cuda:{gpu_ids[0].strip()}"
+            log.info(f"Using GPU ID from accelerate config for latent caching: {caching_device}")
+
+        if caching_device:
             run_cache_latent_cmd.append("--device")
-            run_cache_latent_cmd.append(str(param_dict.get("caching_latent_device")))
+            run_cache_latent_cmd.append(str(caching_device))
 
         if param_dict.get("caching_latent_batch_size"):
             run_cache_latent_cmd.append("--batch_size")
@@ -1680,9 +1687,16 @@ def train_wan_model(headless, print_only, parameters):
             run_cache_teo_cmd.append(str(t5_path))
 
             # Add text encoder caching parameters
-            if param_dict.get("caching_teo_device"):
+            teo_caching_device = param_dict.get("caching_teo_device")
+            if teo_caching_device == "cuda" and param_dict.get("gpu_ids"):
+                # If gpu_ids is specified in accelerate config, use the first GPU ID
+                gpu_ids = str(param_dict.get("gpu_ids")).split(",")
+                teo_caching_device = f"cuda:{gpu_ids[0].strip()}"
+                log.info(f"Using GPU ID from accelerate config for text encoder caching: {teo_caching_device}")
+
+            if teo_caching_device:
                 run_cache_teo_cmd.append("--device")
-                run_cache_teo_cmd.append(str(param_dict.get("caching_teo_device")))
+                run_cache_teo_cmd.append(str(teo_caching_device))
 
             if param_dict.get("caching_teo_fp8_llm"):
                 run_cache_teo_cmd.append("--fp8_t5")
