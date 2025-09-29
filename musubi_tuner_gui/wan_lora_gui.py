@@ -2198,9 +2198,13 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
         'dit_in_channels', 'num_layers', 'network_dropout', 'sample_num_frames', 'num_timestep_buckets'
     ]
 
+    # Process parameters and track which ones are included
     values = [file_path, gr.update(value=status_msg, visible=True)]
+    included_params = []  # Track which parameters are actually included
+
     for key, value in parameters:
         if not key in ["ask_for_file", "apply_preset", "file_path"]:
+            included_params.append(key)  # Track this parameter
             toml_value = my_data.get(key)
             if toml_value is not None:
                 # Handle list values that should be single values
@@ -2247,44 +2251,48 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
 
                 values.append(value)
 
-    # Final validation before returning
+    # Final validation before returning - now we can properly match parameters to values
     result_values = []
+    param_index = 0  # Index into included_params
     for i, v in enumerate(values):
-        if isinstance(v, list):
-            # Get parameter name for this index
-            param_name = "unknown"
-            if i > 0 and i <= len(parameters):
-                param_name = parameters[i-1][0]  # -1 because values[0] is file_path
-
-            # Only log verbose error if it's not the parameters list itself
-            if param_name != 'parameters' and 'parameters' not in str(v)[:50]:
-                log.debug(f"[VALIDATION] Processing list value at index {i} (param: {param_name})")
-            # Try to fix it
-            if param_name in numeric_fields:
-                fixed_value = v[0] if v else None
-                log.info(f"[VALIDATION FIX] Converted {param_name} to: {fixed_value}")
-                result_values.append(fixed_value)
-            elif param_name in ['optimizer_args', 'lr_scheduler_args', 'network_args',
-                               'base_weights', 'extra_accelerate_launch_args',
-                               'gpu_ids', 'additional_parameters']:
-                # These should remain as lists, but optimizer_args, lr_scheduler_args, and network_args
-                # need to be converted to space-separated strings for the GUI textbox
-                if param_name in ['optimizer_args', 'lr_scheduler_args', 'network_args']:
-                    # Convert list to space-separated string for textbox display
-                    result_values.append(" ".join(v) if isinstance(v, list) else v)
-                else:
-                    # Keep as list for other parameters
-                    result_values.append(v)
-            else:
-                # Unknown list - try to convert if it looks numeric
-                if v and len(v) == 1 and isinstance(v[0], (int, float, type(None))):
-                    log.warning(f"[VALIDATION] Converting unexpected single-element list {param_name}: {v} -> {v[0]}")
-                    result_values.append(v[0])
-                else:
-                    log.warning(f"[VALIDATION] Keeping list for param {param_name}")
-                    result_values.append(v)
-        else:
+        if i < 2:  # file_path and gr.update
             result_values.append(v)
+        else:
+            # This is a parameter value
+            param_name = included_params[param_index] if param_index < len(included_params) else "unknown"
+
+            if isinstance(v, list):
+                # Only log verbose error if it's not the parameters list itself
+                if param_name != 'parameters' and 'parameters' not in str(v)[:50]:
+                    log.debug(f"[VALIDATION] Processing list value at index {i} (param: {param_name})")
+                # Try to fix it
+                if param_name in numeric_fields:
+                    fixed_value = v[0] if v else None
+                    log.info(f"[VALIDATION FIX] Converted {param_name} to: {fixed_value}")
+                    result_values.append(fixed_value)
+                elif param_name in ['optimizer_args', 'lr_scheduler_args', 'network_args',
+                                   'base_weights', 'extra_accelerate_launch_args',
+                                   'gpu_ids', 'additional_parameters']:
+                    # These should remain as lists, but optimizer_args, lr_scheduler_args, and network_args
+                    # need to be converted to space-separated strings for the GUI textbox
+                    if param_name in ['optimizer_args', 'lr_scheduler_args', 'network_args']:
+                        # Convert list to space-separated string for textbox display
+                        result_values.append(" ".join(str(item) for item in v) if isinstance(v, list) else v)
+                    else:
+                        # Keep as list for other parameters
+                        result_values.append(v)
+                else:
+                    # Unknown list - try to convert if it looks numeric
+                    if v and len(v) == 1 and isinstance(v[0], (int, float, type(None))):
+                        log.warning(f"[VALIDATION] Converting unexpected single-element list {param_name}: {v} -> {v[0]}")
+                        result_values.append(v[0])
+                    else:
+                        log.warning(f"[VALIDATION] Keeping list for param {param_name}")
+                        result_values.append(v)
+            else:
+                result_values.append(v)
+
+            param_index += 1
 
     return tuple(result_values)
 

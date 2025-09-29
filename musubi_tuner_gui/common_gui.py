@@ -1595,7 +1595,49 @@ def SaveConfigFile(
             if name in empty_to_none_params:
                 if isinstance(value, str) and value == "":
                     value = None
-            
+
+            # Ensure numeric fields are properly typed
+            # Define numeric fields that should be converted from strings to numbers
+            numeric_fields = [
+                'learning_rate', 'max_grad_norm', 'guidance_scale', 'logit_mean', 'logit_std',
+                'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
+                'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',
+                'vae_chunk_size', 'blocks_to_swap', 'min_timestep', 'max_timestep', 'discrete_flow_shift', 'flow_shift',
+                'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
+                'dataset_batch_size', 'max_train_steps', 'max_train_epochs', 'seed',
+                'gradient_accumulation_steps', 'sample_every_n_steps', 'sample_every_n_epochs',
+                'save_every_n_steps', 'save_every_n_epochs', 'save_last_n_epochs',
+                'save_last_n_steps', 'save_last_n_epochs_state', 'save_last_n_steps_state',
+                'network_dim', 'lr_warmup_steps', 'lr_decay_steps', 'lr_scheduler_num_cycles',
+                'ddp_timeout', 'max_data_loader_n_workers',
+                'num_processes', 'num_machines', 'num_cpu_threads_per_process', 'main_process_port',
+                'caching_latent_batch_size', 'caching_latent_num_workers', 'caching_latent_console_width',
+                'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers',
+                'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed',
+                'timestep_boundary', 'num_frames', 'vae_spatial_tile_sample_min_size',
+                # WAN/Qwen specific numeric fields
+                'dit_in_channels', 'num_layers', 'network_dropout', 'sample_num_frames', 'num_timestep_buckets',
+                'sample_discrete_flow_shift', 'sample_cfg_scale', 'dataset_qwen_image_edit_control_resolution_width',
+                'dataset_qwen_image_edit_control_resolution_height', 'one_frame'
+            ]
+
+            if name in numeric_fields and value is not None:
+                if isinstance(value, str):
+                    # Try to convert string to appropriate numeric type
+                    try:
+                        # First try to convert to float (handles integers, decimals, and scientific notation)
+                        value = float(value)
+                        # If the float is a whole number, convert to int for cleaner TOML
+                        if value.is_integer():
+                            value = int(value)
+                        log.debug(f"Converted {name} from string to {type(value).__name__}: {value}")
+                    except (ValueError, TypeError):
+                        log.warning(f"Could not convert {name} value '{value}' to numeric type, keeping as string")
+                elif isinstance(value, list) and len(value) == 1:
+                    # Handle single-element lists that should be scalars
+                    value = value[0]
+                    log.debug(f"Converted {name} from single-element list to scalar: {value}")
+
             variables[name] = value
 
     folder_path = os.path.dirname(file_path)
