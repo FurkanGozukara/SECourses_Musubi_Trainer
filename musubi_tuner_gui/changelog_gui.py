@@ -8,6 +8,63 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 29 September 2025 - V17
+
+**🎬 Revolutionary Video Generation Training Support - Train your own AI video models with WAN technology!**
+
+Changes:
+- **🌟 BRAND NEW: Complete WAN Video Models Training** - We've added full support for training cutting-edge video generation AI models! This is a game-changer for anyone interested in creating custom AI video generators:
+  - **Text-to-Video (T2V)** - Create videos from text descriptions (like "a cat playing piano")
+  - **Image-to-Video (I2V)** - Turn your photos into animated videos
+  - **Text-to-Image (T2I)** - Generate static images from text prompts
+  - **FramePack Video Models** - Advanced video generation with customizable frame counts
+  - **Fun-Control Models** - Specialized video models with unique capabilities
+  - **WAN 2.2 Advanced Models** - The latest and most powerful video generation technology
+
+- **🎯 Easy-to-Use Video Training Interface** - Just like our image training tabs, but designed specifically for video content:
+  - **Smart Dataset Setup** - Automatically detects and organizes both images and videos from your folders
+  - **One-Click Configuration** - Choose from popular video resolutions (960×960, 1280×720, 720×1280)
+  - **Memory Optimization** - Built-in settings to fit large video models in your GPU memory
+  - **Flow Matching Technology** - Uses the latest AI training techniques for better video quality
+
+- **🛠️ Professional Video Training Tools** - Everything you need for serious video model training:
+  - **Multi-Model Architecture Support** - Handles different WAN model sizes (1.3B, 14B parameters)
+  - **Dual Model Training** - Advanced WAN 2.2 models can use two different models for better results
+  - **Precision Options** - Choose BF16 for quality or FP8 for memory efficiency
+  - **Advanced Sampling** - Control how your training samples are generated during training
+
+- **📁 Enhanced File Management** - Better support for all the different model files video AI needs:
+  - **DiT Models** - The main video generation engine (Diffusion Transformer)
+  - **VAE Models** - Handles video compression and quality
+  - **Text Encoders** - Converts your text prompts into AI-understandable format
+  - **CLIP Vision Models** - Processes visual information for image-to-video tasks
+
+- **⚡ Smart Memory Management** - Video models are huge, so we built in multiple ways to fit them in your GPU:
+  - **Block Swapping** - Automatically moves model parts between GPU and CPU as needed
+  - **FP8 Precision** - Reduces memory usage by up to 50% with minimal quality loss
+  - **Tiling** - Processes large videos in smaller chunks to fit in memory
+  - **Offloading** - Smart CPU/GPU memory balancing for WAN 2.2 dual models
+
+- **🎨 Improved User Experience** - Better interface for all training types:
+  - **Custom Sample Output Folders** - Save your training preview images/videos to different locations
+  - **Enhanced Dataset Processing** - Automatically creates missing caption files for your training data
+  - **Flexible Configuration** - Mix images and videos in the same training dataset
+  - **Better Error Messages** - Clear feedback when something isn't set up correctly
+
+- **🔧 Technical Improvements** - Under-the-hood enhancements for reliability:
+  - **Parameter Validation** - Prevents common configuration mistakes before training starts
+  - **Cross-Platform Compatibility** - Works seamlessly on Windows, Linux, and Mac
+  - **Configuration Persistence** - All your WAN model settings save and load properly
+  - **Integration with Existing Features** - WAN training works with all our existing tools and workflows
+
+- **📚 Complete Documentation** - Extensive guidance for video model training:
+  - **Default Configurations** - Pre-optimized settings for different video model types
+  - **Training Tips** - Best practices for getting great video results
+  - **Hardware Recommendations** - Clear guidance on what GPU memory you need
+  - **Troubleshooting Guide** - Solutions for common video training issues
+
+This update transforms our trainer from an image-focused tool into a comprehensive AI media creation suite. Whether you want to train custom image generators or create your own video AI models, you now have everything you need in one place!
+
 ### 23 September 2025 - V16
 
 **Enhanced Qwen Image LoRA Training with Advanced Network Architectures and Format Conversions - Based on latest Musubi Tuner updates.**
