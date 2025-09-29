@@ -744,16 +744,16 @@ class WanModelSettings:
             self.task = gr.Dropdown(
                 label="Wan Model Type",
                 choices=[
-                    ("t2v-14B - Text-to-Video 14B (Wan 2.1 Standard) - 38", "t2v-14B"),
-                    ("t2v-1.3B - Text-to-Video 1.3B (Wan 2.1 Faster/Smaller) - 28", "t2v-1.3B"),
-                    ("i2v-14B - Image-to-Video 14B (Wan 2.1 Standard) - 38", "i2v-14B"),
-                    ("t2i-14B - Text-to-Image 14B (Wan 2.1 Standard) - 38", "t2i-14B"),
-                    ("flf2v-14B - First-Last-Frame-to-Video 14B (Wan 2.1) - 38", "flf2v-14B"),
-                    ("t2v-1.3B-FC - Text-to-Video 1.3B Fun-Control (Wan 2.1) - 28", "t2v-1.3B-FC"),
-                    ("t2v-14B-FC - Text-to-Video 14B Fun-Control (Wan 2.1) - 38", "t2v-14B-FC"),
-                    ("i2v-14B-FC - Image-to-Video 14B Fun-Control (Wan 2.1) - 38", "i2v-14B-FC"),
-                    ("t2v-A14B - Text-to-Video Advanced Dual-Model (Wan 2.2) - 38", "t2v-A14B"),
-                    ("i2v-A14B - Image-to-Video Advanced Dual-Model (Wan 2.2) - 38", "i2v-A14B")
+                    ("t2v-14B - Text-to-Video 14B (Wan 2.1 Standard) - 38 Max Block Swap", "t2v-14B"),
+                    ("t2v-1.3B - Text-to-Video 1.3B (Wan 2.1 Faster/Smaller) - 28 Max Block Swap", "t2v-1.3B"),
+                    ("i2v-14B - Image-to-Video 14B (Wan 2.1 Standard) - 38 Max Block Swap", "i2v-14B"),
+                    ("t2i-14B - Text-to-Image 14B (Wan 2.1 Standard) - 38 Max Block Swap", "t2i-14B"),
+                    ("flf2v-14B - First-Last-Frame-to-Video 14B (Wan 2.1) - 38 Max Block Swap", "flf2v-14B"),
+                    ("t2v-1.3B-FC - Text-to-Video 1.3B Fun-Control (Wan 2.1) - 28 Max Block Swap", "t2v-1.3B-FC"),
+                    ("t2v-14B-FC - Text-to-Video 14B Fun-Control (Wan 2.1) - 38 Max Block Swap", "t2v-14B-FC"),
+                    ("i2v-14B-FC - Image-to-Video 14B Fun-Control (Wan 2.1) - 38 Max Block Swap", "i2v-14B-FC"),
+                    ("t2v-A14B - Text-to-Video Advanced Dual-Model (Wan 2.2) - 38 Max Block Swap", "t2v-A14B"),
+                    ("i2v-A14B - Image-to-Video Advanced Dual-Model (Wan 2.2) - 38 Max Block Swap", "i2v-A14B")
                 ],
                 value=self.config.get("task", "t2v-14B"),
                 info="Choose your Wan model variant based on version, use case and hardware capabilities"
