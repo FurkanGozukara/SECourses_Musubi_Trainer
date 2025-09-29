@@ -1748,10 +1748,11 @@ def train_wan_model(headless, print_only, parameters):
             if param_dict.get("caching_teo_keep_cache"):
                 run_cache_teo_cmd.append("--keep_cache")
 
-            # Add text encoder dtype if specified
-            if param_dict.get("caching_teo_text_encoder_dtype"):
-                run_cache_teo_cmd.append("--text_encoder_dtype")
-                run_cache_teo_cmd.append(str(param_dict.get("caching_teo_text_encoder_dtype")))
+            # Note: WAN text encoder caching does not support --text_encoder_dtype
+            # The T5 model uses its configured dtype from the model config
+            # if param_dict.get("caching_teo_text_encoder_dtype"):
+            #     run_cache_teo_cmd.append("--text_encoder_dtype")
+            #     run_cache_teo_cmd.append(str(param_dict.get("caching_teo_text_encoder_dtype")))
 
             teo_cache_cmd = run_cache_teo_cmd
             log.info(f"WAN text encoder caching command: {teo_cache_cmd}")
@@ -2611,11 +2612,11 @@ def wan_lora_tab(
     with latent_caching_accordion:
         latent_caching = LatentCaching(headless=headless, config=config)
 
-    # Text Encoder Outputs Caching Settings  
+    # Text Encoder Outputs Caching Settings
     text_encoder_caching_accordion = gr.Accordion("Text Encoder Outputs Caching Settings", open=False, elem_classes="caching_background")
     accordions.append(text_encoder_caching_accordion)
     with text_encoder_caching_accordion:
-        text_encoder_caching = TextEncoderOutputsCaching(headless=headless, config=config)
+        text_encoder_caching = TextEncoderOutputsCaching(headless=headless, config=config, show_text_encoder_dtype=False)
 
     # Sample Generation Settings
     sample_accordion = gr.Accordion("Sample Generation Settings", open=False, elem_classes="samples_background")

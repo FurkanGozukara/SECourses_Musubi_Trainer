@@ -7,9 +7,11 @@ class TextEncoderOutputsCaching:
         self,
         headless: bool,
         config: GUIConfig,
+        show_text_encoder_dtype: bool = True,
     ) -> None:
         self.config = config
         self.headless = headless
+        self.show_text_encoder_dtype = show_text_encoder_dtype
 
         # Initialize the UI components
         self.initialize_ui_components()
@@ -28,13 +30,20 @@ class TextEncoderOutputsCaching:
                 value=self.config.get("caching_teo_text_encoder2", ""),
                 interactive=True,
             )
-            self.caching_teo_text_encoder_dtype = gr.Dropdown(
-                label="Text Encoder Data Type",
-                choices=["float16", "bfloat16"],
-                value=self.config.get("caching_teo_text_encoder_dtype", "bfloat16"),
-                interactive=True,
-                info="Default is bfloat16"
-            )
+            if self.show_text_encoder_dtype:
+                self.caching_teo_text_encoder_dtype = gr.Dropdown(
+                    label="Text Encoder Data Type",
+                    choices=["float16", "bfloat16"],
+                    value=self.config.get("caching_teo_text_encoder_dtype", "bfloat16"),
+                    interactive=True,
+                    info="Default is bfloat16"
+                )
+            else:
+                # Create a hidden dummy component for compatibility with Gradio dependencies
+                self.caching_teo_text_encoder_dtype = gr.Textbox(
+                    value=self.config.get("caching_teo_text_encoder_dtype", "bfloat16"),
+                    visible=False
+                )
 
         with gr.Row():
             self.caching_teo_device = gr.Textbox(
