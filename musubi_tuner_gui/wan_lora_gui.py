@@ -744,16 +744,16 @@ class WanModelSettings:
             self.task = gr.Dropdown(
                 label="Wan Model Type",
                 choices=[
-                    ("t2v-14B - Text-to-Video 14B (Wan 2.1 Standard)", "t2v-14B"),
-                    ("t2v-1.3B - Text-to-Video 1.3B (Wan 2.1 Faster/Smaller)", "t2v-1.3B"),
-                    ("i2v-14B - Image-to-Video 14B (Wan 2.1 Standard)", "i2v-14B"),
-                    ("t2i-14B - Text-to-Image 14B (Wan 2.1 Standard)", "t2i-14B"),
-                    ("flf2v-14B - First-Last-Frame-to-Video 14B (Wan 2.1)", "flf2v-14B"),
-                    ("t2v-1.3B-FC - Text-to-Video 1.3B Fun-Control (Wan 2.1)", "t2v-1.3B-FC"),
-                    ("t2v-14B-FC - Text-to-Video 14B Fun-Control (Wan 2.1)", "t2v-14B-FC"),
-                    ("i2v-14B-FC - Image-to-Video 14B Fun-Control (Wan 2.1)", "i2v-14B-FC"),
-                    ("t2v-A14B - Text-to-Video Advanced Dual-Model (Wan 2.2)", "t2v-A14B"),
-                    ("i2v-A14B - Image-to-Video Advanced Dual-Model (Wan 2.2)", "i2v-A14B")
+                    ("t2v-14B - Text-to-Video 14B (Wan 2.1 Standard) - 38", "t2v-14B"),
+                    ("t2v-1.3B - Text-to-Video 1.3B (Wan 2.1 Faster/Smaller) - 28", "t2v-1.3B"),
+                    ("i2v-14B - Image-to-Video 14B (Wan 2.1 Standard) - 38", "i2v-14B"),
+                    ("t2i-14B - Text-to-Image 14B (Wan 2.1 Standard) - 38", "t2i-14B"),
+                    ("flf2v-14B - First-Last-Frame-to-Video 14B (Wan 2.1) - 38", "flf2v-14B"),
+                    ("t2v-1.3B-FC - Text-to-Video 1.3B Fun-Control (Wan 2.1) - 28", "t2v-1.3B-FC"),
+                    ("t2v-14B-FC - Text-to-Video 14B Fun-Control (Wan 2.1) - 38", "t2v-14B-FC"),
+                    ("i2v-14B-FC - Image-to-Video 14B Fun-Control (Wan 2.1) - 38", "i2v-14B-FC"),
+                    ("t2v-A14B - Text-to-Video Advanced Dual-Model (Wan 2.2) - 38", "t2v-A14B"),
+                    ("i2v-A14B - Image-to-Video Advanced Dual-Model (Wan 2.2) - 38", "i2v-A14B")
                 ],
                 value=self.config.get("task", "t2v-14B"),
                 info="Choose your Wan model variant based on version, use case and hardware capabilities"
@@ -2485,32 +2485,6 @@ def wan_lora_tab(
 
     # Setup Configuration Files Gradio
     with gr.Accordion("Configuration file Settings", open=True):
-        # Show configuration status
-        # Check if this is a default config by looking for Wan-specific values
-        is_using_defaults = (hasattr(config, 'config') and 
-                            config.config.get("task") == "t2v-14B" and 
-                            config.config.get("num_frames") == 81 and
-                            config.config.get("network_module") == "networks.lora_wan")
-        
-        if is_using_defaults:
-            config_status = """
-            [OK] **Wan Models Optimal Defaults Active**
-            
-            **Key Optimizations Applied:**
-            - Task: t2v-14B (Text-to-Video 14B parameters)
-            - Optimizer: adamw8bit (memory efficient, recommended)
-            - Learning Rate: 1e-4 (recommended for Wan models)
-            - Mixed Precision: bf16 (strongly recommended)
-            - SDPA Attention: Enabled (fastest for Wan models)
-            - Gradient Checkpointing: Enabled (memory savings)
-            - Video Frames: 81 (standard for Wan models)
-            """
-        elif hasattr(config, 'config') and config.config:
-            config_status = "[INFO] **Custom configuration loaded** - You may want to verify optimal settings are applied"
-        else:
-            config_status = "[WARNING] **No configuration** - Default values will be used"
-        
-        gr.Markdown(config_status)
         configuration = ConfigurationFile(headless=headless, config=config)
 
     # Add search functionality and unified toggle button
