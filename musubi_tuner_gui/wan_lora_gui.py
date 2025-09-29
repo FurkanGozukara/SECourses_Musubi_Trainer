@@ -1438,9 +1438,9 @@ def wan_gui_actions(
                 "logging_dir", "log_with", "log_prefix", "log_tracker_name", "wandb_run_name", "log_tracker_config",
                 "wandb_api_key", "log_config", "ddp_timeout", "ddp_gradient_as_bucket_view", "ddp_static_graph",
                 # Sample generation settings (from TrainingSettings)
-                "sample_every_n_steps", "sample_every_n_epochs", "sample_at_first", "sample_prompts", "sample_width",
-                "sample_height", "sample_num_frames", "sample_steps", "sample_guidance_scale", "sample_seed",
-                "sample_negative_prompt",
+                "sample_every_n_steps", "sample_every_n_epochs", "sample_at_first", "sample_prompts", "sample_output_dir",
+                "disable_prompt_enhancement", "sample_width", "sample_height", "sample_num_frames", "sample_steps",
+                "sample_guidance_scale", "sample_seed", "sample_negative_prompt",
                 # Latent Caching Settings
                 "caching_latent_device", "caching_latent_batch_size", "caching_latent_num_workers", "caching_latent_skip_existing",
                 "caching_latent_keep_cache", "caching_latent_debug_mode", "caching_latent_console_width",
@@ -1494,9 +1494,9 @@ def wan_gui_actions(
                 "logging_dir", "log_with", "log_prefix", "log_tracker_name", "wandb_run_name", "log_tracker_config",
                 "wandb_api_key", "log_config", "ddp_timeout", "ddp_gradient_as_bucket_view", "ddp_static_graph",
                 # Sample generation settings (from TrainingSettings)
-                "sample_every_n_steps", "sample_every_n_epochs", "sample_at_first", "sample_prompts", "sample_width",
-                "sample_height", "sample_num_frames", "sample_steps", "sample_guidance_scale", "sample_seed",
-                "sample_negative_prompt",
+                "sample_every_n_steps", "sample_every_n_epochs", "sample_at_first", "sample_prompts", "sample_output_dir",
+                "disable_prompt_enhancement", "sample_width", "sample_height", "sample_num_frames", "sample_steps",
+                "sample_guidance_scale", "sample_seed", "sample_negative_prompt",
                 # Latent Caching Settings
                 "caching_latent_device", "caching_latent_batch_size", "caching_latent_num_workers", "caching_latent_skip_existing",
                 "caching_latent_keep_cache", "caching_latent_debug_mode", "caching_latent_console_width",
@@ -1552,9 +1552,9 @@ def wan_gui_actions(
                 "logging_dir", "log_with", "log_prefix", "log_tracker_name", "wandb_run_name", "log_tracker_config",
                 "wandb_api_key", "log_config", "ddp_timeout", "ddp_gradient_as_bucket_view", "ddp_static_graph",
                 # Sample generation settings
-                "sample_every_n_steps", "sample_every_n_epochs", "sample_at_first", "sample_prompts", "sample_width",
-                "sample_height", "sample_num_frames", "sample_steps", "sample_guidance_scale", "sample_seed",
-                "sample_negative_prompt",
+                "sample_every_n_steps", "sample_every_n_epochs", "sample_at_first", "sample_prompts", "sample_output_dir",
+                "disable_prompt_enhancement", "sample_width", "sample_height", "sample_num_frames", "sample_steps",
+                "sample_guidance_scale", "sample_seed", "sample_negative_prompt",
                 # Latent Caching Settings
                 "caching_latent_device", "caching_latent_batch_size", "caching_latent_num_workers", "caching_latent_skip_existing",
                 "caching_latent_keep_cache", "caching_latent_debug_mode", "caching_latent_console_width",
