@@ -1651,8 +1651,8 @@ def train_wan_model(headless, print_only, parameters):
         if "i2v" in task.lower():
             run_cache_latent_cmd.append("--i2v")
 
-        # Check for one_frame training
-        if param_dict.get("one_frame", False):
+        # Check for one_frame training (only enable if it's explicitly True, not just truthy)
+        if param_dict.get("one_frame", False) is True:
             run_cache_latent_cmd.append("--one_frame")
 
         # VAE cache CPU setting
