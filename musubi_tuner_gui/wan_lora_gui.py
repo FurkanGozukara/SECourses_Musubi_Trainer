@@ -1111,6 +1111,256 @@ class WanModelSettings:
         return dit_high_noise, timestep_boundary, offload_inactive_dit
 
 
+class WanSampleSettings:
+    """Wan video specific sample generation settings"""
+    def __init__(self, headless: bool, config: GUIConfig) -> None:
+        self.config = config
+        self.headless = headless
+        self.initialize_ui_components()
+
+    def initialize_ui_components(self):
+        gr.Markdown("""
+        ### Sample Generation Configuration
+        Configure test video generation during training. Samples help monitor training progress and quality.
+
+        **How it works:**
+        - Provide a simple prompt file (one prompt per line)
+        - GUI defaults below will be automatically added to prompts that don't specify parameters
+        - An enhanced prompt file will be saved to your output directory for reference
+
+        **Prompt File Format:**
+        - Simple format: `A cat playing in the garden` (will use GUI defaults below)
+        - Advanced format: `A cat playing in the garden --w 960 --h 960 --f 81` (overrides GUI defaults)
+        - Mixed: Some prompts can have parameters, others will use defaults
+        """)
+
+        # Basic sample settings
+        with gr.Row():
+            self.sample_every_n_steps = gr.Number(
+                label="Sample Every N Steps",
+                info="Generate test videos every N training steps. 0 = disable",
+                value=self.config.get("sample_every_n_steps", 0),
+                minimum=0,
+                step=1,
+                interactive=True,
+            )
+
+            self.sample_every_n_epochs = gr.Number(
+                label="Sample Every N Epochs",
+                info="Generate test videos every N epochs. 0 = disable. Overrides sample_every_n_steps",
+                value=self.config.get("sample_every_n_epochs", 0),
+                minimum=0,
+                step=1,
+                interactive=True,
+            )
+
+            self.sample_at_first = gr.Checkbox(
+                label="Sample at First",
+                info="Generate test videos before training starts to verify setup",
+                value=self.config.get("sample_at_first", False),
+            )
+
+        # Sample prompts file
+        with gr.Row():
+            with gr.Column(scale=4):
+                self.sample_prompts = gr.Textbox(
+                    label="Sample Prompts File",
+                    info="Path to text/TOML/JSON file with prompts. Required for sample generation",
+                    placeholder="e.g., /path/to/prompts.txt",
+                    value=self.config.get("sample_prompts", ""),
+                )
+            self.sample_prompts_button = gr.Button(
+                "📂",
+                size="sm",
+                elem_id="sample_prompts_button"
+            )
+
+        # Default sample parameters
+        gr.Markdown("### Default Sample Parameters")
+        gr.Markdown("These values will be automatically added to prompts that don't specify them")
+
+        with gr.Row():
+            self.sample_width = gr.Number(
+                label="Default Width",
+                info="Default width for samples (Wan optimal: 960, 1280, 720)",
+                value=self.config.get("sample_width", 960),
+                minimum=64,
+                maximum=4096,
+                step=64,
+                interactive=True,
+            )
+
+            self.sample_height = gr.Number(
+                label="Default Height",
+                info="Default height for samples (Wan optimal: 960, 720, 1280)",
+                value=self.config.get("sample_height", 960),
+                minimum=64,
+                maximum=4096,
+                step=64,
+                interactive=True,
+            )
+
+            self.sample_num_frames = gr.Number(
+                label="Default Number of Frames",
+                info="Number of frames in sample videos (Wan optimal: 81)",
+                value=self.config.get("sample_num_frames", 81),
+                minimum=1,
+                maximum=200,
+                step=1,
+                interactive=True,
+            )
+
+        with gr.Row():
+            self.sample_steps = gr.Number(
+                label="Default Steps",
+                info="Number of inference steps for sample generation",
+                value=self.config.get("sample_steps", 20),
+                minimum=1,
+                maximum=100,
+                step=1,
+                interactive=True,
+            )
+
+            self.sample_guidance_scale = gr.Number(
+                label="Default Guidance Scale",
+                info="Guidance scale for sample generation (higher = stronger prompt adherence, Wan optimal: 7.0)",
+                value=self.config.get("sample_guidance_scale", 7.0),
+                minimum=1.0,
+                maximum=20.0,
+                step=0.1,
+                interactive=True,
+            )
+
+            self.sample_seed = gr.Number(
+                label="Default Seed",
+                info="Random seed (-1 = random each time)",
+                value=self.config.get("sample_seed", 99),
+                minimum=-1,
+                step=1,
+                interactive=True,
+            )
+
+        with gr.Row():
+            self.sample_negative_prompt = gr.Textbox(
+                label="Sample Negative Prompt",
+                info="Negative prompt for sample generation",
+                value=self.config.get("sample_negative_prompt", ""),
+                placeholder="e.g., blurry, low quality, distorted",
+            )
+
+
+def generate_enhanced_prompt_file(
+    original_prompt_file: str,
+    output_dir: str,
+    output_name: str,
+    sample_width: int = 960,
+    sample_height: int = 960,
+    sample_num_frames: int = 81,
+    sample_steps: int = 20,
+    sample_guidance_scale: float = 7.0,
+    sample_seed: int = 99,
+    sample_negative_prompt: str = ""
+) -> str:
+    """
+    Generate an enhanced prompt file with GUI defaults added to prompts that don't have parameters.
+
+    Args:
+        original_prompt_file: Path to the original prompt file
+        output_dir: Directory to save the enhanced prompt file
+        output_name: Base name for the output file
+        sample_width: Default width for samples
+        sample_height: Default height for samples
+        sample_num_frames: Default number of frames for samples
+        sample_steps: Default number of denoising steps
+        sample_guidance_scale: Default guidance scale
+        sample_seed: Default seed (99 for WAN, -1 would be random)
+        sample_scheduler: Default scheduler
+        sample_negative_prompt: Default negative prompt
+
+    Returns:
+        Path to the enhanced prompt file
+    """
+    try:
+        # Read original prompt file
+        if not os.path.exists(original_prompt_file):
+            log.error(f"Original prompt file not found: {original_prompt_file}")
+            return None
+
+        with open(original_prompt_file, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+
+        # Process each line
+        enhanced_lines = []
+        for line in lines:
+            line = line.strip()
+
+            # Skip empty lines and comments
+            if not line or line.startswith('#'):
+                enhanced_lines.append(line)
+                continue
+
+            # Check if line already has parameters
+            has_width = '--w ' in line or '-w ' in line
+            has_height = '--h ' in line or '-h ' in line
+            has_frames = '--f ' in line or '-f ' in line
+            has_steps = '--s ' in line or '-s ' in line
+            has_guidance = '--g ' in line or '-g ' in line
+            has_seed = '--d ' in line or '-d ' in line
+            has_negative = '--n ' in line or '-n ' in line
+
+            # Build enhanced line with defaults for missing parameters
+            enhanced_line = line
+
+            # Add width and height if not present
+            if not has_width:
+                enhanced_line += f" --w {sample_width}"
+            if not has_height:
+                enhanced_line += f" --h {sample_height}"
+
+            # Add frames if not present
+            if not has_frames:
+                enhanced_line += f" --f {sample_num_frames}"
+
+            # Add steps if not present
+            if not has_steps:
+                enhanced_line += f" --s {sample_steps}"
+
+            # Add guidance if not present
+            if not has_guidance:
+                enhanced_line += f" --g {sample_guidance_scale}"
+
+            # Add negative prompt if not present and not empty
+            if not has_negative and sample_negative_prompt and sample_negative_prompt.strip():
+                enhanced_line += f" --n {sample_negative_prompt}"
+
+            # Add seed if not present
+            if not has_seed:
+                enhanced_line += f" --d {sample_seed}"
+
+            enhanced_lines.append(enhanced_line)
+
+        # Create output directory if it doesn't exist
+        if not os.path.exists(output_dir):
+            os.makedirs(output_dir, exist_ok=True)
+
+        # Generate filename with timestamp
+        timestamp = time.strftime("%Y%m%d_%H%M%S", time.localtime())
+        enhanced_filename = f"{output_name}_enhanced_prompts_{timestamp}.txt"
+        enhanced_path = os.path.join(output_dir, enhanced_filename)
+
+        # Write enhanced file
+        with open(enhanced_path, 'w', encoding='utf-8') as f:
+            for line in enhanced_lines:
+                f.write(line + '\n')
+
+        log.info(f"Enhanced prompt file created: {enhanced_path}")
+        return enhanced_path
+
+    except Exception as e:
+        log.error(f"Error generating enhanced prompt file: {e}")
+        return None
+
+
 class WanSaveLoadSettings(SaveLoadSettings):
     """Wan-specific save/load settings that extend the base SaveLoadSettings"""
     def __init__(self, headless: bool, config: GUIConfig) -> None:
@@ -1157,7 +1407,7 @@ def wan_gui_actions(
                 # Sample generation settings (from TrainingSettings)
                 "sample_every_n_steps", "sample_every_n_epochs", "sample_at_first", "sample_prompts", "sample_width",
                 "sample_height", "sample_num_frames", "sample_steps", "sample_guidance_scale", "sample_seed",
-                "sample_scheduler", "sample_negative_prompt",
+                "sample_negative_prompt",
                 # Latent Caching Settings
                 "caching_latent_device", "caching_latent_batch_size", "caching_latent_num_workers", "caching_latent_skip_existing",
                 "caching_latent_keep_cache", "caching_latent_debug_mode", "caching_latent_console_width",
@@ -1213,7 +1463,7 @@ def wan_gui_actions(
                 # Sample generation settings (from TrainingSettings)
                 "sample_every_n_steps", "sample_every_n_epochs", "sample_at_first", "sample_prompts", "sample_width",
                 "sample_height", "sample_num_frames", "sample_steps", "sample_guidance_scale", "sample_seed",
-                "sample_scheduler", "sample_negative_prompt",
+                "sample_negative_prompt",
                 # Latent Caching Settings
                 "caching_latent_device", "caching_latent_batch_size", "caching_latent_num_workers", "caching_latent_skip_existing",
                 "caching_latent_keep_cache", "caching_latent_debug_mode", "caching_latent_console_width",
@@ -1245,6 +1495,61 @@ def wan_gui_actions(
     elif action == "train_model":
         log.info("Train WAN model...")
         gr.Info("Training is starting... Please check the console for progress.")
+        parameters = list(zip(
+            [
+                # accelerate_launch
+                "mixed_precision", "num_cpu_threads_per_process", "num_processes", "num_machines", "multi_gpu", "gpu_ids",
+                "main_process_port", "dynamo_backend", "dynamo_mode", "dynamo_use_fullgraph", "dynamo_use_dynamic", "extra_accelerate_launch_args",
+                # advanced_training
+                "additional_parameters",
+                # Wan Dataset settings
+                "dataset_config_mode", "dataset_config", "parent_folder_path", "dataset_resolution_width",
+                "dataset_resolution_height", "dataset_caption_extension", "dataset_batch_size",
+                "create_missing_captions", "caption_strategy", "dataset_enable_bucket",
+                "dataset_bucket_no_upscale", "dataset_cache_directory", "generated_toml_path",
+                # Wan Model settings
+                "training_mode", "task", "dit", "vae", "t5", "clip",
+                "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
+                "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
+                "fp8_t5", "blocks_to_swap", "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
+                # training_settings
+                "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
+                "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
+                "gradient_checkpointing_cpu_offload", "gradient_accumulation_steps", "full_bf16", "full_fp16",
+                "logging_dir", "log_with", "log_prefix", "log_tracker_name", "wandb_run_name", "log_tracker_config",
+                "wandb_api_key", "log_config", "ddp_timeout", "ddp_gradient_as_bucket_view", "ddp_static_graph",
+                # Sample generation settings
+                "sample_every_n_steps", "sample_every_n_epochs", "sample_at_first", "sample_prompts", "sample_width",
+                "sample_height", "sample_num_frames", "sample_steps", "sample_guidance_scale", "sample_seed",
+                "sample_negative_prompt",
+                # Latent Caching Settings
+                "caching_latent_device", "caching_latent_batch_size", "caching_latent_num_workers", "caching_latent_skip_existing",
+                "caching_latent_keep_cache", "caching_latent_debug_mode", "caching_latent_console_width",
+                "caching_latent_console_back", "caching_latent_console_num_images",
+                # Text Encoder Outputs Caching Settings
+                "caching_teo_text_encoder1", "caching_teo_text_encoder2", "caching_teo_text_encoder_dtype", "caching_teo_device",
+                "caching_teo_fp8_llm", "caching_teo_batch_size", "caching_teo_num_workers", "caching_teo_skip_existing",
+                "caching_teo_keep_cache",
+                # Optimizer and Scheduler Settings
+                "optimizer_type", "optimizer_args", "learning_rate", "max_grad_norm", "lr_scheduler", "lr_warmup_steps",
+                "lr_decay_steps", "lr_scheduler_num_cycles", "lr_scheduler_power", "lr_scheduler_timescale",
+                "lr_scheduler_min_lr_ratio", "lr_scheduler_type", "lr_scheduler_args",
+                # Network Settings
+                "no_metadata", "network_weights", "network_module", "network_dim", "network_alpha",
+                "network_dropout", "network_args", "training_comment", "dim_from_weights", "scale_weight_norms",
+                "base_weights", "base_weights_multiplier",
+                # Save/Load Settings
+                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
+                "save_last_n_epochs_state", "save_last_n_steps", "save_last_n_steps_state", "save_state",
+                "save_state_on_train_end", "mem_eff_save",
+                # HuggingFace Settings
+                "huggingface_repo_id", "huggingface_token", "huggingface_repo_type", "huggingface_repo_visibility",
+                "huggingface_path_in_repo", "save_state_to_huggingface", "resume_from_huggingface", "async_upload",
+                # Metadata Settings
+                "metadata_author", "metadata_description", "metadata_license", "metadata_tags", "metadata_title"
+            ],
+            args
+        ))
         return train_wan_model(
             headless=headless,
             print_only=print_only,
@@ -1475,6 +1780,32 @@ def train_wan_model(headless, print_only, parameters):
                 else:
                     modified_params.append((key, value))
             parameters = modified_params
+
+        # Enhance sample prompts file with GUI defaults if sample generation is enabled
+        if sample_prompts_provided:
+            original_prompt_file = param_dict.get('sample_prompts')
+            output_dir = param_dict.get('output_dir')
+
+            # Create enhanced prompt file
+            enhanced_prompt_file = generate_enhanced_prompt_file(
+                original_prompt_file=original_prompt_file,
+                output_dir=output_dir,
+                output_name=param_dict.get('output_name'),
+                sample_width=param_dict.get('sample_width', 960),
+                sample_height=param_dict.get('sample_height', 960),
+                sample_num_frames=param_dict.get('sample_num_frames', 81),
+                sample_steps=param_dict.get('sample_steps', 20),
+                sample_guidance_scale=param_dict.get('sample_guidance_scale', 7.0),
+                sample_seed=param_dict.get('sample_seed', 99),
+                sample_negative_prompt=param_dict.get('sample_negative_prompt', '')
+            )
+
+            if enhanced_prompt_file:
+                # Update parameters to use the enhanced prompt file
+                log.info(f"Using enhanced prompt file for training: {enhanced_prompt_file}")
+                parameters = upsert_parameter(parameters, "sample_prompts", enhanced_prompt_file)
+            else:
+                log.warning("Failed to create enhanced prompt file, using original file")
 
         # Modify parameters based on training mode
         training_mode = param_dict.get("training_mode", "LoRA Training")
@@ -2254,107 +2585,7 @@ def wan_lora_tab(
     sample_accordion = gr.Accordion("Sample Generation Settings", open=False, elem_classes="samples_background")
     accordions.append(sample_accordion)
     with sample_accordion:
-        with gr.Row():
-            sample_every_n_steps = gr.Number(
-                label="Sample Every N Steps",
-                value=config.get("sample_every_n_steps", 0),
-                minimum=0,
-                step=1,
-                info="Generate sample videos every N steps (0=disabled, 100-500 recommended)"
-            )
-            sample_every_n_epochs = gr.Number(
-                label="Sample Every N Epochs", 
-                value=config.get("sample_every_n_epochs", 0),
-                minimum=0,
-                step=1,
-                info="Generate sample videos every N epochs (0=disabled, 1 recommended)"
-            )
-        
-        with gr.Row():
-            sample_at_first = gr.Checkbox(
-                label="Sample at First",
-                value=config.get("sample_at_first", False),
-                info="Generate samples before training starts"
-            )
-            with gr.Column(scale=8):
-                sample_prompts = gr.Textbox(
-                    label="Sample Prompts File",
-                    value=str(config.get("sample_prompts", "")),
-                    info="Path to text file containing prompts for sample generation"
-                )
-            with gr.Column(scale=1):
-                sample_prompts_button = gr.Button("📂", size="sm")
-        
-        # Sample generation parameters
-        with gr.Row():
-            sample_width = gr.Number(
-                label="Sample Width",
-                value=config.get("sample_width", 960),
-                minimum=64,
-                maximum=4096,
-                step=64,
-                info="Width for generated sample videos. Optimal resolutions: 960×960, 1280×720, 720×1280"
-            )
-            sample_height = gr.Number(
-                label="Sample Height", 
-                value=config.get("sample_height", 960),
-                minimum=64,
-                maximum=4096,
-                step=64,
-                info="Height for generated sample videos. Optimal resolutions: 960×960, 1280×720, 720×1280"
-            )
-        
-        with gr.Row():
-            sample_num_frames = gr.Number(
-                label="Sample Number of Frames",
-                value=config.get("sample_num_frames", 81),
-                minimum=1,
-                maximum=200,
-                step=1,
-                info="Number of frames in sample videos"
-            )
-            sample_steps = gr.Number(
-                label="Sample Steps",
-                value=config.get("sample_steps", 20),
-                minimum=1,
-                maximum=100,
-                step=1,
-                info="Number of inference steps for sample generation"
-            )
-        
-        with gr.Row():
-            sample_guidance_scale = gr.Number(
-                label="Sample Guidance Scale",
-                value=config.get("sample_guidance_scale", 7.0),
-                minimum=1.0,
-                maximum=20.0,
-                step=0.1,
-                info="Guidance scale for sample generation (higher = stronger prompt adherence)"
-            )
-            sample_seed = gr.Number(
-                label="Sample Seed",
-                value=config.get("sample_seed", 99),
-                minimum=-1,
-                step=1,
-                info="Seed for sample generation (-1 = random each time)"
-            )
-        
-        with gr.Row():
-            sample_scheduler = gr.Dropdown(
-                label="Sample Scheduler",
-                choices=["unipc", "euler", "dpmpp_2m"],
-                value=config.get("sample_scheduler", "unipc"),
-                info="Scheduler for sample generation"
-            )
-            with gr.Column(scale=8):
-                sample_negative_prompt = gr.Textbox(
-                    label="Sample Negative Prompt",
-                    value=str(config.get("sample_negative_prompt", "")),
-                    info="Default negative prompt for all samples"
-                )
-
-        # Set up sample prompts file browser
-        sample_prompts_button.click(fn=lambda: get_file_path(), outputs=[sample_prompts])
+        sampleSettings = WanSampleSettings(headless=headless, config=config)
 
     # Advanced Settings
     advanced_accordion = gr.Accordion("Advanced Settings", open=False, elem_classes="advanced_background")
@@ -2471,19 +2702,18 @@ def wan_lora_tab(
         training_settings.ddp_gradient_as_bucket_view,
         training_settings.ddp_static_graph,
 
-        # Sample generation settings (from TrainingSettings)
-        training_settings.sample_every_n_steps,
-        training_settings.sample_every_n_epochs,
-        training_settings.sample_at_first,
-        training_settings.sample_prompts,
-        sample_width,
-        sample_height,
-        sample_num_frames,
-        sample_steps,
-        sample_guidance_scale,
-        sample_seed,
-        sample_scheduler,
-        sample_negative_prompt,
+        # Sample generation settings
+        sampleSettings.sample_every_n_steps,
+        sampleSettings.sample_every_n_epochs,
+        sampleSettings.sample_at_first,
+        sampleSettings.sample_prompts,
+        sampleSettings.sample_width,
+        sampleSettings.sample_height,
+        sampleSettings.sample_num_frames,
+        sampleSettings.sample_steps,
+        sampleSettings.sample_guidance_scale,
+        sampleSettings.sample_seed,
+        sampleSettings.sample_negative_prompt,
 
         # Latent Caching Settings
         latent_caching.caching_latent_device,
