@@ -34,7 +34,7 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
     ui_interface = gr.Blocks(css=css, title="SECourses Musubi Trainer", theme=gr.themes.Soft())
     with ui_interface:
         # Add title with Patreon link
-        gr.Markdown("# SECourses Musubi Trainer V17 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
+        gr.Markdown("# SECourses Musubi Trainer V17.2 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
         
         # Create tabs for different functionalities
         with gr.Tab("Qwen Image Training"):
