@@ -101,7 +101,7 @@ class WanDataset:
                 with gr.Column(scale=8):
                     self.parent_folder_path = gr.Textbox(
                         label="Parent Folder Path",
-                        info="Path to parent folder containing subfolders with videos/images. Each subfolder can have format: [repeats]_[name] (e.g., 3_ohwx, 2_style)",
+                        info="Path to parent folder with subfolder(s) containing videos/images AND their caption files together. Simplest: Create one folder named 1_[name] (e.g., 1_character_videos). Captions MUST be in SAME folder as media!",
                         placeholder="e.g., C:\\Users\\Name\\Pictures\\training_data",
                         value=self.config.get("parent_folder_path", "")
                     )
@@ -325,36 +325,73 @@ class WanDataset:
                 </div>
 
                 <div style="background: rgba(255,255,255,0.1); padding: 15px; border-radius: 8px; margin: 15px 0;">
-                    <h3 style="color: #ffffff; margin-top: 0;">📁 Dataset Structure Examples</h3>
+                    <h3 style="color: #ffffff; margin-top: 0;">📁 Dataset Structure (REQUIRED Format)</h3>
+                    
+                    <div style="background: rgba(239, 68, 68, 0.2); padding: 10px; border-radius: 6px; margin: 10px 0; border-left: 4px solid #ef4444;">
+                        <p style="color: #fbbf24; margin: 5px 0;"><strong>⚠️ IMPORTANT:</strong> Caption files MUST be in the SAME folder as media files with matching names!</p>
+                        <p style="color: #d1d5db; font-size: 13px; margin: 5px 0;">❌ Separate folders (videos/ + captions/) are NOT supported by musubi backend</p>
+                    </div>
                     
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 15px 0;">
                         <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px;">
                             <h4 style="color: #60a5fa; margin-top: 0;">🎬 Video Dataset Structure</h4>
                             <pre style="color: #d1d5db; font-size: 12px; margin: 0; line-height: 1.4;">training_data/
-├── videos/
-│   ├── video1.mp4 (81 frames, 960×960, 16fps)
-│   ├── video2.mp4 (81 frames, 960×960, 16fps)
-│   └── video3.mp4 (81 frames, 960×960, 16fps)
-├── captions/
-│   ├── video1.txt
-│   ├── video2.txt
-│   └── video3.txt
-└── cache_dir/ (auto-generated)</pre>
+└── 1_ohwx man/
+    ├── video1.mp4 (81 frames, 960×960, 16fps)
+    ├── video1.txt
+    ├── video2.mp4 (81 frames, 960×960, 16fps)
+    ├── video2.txt
+    ├── video3.mp4 (81 frames, 960×960, 16fps)
+    ├── video3.txt
+    └── cache_dir/ (auto-generated)</pre>
+                            <p style="color: #10b981; font-size: 11px; margin: 5px 0;">✅ Simple: Just one folder with videos + captions together</p>
                         </div>
                         
                         <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px;">
                             <h4 style="color: #c084fc; margin-top: 0;">📸 Image Dataset Structure</h4>
                             <pre style="color: #d1d5db; font-size: 12px; margin: 0; line-height: 1.4;">training_data/
-├── images/
-│   ├── image1.jpg (960×960)
-│   ├── image2.jpg (960×960)
-│   └── image3.jpg (960×960)
-├── captions/
-│   ├── image1.txt
-│   ├── image2.txt
-│   └── image3.txt
-└── cache_dir/ (auto-generated)</pre>
+└── 1_ohwx style/
+    ├── image1.jpg (960×960)
+    ├── image1.txt
+    ├── image2.jpg (960×960)
+    ├── image2.txt
+    ├── image3.jpg (960×960)
+    ├── image3.txt
+    └── cache_dir/ (auto-generated)</pre>
+                            <p style="color: #10b981; font-size: 11px; margin: 5px 0;">✅ Simple: Just one folder with images + captions together</p>
                         </div>
+                    </div>
+                    
+                    <div style="background: rgba(34, 197, 94, 0.2); padding: 10px; border-radius: 6px; margin: 10px 0;">
+                        <p style="color: #4ade80; margin: 5px 0;"><strong>💡 Folder Name Format:</strong></p>
+                        <ul style="color: #d1d5db; font-size: 13px; margin: 5px 0; padding-left: 15px;">
+                            <li><strong>Start with "1_"</strong> - Keep it simple! (e.g., <code style="background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 3px;">1_ohwx man</code>, <code style="background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 3px;">1_my_dataset</code>)</li>
+                            <li>You can have <strong>just ONE folder</strong> or multiple folders if needed</li>
+                            <li>The number before "_" is repeat count (use 1 for normal training, higher numbers to oversample specific data)</li>
+                        </ul>
+                    </div>
+                    
+                    <div style="background: rgba(168, 85, 247, 0.2); padding: 10px; border-radius: 6px; margin: 10px 0; border-left: 4px solid #a855f7;">
+                        <p style="color: #c084fc; margin: 5px 0;"><strong>🎨 Mixed Datasets (Videos + Images):</strong></p>
+                        <p style="color: #d1d5db; font-size: 13px; margin: 5px 0;">✅ You CAN mix videos and images, but use SEPARATE folders for each type:</p>
+                        <pre style="color: #d1d5db; font-size: 11px; margin: 5px 0; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 4px;">training_data/
+├── 1_ohwx videos/     ← Only videos here
+│   ├── clip1.mp4
+│   ├── clip1.txt
+│   └── cache_dir/
+└── 1_ohwx images/     ← Only images here
+    ├── img1.jpg
+    ├── img1.txt
+    └── cache_dir/</pre>
+                        <p style="color: #fbbf24; font-size: 12px; margin: 5px 0;">⚠️ Don't mix videos and images in the same folder - use separate folders!</p>
+                    </div>
+                    
+                    <div style="background: rgba(59, 130, 246, 0.2); padding: 10px; border-radius: 6px; margin: 10px 0;">
+                        <p style="color: #60a5fa; margin: 5px 0;"><strong>📂 Advanced: Multiple Datasets with Different Repeat Counts:</strong></p>
+                        <pre style="color: #d1d5db; font-size: 11px; margin: 5px 0; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 4px;">training_data/
+├── 3_main_character/  ← Repeat 3x (important videos)
+├── 1_backgrounds/     ← Repeat 1x (normal images)
+└── 5_key_scenes/      ← Repeat 5x (very important videos)</pre>
                     </div>
                 </div>
 
