@@ -2099,7 +2099,7 @@ echo "Starting training..."
             # Make the script executable on Unix systems
             if platform.system() != "Windows":
                 import stat
-                os.chmod(temp_script.name, os.stat(temp_script.name).st_mode | stat.S_I_EXEC)
+                os.chmod(temp_script.name, os.stat(temp_script.name).st_mode | stat.S_IEXEC)
 
             # Execute the combined script
             if platform.system() == "Windows":
