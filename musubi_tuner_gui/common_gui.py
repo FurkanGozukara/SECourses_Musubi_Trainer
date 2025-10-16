@@ -1618,7 +1618,7 @@ def SaveConfigFile(
                 # WAN/Qwen specific numeric fields
                 'dit_in_channels', 'num_layers', 'network_dropout', 'sample_num_frames', 'num_timestep_buckets',
                 'sample_discrete_flow_shift', 'sample_cfg_scale', 'dataset_qwen_image_edit_control_resolution_width',
-                'dataset_qwen_image_edit_control_resolution_height', 'one_frame'
+                'dataset_qwen_image_edit_control_resolution_height'
             ]
 
             if name in numeric_fields and value is not None:

@@ -1377,6 +1377,7 @@ def generate_enhanced_prompt_file(
             has_guidance = '--g ' in line or '-g ' in line
             has_seed = '--d ' in line or '-d ' in line
             has_negative = '--n ' in line or '-n ' in line
+            has_one_frame = '--of ' in line or '-of ' in line
 
             # Build enhanced line with defaults for missing parameters
             enhanced_line = line
@@ -1406,6 +1407,11 @@ def generate_enhanced_prompt_file(
             # Add seed if not present
             if not has_seed:
                 enhanced_line += f" --d {sample_seed}"
+
+            # For 1-frame generation, add one_frame parameter if not present
+            # This is required for WAN 2.1 single frame (image) generation
+            if sample_num_frames == 1 and not has_one_frame:
+                enhanced_line += f" --of target_index=1,control_index=0"
 
             enhanced_lines.append(enhanced_line)
 
@@ -2170,6 +2176,33 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
         try:
             with open(file_path, "r", encoding="utf-8") as f:
                 my_data = toml.load(f)
+                
+                # Validate and auto-correct corrupted parameter values from old bugs
+                # Bug: one_frame and num_frames could get swapped due to parameter order mismatch
+                if 'one_frame' in my_data and 'num_frames' in my_data:
+                    one_frame_val = my_data['one_frame']
+                    num_frames_val = my_data['num_frames']
+                    
+                    # Check if one_frame is numeric (should be boolean)
+                    if isinstance(one_frame_val, (int, float)):
+                        log.warning(f"Detected corrupted one_frame value ({one_frame_val}). Auto-correcting...")
+                        # If num_frames is boolean, they got swapped
+                        if isinstance(num_frames_val, bool):
+                            # Swap them
+                            my_data['one_frame'] = num_frames_val
+                            my_data['num_frames'] = int(one_frame_val)
+                            log.info(f"Swapped: one_frame={num_frames_val}, num_frames={one_frame_val}")
+                        else:
+                            # num_frames is correct, just fix one_frame
+                            my_data['one_frame'] = False  # Default to False
+                            log.info(f"Corrected: one_frame=False (was {one_frame_val})")
+                    
+                    # Check if num_frames is boolean (should be numeric)
+                    elif isinstance(num_frames_val, bool):
+                        log.warning(f"Detected corrupted num_frames value ({num_frames_val}). Auto-correcting...")
+                        my_data['num_frames'] = 81  # Default to 81 for WAN
+                        log.info(f"Corrected: num_frames=81 (was {num_frames_val})")
+                
                 config_name = os.path.basename(file_path)
                 status_msg = f"Configuration loaded successfully from: {config_name}"
                 log.info(status_msg)
@@ -2764,9 +2797,9 @@ def wan_lora_tab(
         wan_model_settings.vae_tiling,
         wan_model_settings.vae_chunk_size,
         wan_model_settings.vae_cache_cpu,
-        wan_model_settings.force_v2_1_time_embedding,
         wan_model_settings.num_frames,
         wan_model_settings.one_frame,
+        wan_model_settings.force_v2_1_time_embedding,
 
         # training_settings
         training_settings.sdpa,
