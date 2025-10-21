@@ -44,7 +44,7 @@ frame_extraction = "head"  # Frame extraction method: "head" (recommended), "chu
 frame_stride = 1  # Step size for sliding window extraction (used with "slide" method)
 frame_sample = 1  # Number of samples to extract (used with "uniform" method)
 max_frames = 129  # Maximum number of frames to extract from any video (used with "full" method)
-source_fps = null  # Original video FPS for frame rate conversion (null=auto-detect)
+source_fps = 0  # Original video FPS for frame rate conversion (0=auto-detect)
 
 # I2V/FLF2V Specific Settings
 i2v_frames_conditioning_path = ""  # [I2V/FLF2V] Path to conditioning frames for I2V training
