@@ -85,7 +85,12 @@ def generate_wan_dataset_config_from_folders(
     enable_bucket: bool = False,
     bucket_no_upscale: bool = False,
     cache_directory_name: str = "cache_dir",
-    num_frames: int = 1
+    num_frames: int = 1,
+    frame_extraction: str = "head",
+    frame_stride: int = 1,
+    frame_sample: int = 1,
+    max_frames: int = 129,
+    source_fps: float = None
 ) -> Tuple[Dict, List[str]]:
     """
     Generate WAN dataset configuration from folder structure.
@@ -195,10 +200,12 @@ def generate_wan_dataset_config_from_folders(
         # Add video-specific parameters if this is a video dataset
         if has_videos:
             dataset_entry["target_frames"] = [num_frames]
-            dataset_entry["frame_extraction"] = "head"
-            dataset_entry["frame_stride"] = 1
-            dataset_entry["frame_sample"] = 1
-            dataset_entry["max_frames"] = 129
+            dataset_entry["frame_extraction"] = frame_extraction
+            dataset_entry["frame_stride"] = frame_stride
+            dataset_entry["frame_sample"] = frame_sample
+            dataset_entry["max_frames"] = max_frames
+            if source_fps is not None and source_fps > 0:
+                dataset_entry["source_fps"] = source_fps
 
         # Set cache directory - MUST be unique per dataset
         if cache_directory_name:

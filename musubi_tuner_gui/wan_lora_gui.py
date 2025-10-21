@@ -176,6 +176,58 @@ class WanDataset:
                     value=self.config.get("dataset_cache_directory", "cache_dir"),
                     info="Cache folder name (relative) or full path (absolute). Each dataset gets its own cache directory to avoid conflicts"
                 )
+            
+            # Video Frame Extraction Settings
+            gr.Markdown("### 🎬 Video Frame Extraction Settings")
+            gr.Markdown("Configure how frames are extracted from videos during training")
+            
+            with gr.Row():
+                self.frame_extraction = gr.Dropdown(
+                    label="Frame Extraction Method",
+                    choices=["head", "chunk", "slide", "uniform", "full"],
+                    value=self.config.get("frame_extraction", "head"),
+                    info="""🎯 **head** (Recommended): Extract frames from the beginning of video
+📦 **chunk**: Split video into non-overlapping chunks
+🔄 **slide**: Sliding window extraction with overlap
+📊 **uniform**: Sample frames uniformly across video
+🎬 **full**: Use all available frames (up to max_frames)"""
+                )
+                self.frame_stride = gr.Number(
+                    label="Frame Stride",
+                    value=self.config.get("frame_stride", 1),
+                    minimum=1,
+                    maximum=100,
+                    step=1,
+                    info="Step size for sliding window extraction (only used with 'slide' method)"
+                )
+            
+            with gr.Row():
+                self.frame_sample = gr.Number(
+                    label="Frame Sample Count",
+                    value=self.config.get("frame_sample", 1),
+                    minimum=1,
+                    maximum=100,
+                    step=1,
+                    info="Number of samples to extract (only used with 'uniform' method)"
+                )
+                self.max_frames = gr.Number(
+                    label="Maximum Frames",
+                    value=self.config.get("max_frames", 129),
+                    minimum=1,
+                    maximum=1000,
+                    step=1,
+                    info="Maximum number of frames to extract from any video (used with 'full' method)"
+                )
+            
+            with gr.Row():
+                self.source_fps = gr.Number(
+                    label="Source FPS (Optional)",
+                    value=self.config.get("source_fps", None),
+                    minimum=0.0,
+                    maximum=120.0,
+                    step=0.1,
+                    info="Original video FPS for frame rate conversion. Set to 0 or leave empty for automatic detection"
+                )
 
             with gr.Row():
                 self.generate_toml_button = gr.Button(
@@ -604,7 +656,12 @@ class WanDataset:
             bucket_no_upscale,
             cache_dir,
             output_dir,  # Add output_dir parameter
-            num_frames  # Add num_frames parameter
+            num_frames,  # Add num_frames parameter
+            frame_extraction,
+            frame_stride,
+            frame_sample,
+            max_frames,
+            source_fps
         ):
             """Generate WAN dataset configuration from folder structure"""
             try:
@@ -657,7 +714,12 @@ class WanDataset:
                     enable_bucket=enable_bucket,
                     bucket_no_upscale=bucket_no_upscale,
                     cache_directory_name=cache_dir,
-                    num_frames=int(num_frames)
+                    num_frames=int(num_frames),
+                    frame_extraction=frame_extraction,
+                    frame_stride=int(frame_stride),
+                    frame_sample=int(frame_sample),
+                    max_frames=int(max_frames),
+                    source_fps=float(source_fps) if source_fps and source_fps > 0 else None
                 )
 
                 # Check if config generation was successful
@@ -724,14 +786,19 @@ class WanDataset:
                         self.dataset_bucket_no_upscale,
                         self.dataset_cache_directory,
                         saveLoadSettings.output_dir,  # Pass output_dir
-                        wan_model_settings.num_frames if wan_model_settings else 81  # Pass num_frames
+                        wan_model_settings.num_frames if wan_model_settings else 81,  # Pass num_frames
+                        self.frame_extraction,
+                        self.frame_stride,
+                        self.frame_sample,
+                        self.max_frames,
+                        self.source_fps
                     ],
                     outputs=[self.dataset_config, self.generated_toml_path, self.dataset_status]
                 )
             else:
                 # Fallback without output_dir
                 self.generate_toml_button.click(
-                    fn=lambda *args: generate_dataset_config(*args, None, wan_model_settings.num_frames if wan_model_settings else 81),  # Pass all args + None for output_dir + num_frames
+                    fn=lambda *args: generate_dataset_config(*args, None, wan_model_settings.num_frames if wan_model_settings else 81, *[self.frame_extraction, self.frame_stride, self.frame_sample, self.max_frames, self.source_fps]),  # Pass all args + None for output_dir + num_frames + frame params
                     inputs=[
                         self.parent_folder_path,
                         self.dataset_resolution_width,

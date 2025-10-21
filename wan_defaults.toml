@@ -39,6 +39,13 @@ generated_toml_path = ""  # Path where generated TOML will be saved (auto-set)
 num_frames = 81  # Number of frames for video training (81 is default for Wan models)
 one_frame = false  # Enable one-frame training mode for image-like training on video models
 
+# Video Frame Extraction Settings
+frame_extraction = "head"  # Frame extraction method: "head" (recommended), "chunk", "slide", "uniform", "full"
+frame_stride = 1  # Step size for sliding window extraction (used with "slide" method)
+frame_sample = 1  # Number of samples to extract (used with "uniform" method)
+max_frames = 129  # Maximum number of frames to extract from any video (used with "full" method)
+source_fps = null  # Original video FPS for frame rate conversion (null=auto-detect)
+
 # I2V/FLF2V Specific Settings
 i2v_frames_conditioning_path = ""  # [I2V/FLF2V] Path to conditioning frames for I2V training
 i2v_frames_conditioning_type = "concat"  # [I2V/FLF2V] Type of conditioning: "concat", "add", "cross_attn"
