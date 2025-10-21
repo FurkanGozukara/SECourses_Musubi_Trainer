@@ -38,7 +38,7 @@ from .class_huggingface import HuggingFace
 from .class_metadata import MetaData
 from .custom_logging import setup_logging
 from .dataset_config_generator import (
-    generate_dataset_config_from_folders,
+    generate_wan_dataset_config_from_folders,
     save_dataset_config,
     validate_dataset_config
 )
@@ -646,7 +646,7 @@ class WanDataset:
                                         f.write(caption_text)
 
                 # Generate the WAN dataset configuration
-                config, messages = generate_dataset_config_from_folders(
+                config, messages = generate_wan_dataset_config_from_folders(
                     parent_folder=parent_folder,
                     resolution=(int(width), int(height)),
                     caption_extension=caption_ext,
