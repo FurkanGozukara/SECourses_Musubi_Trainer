@@ -589,7 +589,7 @@ class WanDataset:
             outputs=[self.caption_strategy]
         )
 
-    def setup_dataset_ui_events(self, saveLoadSettings=None):
+    def setup_dataset_ui_events(self, saveLoadSettings=None, wan_model_settings=None):
         """Setup event handlers for dataset configuration UI"""
 
         # Define generate dataset config function
@@ -603,7 +603,8 @@ class WanDataset:
             enable_bucket,
             bucket_no_upscale,
             cache_dir,
-            output_dir  # Add output_dir parameter
+            output_dir,  # Add output_dir parameter
+            num_frames  # Add num_frames parameter
         ):
             """Generate WAN dataset configuration from folder structure"""
             try:
@@ -655,7 +656,8 @@ class WanDataset:
                     batch_size=int(batch_size),
                     enable_bucket=enable_bucket,
                     bucket_no_upscale=bucket_no_upscale,
-                    cache_directory_name=cache_dir
+                    cache_directory_name=cache_dir,
+                    num_frames=int(num_frames)
                 )
 
                 # Check if config generation was successful
@@ -721,14 +723,15 @@ class WanDataset:
                         self.dataset_enable_bucket,
                         self.dataset_bucket_no_upscale,
                         self.dataset_cache_directory,
-                        saveLoadSettings.output_dir  # Pass output_dir
+                        saveLoadSettings.output_dir,  # Pass output_dir
+                        wan_model_settings.num_frames if wan_model_settings else 81  # Pass num_frames
                     ],
                     outputs=[self.dataset_config, self.generated_toml_path, self.dataset_status]
                 )
             else:
                 # Fallback without output_dir
                 self.generate_toml_button.click(
-                    fn=lambda *args: generate_dataset_config(*args, None),  # Pass all args + None for output_dir
+                    fn=lambda *args: generate_dataset_config(*args, None, wan_model_settings.num_frames if wan_model_settings else 81),  # Pass all args + None for output_dir + num_frames
                     inputs=[
                         self.parent_folder_path,
                         self.dataset_resolution_width,
@@ -2670,13 +2673,15 @@ def wan_lora_tab(
     accordions.append(wan_dataset_accordion)
     with wan_dataset_accordion:
         wan_dataset = WanDataset(headless=headless, config=config)
-        wan_dataset.setup_dataset_ui_events(saveLoadSettings)  # Pass saveLoadSettings for output_dir access
 
     # Wan Model Settings accordion
     wan_model_accordion = gr.Accordion("Wan Model Settings", open=False, elem_classes="model_background")
     accordions.append(wan_model_accordion)
     with wan_model_accordion:
         wan_model_settings = WanModelSettings(headless=headless, config=config)
+    
+    # Setup dataset UI events after wan_model_settings is created
+    wan_dataset.setup_dataset_ui_events(saveLoadSettings, wan_model_settings)  # Pass both saveLoadSettings and wan_model_settings
 
     # Training Settings accordion
     training_accordion = gr.Accordion("Training Settings", open=False, elem_classes="training_background")
