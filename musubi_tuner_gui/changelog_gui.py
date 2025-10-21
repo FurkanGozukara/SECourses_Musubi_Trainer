@@ -8,6 +8,69 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 21 October 2025 - V18
+
+**🎨 Revolutionary Qwen Image Edit Plus (2509) Support - Train AI models with multiple control images for advanced image editing!**
+
+Changes:
+- **🌟 BRAND NEW: Qwen Image Edit Plus (2509) Training Support** - Complete integration of the cutting-edge Edit-2509 model for advanced image editing:
+  - **Multiple Control Images** - Train with up to 3 control images simultaneously for complex editing tasks
+  - **Advanced Edit Mode** - Specialized training for image-to-image transformations with reference images
+  - **Smart Dataset Structure** - Automatic detection and handling of multiple control image formats
+  - **Enhanced Naming Convention** - Supports numbered control images (image_0.png, image_1.png, image_2.png)
+  - **Professional Workflow** - Seamless integration with existing Qwen Image training pipeline
+
+- **🎯 Intelligent Auto-Generate Control Images** - Revolutionary feature for easy dataset preparation:
+  - **One-Click Black Control Generation** - Automatically creates pitch black PNG control images for each training image
+  - **Smart Filename Matching** - Uses same base names as training images with proper numeric suffixes (_0, _1, _2)
+  - **Configurable Dimensions** - Set custom control image resolution or use default 1024x1024
+  - **Edit-2509 Compatibility** - Generated images follow proper naming conventions for multiple control image support
+  - **Batch Processing** - Processes entire datasets automatically with proper directory structure
+
+- **📁 Enhanced Dataset Structure Documentation** - Comprehensive guidance for Edit-2509 training:
+  - **Visual Dataset Layout** - Clear examples showing proper folder structure and file organization
+  - **Multiple Control Image Examples** - Detailed naming conventions for single and multiple control images
+  - **Format Support** - Complete list of supported image formats (.png, .jpg, .jpeg, .webp)
+  - **Directory Structure** - Clear guidance on training images, control images, and caption file placement
+  - **Edit Mode Integration** - Seamless workflow from dataset preparation to training execution
+
+- **🛠️ Professional Model Download Integration** - Complete model management system:
+  - **Qwen Image Edit Plus (2509) Model** - Added to all download scripts and documentation
+  - **MonsterMMORPG/Wan_GGUF Repository** - Integrated with existing model download infrastructure
+  - **Required Components** - Downloads qwen_2.5_vl_7b_bf16.safetensors, qwen_train_vae.safetensors, Qwen_Image_Edit_Plus_2509_bf16.safetensors
+  - **Cross-Platform Support** - Works on Windows, Linux, Massed Compute, and RunPod environments
+  - **Automated Setup** - One-command model download with proper directory organization
+
+- **⚡ Advanced Training Configuration** - Enhanced GUI for Edit-2509 training:
+  - **Mutual Exclusion Logic** - Smart checkbox system preventing conflicting edit modes
+  - **Edit vs Edit-Plus Selection** - Clear distinction between standard Edit and Edit-2509 modes
+  - **Automatic Flag Management** - GUI automatically passes --edit_plus flag to training scripts
+  - **Configuration Persistence** - All Edit-2509 settings save and load properly in TOML files
+  - **Parameter Validation** - Real-time validation ensuring proper Edit-2509 configuration
+
+- **🔧 Technical Improvements** - Under-the-hood enhancements for reliability:
+  - **Fixed Filename Validation** - Resolved "Invalid digits suffix" error in dataset processing
+  - **Enhanced Error Handling** - Better error messages for Edit-2509 specific issues
+  - **Improved Dataset Processing** - Robust handling of complex filename patterns
+  - **Memory Optimization** - Efficient processing of multiple control images during training
+  - **Cross-Platform Compatibility** - Works seamlessly on Windows, Linux, and cloud platforms
+
+- **📚 Complete Documentation Updates** - Extensive guidance for Edit-2509 training:
+  - **Download Instructions** - Updated all platform-specific download guides (Windows, Massed Compute, RunPod)
+  - **Training Workflows** - Step-by-step guides for Edit-2509 dataset preparation and training
+  - **Troubleshooting Guide** - Solutions for common Edit-2509 training issues
+  - **Best Practices** - Recommendations for optimal Edit-2509 training results
+  - **Hardware Requirements** - Clear guidance on GPU memory needs for multiple control image training
+
+- **🎨 Enhanced User Experience** - Improved interface for Edit-2509 training:
+  - **Clear Visual Indicators** - Distinct labeling for Edit vs Edit-Plus modes
+  - **Intuitive Workflow** - Logical progression from dataset setup to training execution
+  - **Smart Defaults** - Pre-configured settings optimized for Edit-2509 training
+  - **Real-time Feedback** - Immediate validation and error prevention
+  - **Professional Interface** - Clean, organized layout for complex training scenarios
+
+This update transforms our trainer into a comprehensive AI image editing suite. Whether you want to train custom image generators or create advanced image-to-image transformation models with multiple control images, you now have everything you need in one place!
+
 ### 29 September 2025 - V17
 
 **🎬 Revolutionary Video Generation Training Support - Train your own AI video models with WAN technology!**

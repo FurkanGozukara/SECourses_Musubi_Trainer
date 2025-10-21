@@ -31,10 +31,10 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
     css = read_file_content("./assets/style.css")
 
     # Create the main Gradio Blocks interface
-    ui_interface = gr.Blocks(css=css, title="SECourses Musubi Trainer", theme=gr.themes.Soft())
+    ui_interface = gr.Blocks(css=css, title="SECourses Musubi Trainer V18.0", theme=gr.themes.Soft())
     with ui_interface:
         # Add title with Patreon link
-        gr.Markdown("# SECourses Musubi Trainer V17.6 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
+        gr.Markdown("# SECourses Musubi Trainer V18.0 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
         
         # Create tabs for different functionalities
         with gr.Tab("Qwen Image Training"):
@@ -64,7 +64,7 @@ def UI(**kwargs):
     log.info(f"headless: {kwargs.get('headless', False)}")
 
     # Load release and README information
-    release_info = "v11.0"  # Hardcoded version since pyproject.toml is not needed
+    release_info = "v18.0"  # Hardcoded version since pyproject.toml is not needed
     
     readme_content = read_file_content("./README.md")
     

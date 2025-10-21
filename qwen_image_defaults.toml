@@ -28,6 +28,7 @@ dataset_control_directory = "edit_images"  # [EDIT MODE] Directory name for cont
 dataset_qwen_image_edit_no_resize_control = false  # [EDIT MODE] Keep control images at original size. Only used when edit=true. Cannot be used with control resolution settings
 dataset_qwen_image_edit_control_resolution_width = 0  # [EDIT MODE] Control image width. 0=same as training images, 1024=official Qwen default. Only when edit=true
 dataset_qwen_image_edit_control_resolution_height = 0  # [EDIT MODE] Control image height. 0=same as training images, 1024=official Qwen default. Only when edit=true
+auto_generate_black_control_images = false  # [EDIT MODE] Auto-generate pitch black PNG control images with same filenames as training images. Defaults to 1024x1024 when width/height are 0
 generated_toml_path = ""  # Path where generated TOML will be saved (auto-set)
 
 dit_dtype = "bfloat16"  # HARDCODED: Must be bfloat16 for Qwen Image
@@ -50,6 +51,7 @@ blocks_to_swap = 0             # 0 = disabled. Max 59 (Qwen has 60 blocks). 16=s
 guidance_scale = 1.0          # Classifier-free guidance scale. 1.0 = default, higher = stronger prompt adherence
 img_in_txt_in_offloading = false  # Memory optimization for mixed image-text inputs
 edit = false  # Enable Qwen-Image-Edit mode for training with control images
+edit_plus = false  # Enable Qwen-Image-Edit-2509 mode for training with multiple control images (up to 3)
 
 # Flow Matching Settings
 timestep_sampling = "qwen_shift"  # Use Qwen-specific resolution-aware sampling

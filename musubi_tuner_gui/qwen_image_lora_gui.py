@@ -175,7 +175,7 @@ class QwenImageDataset:
                 self.dataset_control_directory = gr.Textbox(
                     label="Control Directory Name (Edit Mode)",
                     value=self.config.get("dataset_control_directory", "edit_images"),
-                    info="[EDIT MODE] Directory containing control/reference images for Qwen-Image-Edit training. Only used when edit=true in Model Settings. Place control images in this subfolder within each dataset folder."
+                    info="[EDIT MODE] Directory containing control/reference images for Qwen-Image-Edit training. Only used when edit=true in Model Settings. Place control images in this subfolder within each dataset folder.\n\n📁 Dataset Structure:\n• Training images: dataset_folder/images/\n• Control images: dataset_folder/edit_images/\n• Captions: dataset_folder/images/*.txt\n\n🖼️ File Naming:\n• Single control: image1.jpg → edit_images/image1.png\n• Multiple controls (Edit-2509): image1.jpg → edit_images/image1_0.png, image1_1.png, image1_2.png\n• Supports: .png, .jpg, .jpeg, .webp formats"
                 )
             
             with gr.Row():
@@ -201,6 +201,12 @@ class QwenImageDataset:
                     maximum=4096,
                     step=64,
                     info="[EDIT MODE ONLY] Height for control images. 0 = use training resolution. 1024 = Official Qwen-Image-Edit default. Set both width & height for custom control resolution."
+                )
+                
+                self.auto_generate_black_control_images = gr.Checkbox(
+                    label="Auto Generate Black Control Images",
+                    value=self.config.get("auto_generate_black_control_images", False),
+                    info="[EDIT MODE ONLY] Automatically generate pitch black PNG images as control images. Uses same filenames as training images. When width/height are 0, defaults to 1024x1024."
                 )
             
             with gr.Row():
@@ -263,6 +269,7 @@ class QwenImageDataset:
             qwen_no_resize,
             control_res_width,  # Add control resolution width
             control_res_height,  # Add control resolution height
+            auto_generate_black,  # Add auto generate black control images
             output_dir  # Add output_dir parameter
         ):
             """Generate dataset configuration from folder structure"""
@@ -301,6 +308,36 @@ class QwenImageDataset:
                                 if not os.path.exists(caption_path):
                                     with open(caption_path, 'w', encoding='utf-8') as f:
                                         f.write(caption_text)
+                
+                # Auto-generate black control images if requested
+                if auto_generate_black:
+                    from PIL import Image
+                    import numpy as np
+                    
+                    # Determine control image dimensions
+                    control_width = control_res_width if control_res_width > 0 else 1024
+                    control_height = control_res_height if control_res_height > 0 else 1024
+                    
+                    subfolder_paths = [os.path.join(parent_folder, d) for d in os.listdir(parent_folder) 
+                                     if os.path.isdir(os.path.join(parent_folder, d))]
+                    
+                    for folder_path in subfolder_paths:
+                        # Create control directory
+                        control_folder = os.path.join(folder_path, control_dir)
+                        os.makedirs(control_folder, exist_ok=True)
+                        
+                        # Generate black control images for each training image
+                        for img_file in os.listdir(folder_path):
+                            img_path = os.path.join(folder_path, img_file)
+                            if os.path.isfile(img_path) and img_file.lower().endswith(('.png', '.jpg', '.jpeg', '.webp', '.bmp')):
+                                # Create black control image with numbered suffix for Edit-2509 compatibility
+                                base_name = os.path.splitext(img_file)[0]
+                                control_img_path = os.path.join(control_folder, f"{base_name}_0.png")
+                                
+                                if not os.path.exists(control_img_path):
+                                    # Create pitch black image
+                                    black_image = Image.new('RGB', (control_width, control_height), (0, 0, 0))
+                                    black_image.save(control_img_path, 'PNG')
                 
                 # Generate the dataset configuration
                 config, messages = generate_dataset_config_from_folders(
@@ -400,6 +437,7 @@ class QwenImageDataset:
                         self.dataset_qwen_image_edit_no_resize_control,
                         self.dataset_qwen_image_edit_control_resolution_width,
                         self.dataset_qwen_image_edit_control_resolution_height,
+                        self.auto_generate_black_control_images,
                         saveLoadSettings.output_dir  # Pass output_dir
                     ],
                     outputs=[self.dataset_config, self.generated_toml_path, self.dataset_status]
@@ -423,6 +461,7 @@ class QwenImageDataset:
                         self.dataset_qwen_image_edit_no_resize_control,
                         self.dataset_qwen_image_edit_control_resolution_width,
                         self.dataset_qwen_image_edit_control_resolution_height,
+                        self.auto_generate_black_control_images,
                     ],
                     outputs=[self.dataset_config, self.generated_toml_path, self.dataset_status]
                 )
@@ -462,6 +501,11 @@ class QwenImageModel:
                 label="Enable Qwen-Image-Edit Mode",
                 info="Enable image editing training with control images. Requires control_image_path in dataset configuration and Qwen-Image-Edit DiT model",
                 value=self.config.get("edit", False),
+            )
+            self.edit_plus = gr.Checkbox(
+                label="Enable Qwen-Image-Edit-2509 Mode",
+                info="Enable Edit-2509 training with multiple control images (up to 3). Requires Qwen-Image-Edit-2509 DiT model. Cannot be used with regular Edit mode.",
+                value=self.config.get("edit_plus", False),
             )
         
         with gr.Row():
@@ -636,6 +680,33 @@ class QwenImageModel:
             if warnings:
                 return gr.update(value="\n\n".join(warnings), visible=True)
             return gr.update(value="", visible=False)
+
+        # Edit mode mutual exclusion logic
+        def handle_edit_mode_change(edit_value, edit_plus_value):
+            """Ensure edit and edit_plus are mutually exclusive"""
+            if edit_value and edit_plus_value:
+                # If both are checked, keep the one that was just checked and uncheck the other
+                return gr.update(value=False), gr.update(value=True)
+            return gr.update(), gr.update()
+        
+        def handle_edit_plus_mode_change(edit_value, edit_plus_value):
+            """Ensure edit and edit_plus are mutually exclusive"""
+            if edit_value and edit_plus_value:
+                # If both are checked, keep the one that was just checked and uncheck the other
+                return gr.update(value=False), gr.update(value=True)
+            return gr.update(), gr.update()
+
+        # Connect edit mode mutual exclusion
+        self.edit.change(
+            fn=handle_edit_mode_change,
+            inputs=[self.edit, self.edit_plus],
+            outputs=[self.edit, self.edit_plus]
+        )
+        self.edit_plus.change(
+            fn=handle_edit_plus_mode_change,
+            inputs=[self.edit, self.edit_plus],
+            outputs=[self.edit, self.edit_plus]
+        )
 
         # Connect FP8 validation
         self.fp8_base.change(
@@ -853,6 +924,7 @@ def qwen_image_gui_actions(
     dataset_qwen_image_edit_no_resize_control,
     dataset_qwen_image_edit_control_resolution_width,
     dataset_qwen_image_edit_control_resolution_height,
+    auto_generate_black_control_images,
     generated_toml_path,
     sdpa,
     flash_attn,
@@ -947,6 +1019,7 @@ def qwen_image_gui_actions(
     guidance_scale,
     img_in_txt_in_offloading,
     edit,
+    edit_plus,
     timestep_sampling,
     discrete_flow_shift,
     flow_shift,
@@ -1734,6 +1807,12 @@ def train_qwen_image_model(headless, print_only, parameters):
         if param_dict.get("caching_latent_console_num_images") is not None:
             run_cache_latent_cmd.append("--console_num_images")
             run_cache_latent_cmd.append(str(param_dict.get("caching_latent_console_num_images")))
+        
+        # Add edit mode flags for latent caching
+        if param_dict.get("edit"):
+            run_cache_latent_cmd.append("--edit")
+        if param_dict.get("edit_plus"):
+            run_cache_latent_cmd.append("--edit_plus")
 
         log.info(f"Executing command: {run_cache_latent_cmd}")
         log.info("Caching latents...")
@@ -1814,6 +1893,8 @@ def train_qwen_image_model(headless, print_only, parameters):
             
         if param_dict.get("edit"):
             run_cache_teo_cmd.append("--edit")
+        if param_dict.get("edit_plus"):
+            run_cache_teo_cmd.append("--edit_plus")
 
         # Store the text encoder caching command to be run as part of training
         teo_cache_cmd = run_cache_teo_cmd
@@ -3466,6 +3547,7 @@ def qwen_image_lora_tab(
         qwen_dataset.dataset_qwen_image_edit_no_resize_control,
         qwen_dataset.dataset_qwen_image_edit_control_resolution_width,
         qwen_dataset.dataset_qwen_image_edit_control_resolution_height,
+        qwen_dataset.auto_generate_black_control_images,
         qwen_dataset.generated_toml_path,
         
         # trainingSettings
@@ -3567,6 +3649,7 @@ def qwen_image_lora_tab(
         qwen_model.guidance_scale,
         qwen_model.img_in_txt_in_offloading,
         qwen_model.edit,
+        qwen_model.edit_plus,
         qwen_model.timestep_sampling,
         qwen_model.discrete_flow_shift,
         qwen_model.flow_shift,
@@ -3665,6 +3748,7 @@ def qwen_image_lora_tab(
             "dit_in_channels": ("Qwen Image Model Settings", "DiT Input Channels"),
             "training_mode": ("Qwen Image Model Settings", "Training Mode (LoRA/DreamBooth)"),
             "edit": ("Qwen Image Model Settings", "Enable Qwen-Image-Edit Mode"),
+            "edit_plus": ("Qwen Image Model Settings", "Enable Qwen-Image-Edit-2509 Mode"),
             
             # FP8 and Memory Settings
             "fp8_base": ("Qwen Image Model Settings", "FP8 for Base Model (DiT) (BF16 Model On The Fly Converted)"),
@@ -3713,6 +3797,7 @@ def qwen_image_lora_tab(
             "dataset_qwen_image_edit_no_resize_control": ("Qwen Image Training Dataset", "Qwen Image Edit: No Resize Control"),
             "dataset_qwen_image_edit_control_resolution_width": ("Qwen Image Training Dataset", "Control Image Width"),
             "dataset_qwen_image_edit_control_resolution_height": ("Qwen Image Training Dataset", "Control Image Height"),
+            "auto_generate_black_control_images": ("Qwen Image Training Dataset", "Auto Generate Black Control Images"),
             
             # Training Settings
             "sdpa": ("Training Settings", "Use SDPA for CrossAttention"),
