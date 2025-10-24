@@ -380,6 +380,16 @@ def save_dataset_config(config: Dict, output_path: str) -> None:
     """Save the dataset configuration to a TOML file."""
     with open(output_path, 'w', encoding='utf-8') as f:
         toml.dump(config, f)
+    
+    # Remove trailing commas from arrays (cosmetic improvement for TOML spec compliance)
+    with open(output_path, 'r', encoding='utf-8') as f:
+        content = f.read()
+    
+    # Replace trailing commas in arrays: [ item, ] -> [ item]
+    content = re.sub(r',(\s*])', r'\1', content)
+    
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write(content)
 
 
 def validate_dataset_config(config_path: str) -> Tuple[bool, List[str]]:

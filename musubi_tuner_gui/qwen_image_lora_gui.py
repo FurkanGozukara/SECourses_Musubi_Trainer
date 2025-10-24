@@ -187,26 +187,26 @@ class QwenImageDataset:
                 
                 self.dataset_qwen_image_edit_control_resolution_width = gr.Number(
                     label="Control Image Width",
-                    value=self.config.get("dataset_qwen_image_edit_control_resolution_width", 0),
+                    value=self.config.get("dataset_qwen_image_edit_control_resolution_width", 1328),
                     minimum=0,
                     maximum=4096,
                     step=64,
-                    info="[EDIT MODE ONLY] Width for control images. 0 = use training resolution. 1024 = Official Qwen-Image-Edit default. Only used when edit=true. Cannot be used with 'No Resize Control'."
+                    info="[EDIT MODE ONLY] Width for control images. 0 = use training resolution. 1024 = Official Qwen-Image-Edit default. 1328 = Optimal for Qwen models. Only used when edit=true. Cannot be used with 'No Resize Control'."
                 )
                 
                 self.dataset_qwen_image_edit_control_resolution_height = gr.Number(
                     label="Control Image Height",
-                    value=self.config.get("dataset_qwen_image_edit_control_resolution_height", 0),
+                    value=self.config.get("dataset_qwen_image_edit_control_resolution_height", 1328),
                     minimum=0,
                     maximum=4096,
                     step=64,
-                    info="[EDIT MODE ONLY] Height for control images. 0 = use training resolution. 1024 = Official Qwen-Image-Edit default. Set both width & height for custom control resolution."
+                    info="[EDIT MODE ONLY] Height for control images. 0 = use training resolution. 1024 = Official Qwen-Image-Edit default. 1328 = Optimal for Qwen models. Set both width & height for custom control resolution."
                 )
                 
                 self.auto_generate_black_control_images = gr.Checkbox(
                     label="Auto Generate Black Control Images",
                     value=self.config.get("auto_generate_black_control_images", False),
-                    info="[EDIT MODE ONLY] Automatically generate pitch black PNG images as control images. Uses same filenames as training images. When width/height are 0, defaults to 1024x1024."
+                    info="[EDIT MODE ONLY] Automatically generate pitch black PNG images as control images. Uses same filenames as training images."
                 )
             
             with gr.Row():
@@ -357,6 +357,13 @@ class QwenImageDataset:
                 # Check if config generation was successful
                 if not config or not config.get("datasets"):
                     return "", "", "[ERROR] Failed to generate configuration. Check your folder structure.\n" + "\n".join(messages)
+                
+                # Add control resolution settings to datasets with control directories
+                if control_res_width > 0 and control_res_height > 0:
+                    for dataset_entry in config.get("datasets", []):
+                        if "control_directory" in dataset_entry:
+                            dataset_entry["qwen_image_edit_control_resolution"] = [int(control_res_width), int(control_res_height)]
+                            messages.append(f"[OK] Added control resolution {control_res_width}x{control_res_height} to dataset")
                 
                 # Generate output filename with timestamp
                 timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
