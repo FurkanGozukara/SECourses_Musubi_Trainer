@@ -9,6 +9,7 @@ from musubi_tuner_gui.lora_gui import lora_tab
 from musubi_tuner_gui.qwen_image_lora_gui import qwen_image_lora_tab
 from musubi_tuner_gui.wan_lora_gui import wan_lora_tab
 from musubi_tuner_gui.image_captioning_gui import image_captioning_tab
+from musubi_tuner_gui.fp8_converter_gui import fp8_converter_tab
 from musubi_tuner_gui.changelog_gui import version_history_tab
 from musubi_tuner_gui.custom_logging import setup_logging
 from musubi_tuner_gui.class_gui_config import GUIConfig
@@ -31,10 +32,10 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
     css = read_file_content("./assets/style.css")
 
     # Create the main Gradio Blocks interface
-    ui_interface = gr.Blocks(css=css, title="SECourses Musubi Trainer V18.4", theme=gr.themes.Soft())
+    ui_interface = gr.Blocks(css=css, title="SECourses Musubi Trainer V18.5", theme=gr.themes.Soft())
     with ui_interface:
         # Add title with Patreon link
-        gr.Markdown("# SECourses Musubi Trainer V18.4 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
+        gr.Markdown("# SECourses Musubi Trainer V18.5 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
         
         # Create tabs for different functionalities
         with gr.Tab("Qwen Image Training"):
@@ -48,6 +49,10 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
         with gr.Tab("Image Captioning"):
             captioning_config = config_manager.get_config_for_tab("image_captioning")
             image_captioning_tab(headless=headless, config=captioning_config)
+        
+        with gr.Tab("FP8 Model Converter"):
+            fp8_config = config_manager.get_config_for_tab("fp8_converter")
+            fp8_converter_tab(headless=headless, config=fp8_config)
         
         with gr.Tab("Version History"):
             version_history_tab(headless=headless, config=None)
