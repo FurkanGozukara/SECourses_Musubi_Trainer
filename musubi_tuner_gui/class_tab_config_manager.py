@@ -17,7 +17,8 @@ class TabConfigManager:
             "wan": None,
             "musubi_tuner": None,
             "image_captioning": None,
-            "fp8_converter": None
+            "fp8_converter": None,
+            "image_preprocessing": None
         }
         
         # Check if config file exists and has content
@@ -68,7 +69,8 @@ class TabConfigManager:
             "wan": "wan_defaults.toml",
             "musubi_tuner": "musubi_tuner_defaults.toml",
             "image_captioning": "image_captioning_defaults.toml",
-            "fp8_converter": "fp8_converter_defaults.toml"
+            "fp8_converter": "fp8_converter_defaults.toml",
+            "image_preprocessing": None  # No defaults file needed for this tab
         }
         
         if tab_name not in default_files:
@@ -76,6 +78,11 @@ class TabConfigManager:
             return GUIConfig()  # Return empty config
             
         default_file = default_files[tab_name]
+        
+        # If no default file is specified (None), return empty config
+        if default_file is None:
+            return GUIConfig()  # Return empty config
+            
         default_path = os.path.join(os.path.dirname(__file__), "..", default_file)
         
         try:
@@ -98,7 +105,7 @@ class TabConfigManager:
             self.base_config = GUIConfig(config_file_path)
             self.user_loaded_config = True
             # Clear tab-specific configs so they use the user config
-            self.configs = {"qwen_image": None, "wan": None, "musubi_tuner": None, "image_captioning": None, "fp8_converter": None}
+            self.configs = {"qwen_image": None, "wan": None, "musubi_tuner": None, "image_captioning": None, "fp8_converter": None, "image_preprocessing": None}
             log.info(f"User configuration loaded from {config_file_path}")
         except Exception as e:
             log.error(f"Error loading user config: {e}")
@@ -106,7 +113,7 @@ class TabConfigManager:
     def reset_to_defaults(self):
         """Reset to use default configurations for each tab"""
         self.user_loaded_config = False
-        self.configs = {"qwen_image": None, "wan": None, "musubi_tuner": None, "image_captioning": None, "fp8_converter": None}
+        self.configs = {"qwen_image": None, "wan": None, "musubi_tuner": None, "image_captioning": None, "fp8_converter": None, "image_preprocessing": None}
         self.base_config = GUIConfig()  # Empty config
         log.info("Reset to using default configurations for each tab")
     
