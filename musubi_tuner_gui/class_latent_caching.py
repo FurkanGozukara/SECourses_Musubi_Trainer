@@ -58,10 +58,11 @@ class LatentCaching:
         with gr.Row():
             self.caching_latent_debug_mode = gr.Dropdown(
                 label="Debug Mode",
-                choices=["image", "console"],
+                choices=["None", "image", "console"],
                 allow_custom_value=True,
-                value=self.config.get("caching_latent_debug_mode", None),
+                value=self.config.get("caching_latent_debug_mode", "None"),
                 interactive=True,
+                info="⚠️ WARNING: When enabled, this ONLY shows debug info and does NOT cache latents. Use 'None' for actual caching, or run debug separately first.",
             )
             self.caching_latent_console_width = gr.Number(
                 label="Console Width",

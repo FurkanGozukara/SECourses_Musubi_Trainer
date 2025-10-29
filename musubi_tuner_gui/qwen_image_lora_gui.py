@@ -46,6 +46,27 @@ huggingface = None
 train_state_value = time.time()
 
 
+def get_debug_parameters_for_mode(debug_mode: str) -> str:
+    """
+    Convert selected debug mode to command-line parameters for training.
+
+    Parameters:
+        debug_mode (str): The selected debug mode
+
+    Returns:
+        str: Command-line parameters for the selected debug mode
+    """
+    debug_params = {
+        "Show Timesteps (Image)": "--show_timesteps image",
+        "Show Timesteps (Console)": "--show_timesteps console",
+        "RCM Debug Save": "--rcm_debug_save",
+        "Enable Logging (TensorBoard)": "--log_with tensorboard --logging_dir ./logs",
+        "Enable Logging (WandB)": "--log_with wandb",
+        "Enable Logging (All)": "--log_with all --logging_dir ./logs",
+    }
+    return debug_params.get(debug_mode, "")
+
+
 def upsert_parameter(parameters, key: str, value):
     """Return a new parameter list where `key` is set to `value` exactly once."""
     updated: list[tuple] = []
@@ -914,6 +935,7 @@ def qwen_image_gui_actions(
     extra_accelerate_launch_args,
     # advanced_training
     additional_parameters,
+    debug_mode,
     # dataset configuration parameters
     dataset_config_mode,
     dataset_config,
@@ -1193,6 +1215,18 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
     modified_params.append(("training_mode", training_mode))
 
     for key, value in parameters:
+        # Migrate old debug mode values
+        if key == "debug_mode" and isinstance(value, str):
+            migration_map = {
+                "Dataset Debug (Image)": "None",  # Dataset debugging moved to caching section
+                "Dataset Debug (Console)": "None",  # Dataset debugging moved to caching section
+                "Dataset Debug (Video)": "None",  # Dataset debugging moved to caching section
+            }
+            if value in migration_map:
+                old_value = value
+                value = migration_map[value]
+                log.info(f"Migrated debug_mode from '{old_value}' to '{value}'")
+
         if training_mode == "DreamBooth Fine-Tuning":
             # For DreamBooth/Fine-tuning, we need to disable network parameters
             if key == "network_module":
@@ -1665,9 +1699,24 @@ def train_qwen_image_model(headless, print_only, parameters):
             )
     
     if not os.path.exists(effective_dataset_config):
+        # Check if this looks like a generated dataset config path (contains timestamp)
+        if re.search(r'dataset_config_\d{8}_\d{6}\.toml', effective_dataset_config):
             raise ValueError(
                 f"[ERROR] Dataset config file does not exist: {effective_dataset_config}\n"
-                "Please check the file path or create the dataset configuration file first."
+                "\nThis appears to be a generated dataset config file that may have been deleted or moved.\n"
+                "\nTo fix this issue:\n"
+                "1. Go to the 'Dataset Config' section\n"
+                "2. Set 'Dataset Config Mode' to 'Generate from Folder Structure'\n"
+                "3. Click 'Generate Dataset Config' to create a new config file\n"
+                "4. The new config path will be automatically set in 'Dataset Config File'\n"
+                "5. Save your configuration again\n"
+                "\nAlternatively, manually create or locate a valid dataset config file."
+            )
+        else:
+            raise ValueError(
+                f"[ERROR] Dataset config file does not exist: {effective_dataset_config}\n"
+                "\nPlease check the file path or create the dataset configuration file first.\n"
+                "You can generate a new dataset config using the 'Dataset Config' section."
             )
     
     # Validate the TOML file can be parsed
@@ -1799,7 +1848,7 @@ def train_qwen_image_model(headless, print_only, parameters):
         #     run_cache_latent_cmd.append(str(param_dict.get("vae_dtype")))
         
         # Debug parameters for latent caching
-        if param_dict.get("caching_latent_debug_mode") is not None and param_dict.get("caching_latent_debug_mode") != "":
+        if param_dict.get("caching_latent_debug_mode") is not None and param_dict.get("caching_latent_debug_mode") not in ["", "None"]:
             run_cache_latent_cmd.append("--debug_mode")
             run_cache_latent_cmd.append(str(param_dict.get("caching_latent_debug_mode")))
         
@@ -2186,8 +2235,19 @@ def train_qwen_image_model(headless, print_only, parameters):
         run_cmd.append("--config_file")
         run_cmd.append(f"{file_path}")
 
+        # Handle debug mode selection
+        additional_params = param_dict.get("additional_parameters", "")
+        debug_mode_selected = param_dict.get("debug_mode", "None")
+        if debug_mode_selected != "None":
+            debug_params = get_debug_parameters_for_mode(debug_mode_selected)
+            if debug_params:
+                if additional_params:
+                    additional_params += " " + debug_params
+                else:
+                    additional_params = debug_params
+
         run_cmd_params = {
-            "additional_parameters": param_dict.get("additional_parameters"),
+            "additional_parameters": additional_params,
         }
 
         run_cmd = run_cmd_advanced_training(run_cmd=run_cmd, **run_cmd_params)
@@ -3237,10 +3297,10 @@ class QwenImageLatentCaching:
         with gr.Row():
             self.caching_latent_debug_mode = gr.Dropdown(
                 label="Debug Mode",
-                info="Debug visualization for latent caching. 'image' saves debug images, 'console' prints debug info, 'video' for video models. Leave empty for no debugging",
-                choices=["image", "console", "video", ""],
+                info="Debug visualization for latent caching. 'None' disables display, 'image' saves debug images, 'console' prints debug info, 'video' for video models",
+                choices=["None", "image", "console", "video"],
                 allow_custom_value=True,
-                value=self.config.get("caching_latent_debug_mode", ""),
+                value=self.config.get("caching_latent_debug_mode", "None"),
                 interactive=True,
             )
 
@@ -3536,6 +3596,7 @@ def qwen_image_lora_tab(
         
         # advanced_training
         advanced_training.additional_parameters,
+        advanced_training.debug_mode,
         
         # Dataset Settings - new parameters
         qwen_dataset.dataset_config_mode,

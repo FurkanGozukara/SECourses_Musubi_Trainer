@@ -22,6 +22,7 @@ class AdvancedTraining:
         no_token_padding (gr.Checkbox): Checkbox to disable token padding.
         gradient_accumulation_steps (gr.Slider): Slider to set the number of gradient accumulation steps.
         weighted_captions (gr.Checkbox): Checkbox to enable weighted captions.
+        debug_mode (gr.Dropdown): Dropdown to select debug mode for detailed logging and visualization.
     """
 
     def __init__(
@@ -52,9 +53,89 @@ class AdvancedTraining:
             "advanced.log_tracker_config_dir", "./logs"
         )
 
+        # Handle migration of old debug mode values
+        debug_mode_value = self.config.get("debug_mode", "None")
+        debug_mode_value = self._migrate_debug_mode_value(debug_mode_value)
+
         with gr.Row():
             self.additional_parameters = gr.Textbox(
                 label="Additional parameters",
                 placeholder='(Optional) Use to provide additional parameters not handled by the GUI. Eg: --some_parameters "value"',
                 value=self.config.get("additional_parameters", ""),
             )
+
+        with gr.Row():
+            self.debug_mode = gr.Dropdown(
+                label="Debug Mode Selection",
+                choices=[
+                    "None",
+                    "Show Timesteps (Image)",
+                    "Show Timesteps (Console)",
+                    "RCM Debug Save",
+                    "Enable Logging (TensorBoard)",
+                    "Enable Logging (WandB)",
+                    "Enable Logging (All)",
+                ],
+                value=debug_mode_value,
+                info="Select debug mode for training visualization and logging. Dataset debugging is handled separately in caching settings.",
+                interactive=True,
+                allow_custom_value=True,  # Allow old config values during migration
+            )
+
+    def get_debug_mode_description(self, debug_mode: str) -> str:
+        """
+        Get detailed description for the selected debug mode.
+
+        Parameters:
+            debug_mode (str): The selected debug mode
+
+        Returns:
+            str: Detailed description of the debug mode
+        """
+        descriptions = {
+            "None": "No debug mode enabled - standard operation.",
+            "Show Timesteps (Image)": "Visualizes timestep distribution used during training with matplotlib plots. Helps understand noise scheduling.",
+            "Show Timesteps (Console)": "Displays timestep information in console format. Useful for debugging noise scheduling without GUI.",
+            "RCM Debug Save": "Saves dynamically generated RCM (Regional Content Mask) masks during generation. Essential for debugging and adjusting RCM parameters.",
+            "Enable Logging (TensorBoard)": "Enables TensorBoard logging for training metrics, losses, and visualizations. Requires logging directory to be set.",
+            "Enable Logging (WandB)": "Enables Weights & Biases logging for experiment tracking and visualization. Requires WandB setup.",
+            "Enable Logging (All)": "Enables both TensorBoard and WandB logging simultaneously. Provides comprehensive experiment tracking.",
+        }
+        return descriptions.get(debug_mode, "Unknown debug mode")
+
+    def get_debug_parameters(self, debug_mode: str) -> str:
+        """
+        Convert selected debug mode to command-line parameters.
+
+        Parameters:
+            debug_mode (str): The selected debug mode
+
+        Returns:
+            str: Command-line parameters for the selected debug mode
+        """
+        debug_params = {
+            "Show Timesteps (Image)": "--show_timesteps image",
+            "Show Timesteps (Console)": "--show_timesteps console",
+            "RCM Debug Save": "--rcm_debug_save",
+            "Enable Logging (TensorBoard)": "--log_with tensorboard --logging_dir ./logs",
+            "Enable Logging (WandB)": "--log_with wandb",
+            "Enable Logging (All)": "--log_with all --logging_dir ./logs",
+        }
+        return debug_params.get(debug_mode, "")
+
+    def _migrate_debug_mode_value(self, old_value: str) -> str:
+        """
+        Migrate old debug mode values to new valid ones.
+
+        Parameters:
+            old_value (str): The old debug mode value from config
+
+        Returns:
+            str: The migrated debug mode value
+        """
+        migration_map = {
+            "Dataset Debug (Image)": "None",  # Dataset debugging moved to caching section
+            "Dataset Debug (Console)": "None",  # Dataset debugging moved to caching section
+            "Dataset Debug (Video)": "None",  # Dataset debugging moved to caching section
+        }
+        return migration_map.get(old_value, old_value)

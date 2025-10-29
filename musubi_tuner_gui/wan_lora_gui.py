@@ -50,6 +50,27 @@ huggingface = None
 train_state_value = time.time()
 
 
+def get_debug_parameters_for_mode(debug_mode: str) -> str:
+    """
+    Convert selected debug mode to command-line parameters.
+
+    Parameters:
+        debug_mode (str): The selected debug mode
+
+    Returns:
+        str: Command-line parameters for the selected debug mode
+    """
+    debug_params = {
+        "Show Timesteps (Image)": "--show_timesteps image",
+        "Show Timesteps (Console)": "--show_timesteps console",
+        "RCM Debug Save": "--rcm_debug_save",
+        "Enable Logging (TensorBoard)": "--log_with tensorboard --logging_dir ./logs",
+        "Enable Logging (WandB)": "--log_with wandb",
+        "Enable Logging (All)": "--log_with all --logging_dir ./logs",
+    }
+    return debug_params.get(debug_mode, "")
+
+
 def upsert_parameter(parameters, key: str, value):
     """Return a new parameter list where `key` is set to `value` exactly once."""
     updated: list[tuple] = []
@@ -1533,7 +1554,7 @@ def wan_gui_actions(
                 "mixed_precision", "num_cpu_threads_per_process", "num_processes", "num_machines", "multi_gpu", "gpu_ids",
                 "main_process_port", "dynamo_backend", "dynamo_mode", "dynamo_use_fullgraph", "dynamo_use_dynamic", "extra_accelerate_launch_args",
                 # advanced_training
-                "additional_parameters",
+                "additional_parameters", "debug_mode",
                 # Wan Dataset settings
                 "dataset_config_mode", "dataset_config", "parent_folder_path", "dataset_resolution_width",
                 "dataset_resolution_height", "dataset_caption_extension", "dataset_batch_size",
@@ -1798,6 +1819,11 @@ def train_wan_model(headless, print_only, parameters):
 
         if param_dict.get("caching_latent_keep_cache"):
             run_cache_latent_cmd.append("--keep_cache")
+
+        # Debug mode for latent caching
+        if param_dict.get("caching_latent_debug_mode") is not None and param_dict.get("caching_latent_debug_mode") not in ["", "None"]:
+            run_cache_latent_cmd.append("--debug_mode")
+            run_cache_latent_cmd.append(str(param_dict.get("caching_latent_debug_mode")))
 
         # Determine if this is I2V training
         task = param_dict.get("task", "t2v-14B")
@@ -2108,8 +2134,19 @@ def train_wan_model(headless, print_only, parameters):
         run_cmd.append("--config_file")
         run_cmd.append(f"{file_path}")
 
+        # Handle debug mode selection
+        additional_params = param_dict.get("additional_parameters", "")
+        debug_mode_selected = param_dict.get("debug_mode", "None")
+        if debug_mode_selected != "None":
+            debug_params = get_debug_parameters_for_mode(debug_mode_selected)
+            if debug_params:
+                if additional_params:
+                    additional_params += " " + debug_params
+                else:
+                    additional_params = debug_params
+
         run_cmd_params = {
-            "additional_parameters": param_dict.get("additional_parameters"),
+            "additional_parameters": additional_params,
         }
 
         run_cmd = run_cmd_advanced_training(run_cmd=run_cmd, **run_cmd_params)
@@ -2538,6 +2575,18 @@ def save_wan_configuration(save_as_bool, file_path, parameters):
     ]
 
     for key, value in parameters:
+        # Migrate old debug mode values
+        if key == "debug_mode" and isinstance(value, str):
+            migration_map = {
+                "Dataset Debug (Image)": "None",  # Dataset debugging moved to caching section
+                "Dataset Debug (Console)": "None",  # Dataset debugging moved to caching section
+                "Dataset Debug (Video)": "None",  # Dataset debugging moved to caching section
+            }
+            if value in migration_map:
+                old_value = value
+                value = migration_map[value]
+                log.info(f"Migrated debug_mode from '{old_value}' to '{value}'")
+
         # If value is a list and it's not supposed to be (like from a Number component)
         # take the first element or convert to appropriate type
         if isinstance(value, list) and len(value) > 0 and key in numeric_fields:
@@ -2832,6 +2881,7 @@ def wan_lora_tab(
 
         # advanced_training
         advanced_training.additional_parameters,
+        advanced_training.debug_mode,
 
         # Wan Dataset settings
         wan_dataset.dataset_config_mode,

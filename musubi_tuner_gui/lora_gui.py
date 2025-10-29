@@ -43,6 +43,28 @@ huggingface = None
 
 train_state_value = time.time()
 
+
+def get_debug_parameters_for_mode(debug_mode: str) -> str:
+    """
+    Convert selected debug mode to command-line parameters.
+
+    Parameters:
+        debug_mode (str): The selected debug mode
+
+    Returns:
+        str: Command-line parameters for the selected debug mode
+    """
+    debug_params = {
+        "Show Timesteps (Image)": "--show_timesteps image",
+        "Show Timesteps (Console)": "--show_timesteps console",
+        "RCM Debug Save": "--rcm_debug_save",
+        "Enable Logging (TensorBoard)": "--log_with tensorboard --logging_dir ./logs",
+        "Enable Logging (WandB)": "--log_with wandb",
+        "Enable Logging (All)": "--log_with all --logging_dir ./logs",
+    }
+    return debug_params.get(debug_mode, "")
+
+
 def gui_actions(
     # action type
     action_type,
@@ -66,6 +88,7 @@ def gui_actions(
     extra_accelerate_launch_args,
     # advanced_training
     additional_parameters,
+    debug_mode,
     dataset_config,
     sdpa,
     flash_attn,
@@ -187,7 +210,20 @@ def gui_actions(
 ):
     # Get list of function parameters and values
     parameters = [(k, v) for k, v in locals().items() if k not in ["action_type", "bool_value", "headless", "print_only"]]
-    
+
+    # Migrate old debug mode values
+    for i, (key, value) in enumerate(parameters):
+        if key == "debug_mode" and isinstance(value, str):
+            migration_map = {
+                "Dataset Debug (Image)": "None",  # Dataset debugging moved to caching section
+                "Dataset Debug (Console)": "None",  # Dataset debugging moved to caching section
+                "Dataset Debug (Video)": "None",  # Dataset debugging moved to caching section
+            }
+            if value in migration_map:
+                old_value = value
+                parameters[i] = (key, migration_map[value])
+                log.info(f"Migrated debug_mode from '{old_value}' to '{migration_map[value]}'")
+
     if action_type == "save_configuration":
         log.info("Save configuration...")
         return save_configuration(
@@ -429,7 +465,7 @@ def train_model(
     if param_dict.get("caching_latent_keep_cache"):
         run_cache_latent_cmd.append("--keep_cache")
         
-    if param_dict.get("caching_latent_debug_mode"):
+    if param_dict.get("caching_latent_debug_mode") is not None and param_dict.get("caching_latent_debug_mode") not in ["", "None"]:
         run_cache_latent_cmd.append("--debug_mode")
         run_cache_latent_cmd.append(str(param_dict.get("caching_latent_debug_mode")))
         
@@ -606,8 +642,19 @@ def train_model(
         run_cmd.append(rf"{file_path}")
 
         # Define a dictionary of parameters
+        # Handle debug mode selection
+        additional_params = param_dict.get("additional_parameters", "")
+        debug_mode_selected = param_dict.get("debug_mode", "None")
+        if debug_mode_selected != "None":
+            debug_params = get_debug_parameters_for_mode(debug_mode_selected)
+            if debug_params:
+                if additional_params:
+                    additional_params += " " + debug_params
+                else:
+                    additional_params = debug_params
+
         run_cmd_params = {
-            "additional_parameters": param_dict.get("additional_parameters"),
+            "additional_parameters": additional_params,
         }
 
         # Use the ** syntax to unpack the dictionary when calling the function
@@ -695,7 +742,8 @@ def lora_tab(
         
         # advanced_training
         advanced_training.additional_parameters,
-        
+        advanced_training.debug_mode,
+
         # Dataset Settings
         model.dataset_config,
         
