@@ -78,8 +78,8 @@ class FP8Converter:
             from musubi_tuner.modules.fp8_optimization_utils import (
                 load_safetensors_with_fp8_optimization
             )
-            from musubi_tuner.utils.safetensors_utils import mem_eff_save_file
-            
+            from musubi_tuner.utils.safetensors_utils import mem_eff_save_file, MemoryEfficientSafeOpen
+
             # Qwen Image specific FP8 optimization keys
             # Note: We need to include certain layers for ComfyUI compatibility
             FP8_OPTIMIZATION_TARGET_KEYS = None  # None means all Linear layers (for ComfyUI compatibility)
@@ -87,9 +87,18 @@ class FP8Converter:
                 "norm",
                 "time_text_embed",
             ]
-            
+
+            # Read existing metadata from the input model to preserve architecture and resolution info
+            existing_metadata = {}
+            try:
+                with MemoryEfficientSafeOpen(input_path) as f:
+                    existing_metadata = f.metadata()
+                log.info(f"Preserved existing metadata: {list(existing_metadata.keys())}")
+            except Exception as e:
+                log.warning(f"Could not read existing metadata: {e}")
+
             log.info(f"Converting model from {input_path} to {output_path}")
-            
+
             # Load model weights with FP8 optimization
             device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
             log.info(f"Using device: {device}")
@@ -111,13 +120,15 @@ class FP8Converter:
             log.info(f"Successfully converted model weights to FP8 format")
             
             # Save the FP8 converted model with metadata indicating it's FP8 scaled
+            # Preserve existing metadata and add FP8 information
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
-            metadata = {
+            metadata = existing_metadata.copy()  # Start with existing metadata
+            metadata.update({
                 "format": "pt",
                 "fp8_scaled": "true",
                 "quantization_mode": quantization_mode,
                 "block_size": "64" if quantization_mode == "block" else "0",
-            }
+            })
             
             # Log some debug info about the converted weights
             log.info(f"Sample of converted keys: {list(fp8_state_dict.keys())[:5]}")
@@ -267,7 +278,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
     gr.Markdown("# FP8 Model Converter")
     gr.Markdown("### Convert Qwen Image models to FP8 Scaled format")
     gr.Markdown("This tool converts Qwen Image or Qwen Image Edit models to FP8 scaled format using Musubi Tuner's dynamic FP8 scaling methodology.")
-    gr.Markdown("⚠️ **IMPORTANT:** Use tensor mode for low VRAM inference. Block mode uses 2-3x more VRAM because it dequantizes to BF16.")
+    gr.Markdown("⚠️ **IMPORTANT:** Tensor mode (default) is ComfyUI compatible and uses less VRAM. Block mode provides better quality but requires ComfyUI patch and uses 2-3x more VRAM.")
     
     # 4-column layout for compact display
     with gr.Row():
@@ -333,9 +344,9 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
     
     quantization_mode = gr.Radio(
         label="Quantization Mode",
-        choices=["block", "tensor"],
-        value=config.get("fp8_converter.quantization_mode", "block"),
-        info="block = Better quality (requires ComfyUI patch), tensor = ComfyUI compatible",
+        choices=["tensor", "block"],
+        value=config.get("fp8_converter.quantization_mode", "tensor"),
+        info="tensor = ComfyUI compatible (recommended), block = Better quality (requires ComfyUI patch)",
     )
     
     delete_original = gr.Checkbox(

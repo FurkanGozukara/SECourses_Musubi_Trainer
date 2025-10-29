@@ -1,0 +1,13 @@
+# FP8 Converter Default Settings
+
+# Input folder for model files to convert
+fp8_converter.input_folder = ""
+
+# Output folder for converted models (optional, uses input folder if empty)
+fp8_converter.output_folder = ""
+
+# Quantization mode: tensor = ComfyUI compatible (recommended), block = Better quality (requires ComfyUI patch)
+fp8_converter.quantization_mode = "tensor"
+
+# Whether to delete original files after successful conversion
+fp8_converter.delete_original = false
