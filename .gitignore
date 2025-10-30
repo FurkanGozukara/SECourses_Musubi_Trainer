@@ -15,6 +15,7 @@ downloads/
 eggs/
 .claude/
 .eggs/
+musubi-tuner2
 lib/
 lib64/
 parts/

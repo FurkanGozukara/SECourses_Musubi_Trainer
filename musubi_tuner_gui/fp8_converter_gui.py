@@ -81,11 +81,27 @@ class FP8Converter:
             from musubi_tuner.utils.safetensors_utils import mem_eff_save_file, MemoryEfficientSafeOpen
 
             # Qwen Image specific FP8 optimization keys
-            # Note: We need to include certain layers for ComfyUI compatibility
+            # Match the patterns from musubi-tuner2/src/musubi_tuner/qwen_image/qwen_image_model.py
+            # The repo uses:
+            #   FP8_OPTIMIZATION_TARGET_KEYS = ["transformer_blocks"]
+            #   FP8_OPTIMIZATION_EXCLUDE_KEYS = ["norm", "time_text_embed"]
+            # For ComfyUI compatibility, we convert all Linear layers (target_keys=None)
+            # but use more specific exclude patterns to avoid excluding Linear layers like norm_out.linear.weight
             FP8_OPTIMIZATION_TARGET_KEYS = None  # None means all Linear layers (for ComfyUI compatibility)
+            # Exclude normalization layers (RMSNorm, LayerNorm, etc.) which are not Linear layers
+            # Use specific patterns to avoid excluding Linear layers like "norm_out.linear.weight"
+            # Note: "norm" substring would exclude norm_out.linear.weight, so we use specific patterns
+            # Also note: time_text_embed is NOT excluded here (repo excludes it for training,
+            # but working model has it converted, so we include it for ComfyUI compatibility)
             FP8_OPTIMIZATION_EXCLUDE_KEYS = [
-                "norm",
-                "time_text_embed",
+                ".norm.",  # Normalization layers inside modules (e.g., transformer_blocks.0.norm.weight)
+                ".norm_q",  # Attention norm layers (e.g., transformer_blocks.0.attn.norm_q.weight)
+                ".norm_k",  # Attention norm layers
+                ".norm_added_q",  # Attention norm layers
+                ".norm_added_k",  # Attention norm layers
+                "txt_norm",  # Text normalization layer (RMSNorm, not Linear)
+                # Note: "norm_out.linear.weight" is NOT excluded because it's a Linear layer
+                # and doesn't match any of the above patterns
             ]
 
             # Read existing metadata from the input model to preserve architecture and resolution info
@@ -119,6 +135,10 @@ class FP8Converter:
             
             log.info(f"Successfully converted model weights to FP8 format")
             
+            # Add the scaled_fp8 flag tensor (required by ComfyUI to enable FP8 dequantization)
+            # This is a dummy tensor that signals to ComfyUI that the model uses scaled FP8 format
+            fp8_state_dict["scaled_fp8"] = torch.zeros(2, dtype=torch.float8_e4m3fn)
+            
             # Save the FP8 converted model with metadata indicating it's FP8 scaled
             # Preserve existing metadata and add FP8 information
             os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -136,6 +156,8 @@ class FP8Converter:
                 sample_key = list(fp8_state_dict.keys())[0]
                 sample_tensor = fp8_state_dict[sample_key]
                 log.info(f"Sample tensor '{sample_key}': dtype={sample_tensor.dtype}, shape={sample_tensor.shape}")
+            
+            log.info("✅ Added scaled_fp8 flag tensor for ComfyUI compatibility")
             
             mem_eff_save_file(fp8_state_dict, output_path, metadata=metadata)
             
