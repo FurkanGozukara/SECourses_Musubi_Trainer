@@ -67,6 +67,91 @@ def get_debug_parameters_for_mode(debug_mode: str) -> str:
     return debug_params.get(debug_mode, "")
 
 
+def manage_additional_parameters(additional_params: str, args_to_add: list = None, args_to_remove: list = None) -> str:
+    """
+    Manage additional parameters by adding or removing specific arguments without losing user-written values.
+    
+    Args:
+        additional_params: The current additional_parameters string
+        args_to_add: List of argument strings to add (e.g., ['--disable_numpy_memmap', '--metadata_arch "qwen-image-edit-plus"'])
+        args_to_remove: List of argument strings to remove (e.g., ['--disable_numpy_memmap'])
+    
+    Returns:
+        Modified additional_parameters string with requested args added/removed
+    """
+    if args_to_add is None:
+        args_to_add = []
+    if args_to_remove is None:
+        args_to_remove = []
+    
+    if not additional_params and not args_to_add:
+        return ""
+    
+    # Parse existing parameters into a list of tokens
+    # Split by spaces, but preserve quoted strings
+    import shlex
+    try:
+        if additional_params.strip():
+            existing_args = shlex.split(additional_params)
+        else:
+            existing_args = []
+    except Exception:
+        # Fallback: simple split if shlex fails
+        existing_args = additional_params.split() if additional_params.strip() else []
+    
+    # Remove arguments that should be removed
+    args_to_remove_normalized = []
+    for arg in args_to_remove:
+        # Normalize: remove leading dashes, handle both --arg and arg forms
+        # Also handle quoted args like '--metadata_arch "qwen-image-edit-plus"'
+        normalized = arg.lstrip('-').split()[0]  # Get first word before any quotes
+        args_to_remove_normalized.append(normalized)
+    
+    # Build list of args to keep (excluding ones to remove)
+    filtered_args = []
+    i = 0
+    while i < len(existing_args):
+        arg = existing_args[i]
+        # Check if this arg should be removed
+        should_remove = False
+        normalized_arg = arg.lstrip('-')
+        
+        for remove_arg in args_to_remove_normalized:
+            if normalized_arg == remove_arg:
+                should_remove = True
+                # If it's a flag with a value (like --metadata_arch "value"), skip the value too
+                if i + 1 < len(existing_args) and not existing_args[i + 1].startswith('-'):
+                    i += 1  # Skip the value
+                break
+        
+        if not should_remove:
+            filtered_args.append(arg)
+        i += 1
+    
+    # Add new arguments (avoid duplicates)
+    args_to_add_normalized = []
+    for arg in args_to_add:
+        # Normalize for duplicate checking
+        normalized = arg.lstrip('-').split()[0]  # Get first word (e.g., 'disable_numpy_memmap' from '--disable_numpy_memmap')
+        args_to_add_normalized.append(normalized)
+    
+    # Check which args to add are not already present
+    existing_normalized = [arg.lstrip('-').split()[0] for arg in filtered_args]
+    for arg in args_to_add:
+        normalized = arg.lstrip('-').split()[0]
+        if normalized not in existing_normalized:
+            # Parse the arg to add (handle quoted strings properly)
+            try:
+                parsed = shlex.split(arg)
+                filtered_args.extend(parsed)
+            except Exception:
+                # Fallback: simple append
+                filtered_args.append(arg)
+    
+    # Return as space-separated string
+    return ' '.join(filtered_args) if filtered_args else ""
+
+
 def upsert_parameter(parameters, key: str, value):
     """Return a new parameter list where `key` is set to `value` exactly once."""
     updated: list[tuple] = []
@@ -534,6 +619,11 @@ class QwenImageModel:
                 label="Enable Qwen-Image-Edit-2509 Mode",
                 info="Enable Edit-2509 training with multiple control images (up to 3). Requires Qwen-Image-Edit-2509 DiT model. Cannot be used with regular Edit mode.",
                 value=self.config.get("edit_plus", False),
+            )
+            self.faster_model_loading = gr.Checkbox(
+                label="Faster Model Loading (Uses more RAM but speeds up model loading speed - Enable for RunPod)",
+                info="Disables numpy memmap for faster model loading. Uses more RAM but speeds up loading, especially useful for RunPod and similar environments.",
+                value=self.config.get("faster_model_loading", False),
             )
         
         with gr.Row():
@@ -1049,6 +1139,7 @@ def qwen_image_gui_actions(
     img_in_txt_in_offloading,
     edit,
     edit_plus,
+    faster_model_loading,
     timestep_sampling,
     discrete_flow_shift,
     flow_shift,
@@ -2201,6 +2292,34 @@ def train_qwen_image_model(headless, print_only, parameters):
         # Ensure dataset_config entry survives all transformations
         parameters = upsert_parameter(parameters, "dataset_config", effective_dataset_config)
 
+        # Handle faster_model_loading checkbox: save disable_numpy_memmap to TOML
+        faster_model_loading_enabled = param_dict.get("faster_model_loading", False)
+        log.info(f"faster_model_loading checkbox value: {faster_model_loading_enabled}")
+        if faster_model_loading_enabled:
+            parameters = upsert_parameter(parameters, "disable_numpy_memmap", True)
+            log.info("Added disable_numpy_memmap = True to TOML parameters")
+        else:
+            # Remove disable_numpy_memmap if it exists (so it won't be saved to TOML)
+            parameters = [(k, v) for k, v in parameters if k != "disable_numpy_memmap"]
+            log.info("Removed disable_numpy_memmap from TOML parameters")
+        
+        # Handle edit_plus checkbox: save metadata_arch to TOML
+        edit_plus_enabled = param_dict.get("edit_plus", False)
+        log.info(f"edit_plus checkbox value: {edit_plus_enabled}")
+        if edit_plus_enabled:
+            parameters = upsert_parameter(parameters, "metadata_arch", "qwen-image-edit-plus")
+            log.info("Added metadata_arch = 'qwen-image-edit-plus' to TOML parameters")
+        else:
+            # Remove metadata_arch if edit_plus is disabled (set to None to remove from TOML)
+            # Check if it exists and remove it
+            parameters = [(k, v) for k, v in parameters if k != "metadata_arch"]
+            log.info("Removed metadata_arch from TOML parameters")
+        
+        # Verify parameters are in the list before saving
+        disable_numpy_memmap_in_params = any(k == "disable_numpy_memmap" for k, v in parameters)
+        metadata_arch_in_params = any(k == "metadata_arch" for k, v in parameters)
+        log.info(f"Before SaveConfigFileToRun: disable_numpy_memmap in params: {disable_numpy_memmap_in_params}, metadata_arch in params: {metadata_arch_in_params}")
+
         pattern_exclusion = []
         for key, _ in parameters:
             if key.startswith('caching_latent_') or key.startswith('caching_teo_'):
@@ -2232,6 +2351,16 @@ def train_qwen_image_model(headless, print_only, parameters):
             mandatory_keys=["dataset_config", "dit", "vae", "text_encoder"],
         )
         
+        # Verify TOML file was created and check its contents
+        if os.path.exists(file_path):
+            with open(file_path, "r", encoding="utf-8") as f:
+                toml_content = toml.load(f)
+                disable_numpy_memmap_in_toml = toml_content.get("disable_numpy_memmap", None)
+                metadata_arch_in_toml = toml_content.get("metadata_arch", None)
+                log.info(f"After SaveConfigFileToRun - TOML file contents check:")
+                log.info(f"  disable_numpy_memmap = {disable_numpy_memmap_in_toml}")
+                log.info(f"  metadata_arch = {metadata_arch_in_toml}")
+        
         run_cmd.append("--config_file")
         run_cmd.append(f"{file_path}")
 
@@ -2245,6 +2374,29 @@ def train_qwen_image_model(headless, print_only, parameters):
                     additional_params += " " + debug_params
                 else:
                     additional_params = debug_params
+
+        # Also handle faster_model_loading and edit_plus in additional_parameters
+        # to ensure they're passed via command line as well (for backward compatibility)
+        args_to_add = []
+        args_to_remove = []
+        
+        if faster_model_loading_enabled:
+            args_to_add.append("--disable_numpy_memmap")
+        else:
+            args_to_remove.append("--disable_numpy_memmap")
+        
+        if edit_plus_enabled:
+            args_to_add.append('--metadata_arch "qwen-image-edit-plus"')
+        else:
+            args_to_remove.append('--metadata_arch "qwen-image-edit-plus"')
+        
+        # Apply changes to additional_params (preserve user-written values)
+        if args_to_add or args_to_remove:
+            additional_params = manage_additional_parameters(
+                additional_params,
+                args_to_add=args_to_add,
+                args_to_remove=args_to_remove
+            )
 
         run_cmd_params = {
             "additional_parameters": additional_params,
@@ -3718,6 +3870,7 @@ def qwen_image_lora_tab(
         qwen_model.img_in_txt_in_offloading,
         qwen_model.edit,
         qwen_model.edit_plus,
+        qwen_model.faster_model_loading,
         qwen_model.timestep_sampling,
         qwen_model.discrete_flow_shift,
         qwen_model.flow_shift,
@@ -3817,6 +3970,7 @@ def qwen_image_lora_tab(
             "training_mode": ("Qwen Image Model Settings", "Training Mode (LoRA/DreamBooth)"),
             "edit": ("Qwen Image Model Settings", "Enable Qwen-Image-Edit Mode"),
             "edit_plus": ("Qwen Image Model Settings", "Enable Qwen-Image-Edit-2509 Mode"),
+            "faster_model_loading": ("Qwen Image Model Settings", "Faster Model Loading (Uses more RAM but speeds up model loading speed - Enable for RunPod)"),
             
             # FP8 and Memory Settings
             "fp8_base": ("Qwen Image Model Settings", "FP8 for Base Model (DiT) (BF16 Model On The Fly Converted)"),

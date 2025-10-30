@@ -55,6 +55,13 @@ class ParameterSearcher:
                 "keywords": ["edit", "control", "image edit", "control image"],
                 "description": "Enable image editing training with control images"
             },
+            "faster_model_loading": {
+                "display_name": "Faster Model Loading (Uses more RAM but speeds up model loading speed - Enable for RunPod)",
+                "tab": "Qwen Image LoRA",
+                "section": "Model Settings",
+                "keywords": ["faster", "model", "loading", "runpod", "ram", "memmap", "disable_numpy_memmap"],
+                "description": "Disables numpy memmap for faster model loading. Uses more RAM but speeds up loading, especially useful for RunPod"
+            },
             
             # FP8 Quantization
             "fp8_base": {

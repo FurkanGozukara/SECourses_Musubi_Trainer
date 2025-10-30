@@ -52,6 +52,7 @@ guidance_scale = 1.0          # Classifier-free guidance scale. 1.0 = default, h
 img_in_txt_in_offloading = false  # Memory optimization for mixed image-text inputs
 edit = false  # Enable Qwen-Image-Edit mode for training with control images
 edit_plus = false  # Enable Qwen-Image-Edit-2509 mode for training with multiple control images (up to 3)
+faster_model_loading = false  # Faster Model Loading: Disables numpy memmap for faster model loading. Uses more RAM but speeds up loading, especially useful for RunPod and similar environments
 
 # Flow Matching Settings
 timestep_sampling = "qwen_shift"  # Use Qwen-specific resolution-aware sampling

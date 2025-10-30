@@ -1791,6 +1791,8 @@ def SaveConfigFileToRun(
             "force_v2_1_time_embedding", "one_frame",
             # Multi-GPU parameter - should not be passed when False
             "multi_gpu",
+            # Model loading parameter
+            "disable_numpy_memmap",  # Store-true parameter - don't save when False
             # Additional Wan parameters that should not be passed when False
             "fp8_llm"  # This was already in the list but ensuring it's complete
         ]
