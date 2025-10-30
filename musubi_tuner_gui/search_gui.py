@@ -62,7 +62,7 @@ class ParameterSearcher:
                 "tab": "Qwen Image LoRA",
                 "section": "FP8 Quantization",
                 "keywords": ["fp8", "quantization", "dit", "base", "memory", "vram"],
-                "description": "Converts bf16 model to FP8 on-the-fly, saving ~12GB VRAM"
+                "description": "Converts bf16 model to FP8 on-the-fly, reducing VRAM usage"
             },
             "fp8_scaled": {
                 "display_name": "Scaled FP8 for Base Model (DiT) (BF16 Model On The Fly Converted - Better FP8 Precision)",
@@ -76,7 +76,7 @@ class ParameterSearcher:
                 "tab": "Qwen Image LoRA",
                 "section": "FP8 Quantization",
                 "keywords": ["fp8", "text encoder", "vl", "memory", "vram"],
-                "description": "FP8 quantization for Qwen2.5-VL saves ~8GB VRAM"
+                "description": "FP8 quantization for Qwen2.5-VL reduces VRAM usage"
             },
             "blocks_to_swap": {
                 "display_name": "Blocks to Swap to CPU",

@@ -145,7 +145,7 @@ Changes:
   - Configurable output directories for each conversion format
   - Dynamic UI - conversion directories only show when conversion is enabled
 - **ENHANCED: FP8 Optimization Descriptions** - Comprehensive guidance for FP8 settings:
-  - fp8_vl - Now clearly indicates Qwen2.5-VL text encoder with ~8GB VRAM savings
+  - fp8_vl - Now clearly indicates Qwen2.5-VL text encoder with VRAM savings
   - fp8_base - Clarifies on-the-fly BF16→FP8 conversion process
   - fp8_scaled - Emphasizes CRITICAL importance for quality with block-wise scaling
   - Added hardware compatibility notes (RTX 4000+ native, RTX 3000 emulation)

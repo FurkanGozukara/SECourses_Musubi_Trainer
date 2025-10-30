@@ -130,7 +130,7 @@ class ImageCaptioningTab:
                         with gr.Row():
                             self.fp8_vl = gr.Checkbox(
                                 label="Use FP8 Precision",
-                                info="Enable FP8 quantization to reduce VRAM usage (~8GB savings). Recommended for GPUs with <24GB VRAM",
+                                info="Enable FP8 quantization to reduce VRAM usage. Recommended for lower VRAM GPUs",
                                 value=self.config.get("image_captioning.fp8_vl", True),
                             )
                             

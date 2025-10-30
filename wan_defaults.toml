@@ -4,7 +4,7 @@
 # Based on Wan documentation and best practices
 
 # Training Mode Selection
-training_mode = "LoRA Training"  # Options: "LoRA Training" (8-16GB VRAM) or "DreamBooth Fine-Tuning" (24GB+ VRAM)
+training_mode = "LoRA Training"  # Options: "LoRA Training" (efficient, lower VRAM) or "DreamBooth Fine-Tuning" (higher VRAM)
 
 # Wan Model Selection - REQUIRED
 task = "t2v-14B"  # REQUIRED: Wan model type (t2v-14B, t2v-1.3B, i2v-14B, t2i-14B, flf2v-14B, t2v-1.3B-FC, t2v-14B-FC, i2v-14B-FC, t2v-A14B, i2v-A14B)
@@ -57,10 +57,10 @@ vae_dtype = "bfloat16"  # VAE data type
 clip_vision_dtype = "bfloat16"  # CLIP vision encoder data type
 
 # Memory Optimization Settings
-fp8_base = false  # Enable FP8 for DiT model to save ~12GB VRAM (requires fp8_scaled=true)
+fp8_base = false  # Enable FP8 for DiT model to reduce VRAM usage (requires fp8_scaled=true)
 fp8_scaled = false  # REQUIRED when fp8_base=true, provides better quality than standard FP8
-fp8_vl = false  # Enable FP8 for text encoder to save ~8GB VRAM
-blocks_to_swap = 0  # 0=disabled. Max varies by model. 16=save ~8GB VRAM, higher values save more but require more RAM
+fp8_vl = false  # Enable FP8 for text encoder to reduce VRAM usage
+blocks_to_swap = 0  # 0=disabled. Max varies by model. Higher values save more VRAM but require more RAM
 
 # VAE Optimization Settings
 vae_tiling = false  # Enable spatial tiling to reduce VRAM usage during VAE operations

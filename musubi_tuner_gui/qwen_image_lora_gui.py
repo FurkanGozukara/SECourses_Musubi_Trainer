@@ -520,7 +520,7 @@ class QwenImageModel:
                 label="Training Mode",
                 choices=["LoRA Training", "DreamBooth Fine-Tuning"],
                 value=self.config.get("training_mode", "LoRA Training"),
-                info="LoRA: Efficient parameter-efficient fine-tuning (recommended, 8-16GB VRAM) | DreamBooth: Full model fine-tuning (requires 24GB+ VRAM)"
+                info="LoRA: Efficient parameter-efficient fine-tuning. Faster to train on lower VRAM GPUs with FP8 Scaled."
             )
         
         # Qwen-Image-Edit mode toggle (placed after training mode)
@@ -655,7 +655,7 @@ class QwenImageModel:
 
         self.fp8_vl = gr.Checkbox(
             label="Use FP8 for Text Encoder (Qwen2.5-VL)",
-            info="[🔥 RECOMMENDED for <16GB VRAM] FP8 quantization for Qwen2.5-VL text encoder. Saves ~8GB VRAM with <1% quality loss. MUST match caching_teo_fp8_vl setting if using cached text encoder outputs. RTX 4000+ has native FP8 support",
+            info="[🔥 RECOMMENDED for lower VRAM] FP8 quantization for Qwen2.5-VL text encoder. Reduces VRAM with <1% quality loss. MUST match caching_teo_fp8_vl setting if using cached text encoder outputs. RTX 4000+ has native FP8 support",
             value=self.config.get("fp8_vl", False),
         )
 
@@ -666,13 +666,13 @@ class QwenImageModel:
         Pre-quantized FP8 models are NOT supported. Training outputs LoRA weights only - base models remain in bf16 format.
         
         **GPU Compatibility:** Both options work on ALL CUDA GPUs (RTX 2000/3000/4000). 
-        For 16GB GPUs, enable BOTH checkboxes to reduce VRAM from 24GB → 12GB.
+        For lower VRAM GPUs, enable BOTH checkboxes to reduce VRAM usage.
         """)
         
         with gr.Row():
             self.fp8_base = gr.Checkbox(
                 label="FP8 for Base Model (DiT) [On-The-Fly Conversion]",
-                info="[⚠️ ALWAYS USE WITH fp8_scaled] Converts BF16 model → FP8 during loading. Saves ~12GB VRAM (24GB→12GB). INPUT: Standard BF16 model file. OUTPUT: Cannot save as FP8. For pre-quantized FP8 models, leave this OFF",
+                info="[⚠️ ALWAYS USE WITH fp8_scaled] Converts BF16 model → FP8 during loading. Reduces VRAM usage. INPUT: Standard BF16 model file. OUTPUT: Cannot save as FP8. For pre-quantized FP8 models, leave this OFF",
                 value=self.config.get("fp8_base", False),
             )
 
@@ -684,7 +684,7 @@ class QwenImageModel:
             
             self.blocks_to_swap = gr.Number(
                 label="Blocks to Swap to CPU",
-                info="Swap DiT blocks to CPU to save VRAM. Qwen Image has 60 total blocks, max swap is 59. 16=24GB→16GB, 45=42GB→12GB. Requires 64GB+ RAM. Slows training significantly",
+                info="Swap DiT blocks to CPU to save VRAM. Qwen Image has 60 total blocks, max swap is 59. Higher values save more VRAM but require more RAM. Slows training significantly",
                 value=self.config.get("blocks_to_swap", 0),
                 minimum=0,
                 maximum=59,
