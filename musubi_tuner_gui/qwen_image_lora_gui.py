@@ -627,7 +627,7 @@ class QwenImageModel:
             )
             self.use_pinned_memory_for_block_swap = gr.Checkbox(
                 label="Use Pinned Memory for Block Swapping (Faster on Windows - Requires more RAM)",
-                info="Uses more RAM but speeds up training significantly like 2x or more. To work, go to Advanced Graphics settings in System > Display > Graphics as in tutorial video and disable Hardware-Accelerated GPU Scheduling and restart your PC.",
+                info="Uses more system RAM but speeds up training. The speed up maybe significant depending on system settings. To work, go to Advanced Graphics settings in System > Display > Graphics as in tutorial video and disable Hardware-Accelerated GPU Scheduling and restart your PC.",
                 value=self.config.get("use_pinned_memory_for_block_swap", False),
             )
         

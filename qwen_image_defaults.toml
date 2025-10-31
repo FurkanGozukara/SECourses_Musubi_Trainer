@@ -53,7 +53,7 @@ img_in_txt_in_offloading = false  # Memory optimization for mixed image-text inp
 edit = false  # Enable Qwen-Image-Edit mode for training with control images
 edit_plus = false  # Enable Qwen-Image-Edit-2509 mode for training with multiple control images (up to 3)
 faster_model_loading = false  # Faster Model Loading: Disables numpy memmap for faster model loading. Uses more RAM but speeds up loading, especially useful for RunPod and similar environments
-use_pinned_memory_for_block_swap = false  # Use Pinned Memory for Block Swapping: Uses more RAM but speeds up training significantly like 2x or more. To work, go to Advanced Graphics settings in System > Display > Graphics as in tutorial video and disable Hardware-Accelerated GPU Scheduling and restart your PC. Only effective when blocks_to_swap > 0
+use_pinned_memory_for_block_swap = false  # Use Pinned Memory for Block Swapping: Uses more system RAM but speeds up training. The speed up maybe significant depending on system settings. To work, go to Advanced Graphics settings in System > Display > Graphics as in tutorial video and disable Hardware-Accelerated GPU Scheduling and restart your PC. Only effective when blocks_to_swap > 0
 
 # Flow Matching Settings
 timestep_sampling = "qwen_shift"  # Use Qwen-specific resolution-aware sampling
