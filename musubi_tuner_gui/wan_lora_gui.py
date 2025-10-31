@@ -1592,8 +1592,8 @@ def wan_gui_actions(
                 "network_dropout", "network_args", "training_comment", "dim_from_weights", "scale_weight_norms",
                 "base_weights", "base_weights_multiplier",
                 # Save/Load Settings
-                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
-                "save_last_n_epochs_state", "save_last_n_steps", "save_last_n_steps_state", "save_state",
+                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_last_n_epochs", "save_every_n_steps",
+                "save_last_n_steps", "save_last_n_epochs_state", "save_last_n_steps_state", "save_state",
                 "save_state_on_train_end", "mem_eff_save",
                 # HuggingFace Settings
                 "huggingface_repo_id", "huggingface_token", "huggingface_repo_type", "huggingface_repo_visibility",
@@ -1610,7 +1610,7 @@ def wan_gui_actions(
                 "mixed_precision", "num_cpu_threads_per_process", "num_processes", "num_machines", "multi_gpu", "gpu_ids",
                 "main_process_port", "dynamo_backend", "dynamo_mode", "dynamo_use_fullgraph", "dynamo_use_dynamic", "extra_accelerate_launch_args",
                 # advanced_training
-                "additional_parameters",
+                "additional_parameters", "debug_mode",
                 # Wan Dataset settings
                 "dataset_config_mode", "dataset_config", "parent_folder_path", "dataset_resolution_width",
                 "dataset_resolution_height", "dataset_caption_extension", "dataset_batch_size",
@@ -1648,8 +1648,8 @@ def wan_gui_actions(
                 "network_dropout", "network_args", "training_comment", "dim_from_weights", "scale_weight_norms",
                 "base_weights", "base_weights_multiplier",
                 # Save/Load Settings
-                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
-                "save_last_n_epochs_state", "save_last_n_steps", "save_last_n_steps_state", "save_state",
+                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_last_n_epochs", "save_every_n_steps",
+                "save_last_n_steps", "save_last_n_epochs_state", "save_last_n_steps_state", "save_state",
                 "save_state_on_train_end", "mem_eff_save",
                 # HuggingFace Settings
                 "huggingface_repo_id", "huggingface_token", "huggingface_repo_type", "huggingface_repo_visibility",
@@ -1668,7 +1668,7 @@ def wan_gui_actions(
                 "mixed_precision", "num_cpu_threads_per_process", "num_processes", "num_machines", "multi_gpu", "gpu_ids",
                 "main_process_port", "dynamo_backend", "dynamo_mode", "dynamo_use_fullgraph", "dynamo_use_dynamic", "extra_accelerate_launch_args",
                 # advanced_training
-                "additional_parameters",
+                "additional_parameters", "debug_mode",
                 # Wan Dataset settings
                 "dataset_config_mode", "dataset_config", "parent_folder_path", "dataset_resolution_width",
                 "dataset_resolution_height", "dataset_caption_extension", "dataset_batch_size",
@@ -1706,8 +1706,8 @@ def wan_gui_actions(
                 "network_dropout", "network_args", "training_comment", "dim_from_weights", "scale_weight_norms",
                 "base_weights", "base_weights_multiplier",
                 # Save/Load Settings
-                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
-                "save_last_n_epochs_state", "save_last_n_steps", "save_last_n_steps_state", "save_state",
+                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_last_n_epochs", "save_every_n_steps",
+                "save_last_n_steps", "save_last_n_epochs_state", "save_last_n_steps_state", "save_state",
                 "save_state_on_train_end", "mem_eff_save",
                 # HuggingFace Settings
                 "huggingface_repo_id", "huggingface_token", "huggingface_repo_type", "huggingface_repo_visibility",
@@ -1759,6 +1759,14 @@ def train_wan_model(headless, print_only, parameters):
             run_cmd = [python_cmd, "-m", "accelerate.commands.launch"]
 
     param_dict = dict(parameters)
+    
+    # Debug: Log critical caching parameters to diagnose misalignment issues
+    log.debug(f"[DEBUG] Critical caching parameters:")
+    log.debug(f"  caching_latent_device: {param_dict.get('caching_latent_device')} (type: {type(param_dict.get('caching_latent_device')).__name__})")
+    log.debug(f"  caching_latent_batch_size: {param_dict.get('caching_latent_batch_size')} (type: {type(param_dict.get('caching_latent_batch_size')).__name__})")
+    log.debug(f"  caching_latent_num_workers: {param_dict.get('caching_latent_num_workers')} (type: {type(param_dict.get('caching_latent_num_workers')).__name__})")
+    log.debug(f"  caching_latent_debug_mode: {param_dict.get('caching_latent_debug_mode')} (type: {type(param_dict.get('caching_latent_debug_mode')).__name__})")
+    log.debug(f"  debug_mode: {param_dict.get('debug_mode')} (type: {type(param_dict.get('debug_mode')).__name__})")
 
     # Initialize variables that might be needed for caching
     latent_cache_cmd = None
@@ -1806,9 +1814,22 @@ def train_wan_model(headless, print_only, parameters):
             run_cache_latent_cmd.append("--device")
             run_cache_latent_cmd.append(str(caching_device))
 
-        if param_dict.get("caching_latent_batch_size"):
-            run_cache_latent_cmd.append("--batch_size")
-            run_cache_latent_cmd.append(str(param_dict.get("caching_latent_batch_size")))
+        # Validate and add batch_size - must be a valid integer
+        caching_batch_size = param_dict.get("caching_latent_batch_size")
+        if caching_batch_size:
+            # Validate it's actually a number, not a string like "cuda"
+            try:
+                batch_size_int = int(caching_batch_size)
+                if batch_size_int > 0:
+                    run_cache_latent_cmd.append("--batch_size")
+                    run_cache_latent_cmd.append(str(batch_size_int))
+                else:
+                    log.warning(f"Invalid caching_latent_batch_size: {caching_batch_size} (must be > 0)")
+            except (ValueError, TypeError):
+                log.error(f"caching_latent_batch_size has invalid value: {caching_batch_size} (type: {type(caching_batch_size)}). Expected integer.")
+                log.error(f"caching_latent_device value: {param_dict.get('caching_latent_device')}")
+                log.error(f"This suggests parameter misalignment. Check config file loading.")
+                raise ValueError(f"Invalid caching_latent_batch_size value: {caching_batch_size}. Expected integer, got {type(caching_batch_size).__name__}")
 
         if param_dict.get("caching_latent_num_workers"):
             run_cache_latent_cmd.append("--num_workers")
@@ -1821,9 +1842,15 @@ def train_wan_model(headless, print_only, parameters):
             run_cache_latent_cmd.append("--keep_cache")
 
         # Debug mode for latent caching
-        if param_dict.get("caching_latent_debug_mode") is not None and param_dict.get("caching_latent_debug_mode") not in ["", "None"]:
-            run_cache_latent_cmd.append("--debug_mode")
-            run_cache_latent_cmd.append(str(param_dict.get("caching_latent_debug_mode")))
+        debug_mode_val = param_dict.get("caching_latent_debug_mode")
+        # Filter out boolean values, empty strings, "None" string, and validate enum
+        if debug_mode_val is not None and debug_mode_val not in ["", "None", True, False] and not isinstance(debug_mode_val, bool):
+            # Validate it's one of the allowed enum values
+            if debug_mode_val in ["image", "console", "video"]:
+                run_cache_latent_cmd.append("--debug_mode")
+                run_cache_latent_cmd.append(str(debug_mode_val))
+            else:
+                log.warning(f"Invalid caching_latent_debug_mode value: {debug_mode_val}. Must be one of: image, console, video")
 
         # Determine if this is I2V training
         task = param_dict.get("task", "t2v-14B")
@@ -2414,6 +2441,11 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
                 values.append(toml_value)
             else:
                 # Use original default value if not found in config
+                # Special handling for debug_mode - use "None" as default if missing
+                if key == "debug_mode" and toml_value is None:
+                    value = "None"
+                    log.debug(f"[CONFIG] debug_mode not found in TOML, using default: None")
+                
                 # Check if the default value is a list and should be a single value
                 if isinstance(value, list) and key in numeric_fields:
                     log.info(f"[DEFAULT] Converting list to single value for numeric field '{key}': {value} -> {value[0] if value else None}")
@@ -2573,6 +2605,20 @@ def save_wan_configuration(save_as_bool, file_path, parameters):
         # ADD MISSING WAN-SPECIFIC NUMERIC FIELDS:
         'dit_in_channels', 'num_layers', 'network_dropout', 'sample_num_frames', 'num_timestep_buckets'
     ]
+    
+    # Parameters that should be None when their value is 0 (optional parameters)
+    # When saving, convert None back to 0 so they get saved properly
+    optional_parameters = {
+        "sample_every_n_steps", "sample_every_n_epochs",
+        "save_every_n_steps", "max_timestep", "min_timestep",
+        "network_dim", "num_layers",  # These can be None for auto-detection
+        "max_train_epochs",  # 0 means use max_train_steps instead
+        "dit_in_channels", "sample_num_frames", "num_timestep_buckets",  # WAN-specific optional params
+        "save_last_n_epochs", "save_last_n_steps",  # 0 = keep all = None for musubi tuner
+        "save_last_n_epochs_state", "save_last_n_steps_state",  # Same pattern for state files
+        "blocks_to_swap", "vae_chunk_size", "vae_spatial_tile_sample_min_size"  # Memory optimization params
+        # Removed: "ddp_timeout" (0 = use default 30min timeout - VALID)
+    }
 
     for key, value in parameters:
         # Migrate old debug mode values
@@ -2607,6 +2653,12 @@ def save_wan_configuration(save_as_bool, file_path, parameters):
         # Clean up optimizer_args to remove trailing commas that could break parsing
         elif key == "optimizer_args" and isinstance(value, list):
             value = [arg.rstrip(',') for arg in value]
+        
+        # Convert None back to 0 for optional parameters so they get saved properly
+        # (None values are excluded by SaveConfigFile, but 0 is a valid value to save)
+        if key in optional_parameters and value is None:
+            value = 0
+        
         processed_params.append((key, value))
 
     try:
@@ -2619,6 +2671,8 @@ def save_wan_configuration(save_as_bool, file_path, parameters):
                 "save_as_bool",
                 "headless",
                 "print_only",
+                # Note: debug_mode is saved - it's used by caching scripts
+                # Note: caching_latent_debug_mode is also saved - it's used by caching scripts
             ],
         )
 
