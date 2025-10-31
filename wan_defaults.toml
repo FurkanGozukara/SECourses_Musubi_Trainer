@@ -21,6 +21,7 @@ dataset_config_mode = "Generate from Folder Structure"  # Default to auto-genera
 dit_high_noise = ""  # [WAN 2.2 ONLY] Path to high noise DiT model for Wan 2.2 Advanced models (t2v-A14B, i2v-A14B)
 timestep_boundary = 0.0  # [WAN 2.2 ONLY] Timestep boundary for dual model system. Auto-detected from model config if not set
 offload_inactive_dit = false  # [WAN 2.2 ONLY] Offload inactive DiT to CPU to save VRAM during dual model training
+use_pinned_memory_for_block_swap = false  # Use Pinned Memory for Block Swapping: Enables pinned memory for faster block swapping on Windows. Uses more RAM but significantly improves block swap performance, especially on Windows and WSL environments. Only effective when blocks_to_swap > 0
 
 # Folder Structure Settings (used when dataset_config_mode = "Generate from Folder Structure")
 parent_folder_path = ""  # REQUIRED when using folder structure mode: Path to parent folder containing training images/videos

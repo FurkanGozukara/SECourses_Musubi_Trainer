@@ -625,6 +625,11 @@ class QwenImageModel:
                 info="Disables numpy memmap for faster model loading. Uses more RAM but speeds up loading, especially useful for RunPod and similar environments.",
                 value=self.config.get("faster_model_loading", False),
             )
+            self.use_pinned_memory_for_block_swap = gr.Checkbox(
+                label="Use Pinned Memory for Block Swapping (Faster on Windows - Requires more RAM)",
+                info="Enables pinned memory for faster block swapping on Windows. Uses more RAM but significantly improves block swap performance, especially on Windows and WSL environments.",
+                value=self.config.get("use_pinned_memory_for_block_swap", False),
+            )
         
         with gr.Row():
             with gr.Column(scale=4):
@@ -1140,6 +1145,7 @@ def qwen_image_gui_actions(
     edit,
     edit_plus,
     faster_model_loading,
+    use_pinned_memory_for_block_swap,
     timestep_sampling,
     discrete_flow_shift,
     flow_shift,
@@ -2315,10 +2321,58 @@ def train_qwen_image_model(headless, print_only, parameters):
             parameters = [(k, v) for k, v in parameters if k != "metadata_arch"]
             log.info("Removed metadata_arch from TOML parameters")
         
+        # Handle use_pinned_memory_for_block_swap checkbox: check if parameter exists in training script
+        use_pinned_memory_enabled = param_dict.get("use_pinned_memory_for_block_swap", False)
+        log.info(f"use_pinned_memory_for_block_swap checkbox value: {use_pinned_memory_enabled}")
+        
+        # Check if the parameter is supported by the training script
+        # The parameter is defined in hv_train_network.py (base training module used by Qwen Image)
+        # Get project directory (parent of musubi_tuner_gui module)
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # Check both musubi-tuner and musubi-tuner2 directories (in case user is on a branch)
+        possible_paths = [
+            os.path.join(project_dir, "musubi-tuner", "src", "musubi_tuner", "hv_train_network.py"),
+            os.path.join(project_dir, "musubi-tuner2", "src", "musubi_tuner", "hv_train_network.py"),
+        ]
+        
+        parameter_supported = False
+        
+        for training_script_path in possible_paths:
+            try:
+                if os.path.exists(training_script_path):
+                    log.info(f"Checking for parameter support in: {training_script_path}")
+                    with open(training_script_path, "r", encoding="utf-8") as f:
+                        script_content = f.read()
+                        # Check for the parameter (with underscores or dashes)
+                        if "use_pinned_memory_for_block_swap" in script_content or "use-pinned-memory-for-block-swap" in script_content:
+                            parameter_supported = True
+                            log.info(f"Found use_pinned_memory_for_block_swap parameter in {training_script_path}")
+                            break
+                        else:
+                            log.info(f"Parameter not found in {training_script_path}")
+            except Exception as e:
+                log.warning(f"Could not check training script for parameter support: {e}")
+        
+        if not parameter_supported:
+            log.info("use_pinned_memory_for_block_swap parameter not found in any training script")
+        
+        if use_pinned_memory_enabled and parameter_supported:
+            parameters = upsert_parameter(parameters, "use_pinned_memory_for_block_swap", True)
+            log.info("Added use_pinned_memory_for_block_swap = True to TOML parameters")
+        else:
+            # Remove use_pinned_memory_for_block_swap if it exists (so it won't be saved to TOML)
+            parameters = [(k, v) for k, v in parameters if k != "use_pinned_memory_for_block_swap"]
+            if use_pinned_memory_enabled and not parameter_supported:
+                log.info("use_pinned_memory_for_block_swap is not supported by the current training script version. Skipping.")
+            else:
+                log.info("Removed use_pinned_memory_for_block_swap from TOML parameters")
+        
         # Verify parameters are in the list before saving
         disable_numpy_memmap_in_params = any(k == "disable_numpy_memmap" for k, v in parameters)
         metadata_arch_in_params = any(k == "metadata_arch" for k, v in parameters)
-        log.info(f"Before SaveConfigFileToRun: disable_numpy_memmap in params: {disable_numpy_memmap_in_params}, metadata_arch in params: {metadata_arch_in_params}")
+        use_pinned_memory_in_params = any(k == "use_pinned_memory_for_block_swap" for k, v in parameters)
+        log.info(f"Before SaveConfigFileToRun: disable_numpy_memmap in params: {disable_numpy_memmap_in_params}, metadata_arch in params: {metadata_arch_in_params}, use_pinned_memory_for_block_swap in params: {use_pinned_memory_in_params}")
 
         pattern_exclusion = []
         for key, _ in parameters:
@@ -2357,9 +2411,11 @@ def train_qwen_image_model(headless, print_only, parameters):
                 toml_content = toml.load(f)
                 disable_numpy_memmap_in_toml = toml_content.get("disable_numpy_memmap", None)
                 metadata_arch_in_toml = toml_content.get("metadata_arch", None)
+                use_pinned_memory_in_toml = toml_content.get("use_pinned_memory_for_block_swap", None)
                 log.info(f"After SaveConfigFileToRun - TOML file contents check:")
                 log.info(f"  disable_numpy_memmap = {disable_numpy_memmap_in_toml}")
                 log.info(f"  metadata_arch = {metadata_arch_in_toml}")
+                log.info(f"  use_pinned_memory_for_block_swap = {use_pinned_memory_in_toml}")
         
         run_cmd.append("--config_file")
         run_cmd.append(f"{file_path}")
@@ -2375,7 +2431,7 @@ def train_qwen_image_model(headless, print_only, parameters):
                 else:
                     additional_params = debug_params
 
-        # Also handle faster_model_loading and edit_plus in additional_parameters
+        # Also handle faster_model_loading, edit_plus, and use_pinned_memory_for_block_swap in additional_parameters
         # to ensure they're passed via command line as well (for backward compatibility)
         args_to_add = []
         args_to_remove = []
@@ -2389,6 +2445,12 @@ def train_qwen_image_model(headless, print_only, parameters):
             args_to_add.append('--metadata_arch "qwen-image-edit-plus"')
         else:
             args_to_remove.append('--metadata_arch "qwen-image-edit-plus"')
+        
+        # Only add use_pinned_memory_for_block_swap if it's supported by the training script
+        if use_pinned_memory_enabled and parameter_supported:
+            args_to_add.append("--use_pinned_memory_for_block_swap")
+        else:
+            args_to_remove.append("--use_pinned_memory_for_block_swap")
         
         # Apply changes to additional_params (preserve user-written values)
         if args_to_add or args_to_remove:
@@ -3871,6 +3933,7 @@ def qwen_image_lora_tab(
         qwen_model.edit,
         qwen_model.edit_plus,
         qwen_model.faster_model_loading,
+        qwen_model.use_pinned_memory_for_block_swap,
         qwen_model.timestep_sampling,
         qwen_model.discrete_flow_shift,
         qwen_model.flow_shift,
