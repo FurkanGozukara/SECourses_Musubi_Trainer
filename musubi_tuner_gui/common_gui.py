@@ -1648,6 +1648,90 @@ def SaveConfigFile(
     with open(file_path, "w", encoding="utf-8") as file:
         toml.dump(variables, file)
         
+def manage_additional_parameters(additional_params: str, args_to_add: list = None, args_to_remove: list = None) -> str:
+    """
+    Manage additional parameters by adding or removing specific arguments without losing user-written values.
+    
+    Args:
+        additional_params: The current additional_parameters string
+        args_to_add: List of argument strings to add (e.g., ['--disable_numpy_memmap', '--metadata_arch "qwen-image-edit-plus"'])
+        args_to_remove: List of argument strings to remove (e.g., ['--disable_numpy_memmap'])
+    
+    Returns:
+        Modified additional_parameters string with requested args added/removed
+    """
+    if args_to_add is None:
+        args_to_add = []
+    if args_to_remove is None:
+        args_to_remove = []
+    
+    if not additional_params and not args_to_add:
+        return ""
+    
+    # Parse existing parameters into a list of tokens
+    # Split by spaces, but preserve quoted strings
+    try:
+        if additional_params.strip():
+            existing_args = shlex.split(additional_params)
+        else:
+            existing_args = []
+    except Exception:
+        # Fallback: simple split if shlex fails
+        existing_args = additional_params.split() if additional_params.strip() else []
+    
+    # Remove arguments that should be removed
+    args_to_remove_normalized = []
+    for arg in args_to_remove:
+        # Normalize: remove leading dashes, handle both --arg and arg forms
+        # Also handle quoted args like '--metadata_arch "qwen-image-edit-plus"'
+        normalized = arg.lstrip('-').split()[0]  # Get first word before any quotes
+        args_to_remove_normalized.append(normalized)
+    
+    # Build list of args to keep (excluding ones to remove)
+    filtered_args = []
+    i = 0
+    while i < len(existing_args):
+        arg = existing_args[i]
+        # Check if this arg should be removed
+        should_remove = False
+        normalized_arg = arg.lstrip('-')
+        
+        for remove_arg in args_to_remove_normalized:
+            if normalized_arg == remove_arg:
+                should_remove = True
+                # If it's a flag with a value (like --metadata_arch "value"), skip the value too
+                if i + 1 < len(existing_args) and not existing_args[i + 1].startswith('-'):
+                    i += 1  # Skip the value
+                break
+        
+        if not should_remove:
+            filtered_args.append(arg)
+        i += 1
+    
+    # Add new arguments (avoid duplicates)
+    args_to_add_normalized = []
+    for arg in args_to_add:
+        # Normalize for duplicate checking
+        normalized = arg.lstrip('-').split()[0]  # Get first word (e.g., 'disable_numpy_memmap' from '--disable_numpy_memmap')
+        args_to_add_normalized.append(normalized)
+    
+    # Check which args to add are not already present
+    existing_normalized = [arg.lstrip('-').split()[0] for arg in filtered_args]
+    for arg in args_to_add:
+        normalized = arg.lstrip('-').split()[0]
+        if normalized not in existing_normalized:
+            # Parse the arg to add (handle quoted strings properly)
+            try:
+                parsed = shlex.split(arg)
+                filtered_args.extend(parsed)
+            except Exception:
+                # Fallback: simple append
+                filtered_args.append(arg)
+    
+    # Return as space-separated string
+    return ' '.join(filtered_args) if filtered_args else ""
+
+
 def SaveConfigFileToRun(
     parameters,
     file_path: str,

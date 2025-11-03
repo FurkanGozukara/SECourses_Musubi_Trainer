@@ -33,6 +33,7 @@ from .common_gui import (
     SaveConfigFileToRun,
     scriptdir,
     setup_environment,
+    manage_additional_parameters,
 )
 from .class_huggingface import HuggingFace
 from .class_metadata import MetaData
@@ -886,6 +887,11 @@ class WanModelSettings:
                 value=self.config.get("task", "t2v-14B"),
                 info="Choose your Wan model variant based on version, use case and hardware capabilities"
             )
+            self.use_pinned_memory_for_block_swap = gr.Checkbox(
+                label="Use Pinned Memory for Block Swapping (Faster on Windows - Requires more RAM)",
+                info="Uses more system RAM but speeds up training. The speed up maybe significant depending on system settings. To work, go to Advanced Graphics settings in System > Display > Graphics as in tutorial video and disable Hardware-Accelerated GPU Scheduling and restart your PC. Only effective when blocks_to_swap > 0",
+                value=self.config.get("use_pinned_memory_for_block_swap", False),
+            )
         
         # Model Information Panel
         with gr.Row():
@@ -1564,7 +1570,7 @@ def wan_gui_actions(
                 "training_mode", "task", "dit", "vae", "t5", "clip",
                 "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
                 "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
-                "fp8_t5", "blocks_to_swap", "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
+                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap", "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
                 # training_settings
                 "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
                 "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
@@ -1620,7 +1626,7 @@ def wan_gui_actions(
                 "training_mode", "task", "dit", "vae", "t5", "clip",
                 "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
                 "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
-                "fp8_t5", "blocks_to_swap", "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
+                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap", "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
                 # training_settings
                 "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
                 "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
@@ -1678,7 +1684,7 @@ def wan_gui_actions(
                 "training_mode", "task", "dit", "vae", "t5", "clip",
                 "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
                 "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
-                "fp8_t5", "blocks_to_swap", "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
+                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap", "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
                 # training_settings
                 "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
                 "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
@@ -2126,6 +2132,62 @@ def train_wan_model(headless, print_only, parameters):
         # Ensure dataset_config entry survives all transformations
         parameters = upsert_parameter(parameters, "dataset_config", effective_dataset_config)
 
+        # Handle use_pinned_memory_for_block_swap checkbox: check if parameter exists in training script
+        use_pinned_memory_enabled = param_dict.get("use_pinned_memory_for_block_swap", False)
+        log.info(f"use_pinned_memory_for_block_swap checkbox value: {use_pinned_memory_enabled}")
+        
+        # Check if the parameter is supported by the training script
+        # Get project directory (parent of musubi_tuner_gui module)
+        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        
+        # Check both wan_train.py and wan_train_network.py (used for DreamBooth and LoRA respectively)
+        # Also check hv_train_network.py which is imported by wan_train_network.py
+        # Also check musubi-tuner and musubi-tuner2 directories (in case user is on a branch)
+        possible_paths = [
+            os.path.join(project_dir, "musubi-tuner", "src", "musubi_tuner", "wan_train.py"),
+            os.path.join(project_dir, "musubi-tuner", "src", "musubi_tuner", "wan_train_network.py"),
+            os.path.join(project_dir, "musubi-tuner", "src", "musubi_tuner", "hv_train_network.py"),
+            os.path.join(project_dir, "musubi-tuner2", "src", "musubi_tuner", "wan_train.py"),
+            os.path.join(project_dir, "musubi-tuner2", "src", "musubi_tuner", "wan_train_network.py"),
+            os.path.join(project_dir, "musubi-tuner2", "src", "musubi_tuner", "hv_train_network.py"),
+        ]
+        
+        parameter_supported = False
+        
+        for training_script_path in possible_paths:
+            try:
+                if os.path.exists(training_script_path):
+                    log.info(f"Checking for parameter support in: {training_script_path}")
+                    with open(training_script_path, "r", encoding="utf-8") as f:
+                        script_content = f.read()
+                        # Check for the parameter (with underscores or dashes)
+                        if "use_pinned_memory_for_block_swap" in script_content or "use-pinned-memory-for-block-swap" in script_content:
+                            parameter_supported = True
+                            log.info(f"Found use_pinned_memory_for_block_swap parameter in {training_script_path}")
+                            break
+                        else:
+                            log.info(f"Parameter not found in {training_script_path}")
+            except Exception as e:
+                log.warning(f"Could not check training script for parameter support: {e}")
+        
+        if not parameter_supported:
+            log.info("use_pinned_memory_for_block_swap parameter not found in any training script")
+        
+        if use_pinned_memory_enabled and parameter_supported:
+            parameters = upsert_parameter(parameters, "use_pinned_memory_for_block_swap", True)
+            log.info("Added use_pinned_memory_for_block_swap = True to TOML parameters")
+        else:
+            # Remove use_pinned_memory_for_block_swap if it exists (so it won't be saved to TOML)
+            parameters = [(k, v) for k, v in parameters if k != "use_pinned_memory_for_block_swap"]
+            if use_pinned_memory_enabled and not parameter_supported:
+                log.info("use_pinned_memory_for_block_swap is not supported by the current training script version. Skipping.")
+            else:
+                log.info("Removed use_pinned_memory_for_block_swap from TOML parameters")
+        
+        # Verify parameters are in the list before saving
+        use_pinned_memory_in_params = any(k == "use_pinned_memory_for_block_swap" for k, v in parameters)
+        log.info(f"Before SaveConfigFileToRun: use_pinned_memory_for_block_swap in params: {use_pinned_memory_in_params}")
+
         pattern_exclusion = []
         for key, _ in parameters:
             if key.startswith('caching_latent_') or key.startswith('caching_teo_'):
@@ -2161,6 +2223,14 @@ def train_wan_model(headless, print_only, parameters):
         run_cmd.append("--config_file")
         run_cmd.append(f"{file_path}")
 
+        # Verify TOML file was created and check its contents
+        if os.path.exists(file_path):
+            with open(file_path, "r", encoding="utf-8") as f:
+                toml_content = toml.load(f)
+                use_pinned_memory_in_toml = toml_content.get("use_pinned_memory_for_block_swap", None)
+                log.info(f"After SaveConfigFileToRun - TOML file contents check:")
+                log.info(f"  use_pinned_memory_for_block_swap = {use_pinned_memory_in_toml}")
+
         # Handle debug mode selection
         additional_params = param_dict.get("additional_parameters", "")
         debug_mode_selected = param_dict.get("debug_mode", "None")
@@ -2171,6 +2241,25 @@ def train_wan_model(headless, print_only, parameters):
                     additional_params += " " + debug_params
                 else:
                     additional_params = debug_params
+
+        # Handle use_pinned_memory_for_block_swap in additional_parameters
+        # to ensure it's passed via command line as well (for backward compatibility)
+        args_to_add = []
+        args_to_remove = []
+        
+        # Only add use_pinned_memory_for_block_swap if it's supported by the training script
+        if use_pinned_memory_enabled and parameter_supported:
+            args_to_add.append("--use_pinned_memory_for_block_swap")
+        else:
+            args_to_remove.append("--use_pinned_memory_for_block_swap")
+        
+        # Apply changes to additional_params (preserve user-written values)
+        if args_to_add or args_to_remove:
+            additional_params = manage_additional_parameters(
+                additional_params,
+                args_to_add=args_to_add,
+                args_to_remove=args_to_remove
+            )
 
         run_cmd_params = {
             "additional_parameters": additional_params,
@@ -2970,6 +3059,7 @@ def wan_lora_tab(
         wan_model_settings.fp8_scaled,
         wan_model_settings.fp8_t5,
         wan_model_settings.blocks_to_swap,
+        wan_model_settings.use_pinned_memory_for_block_swap,
         wan_model_settings.vae_tiling,
         wan_model_settings.vae_chunk_size,
         wan_model_settings.vae_cache_cpu,
