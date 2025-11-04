@@ -2699,7 +2699,7 @@ def save_wan_configuration(save_as_bool, file_path, parameters):
     # When saving, convert None back to 0 so they get saved properly
     optional_parameters = {
         "sample_every_n_steps", "sample_every_n_epochs",
-        "save_every_n_steps", "max_timestep", "min_timestep",
+        "save_every_n_steps", "save_every_n_epochs", "max_timestep", "min_timestep",
         "network_dim", "num_layers",  # These can be None for auto-detection
         "max_train_epochs",  # 0 means use max_train_steps instead
         "dit_in_channels", "sample_num_frames", "num_timestep_buckets",  # WAN-specific optional params

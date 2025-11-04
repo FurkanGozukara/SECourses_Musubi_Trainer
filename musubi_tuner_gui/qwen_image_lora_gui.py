@@ -1487,7 +1487,7 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
     # DO NOT include parameters where 0 is a valid functional value
     optional_parameters = {
         "sample_every_n_steps", "sample_every_n_epochs", 
-        "save_every_n_steps", "max_timestep", "min_timestep",
+        "save_every_n_steps", "save_every_n_epochs", "max_timestep", "min_timestep",
         "network_dim", "num_layers",  # NEW: These can be None for auto-detection
         "max_train_epochs"  # NEW: 0 means use max_train_steps instead
         # Removed: "ddp_timeout" (0 = use default 30min timeout - VALID)

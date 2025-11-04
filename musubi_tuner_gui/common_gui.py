@@ -1576,7 +1576,7 @@ def SaveConfigFile(
             # Convert 0 to None for parameters that musubi tuner expects as None when disabled
             # This prevents ZeroDivisionError and other issues
             zero_to_none_params = [
-                "sample_every_n_steps", "sample_every_n_epochs", "save_every_n_steps",
+                "sample_every_n_steps", "sample_every_n_epochs", "save_every_n_steps", "save_every_n_epochs",
                 "blocks_to_swap", "min_timestep", "num_timestep_buckets",
                 "vae_chunk_size", "vae_spatial_tile_sample_min_size",
                 "network_dim", "num_layers",  # NEW: 0 means auto-detection = None
@@ -1838,7 +1838,7 @@ def SaveConfigFileToRun(
         # Convert 0 to None for parameters that musubi tuner expects as None when disabled
         # This prevents ZeroDivisionError and other issues
         zero_to_none_params = [
-            "sample_every_n_steps", "sample_every_n_epochs", "save_every_n_steps",
+            "sample_every_n_steps", "sample_every_n_epochs", "save_every_n_steps", "save_every_n_epochs",
             "save_last_n_epochs", "save_last_n_steps",  # FIX: 0 = keep all = None for musubi tuner
             "save_last_n_epochs_state", "save_last_n_steps_state",  # Same pattern for state files
             "blocks_to_swap", "min_timestep", "num_timestep_buckets",
