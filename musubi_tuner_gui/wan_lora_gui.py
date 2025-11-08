@@ -2295,29 +2295,35 @@ def train_wan_model(headless, print_only, parameters):
             # Create a temporary script to run both commands
             if platform.system() == "Windows":
                 script_ext = ".bat"
+                # Properly quote arguments for Windows batch files
+                teo_cache_cmd_str = ' '.join([f'"{arg}"' if ' ' in str(arg) else str(arg) for arg in teo_cache_cmd])
+                run_cmd_str = ' '.join([f'"{arg}"' if ' ' in str(arg) else str(arg) for arg in run_cmd])
                 script_content = f"""@echo off
 echo Starting text encoder output caching...
-{' '.join(teo_cache_cmd)}
+{teo_cache_cmd_str}
 if %errorlevel% neq 0 (
     echo Text encoder caching failed with error code %errorlevel%
     exit /b %errorlevel%
 )
 echo Text encoder caching completed successfully.
 echo Starting training...
-{' '.join(run_cmd)}
+{run_cmd_str}
 """
             else:
                 script_ext = ".sh"
+                # Use shlex.join for proper quoting on Unix-like systems
+                teo_cache_cmd_str = shlex.join(teo_cache_cmd)
+                run_cmd_str = shlex.join(run_cmd)
                 script_content = f"""#!/bin/bash
 echo "Starting text encoder output caching..."
-{' '.join(teo_cache_cmd)}
+{teo_cache_cmd_str}
 if [ $? -ne 0 ]; then
     echo "Text encoder caching failed with error code $?"
     exit $?
 fi
 echo "Text encoder caching completed successfully."
 echo "Starting training..."
-{' '.join(run_cmd)}
+{run_cmd_str}
 """
 
             # Write the script to a temporary file
