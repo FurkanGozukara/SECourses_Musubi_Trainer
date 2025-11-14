@@ -12,6 +12,8 @@ from musubi_tuner_gui.image_captioning_gui import image_captioning_tab
 from musubi_tuner_gui.fp8_converter_gui import fp8_converter_tab
 from musubi_tuner_gui.image_preprocessing_gui import image_preprocessing_tab
 from musubi_tuner_gui.changelog_gui import version_history_tab
+from musubi_tuner_gui.lora_extractor_gui import lora_extractor_tab
+from musubi_tuner_gui.lora_merge_gui import lora_merge_tab
 from musubi_tuner_gui.custom_logging import setup_logging
 from musubi_tuner_gui.class_gui_config import GUIConfig
 from musubi_tuner_gui.class_tab_config_manager import TabConfigManager
@@ -33,10 +35,10 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
     css = read_file_content("./assets/style.css")
 
     # Create the main Gradio Blocks interface
-    ui_interface = gr.Blocks(css=css, title="SECourses Musubi Trainer V19.8", theme=gr.themes.Soft())
+    ui_interface = gr.Blocks(css=css, title="SECourses Musubi Trainer V20.0", theme=gr.themes.Soft())
     with ui_interface:
         # Add title with Patreon link
-        gr.Markdown("# SECourses Musubi Trainer V19.8 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
+        gr.Markdown("# SECourses Musubi Trainer V20.0 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
         
         # Create tabs for different functionalities
         with gr.Tab("Qwen Image Training"):
@@ -54,6 +56,12 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
         with gr.Tab("FP8 Model Converter"):
             fp8_config = config_manager.get_config_for_tab("fp8_converter")
             fp8_converter_tab(headless=headless, config=fp8_config)
+
+        with gr.Tab("LoRA Extractor"):
+            lora_extractor_tab(headless=headless, config=None)
+
+        with gr.Tab("LoRA Merger"):
+            lora_merge_tab(headless=headless, config=None)
         
         with gr.Tab("Image Preprocessing"):
             preprocessing_config = config_manager.get_config_for_tab("image_preprocessing")
