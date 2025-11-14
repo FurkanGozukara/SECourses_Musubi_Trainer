@@ -14,6 +14,8 @@ import shlex
 import json
 import math
 import shutil
+import subprocess
+import tempfile
 import toml
 from pathlib import Path
 
@@ -63,6 +65,34 @@ SDXL_MODELS = [
 ALL_PRESET_MODELS = V2_BASE_MODELS + V_PARAMETERIZATION_MODELS + V1_MODELS + SDXL_MODELS
 
 ENV_EXCLUSION = ["COLAB_GPU", "RUNPOD_POD_ID"]
+
+_VS_ENV_CACHE = None
+_VS_ENV_CACHE_FAILED = False
+
+_ENV_VS_INSTALL_CANDIDATES = [
+    ("MUSUBI_VS_INSTALLDIR", 0),
+    ("VSINSTALLDIR", 0),
+    ("VS170COMNTOOLS", 2),
+    ("VS160COMNTOOLS", 2),
+    ("VS150COMNTOOLS", 2),
+    ("VS140COMNTOOLS", 2),
+    ("VS120COMNTOOLS", 2),
+    ("VCINSTALLDIR", 1),
+    ("VCToolsInstallDir", 3),
+]
+
+_ENV_VS_DEV_CMD_CANDIDATES = [
+    "MUSUBI_VS_DEV_CMD",
+    "VS_DEV_CMD",
+]
+
+
+def _normalize_windows_path(value):
+    if not value:
+        return ""
+    cleaned = value.strip().strip('"')
+    expanded = os.path.expandvars(cleaned)
+    return os.path.abspath(os.path.normpath(expanded))
 
 
 def normalize_path(path: str) -> str:
@@ -2149,5 +2179,307 @@ def setup_environment():
 
     if os.name == "nt":
         env["XFORMERS_FORCE_DISABLE_TRITON"] = "1"
+        env = _ensure_visual_studio_compiler_env(env)
 
     return env
+
+
+def _ensure_visual_studio_compiler_env(env):
+    if os.name != "nt":
+        return env
+
+    cl_available = shutil.which("cl.exe", path=env.get("PATH", "")) is not None
+    omp_header_available = _has_openmp_header(env)
+
+    if cl_available and omp_header_available:
+        log.debug("cl.exe and OpenMP headers detected; Visual Studio environment already configured.")
+        return env
+
+    if not cl_available:
+        log.info("cl.exe not detected in PATH; attempting to initialize Visual Studio environment.")
+    elif not omp_header_available:
+        log.info(
+            "cl.exe detected but omp.h not found in INCLUDE path; attempting to initialize Visual Studio environment."
+        )
+
+    delta = _get_visual_studio_env_delta(env)
+    if delta:
+        env.update(delta)
+        cl_path = shutil.which("cl.exe", path=env.get("PATH", ""))
+        if cl_path:
+            log.info(f"Loaded Visual Studio developer environment (cl.exe found at {cl_path}).")
+        else:
+            log.warning(
+                "Visual Studio environment initialized but cl.exe is still not resolvable. "
+                "Training may still fail when compiling extensions."
+            )
+    else:
+        log.warning(
+            "Unable to automatically locate a Visual Studio developer environment. "
+            "If CUDA extensions require compilation, ensure cl.exe is accessible."
+        )
+
+    return env
+
+
+def _get_visual_studio_env_delta(base_env):
+    global _VS_ENV_CACHE, _VS_ENV_CACHE_FAILED
+
+    if _VS_ENV_CACHE is not None:
+        return _VS_ENV_CACHE
+
+    if _VS_ENV_CACHE_FAILED:
+        return None
+
+    delta = _bootstrap_visual_studio_env(base_env)
+    if delta:
+        _VS_ENV_CACHE = delta
+        return delta
+
+    _VS_ENV_CACHE_FAILED = True
+    return None
+
+
+def _bootstrap_visual_studio_env(base_env):
+    installation_path, source = _get_vs_installation_from_env(base_env) or (None, None)
+
+    if installation_path:
+        log.info(f"Using Visual Studio installation from env var {source}: {installation_path}")
+    else:
+        vswhere_path = _resolve_vswhere_executable()
+        if vswhere_path:
+            installation_path = _query_latest_vs_installation(vswhere_path)
+            if installation_path and os.path.isdir(installation_path):
+                source = "vswhere"
+                log.info(f"Using Visual Studio installation discovered via vswhere: {installation_path}")
+            else:
+                installation_path = None
+        else:
+            log.debug("vswhere.exe not found; attempting filesystem heuristic search for Visual Studio.")
+
+    dev_batch = None
+    if installation_path:
+        dev_batch = _locate_vs_dev_batch(installation_path, env=base_env)
+
+    if not dev_batch:
+        for candidate in _search_default_vs_installations():
+            dev_batch = _locate_vs_dev_batch(candidate, env=base_env)
+            if dev_batch:
+                installation_path = candidate
+                source = "filesystem"
+                log.info(f"Using Visual Studio installation discovered via filesystem scan: {installation_path}")
+                break
+
+    if not dev_batch:
+        if installation_path:
+            log.warning(f"Could not locate VsDevCmd/vcvars scripts under {installation_path}.")
+        else:
+            log.warning(
+                "No Visual Studio installation paths detected via environment variables, vswhere, or filesystem scan."
+            )
+        return None
+
+    extra_args = []
+    batch_name = os.path.basename(dev_batch).lower()
+    if batch_name == "vsdevcmd.bat":
+        extra_args = ["-arch=amd64", "-host_arch=amd64"]
+    elif batch_name == "vcvarsall.bat":
+        extra_args = ["amd64"]
+
+    log.info(f"Initializing Visual Studio developer environment using {dev_batch}...")
+    try:
+        vs_env = _capture_env_from_batch(dev_batch, extra_args, base_env=base_env)
+    except Exception as exc:
+        log.warning(f"Failed to execute {dev_batch}: {exc}")
+        return None
+
+    if not vs_env:
+        return None
+
+    delta = {key: value for key, value in vs_env.items() if base_env.get(key) != value}
+    return delta
+
+
+def _get_vs_installation_from_env(env):
+    if os.name != "nt":
+        return None
+
+    for var_name, levels_up in _ENV_VS_INSTALL_CANDIDATES:
+        raw = env.get(var_name)
+        if not raw:
+            continue
+
+        candidate = _normalize_windows_path(raw)
+        if not candidate:
+            continue
+
+        for _ in range(levels_up):
+            candidate = os.path.dirname(candidate)
+
+        if os.path.isdir(candidate):
+            return candidate, var_name
+
+    return None
+
+
+def _resolve_vswhere_executable():
+    path_candidate = shutil.which("vswhere.exe") or shutil.which("vswhere")
+    if path_candidate and os.path.isfile(path_candidate):
+        return path_candidate
+
+    search_roots = [
+        os.environ.get("ProgramFiles(x86)"),
+        os.environ.get("ProgramFiles"),
+        r"C:\Program Files (x86)",
+    ]
+
+    for root in filter(None, search_roots):
+        candidate = os.path.join(root, "Microsoft Visual Studio", "Installer", "vswhere.exe")
+        if os.path.isfile(candidate):
+            return candidate
+
+    return None
+
+
+def _query_latest_vs_installation(vswhere_path):
+    try:
+        completed = subprocess.run(
+            [
+                vswhere_path,
+                "-latest",
+                "-products",
+                "*",
+                "-requires",
+                "Microsoft.VisualStudio.Component.VC.Tools.x86.x64",
+                "-property",
+                "installationPath",
+            ],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=True,
+        )
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        log.warning(f"vswhere.exe failed to locate Visual Studio: {exc}")
+        return None
+
+    lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    return lines[0] if lines else None
+
+
+def _locate_vs_dev_batch(installation_path, env=None):
+    env = env or os.environ
+
+    for var_name in _ENV_VS_DEV_CMD_CANDIDATES:
+        raw = env.get(var_name)
+        if not raw:
+            continue
+        candidate = _normalize_windows_path(raw)
+        if candidate and os.path.isfile(candidate):
+            log.info(f"Using Visual Studio developer script from env var {var_name}: {candidate}")
+            return candidate
+
+    candidates = [
+        os.path.join(installation_path, "Common7", "Tools", "VsDevCmd.bat"),
+        os.path.join(installation_path, "VC", "Auxiliary", "Build", "vcvars64.bat"),
+        os.path.join(installation_path, "VC", "Auxiliary", "Build", "vcvarsall.bat"),
+    ]
+
+    for candidate in candidates:
+        if os.path.isfile(candidate):
+            return candidate
+
+    return None
+
+
+def _search_default_vs_installations():
+    search_roots = [
+        os.environ.get("ProgramFiles(x86)"),
+        os.environ.get("ProgramFiles"),
+        r"C:\Program Files (x86)",
+        r"C:\Program Files",
+    ]
+
+    seen = set()
+    candidates = []
+
+    for root in filter(None, search_roots):
+        base = os.path.join(root, "Microsoft Visual Studio")
+        if not os.path.isdir(base):
+            continue
+
+        for version_dir in sorted(os.listdir(base), reverse=True):
+            version_path = os.path.join(base, version_dir)
+            if not os.path.isdir(version_path):
+                continue
+            for edition_dir in sorted(os.listdir(version_path), reverse=True):
+                install_path = os.path.join(version_path, edition_dir)
+                if os.path.isdir(install_path) and install_path not in seen:
+                    seen.add(install_path)
+                    candidates.append(install_path)
+
+    return candidates
+
+
+def _has_openmp_header(env):
+    include_var = env.get("INCLUDE", "")
+    if not include_var:
+        return False
+
+    for path in include_var.split(os.pathsep):
+        candidate = path.strip()
+        if not candidate:
+            continue
+        header_path = os.path.join(candidate, "omp.h")
+        if os.path.isfile(header_path):
+            log.debug(f"Detected omp.h at {header_path}")
+            return True
+
+    return False
+
+
+def _capture_env_from_batch(batch_file, extra_args=None, base_env=None):
+    extra_args = extra_args or []
+
+    command_line = f'call "{batch_file}"'
+    if extra_args:
+        command_line = f'{command_line} {" ".join(extra_args)}'
+
+    script_lines = [
+        "@echo off",
+        command_line.rstrip(),
+        "if %errorlevel% neq 0 exit /b %errorlevel%",
+        "set",
+    ]
+
+    with tempfile.NamedTemporaryFile("w", suffix=".bat", delete=False, encoding="utf-8") as script:
+        script_path = script.name
+        script.write("\r\n".join(script_lines))
+        script.write("\r\n")
+
+    try:
+        completed = subprocess.run(
+            ["cmd.exe", "/s", "/c", script_path],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="ignore",
+            env=base_env,
+        )
+    finally:
+        try:
+            os.remove(script_path)
+        except OSError:
+            pass
+
+    if completed.returncode != 0:
+        raise RuntimeError(f"{os.path.basename(batch_file)} exited with code {completed.returncode}")
+
+    env_block = {}
+    for line in completed.stdout.splitlines():
+        if "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        env_block[key] = value
+
+    return env_block
