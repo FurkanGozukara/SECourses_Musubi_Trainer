@@ -868,6 +868,63 @@ class WanModelSettings:
                 info="LoRA Training: Parameter-efficient, memory friendly | DreamBooth: Full fine-tuning, more memory intensive"
             )
 
+        # Torch Compile Settings - for faster training with torch.compile
+        self.torch_compile_accordion = gr.Accordion("Torch Compile Settings", open=False)
+        with self.torch_compile_accordion:
+            gr.Markdown(
+                """⚠️ **Important:** If you get errors with torch.compile just disable it but it should work out of box with 0-Trade-off. It increases speed and slightly reduces VRAM with 0 quality loss."""
+            )
+            
+            with gr.Row():
+                self.compile = gr.Checkbox(
+                    label="Enable torch.compile",
+                    info="Enable torch.compile for faster training (requires PyTorch 2.1+, Triton for CUDA). Works with SDXL and FLUX. Disable gradient checkpointing for best results!",
+                    value=self.config.get("compile", False),
+                    interactive=True,
+                )
+                
+                self.compile_backend = gr.Dropdown(
+                    label="Compile Backend",
+                    info="Backend for torch.compile (default: inductor)",
+                    choices=["inductor", "cudagraphs", "eager", "aot_eager", "aot_ts_nvfuser"],
+                    value=self.config.get("compile_backend", "inductor"),
+                    interactive=True,
+                )
+                
+                self.compile_mode = gr.Dropdown(
+                    label="Compile Mode",
+                    info="Optimization mode for torch.compile",
+                    choices=["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"],
+                    value=self.config.get("compile_mode", "default"),
+                    interactive=True,
+                )
+            
+            with gr.Row():
+                self.compile_dynamic = gr.Dropdown(
+                    label="Dynamic Shapes",
+                    info="Dynamic shape handling: auto (default), true (enable), false (disable)",
+                    choices=["auto", "true", "false"],
+                    value=self.config.get("compile_dynamic", "auto"),
+                    allow_custom_value=False,
+                    interactive=True,
+                )
+                
+                self.compile_fullgraph = gr.Checkbox(
+                    label="Fullgraph Mode",
+                    info="Enable fullgraph mode in torch.compile (may fail with complex models)",
+                    value=self.config.get("compile_fullgraph", False),
+                    interactive=True,
+                )
+                
+                self.compile_cache_size_limit = gr.Number(
+                    label="Cache Size Limit",
+                    info="Set torch._dynamo.config.cache_size_limit (0 = use PyTorch default, typically 8-32)",
+                    value=self.config.get("compile_cache_size_limit", 0),
+                    step=1,
+                    minimum=0,
+                    interactive=True,
+                )
+
         # Wan Model Selection
         with gr.Row():
             self.task = gr.Dropdown(
@@ -1570,7 +1627,10 @@ def wan_gui_actions(
                 "training_mode", "task", "dit", "vae", "t5", "clip",
                 "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
                 "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
-                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap", "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
+                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap",
+                # Torch Compile settings
+                "compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit",
+                "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
                 # training_settings
                 "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
                 "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
@@ -1626,7 +1686,10 @@ def wan_gui_actions(
                 "training_mode", "task", "dit", "vae", "t5", "clip",
                 "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
                 "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
-                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap", "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
+                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap",
+                # Torch Compile settings
+                "compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit",
+                "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
                 # training_settings
                 "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
                 "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
@@ -1684,7 +1747,10 @@ def wan_gui_actions(
                 "training_mode", "task", "dit", "vae", "t5", "clip",
                 "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
                 "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
-                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap", "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
+                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap",
+                # Torch Compile settings
+                "compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit",
+                "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
                 # training_settings
                 "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
                 "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
@@ -2491,7 +2557,8 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
         'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed',
         'timestep_boundary', 'num_frames', 'vae_spatial_tile_sample_min_size',
         # ADD MISSING WAN-SPECIFIC NUMERIC FIELDS:
-        'dit_in_channels', 'num_layers', 'network_dropout', 'sample_num_frames', 'num_timestep_buckets'
+        'dit_in_channels', 'num_layers', 'network_dropout', 'sample_num_frames', 'num_timestep_buckets',
+        'compile_cache_size_limit'
     ]
 
     # Process parameters and track which ones are included
@@ -2698,7 +2765,8 @@ def save_wan_configuration(save_as_bool, file_path, parameters):
         'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed',
         'timestep_boundary', 'num_frames', 'vae_spatial_tile_sample_min_size',
         # ADD MISSING WAN-SPECIFIC NUMERIC FIELDS:
-        'dit_in_channels', 'num_layers', 'network_dropout', 'sample_num_frames', 'num_timestep_buckets'
+        'dit_in_channels', 'num_layers', 'network_dropout', 'sample_num_frames', 'num_timestep_buckets',
+        'compile_cache_size_limit'
     ]
     
     # Parameters that should be None when their value is 0 (optional parameters)
@@ -2945,6 +3013,9 @@ def wan_lora_tab(
     with wan_model_accordion:
         wan_model_settings = WanModelSettings(headless=headless, config=config)
     
+    # Add nested Torch Compile accordion to the main accordions list for toggle functionality
+    accordions.append(wan_model_settings.torch_compile_accordion)
+    
     # Setup dataset UI events after wan_model_settings is created
     wan_dataset.setup_dataset_ui_events(saveLoadSettings, wan_model_settings)  # Pass both saveLoadSettings and wan_model_settings
 
@@ -3066,6 +3137,15 @@ def wan_lora_tab(
         wan_model_settings.fp8_t5,
         wan_model_settings.blocks_to_swap,
         wan_model_settings.use_pinned_memory_for_block_swap,
+        
+        # Torch Compile settings
+        wan_model_settings.compile,
+        wan_model_settings.compile_backend,
+        wan_model_settings.compile_mode,
+        wan_model_settings.compile_dynamic,
+        wan_model_settings.compile_fullgraph,
+        wan_model_settings.compile_cache_size_limit,
+        
         wan_model_settings.vae_tiling,
         wan_model_settings.vae_chunk_size,
         wan_model_settings.vae_cache_cpu,

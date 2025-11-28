@@ -632,6 +632,63 @@ class QwenImageModel:
                 value=self.config.get("use_pinned_memory_for_block_swap", False),
             )
         
+        # Torch Compile Settings - for faster training with torch.compile
+        self.torch_compile_accordion = gr.Accordion("Torch Compile Settings", open=False)
+        with self.torch_compile_accordion:
+            gr.Markdown(
+                """⚠️ **Important:** If you get errors with torch.compile just disable it but it should work out of box with 0-Trade-off. It increases speed and slightly reduces VRAM with 0 quality loss."""
+            )
+            
+            with gr.Row():
+                self.compile = gr.Checkbox(
+                    label="Enable torch.compile",
+                    info="Enable torch.compile for faster training (requires PyTorch 2.1+, Triton for CUDA). Works with SDXL and FLUX. Disable gradient checkpointing for best results!",
+                    value=self.config.get("compile", False),
+                    interactive=True,
+                )
+                
+                self.compile_backend = gr.Dropdown(
+                    label="Compile Backend",
+                    info="Backend for torch.compile (default: inductor)",
+                    choices=["inductor", "cudagraphs", "eager", "aot_eager", "aot_ts_nvfuser"],
+                    value=self.config.get("compile_backend", "inductor"),
+                    interactive=True,
+                )
+                
+                self.compile_mode = gr.Dropdown(
+                    label="Compile Mode",
+                    info="Optimization mode for torch.compile",
+                    choices=["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"],
+                    value=self.config.get("compile_mode", "default"),
+                    interactive=True,
+                )
+            
+            with gr.Row():
+                self.compile_dynamic = gr.Dropdown(
+                    label="Dynamic Shapes",
+                    info="Dynamic shape handling: auto (default), true (enable), false (disable)",
+                    choices=["auto", "true", "false"],
+                    value=self.config.get("compile_dynamic", "auto"),
+                    allow_custom_value=False,
+                    interactive=True,
+                )
+                
+                self.compile_fullgraph = gr.Checkbox(
+                    label="Fullgraph Mode",
+                    info="Enable fullgraph mode in torch.compile (may fail with complex models)",
+                    value=self.config.get("compile_fullgraph", False),
+                    interactive=True,
+                )
+                
+                self.compile_cache_size_limit = gr.Number(
+                    label="Cache Size Limit",
+                    info="Set torch._dynamo.config.cache_size_limit (0 = use PyTorch default, typically 8-32)",
+                    value=self.config.get("compile_cache_size_limit", 0),
+                    step=1,
+                    minimum=0,
+                    interactive=True,
+                )
+        
         with gr.Row():
             with gr.Column(scale=4):
                 self.dit = gr.Textbox(
@@ -1147,6 +1204,13 @@ def qwen_image_gui_actions(
     edit_plus,
     faster_model_loading,
     use_pinned_memory_for_block_swap,
+    # Torch Compile settings
+    compile,
+    compile_backend,
+    compile_mode,
+    compile_dynamic,
+    compile_fullgraph,
+    compile_cache_size_limit,
     timestep_sampling,
     discrete_flow_shift,
     flow_shift,
@@ -1514,7 +1578,7 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
         'caching_latent_batch_size', 'caching_latent_num_workers', 'caching_latent_console_width',
         'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers',
         'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed',
-        'sample_discrete_flow_shift', 'sample_cfg_scale'
+        'sample_discrete_flow_shift', 'sample_cfg_scale', 'compile_cache_size_limit'
     ]
     
     # Process parameters and track which ones are included
@@ -3750,6 +3814,9 @@ def qwen_image_lora_tab(
     with qwen_model_accordion:
         qwen_model = QwenImageModel(headless=headless, config=config)
         qwen_model.setup_model_ui_events()  # Setup model UI events
+    
+    # Add nested Torch Compile accordion to the main accordions list for toggle functionality
+    accordions.append(qwen_model.torch_compile_accordion)
         
     caching_accordion = gr.Accordion("Caching", open=False, elem_classes="samples_background")
     accordions.append(caching_accordion)
@@ -3941,6 +4008,15 @@ def qwen_image_lora_tab(
         qwen_model.edit_plus,
         qwen_model.faster_model_loading,
         qwen_model.use_pinned_memory_for_block_swap,
+        
+        # Torch Compile settings
+        qwen_model.compile,
+        qwen_model.compile_backend,
+        qwen_model.compile_mode,
+        qwen_model.compile_dynamic,
+        qwen_model.compile_fullgraph,
+        qwen_model.compile_cache_size_limit,
+        
         qwen_model.timestep_sampling,
         qwen_model.discrete_flow_shift,
         qwen_model.flow_shift,
@@ -4041,6 +4117,17 @@ def qwen_image_lora_tab(
             "edit": ("Qwen Image Model Settings", "Enable Qwen-Image-Edit Mode"),
             "edit_plus": ("Qwen Image Model Settings", "Enable Qwen-Image-Edit-2509 Mode"),
             "faster_model_loading": ("Qwen Image Model Settings", "Faster Model Loading (Uses more RAM but speeds up model loading speed - Enable for RunPod)"),
+            
+            # Torch Compile Settings
+            "compile": ("Qwen Image Model Settings", "Enable torch.compile"),
+            "torch_compile": ("Qwen Image Model Settings", "Enable torch.compile"),
+            "compile_backend": ("Qwen Image Model Settings", "Compile Backend"),
+            "compile_mode": ("Qwen Image Model Settings", "Compile Mode"),
+            "compile_dynamic": ("Qwen Image Model Settings", "Dynamic Shapes"),
+            "compile_fullgraph": ("Qwen Image Model Settings", "Fullgraph Mode"),
+            "compile_cache_size_limit": ("Qwen Image Model Settings", "Cache Size Limit"),
+            "inductor": ("Qwen Image Model Settings", "Compile Backend"),
+            "triton": ("Qwen Image Model Settings", "Enable torch.compile"),
             
             # FP8 and Memory Settings
             "fp8_base": ("Qwen Image Model Settings", "FP8 for Base Model (DiT) (BF16 Model On The Fly Converted)"),

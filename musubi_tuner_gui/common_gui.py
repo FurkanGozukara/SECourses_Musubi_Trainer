@@ -1648,7 +1648,9 @@ def SaveConfigFile(
                 # WAN/Qwen specific numeric fields
                 'dit_in_channels', 'num_layers', 'network_dropout', 'sample_num_frames', 'num_timestep_buckets',
                 'sample_discrete_flow_shift', 'sample_cfg_scale', 'dataset_qwen_image_edit_control_resolution_width',
-                'dataset_qwen_image_edit_control_resolution_height'
+                'dataset_qwen_image_edit_control_resolution_height',
+                # Torch compile
+                'compile_cache_size_limit'
             ]
 
             if name in numeric_fields and value is not None:
@@ -1875,10 +1877,15 @@ def SaveConfigFileToRun(
             "vae_chunk_size", "vae_spatial_tile_sample_min_size",
             "network_dim", "num_layers",  # NEW: 0 means auto-detection = None
             "max_train_epochs",  # NEW: 0 means use max_train_steps instead = None
-            "timestep_boundary"  # NEW: 0.0 means auto-detect = None
+            "timestep_boundary",  # NEW: 0.0 means auto-detect = None
+            "compile_cache_size_limit"  # 0 means use PyTorch default
         ]
         if name in zero_to_none_params and value == 0:
             value = None
+        
+        # Skip compile_dynamic when it's "auto" (the default value)
+        if name == "compile_dynamic" and value == "auto":
+            continue
         
         # Convert empty strings to None for parameters that musubi tuner expects as None
         empty_to_none_params = [
@@ -1908,6 +1915,8 @@ def SaveConfigFileToRun(
             # Model loading parameters
             "disable_numpy_memmap",  # Store-true parameter - don't save when False
             "use_pinned_memory_for_block_swap",  # Store-true parameter - don't save when False
+            # Torch compile parameters - store_true flags
+            "compile", "compile_fullgraph",
             # Additional Wan parameters that should not be passed when False
             "fp8_llm"  # This was already in the list but ensuring it's complete
         ]
