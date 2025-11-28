@@ -27,6 +27,8 @@ from .common_gui import (
     SaveConfigFileToRun,
     scriptdir,
     setup_environment,
+    save_executed_script,
+    generate_script_content,
 )
 from .class_huggingface import HuggingFace
 from .class_metadata import MetaData
@@ -663,8 +665,15 @@ def train_model(
         # log.info(run_cmd)
         env = setup_environment()
 
-        # Run the command
+        # Save the executed command to cli_executed_commands folder
+        training_script = generate_script_content(run_cmd, "LoRA training")
+        save_executed_script(
+            script_content=training_script,
+            config_name=param_dict.get('output_name'),
+            script_type="lora"
+        )
 
+        # Run the command
         executor.execute_command(run_cmd=run_cmd, env=env)
 
         train_state_value = time.time()

@@ -2557,3 +2557,113 @@ def _capture_env_from_batch(batch_file, extra_args=None, base_env=None):
         env_block[key] = value
 
     return env_block
+
+
+def save_executed_script(
+    script_content: str,
+    config_name: str = None,
+    script_type: str = "training",
+    output_dir: str = None
+) -> str:
+    """
+    Save an executed script to the cli_executed_commands folder.
+    
+    Args:
+        script_content: The content of the script to save
+        config_name: The name of the config (e.g., output_name). If None, uses datetime
+        script_type: Type prefix for the script (e.g., "wan", "qwen", "lora")
+        output_dir: Optional custom output directory. If None, uses scriptdir/cli_executed_commands
+    
+    Returns:
+        str: The path to the saved script file
+    """
+    import platform
+    from datetime import datetime
+    import re
+    
+    # Determine script extension based on platform
+    # Use .txt suffix so users can double-click to view content instead of execute
+    if platform.system() == "Windows":
+        script_ext = ".bat.txt"
+    else:
+        script_ext = ".sh.txt"
+    
+    # Create the output folder
+    if output_dir:
+        save_folder = os.path.join(output_dir, "cli_executed_commands")
+    else:
+        save_folder = os.path.join(scriptdir, "cli_executed_commands")
+    
+    os.makedirs(save_folder, exist_ok=True)
+    
+    # Generate the filename
+    if config_name and config_name.strip():
+        # Clean the config name to be filesystem-safe
+        safe_name = re.sub(r'[<>:"/\\|?*]', '_', config_name.strip())
+        base_name = f"{script_type}_{safe_name}"
+        
+        # Find the next available number
+        counter = 1
+        while True:
+            filename = f"{base_name}_{counter:02d}{script_ext}"
+            filepath = os.path.join(save_folder, filename)
+            if not os.path.exists(filepath):
+                break
+            counter += 1
+    else:
+        # Use datetime stamp
+        timestamp = datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+        filename = f"{script_type}_{timestamp}{script_ext}"
+        filepath = os.path.join(save_folder, filename)
+    
+    # Write the script
+    try:
+        with open(filepath, 'w', encoding='utf-8') as f:
+            f.write(script_content)
+        
+        log.info(f"Saved executed script to: {filepath}")
+        return filepath
+    except Exception as e:
+        log.warning(f"Failed to save executed script: {e}")
+        return None
+
+
+def generate_script_content(run_cmd: list, script_type: str = "training") -> str:
+    """
+    Generate script content from a command list.
+    
+    Args:
+        run_cmd: The command list to convert to script
+        script_type: Description of what the script does
+    
+    Returns:
+        str: The script content for the current platform
+    """
+    import platform
+    
+    if platform.system() == "Windows":
+        # Windows batch file
+        cmd_str = ' '.join([f'"{arg}"' if ' ' in str(arg) else str(arg) for arg in run_cmd])
+        script_content = f"""@echo off
+echo Starting {script_type}...
+{cmd_str}
+if %errorlevel% neq 0 (
+    echo {script_type} failed with error code %errorlevel%
+    exit /b %errorlevel%
+)
+echo {script_type} completed successfully.
+"""
+    else:
+        # Unix shell script
+        cmd_str = shlex.join([str(arg) for arg in run_cmd])
+        script_content = f"""#!/bin/bash
+echo "Starting {script_type}..."
+{cmd_str}
+if [ $? -ne 0 ]; then
+    echo "{script_type} failed with error code $?"
+    exit $?
+fi
+echo "{script_type} completed successfully."
+"""
+    
+    return script_content

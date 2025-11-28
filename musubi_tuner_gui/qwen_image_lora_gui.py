@@ -30,6 +30,8 @@ from .common_gui import (
     SaveConfigFileToRun,
     scriptdir,
     setup_environment,
+    save_executed_script,
+    generate_script_content,
 )
 from .class_huggingface import HuggingFace
 from .class_metadata import MetaData
@@ -2583,6 +2585,13 @@ echo "Starting training..."
                 import stat
                 os.chmod(temp_script, os.stat(temp_script).st_mode | stat.S_IEXEC)
             
+            # Save a copy of the executed script to cli_executed_commands folder
+            save_executed_script(
+                script_content=script_content,
+                config_name=param_dict.get('output_name'),
+                script_type="qwen"
+            )
+            
             # Execute the combined script
             if platform.system() == "Windows":
                 final_cmd = [temp_script]
@@ -2594,6 +2603,14 @@ echo "Starting training..."
             executor.execute_command(run_cmd=final_cmd, env=env, shell=True if platform.system() == "Windows" else False)
         else:
             # No text encoder caching needed, just run training
+            # Save the executed command to cli_executed_commands folder
+            training_script = generate_script_content(run_cmd, "Qwen Image training")
+            save_executed_script(
+                script_content=training_script,
+                config_name=param_dict.get('output_name'),
+                script_type="qwen"
+            )
+            
             executor.execute_command(run_cmd=run_cmd, env=env)
 
         train_state_value = time.time()

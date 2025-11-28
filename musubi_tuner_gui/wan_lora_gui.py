@@ -34,6 +34,8 @@ from .common_gui import (
     scriptdir,
     setup_environment,
     manage_additional_parameters,
+    save_executed_script,
+    generate_script_content,
 )
 from .class_huggingface import HuggingFace
 from .class_metadata import MetaData
@@ -2402,6 +2404,13 @@ echo "Starting training..."
                 import stat
                 os.chmod(temp_script.name, os.stat(temp_script.name).st_mode | stat.S_IEXEC)
 
+            # Save a copy of the executed script to cli_executed_commands folder
+            save_executed_script(
+                script_content=script_content,
+                config_name=param_dict.get('output_name'),
+                script_type="wan"
+            )
+
             # Execute the combined script
             if platform.system() == "Windows":
                 final_cmd = [temp_script.name]
@@ -2415,9 +2424,26 @@ echo "Starting training..."
             # Only latent caching was run, now run training
             log.info("Latent caching completed, starting training...")
             gr.Info("Starting training...")
+            
+            # Save the executed command to cli_executed_commands folder
+            training_script = generate_script_content(run_cmd, "WAN training")
+            save_executed_script(
+                script_content=training_script,
+                config_name=param_dict.get('output_name'),
+                script_type="wan"
+            )
+            
             executor.execute_command(run_cmd=run_cmd, env=env)
         else:
             # No text encoder caching needed, just run training
+            # Save the executed command to cli_executed_commands folder
+            training_script = generate_script_content(run_cmd, "WAN training")
+            save_executed_script(
+                script_content=training_script,
+                config_name=param_dict.get('output_name'),
+                script_type="wan"
+            )
+            
             executor.execute_command(run_cmd=run_cmd, env=env)
 
         train_state_value = time.time()
