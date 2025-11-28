@@ -2340,6 +2340,15 @@ def train_wan_model(headless, print_only, parameters):
         # Run latent caching first (if needed)
         if latent_cache_cmd:
             log.info("Running latent caching...")
+            
+            # Save the latent caching command
+            latent_cache_script = generate_script_content(latent_cache_cmd, "WAN latent caching")
+            save_executed_script(
+                script_content=latent_cache_script,
+                config_name=param_dict.get('output_name'),
+                script_type="wan_latent_cache"
+            )
+            
             try:
                 gr.Info("Starting latent caching... This may take a while.")
                 result = subprocess.run(latent_cache_cmd, env=setup_environment(), check=True)

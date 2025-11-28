@@ -15,6 +15,8 @@ from .common_gui import (
     get_saveasfilename_path,
     scriptdir,
     setup_environment,
+    save_executed_script,
+    generate_script_content,
 )
 from .custom_logging import setup_logging
 
@@ -136,6 +138,15 @@ class LoRAMerger:
         ]
 
         log.info("Executing LoRA merge worker: %s", " ".join(command))
+        
+        # Save the merge command
+        merge_script = generate_script_content(command, "LoRA merge")
+        save_executed_script(
+            script_content=merge_script,
+            config_name=None,
+            script_type="lora_merge"
+        )
+        
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,

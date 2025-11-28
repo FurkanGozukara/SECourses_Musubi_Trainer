@@ -2036,6 +2036,15 @@ def train_qwen_image_model(headless, print_only, parameters):
 
         log.info(f"Executing command: {run_cache_latent_cmd}")
         log.info("Caching latents...")
+        
+        # Save the latent caching command
+        latent_cache_script = generate_script_content(run_cache_latent_cmd, "Qwen Image latent caching")
+        save_executed_script(
+            script_content=latent_cache_script,
+            config_name=param_dict.get('output_name'),
+            script_type="qwen_latent_cache"
+        )
+        
         try:
             # Run without capture_output to show progress in real-time
             gr.Info("Starting latent caching... This may take a while.")

@@ -16,6 +16,8 @@ from .common_gui import (
     get_saveasfilename_path,
     scriptdir,
     setup_environment,
+    save_executed_script,
+    generate_script_content,
 )
 from .custom_logging import setup_logging
 
@@ -155,6 +157,15 @@ class LoRAExtractor:
     ) -> Tuple[int, str]:
         env = setup_environment()
         log.info("Executing LoRA extraction command: %s", " ".join(command))
+        
+        # Save the extraction command
+        extract_script = generate_script_content(command, "LoRA extraction")
+        save_executed_script(
+            script_content=extract_script,
+            config_name=None,
+            script_type="lora_extract"
+        )
+        
         process = subprocess.Popen(
             command,
             stdout=subprocess.PIPE,

@@ -487,6 +487,14 @@ def train_model(
     # command_to_run = " ".join(run_cache_latent_cmd)
     log.info(f"Executing command: {run_cache_latent_cmd}")
 
+    # Save the latent caching command
+    latent_cache_script = generate_script_content(run_cache_latent_cmd, "Latent caching")
+    save_executed_script(
+        script_content=latent_cache_script,
+        config_name=param_dict.get('output_name'),
+        script_type="lora_latent_cache"
+    )
+
     # Execute the command securely
     log.info("Caching latents...")
     subprocess.run(run_cache_latent_cmd, env=setup_environment())
@@ -535,6 +543,14 @@ def train_model(
     # Reconstruct the safe command string for display
     # command_to_run = " ".join(run_cache_teo_cmd)
     log.info(f"Executing command: {run_cache_teo_cmd}")
+
+    # Save the text encoder caching command
+    teo_cache_script = generate_script_content(run_cache_teo_cmd, "Text encoder outputs caching")
+    save_executed_script(
+        script_content=teo_cache_script,
+        config_name=param_dict.get('output_name'),
+        script_type="lora_teo_cache"
+    )
 
     # Execute the command securely
     log.info("Caching text encoder outputs...")
