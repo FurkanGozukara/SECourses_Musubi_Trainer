@@ -10,6 +10,7 @@ import gc
 from .class_gui_config import GUIConfig
 from .common_gui import (
     get_folder_path,
+    get_file_path,
 )
 from .custom_logging import setup_logging
 
@@ -20,11 +21,89 @@ sys.path.append(os.path.join(os.path.dirname(__file__), "..", "musubi-tuner", "s
 
 
 class FP8Converter:
-    """FP8 Model Converter - Converts Qwen Image models to FP8 scaled format"""
+    """FP8 Model Converter - Converts Qwen Image and Z Image models to FP8 scaled format"""
+    
+    # Model type constants
+    MODEL_TYPE_QWEN = "Qwen Image"
+    MODEL_TYPE_ZIMAGE = "Z Image"
+    MODEL_TYPE_AUTO = "Auto-detect"
+    
+    # FP8 optimization settings for different model types
+    FP8_SETTINGS = {
+        "qwen_image": {
+            "target_keys": None,  # All Linear layers
+            "exclude_keys": [
+                ".norm.",  # Normalization layers inside modules
+                ".norm_q",  # Attention norm layers
+                ".norm_k",  # Attention norm layers
+                ".norm_added_q",  # Attention norm layers
+                ".norm_added_k",  # Attention norm layers
+                "txt_norm",  # Text normalization layer (RMSNorm)
+            ],
+        },
+        "z_image": {
+            "target_keys": None,  # All Linear layers
+            "exclude_keys": [
+                ".q_norm",  # Attention QK norm (RMSNorm in JointAttention)
+                ".k_norm",  # Attention QK norm (RMSNorm in JointAttention)
+                ".attention_norm1",  # RMSNorm in JointTransformerBlock
+                ".attention_norm2",  # RMSNorm in JointTransformerBlock
+                ".ffn_norm1",  # RMSNorm in JointTransformerBlock
+                ".ffn_norm2",  # RMSNorm in JointTransformerBlock
+                ".norm_final",  # Final RMSNorm/LayerNorm
+                "cap_embedder.0",  # RMSNorm in cap_embedder
+            ],
+        },
+    }
     
     def __init__(self, headless: bool, config: GUIConfig) -> None:
         self.config = config
         self.headless = headless
+        
+    def detect_model_type(self, model_path: str) -> str:
+        """
+        Auto-detect model type based on state dict keys
+        
+        Args:
+            model_path: Path to model file
+            
+        Returns:
+            Detected model type string ("qwen_image" or "z_image")
+        """
+        try:
+            from musubi_tuner.utils.safetensors_utils import MemoryEfficientSafeOpen
+            
+            with MemoryEfficientSafeOpen(model_path) as f:
+                keys = list(f.keys())[:100]  # Check first 100 keys for efficiency
+                
+                # Z Image detection: Look for Lumina2/NextDiT specific keys
+                z_image_indicators = [
+                    "cap_embedder.1.weight",  # Lumina2 caption embedder
+                    "noise_refiner.",  # NextDiT noise refiner
+                    "context_refiner.",  # NextDiT context refiner
+                    "x_embedder.weight",  # NextDiT x embedder
+                ]
+                
+                # Qwen Image detection: Look for Qwen specific keys
+                qwen_indicators = [
+                    "transformer_blocks.",  # Qwen transformer blocks
+                    "time_text_embed.",  # Qwen time text embedding
+                    "proj_out.",  # Qwen projection out
+                ]
+                
+                z_score = sum(1 for k in keys for ind in z_image_indicators if ind in k)
+                qwen_score = sum(1 for k in keys for ind in qwen_indicators if ind in k)
+                
+                if z_score > qwen_score:
+                    log.info(f"Auto-detected model type: Z Image (score: {z_score} vs {qwen_score})")
+                    return "z_image"
+                else:
+                    log.info(f"Auto-detected model type: Qwen Image (score: {qwen_score} vs {z_score})")
+                    return "qwen_image"
+                    
+        except Exception as e:
+            log.warning(f"Could not auto-detect model type, defaulting to Qwen Image: {e}")
+            return "qwen_image"
         
     def is_already_fp8_scaled(self, model_path: str) -> bool:
         """
@@ -53,15 +132,17 @@ class FP8Converter:
         input_path: str,
         output_path: str,
         quantization_mode: str,
-        delete_original: bool
+        delete_original: bool,
+        model_type: str = "auto"
     ) -> Tuple[bool, str]:
         """
-        Convert a Qwen Image model to FP8 scaled format
+        Convert a Qwen Image or Z Image model to FP8 scaled format
         
         Args:
             input_path: Path to input model file
             output_path: Path to save FP8 converted model
             delete_original: Whether to delete original file after conversion
+            model_type: Model type ("qwen_image", "z_image", or "auto" for auto-detection)
             
         Returns:
             Tuple of (success, message)
@@ -80,29 +161,17 @@ class FP8Converter:
             )
             from musubi_tuner.utils.safetensors_utils import mem_eff_save_file, MemoryEfficientSafeOpen
 
-            # Qwen Image specific FP8 optimization keys
-            # Match the patterns from musubi-tuner2/src/musubi_tuner/qwen_image/qwen_image_model.py
-            # The repo uses:
-            #   FP8_OPTIMIZATION_TARGET_KEYS = ["transformer_blocks"]
-            #   FP8_OPTIMIZATION_EXCLUDE_KEYS = ["norm", "time_text_embed"]
-            # For ComfyUI compatibility, we convert all Linear layers (target_keys=None)
-            # but use more specific exclude patterns to avoid excluding Linear layers like norm_out.linear.weight
-            FP8_OPTIMIZATION_TARGET_KEYS = None  # None means all Linear layers (for ComfyUI compatibility)
-            # Exclude normalization layers (RMSNorm, LayerNorm, etc.) which are not Linear layers
-            # Use specific patterns to avoid excluding Linear layers like "norm_out.linear.weight"
-            # Note: "norm" substring would exclude norm_out.linear.weight, so we use specific patterns
-            # Also note: time_text_embed is NOT excluded here (repo excludes it for training,
-            # but working model has it converted, so we include it for ComfyUI compatibility)
-            FP8_OPTIMIZATION_EXCLUDE_KEYS = [
-                ".norm.",  # Normalization layers inside modules (e.g., transformer_blocks.0.norm.weight)
-                ".norm_q",  # Attention norm layers (e.g., transformer_blocks.0.attn.norm_q.weight)
-                ".norm_k",  # Attention norm layers
-                ".norm_added_q",  # Attention norm layers
-                ".norm_added_k",  # Attention norm layers
-                "txt_norm",  # Text normalization layer (RMSNorm, not Linear)
-                # Note: "norm_out.linear.weight" is NOT excluded because it's a Linear layer
-                # and doesn't match any of the above patterns
-            ]
+            # Auto-detect model type if needed
+            if model_type == "auto":
+                model_type = self.detect_model_type(input_path)
+            
+            # Get FP8 settings for the detected/selected model type
+            fp8_settings = self.FP8_SETTINGS.get(model_type, self.FP8_SETTINGS["qwen_image"])
+            FP8_OPTIMIZATION_TARGET_KEYS = fp8_settings["target_keys"]
+            FP8_OPTIMIZATION_EXCLUDE_KEYS = fp8_settings["exclude_keys"]
+            
+            log.info(f"Converting model as {model_type.replace('_', ' ').title()} type")
+            log.info(f"Exclude patterns: {FP8_OPTIMIZATION_EXCLUDE_KEYS}")
 
             # Read existing metadata from the input model to preserve architecture and resolution info
             existing_metadata = {}
@@ -141,13 +210,16 @@ class FP8Converter:
             
             # Save the FP8 converted model with metadata indicating it's FP8 scaled
             # Preserve existing metadata and add FP8 information
-            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            output_dir = os.path.dirname(output_path)
+            if output_dir:  # Only create directory if path has a directory component
+                os.makedirs(output_dir, exist_ok=True)
             metadata = existing_metadata.copy()  # Start with existing metadata
             metadata.update({
                 "format": "pt",
                 "fp8_scaled": "true",
                 "quantization_mode": quantization_mode,
                 "block_size": "64" if quantization_mode == "block" else "0",
+                "model_type": model_type,  # Store model type for reference
             })
             
             # Log some debug info about the converted weights
@@ -190,15 +262,17 @@ class FP8Converter:
         input_folder: str,
         output_folder: str,
         quantization_mode: str,
-        delete_original: bool
+        delete_original: bool,
+        model_type: str = "auto"
     ) -> Tuple[bool, str]:
         """
-        Batch convert all Qwen Image models in a folder to FP8 format
+        Batch convert all Qwen Image or Z Image models in a folder to FP8 format
         
         Args:
             input_folder: Folder containing model files
             output_folder: Folder to save converted models (can be same as input)
             delete_original: Whether to delete original files after conversion
+            model_type: Model type ("qwen_image", "z_image", or "auto" for auto-detection)
             
         Returns:
             Tuple of (success, message)
@@ -262,7 +336,8 @@ class FP8Converter:
                     model_file,
                     output_path,
                     quantization_mode,
-                    delete_original
+                    delete_original,
+                    model_type
                 )
                 
                 if success:
@@ -290,6 +365,79 @@ class FP8Converter:
             error_msg = f"Error in batch conversion: {str(e)}"
             log.error(error_msg)
             return False, error_msg
+    
+    def convert_single_file(
+        self,
+        input_file: str,
+        output_file: str,
+        quantization_mode: str,
+        delete_original: bool,
+        model_type: str = "auto"
+    ) -> Tuple[bool, str]:
+        """
+        Convert a single model file to FP8 format
+        
+        Args:
+            input_file: Path to input model file
+            output_file: Path to save converted model (if empty, auto-generated)
+            quantization_mode: Quantization mode ("tensor" or "block")
+            delete_original: Whether to delete original file after conversion
+            model_type: Model type ("qwen_image", "z_image", or "auto")
+            
+        Returns:
+            Tuple of (success, message)
+        """
+        try:
+            if not input_file or input_file.strip() == "":
+                return False, "Please select an input file"
+            
+            if not os.path.exists(input_file):
+                return False, f"Input file does not exist: {input_file}"
+            
+            # Check if file is a valid model file
+            valid_extensions = [".safetensors", ".pth", ".pt"]
+            if not any(input_file.lower().endswith(ext) for ext in valid_extensions):
+                return False, f"Invalid file type. Supported formats: {', '.join(valid_extensions)}"
+            
+            # Skip files that already have _FP8_scaled suffix
+            if "_FP8_scaled" in os.path.basename(input_file):
+                return False, "File already has _FP8_scaled suffix, skipping"
+            
+            # Check if model is already FP8 scaled
+            if self.is_already_fp8_scaled(input_file):
+                return False, "Model already appears to be FP8 scaled (contains scale_weight tensors)"
+            
+            # Auto-generate output path if not provided
+            if not output_file or output_file.strip() == "":
+                base_name, ext = os.path.splitext(input_file)
+                output_file = f"{base_name}_FP8_scaled{ext}"
+            
+            # Check if output file already exists
+            if os.path.exists(output_file):
+                return False, f"Output file already exists: {output_file}"
+            
+            log.info(f"Converting single file: {input_file} -> {output_file}")
+            
+            # Perform the conversion
+            success, message = self.convert_model_to_fp8(
+                input_file,
+                output_file,
+                quantization_mode,
+                delete_original,
+                model_type
+            )
+            
+            # Clean up memory
+            gc.collect()
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+            
+            return success, message
+            
+        except Exception as e:
+            error_msg = f"Error converting file: {str(e)}"
+            log.error(error_msg)
+            return False, error_msg
 
 
 def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
@@ -298,8 +446,8 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
     converter = FP8Converter(headless, config)
     
     gr.Markdown("# FP8 Model Converter")
-    gr.Markdown("### Convert Qwen Image models to FP8 Scaled format")
-    gr.Markdown("This tool converts Qwen Image or Qwen Image Edit models to FP8 scaled format using Musubi Tuner's dynamic FP8 scaling methodology.")
+    gr.Markdown("### Convert Qwen Image and Z Image models to FP8 Scaled format")
+    gr.Markdown("This tool converts Qwen Image, Qwen Image Edit, and **Z Image** models to FP8 scaled format using Musubi Tuner's dynamic FP8 scaling methodology.")
     gr.Markdown("⚠️ **IMPORTANT:** Tensor mode (default) is ComfyUI compatible and uses less VRAM. Block mode provides better quality but requires ComfyUI patch and uses 2-3x more VRAM.")
     
     # 4-column layout for compact display
@@ -307,7 +455,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
         with gr.Column():
             gr.Markdown("""
             **Features:**
-            - Batch conversion
+            - Single file & batch
             - Auto-detection
             - Smart skipping
             """)
@@ -336,62 +484,182 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
             - Safe to run
             """)
     
-    with gr.Row():
-        with gr.Column(scale=4):
-            input_folder = gr.Textbox(
-                label="Input Folder",
-                info="Folder containing model files to convert",
-                placeholder="e.g., ./models/qwen_image",
-                value=config.get("fp8_converter.input_folder", ""),
+    # Helper function to convert UI model type to internal model type
+    def get_internal_model_type(model_type_ui):
+        model_type_map = {
+            FP8Converter.MODEL_TYPE_AUTO: "auto",
+            FP8Converter.MODEL_TYPE_QWEN: "qwen_image",
+            FP8Converter.MODEL_TYPE_ZIMAGE: "z_image",
+        }
+        return model_type_map.get(model_type_ui, "auto")
+    
+    # ========== CREATE ALL UI COMPONENTS FIRST ==========
+    with gr.Tabs():
+        # ========== SINGLE FILE TAB ==========
+        with gr.TabItem("🔹 Single File"):
+            gr.Markdown("#### Convert a single model file to FP8 format")
+            
+            with gr.Row():
+                with gr.Column(scale=4):
+                    single_input_file = gr.Textbox(
+                        label="Input File",
+                        info="Path to the model file to convert (.safetensors, .pth, .pt)",
+                        placeholder="e.g., ./models/z_image_turbo_bf16.safetensors",
+                        value=config.get("fp8_converter.single_input_file", ""),
+                    )
+                single_input_button = gr.Button(
+                    "📄",
+                    size="sm",
+                    elem_id="single_input_button"
+                )
+            
+            with gr.Row():
+                with gr.Column(scale=4):
+                    single_output_file = gr.Textbox(
+                        label="Output File (Optional)",
+                        info="Path for converted model. If empty, adds '_FP8_scaled' suffix to input filename.",
+                        placeholder="e.g., ./models/z_image_turbo_bf16_FP8_scaled.safetensors",
+                        value="",
+                    )
+                single_output_button = gr.Button(
+                    "📄",
+                    size="sm",
+                    elem_id="single_output_button"
+                )
+            
+            with gr.Row():
+                single_model_type = gr.Dropdown(
+                    label="Model Type",
+                    choices=[
+                        FP8Converter.MODEL_TYPE_AUTO,
+                        FP8Converter.MODEL_TYPE_QWEN,
+                        FP8Converter.MODEL_TYPE_ZIMAGE,
+                    ],
+                    value=config.get("fp8_converter.model_type", FP8Converter.MODEL_TYPE_AUTO),
+                    info="Select model architecture or use auto-detection.",
+                )
+                
+                single_quantization_mode = gr.Radio(
+                    label="Quantization Mode",
+                    choices=["tensor", "block"],
+                    value=config.get("fp8_converter.quantization_mode", "tensor"),
+                    info="tensor = ComfyUI compatible (recommended)",
+                )
+            
+            single_delete_original = gr.Checkbox(
+                label="Delete Original File After Conversion",
+                info="⚠️ Delete original model file after successful conversion",
+                value=config.get("fp8_converter.delete_original", False),
             )
-        input_folder_button = gr.Button(
-            "📂",
-            size="sm",
-            elem_id="input_folder_button"
-        )
-    
-    with gr.Row():
-        with gr.Column(scale=4):
-            output_folder = gr.Textbox(
-                label="Output Folder (Optional)",
-                info="Folder to save converted models. If empty, uses input folder.",
-                placeholder="e.g., ./models/qwen_image_fp8",
-                value=config.get("fp8_converter.output_folder", ""),
+            
+            single_convert_button = gr.Button(
+                "🚀 Convert Single File",
+                variant="primary",
+                size="lg"
             )
-        output_folder_button = gr.Button(
-            "📂",
-            size="sm",
-            elem_id="output_folder_button"
-        )
+        
+        # ========== BATCH CONVERSION TAB ==========
+        with gr.TabItem("📁 Batch Conversion"):
+            gr.Markdown("#### Convert all model files in a folder to FP8 format")
+            
+            with gr.Row():
+                with gr.Column(scale=4):
+                    input_folder = gr.Textbox(
+                        label="Input Folder",
+                        info="Folder containing model files to convert",
+                        placeholder="e.g., ./models/qwen_image",
+                        value=config.get("fp8_converter.input_folder", ""),
+                    )
+                input_folder_button = gr.Button(
+                    "📂",
+                    size="sm",
+                    elem_id="input_folder_button"
+                )
+            
+            with gr.Row():
+                with gr.Column(scale=4):
+                    output_folder = gr.Textbox(
+                        label="Output Folder (Optional)",
+                        info="Folder to save converted models. If empty, uses input folder.",
+                        placeholder="e.g., ./models/qwen_image_fp8",
+                        value=config.get("fp8_converter.output_folder", ""),
+                    )
+                output_folder_button = gr.Button(
+                    "📂",
+                    size="sm",
+                    elem_id="output_folder_button"
+                )
+            
+            with gr.Row():
+                batch_model_type = gr.Dropdown(
+                    label="Model Type",
+                    choices=[
+                        FP8Converter.MODEL_TYPE_AUTO,
+                        FP8Converter.MODEL_TYPE_QWEN,
+                        FP8Converter.MODEL_TYPE_ZIMAGE,
+                    ],
+                    value=config.get("fp8_converter.model_type", FP8Converter.MODEL_TYPE_AUTO),
+                    info="Select model architecture or use auto-detection.",
+                )
+                
+                batch_quantization_mode = gr.Radio(
+                    label="Quantization Mode",
+                    choices=["tensor", "block"],
+                    value=config.get("fp8_converter.quantization_mode", "tensor"),
+                    info="tensor = ComfyUI compatible (recommended)",
+                )
+            
+            batch_delete_original = gr.Checkbox(
+                label="Delete Original Files After Conversion",
+                info="⚠️ Delete original model files after successful conversion",
+                value=config.get("fp8_converter.delete_original", False),
+            )
+            
+            batch_convert_button = gr.Button(
+                "🚀 Start Batch Conversion",
+                variant="primary",
+                size="lg"
+            )
     
-    quantization_mode = gr.Radio(
-        label="Quantization Mode",
-        choices=["tensor", "block"],
-        value=config.get("fp8_converter.quantization_mode", "tensor"),
-        info="tensor = ComfyUI compatible (recommended), block = Better quality (requires ComfyUI patch)",
-    )
-    
-    delete_original = gr.Checkbox(
-        label="Delete Original Files After Conversion",
-        info="⚠️ Delete original model files after successful conversion",
-        value=config.get("fp8_converter.delete_original", False),
-    )
-    
-    convert_button = gr.Button(
-        "🚀 Start Batch Conversion",
-        variant="primary",
-        size="lg"
-    )
-    
+    # Shared output status (at bottom, after tabs)
     output_status = gr.Textbox(
         label="Conversion Status",
-        lines=20,
+        lines=15,
         max_lines=50,
         placeholder="Conversion status will appear here...",
         interactive=False,
     )
     
-    # File browser callbacks
+    # ========== SET UP EVENT HANDLERS AFTER ALL COMPONENTS ARE CREATED ==========
+    
+    # Single file browser callbacks
+    single_input_button.click(
+        fn=lambda: get_file_path("", ".safetensors", "Model files"),
+        outputs=[single_input_file],
+        show_progress=False,
+    )
+    
+    single_output_button.click(
+        fn=lambda: get_file_path("", ".safetensors", "Safetensors files"),
+        outputs=[single_output_file],
+        show_progress=False,
+    )
+    
+    # Single file conversion callback
+    def convert_single_with_model_type(input_file, output_file, quantization_mode, delete_original, model_type_ui):
+        model_type = get_internal_model_type(model_type_ui)
+        return converter.convert_single_file(
+            input_file, output_file, quantization_mode, delete_original, model_type
+        )
+    
+    single_convert_button.click(
+        fn=convert_single_with_model_type,
+        inputs=[single_input_file, single_output_file, single_quantization_mode, single_delete_original, single_model_type],
+        outputs=[output_status],
+        show_progress=True,
+    )
+    
+    # Batch folder browser callbacks
     input_folder_button.click(
         fn=lambda: get_folder_path(""),
         outputs=[input_folder],
@@ -404,10 +672,16 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
         show_progress=False,
     )
     
-    # Conversion callback
-    convert_button.click(
-        fn=converter.batch_convert_models,
-        inputs=[input_folder, output_folder, quantization_mode, delete_original],
+    # Batch conversion callback
+    def convert_batch_with_model_type(input_folder, output_folder, quantization_mode, delete_original, model_type_ui):
+        model_type = get_internal_model_type(model_type_ui)
+        return converter.batch_convert_models(
+            input_folder, output_folder, quantization_mode, delete_original, model_type
+        )
+    
+    batch_convert_button.click(
+        fn=convert_batch_with_model_type,
+        inputs=[input_folder, output_folder, batch_quantization_mode, batch_delete_original, batch_model_type],
         outputs=[output_status],
         show_progress=True,
     )

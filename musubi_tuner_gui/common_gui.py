@@ -2188,35 +2188,41 @@ def _ensure_visual_studio_compiler_env(env):
     if os.name != "nt":
         return env
 
-    cl_available = shutil.which("cl.exe", path=env.get("PATH", "")) is not None
-    omp_header_available = _has_openmp_header(env)
+    try:
+        cl_available = shutil.which("cl.exe", path=env.get("PATH", "")) is not None
+        omp_header_available = _has_openmp_header(env)
 
-    if cl_available and omp_header_available:
-        log.debug("cl.exe and OpenMP headers detected; Visual Studio environment already configured.")
-        return env
+        if cl_available and omp_header_available:
+            log.debug("cl.exe and OpenMP headers detected; Visual Studio environment already configured.")
+            return env
 
-    if not cl_available:
-        log.info("cl.exe not detected in PATH; attempting to initialize Visual Studio environment.")
-    elif not omp_header_available:
-        log.info(
-            "cl.exe detected but omp.h not found in INCLUDE path; attempting to initialize Visual Studio environment."
-        )
+        if not cl_available:
+            log.info("cl.exe not detected in PATH; attempting to initialize Visual Studio environment.")
+        elif not omp_header_available:
+            log.info(
+                "cl.exe detected but omp.h not found in INCLUDE path; attempting to initialize Visual Studio environment."
+            )
 
-    delta = _get_visual_studio_env_delta(env)
-    if delta:
-        env.update(delta)
-        cl_path = shutil.which("cl.exe", path=env.get("PATH", ""))
-        if cl_path:
-            log.info(f"Loaded Visual Studio developer environment (cl.exe found at {cl_path}).")
+        delta = _get_visual_studio_env_delta(env)
+        if delta:
+            env.update(delta)
+            cl_path = shutil.which("cl.exe", path=env.get("PATH", ""))
+            if cl_path:
+                log.info(f"Loaded Visual Studio developer environment (cl.exe found at {cl_path}).")
+            else:
+                log.warning(
+                    "Visual Studio environment initialized but cl.exe is still not resolvable. "
+                    "Training may still fail when compiling extensions."
+                )
         else:
             log.warning(
-                "Visual Studio environment initialized but cl.exe is still not resolvable. "
-                "Training may still fail when compiling extensions."
+                "Unable to automatically locate a Visual Studio developer environment. "
+                "If CUDA extensions require compilation, ensure cl.exe is accessible."
             )
-    else:
+    except Exception as exc:
         log.warning(
-            "Unable to automatically locate a Visual Studio developer environment. "
-            "If CUDA extensions require compilation, ensure cl.exe is accessible."
+            f"Unexpected error while initializing Visual Studio environment: {exc}. "
+            "Continuing without VS developer environment - this may cause issues if CUDA extensions need compilation."
         )
 
     return env
@@ -2241,63 +2247,71 @@ def _get_visual_studio_env_delta(base_env):
 
 
 def _bootstrap_visual_studio_env(base_env):
-    installation_path, source = _get_vs_installation_from_env(base_env) or (None, None)
-
-    if installation_path:
-        log.info(f"Using Visual Studio installation from env var {source}: {installation_path}")
-    else:
-        vswhere_path = _resolve_vswhere_executable()
-        if vswhere_path:
-            installation_path = _query_latest_vs_installation(vswhere_path)
-            if installation_path and os.path.isdir(installation_path):
-                source = "vswhere"
-                log.info(f"Using Visual Studio installation discovered via vswhere: {installation_path}")
-            else:
-                installation_path = None
-        else:
-            log.debug("vswhere.exe not found; attempting filesystem heuristic search for Visual Studio.")
-
-    dev_batch = None
-    if installation_path:
-        dev_batch = _locate_vs_dev_batch(installation_path, env=base_env)
-
-    if not dev_batch:
-        for candidate in _search_default_vs_installations():
-            dev_batch = _locate_vs_dev_batch(candidate, env=base_env)
-            if dev_batch:
-                installation_path = candidate
-                source = "filesystem"
-                log.info(f"Using Visual Studio installation discovered via filesystem scan: {installation_path}")
-                break
-
-    if not dev_batch:
-        if installation_path:
-            log.warning(f"Could not locate VsDevCmd/vcvars scripts under {installation_path}.")
-        else:
-            log.warning(
-                "No Visual Studio installation paths detected via environment variables, vswhere, or filesystem scan."
-            )
-        return None
-
-    extra_args = []
-    batch_name = os.path.basename(dev_batch).lower()
-    if batch_name == "vsdevcmd.bat":
-        extra_args = ["-arch=amd64", "-host_arch=amd64"]
-    elif batch_name == "vcvarsall.bat":
-        extra_args = ["amd64"]
-
-    log.info(f"Initializing Visual Studio developer environment using {dev_batch}...")
     try:
-        vs_env = _capture_env_from_batch(dev_batch, extra_args, base_env=base_env)
+        installation_path, source = _get_vs_installation_from_env(base_env) or (None, None)
+
+        if installation_path:
+            log.info(f"Using Visual Studio installation from env var {source}: {installation_path}")
+        else:
+            vswhere_path = _resolve_vswhere_executable()
+            if vswhere_path:
+                installation_path = _query_latest_vs_installation(vswhere_path)
+                try:
+                    if installation_path and os.path.isdir(installation_path):
+                        source = "vswhere"
+                        log.info(f"Using Visual Studio installation discovered via vswhere: {installation_path}")
+                    else:
+                        installation_path = None
+                except (OSError, PermissionError):
+                    installation_path = None
+            else:
+                log.debug("vswhere.exe not found; attempting filesystem heuristic search for Visual Studio.")
+
+        dev_batch = None
+        if installation_path:
+            dev_batch = _locate_vs_dev_batch(installation_path, env=base_env)
+
+        if not dev_batch:
+            for candidate in _search_default_vs_installations():
+                dev_batch = _locate_vs_dev_batch(candidate, env=base_env)
+                if dev_batch:
+                    installation_path = candidate
+                    source = "filesystem"
+                    log.info(f"Using Visual Studio installation discovered via filesystem scan: {installation_path}")
+                    break
+
+        if not dev_batch:
+            if installation_path:
+                log.warning(f"Could not locate VsDevCmd/vcvars scripts under {installation_path}.")
+            else:
+                log.warning(
+                    "No Visual Studio installation paths detected via environment variables, vswhere, or filesystem scan."
+                )
+            return None
+
+        extra_args = []
+        batch_name = os.path.basename(dev_batch).lower()
+        if batch_name == "vsdevcmd.bat":
+            extra_args = ["-arch=amd64", "-host_arch=amd64"]
+        elif batch_name == "vcvarsall.bat":
+            extra_args = ["amd64"]
+
+        log.info(f"Initializing Visual Studio developer environment using {dev_batch}...")
+        try:
+            vs_env = _capture_env_from_batch(dev_batch, extra_args, base_env=base_env)
+        except Exception as exc:
+            log.warning(f"Failed to execute {dev_batch}: {exc}")
+            return None
+
+        if not vs_env:
+            return None
+
+        delta = {key: value for key, value in vs_env.items() if base_env.get(key) != value}
+        return delta
+
     except Exception as exc:
-        log.warning(f"Failed to execute {dev_batch}: {exc}")
+        log.warning(f"Unexpected error during Visual Studio environment bootstrap: {exc}")
         return None
-
-    if not vs_env:
-        return None
-
-    delta = {key: value for key, value in vs_env.items() if base_env.get(key) != value}
-    return delta
 
 
 def _get_vs_installation_from_env(env):
@@ -2305,27 +2319,34 @@ def _get_vs_installation_from_env(env):
         return None
 
     for var_name, levels_up in _ENV_VS_INSTALL_CANDIDATES:
-        raw = env.get(var_name)
-        if not raw:
+        try:
+            raw = env.get(var_name)
+            if not raw:
+                continue
+
+            candidate = _normalize_windows_path(raw)
+            if not candidate:
+                continue
+
+            for _ in range(levels_up):
+                candidate = os.path.dirname(candidate)
+
+            if os.path.isdir(candidate):
+                return candidate, var_name
+        except (OSError, PermissionError, ValueError) as exc:
+            log.debug(f"Error checking VS installation from {var_name}: {exc}")
             continue
-
-        candidate = _normalize_windows_path(raw)
-        if not candidate:
-            continue
-
-        for _ in range(levels_up):
-            candidate = os.path.dirname(candidate)
-
-        if os.path.isdir(candidate):
-            return candidate, var_name
 
     return None
 
 
 def _resolve_vswhere_executable():
-    path_candidate = shutil.which("vswhere.exe") or shutil.which("vswhere")
-    if path_candidate and os.path.isfile(path_candidate):
-        return path_candidate
+    try:
+        path_candidate = shutil.which("vswhere.exe") or shutil.which("vswhere")
+        if path_candidate and os.path.isfile(path_candidate):
+            return path_candidate
+    except (OSError, PermissionError):
+        pass
 
     search_roots = [
         os.environ.get("ProgramFiles(x86)"),
@@ -2334,9 +2355,12 @@ def _resolve_vswhere_executable():
     ]
 
     for root in filter(None, search_roots):
-        candidate = os.path.join(root, "Microsoft Visual Studio", "Installer", "vswhere.exe")
-        if os.path.isfile(candidate):
-            return candidate
+        try:
+            candidate = os.path.join(root, "Microsoft Visual Studio", "Installer", "vswhere.exe")
+            if os.path.isfile(candidate):
+                return candidate
+        except (OSError, PermissionError):
+            continue
 
     return None
 
@@ -2358,9 +2382,16 @@ def _query_latest_vs_installation(vswhere_path):
             text=True,
             encoding="utf-8",
             check=True,
+            timeout=30,  # Prevent hanging if vswhere is slow
         )
-    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+    except subprocess.TimeoutExpired:
+        log.warning("vswhere.exe timed out while locating Visual Studio; falling back to filesystem search.")
+        return None
+    except (subprocess.CalledProcessError, FileNotFoundError, OSError) as exc:
         log.warning(f"vswhere.exe failed to locate Visual Studio: {exc}")
+        return None
+    except Exception as exc:
+        log.warning(f"Unexpected error running vswhere.exe: {exc}; falling back to filesystem search.")
         return None
 
     lines = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
@@ -2371,13 +2402,16 @@ def _locate_vs_dev_batch(installation_path, env=None):
     env = env or os.environ
 
     for var_name in _ENV_VS_DEV_CMD_CANDIDATES:
-        raw = env.get(var_name)
-        if not raw:
+        try:
+            raw = env.get(var_name)
+            if not raw:
+                continue
+            candidate = _normalize_windows_path(raw)
+            if candidate and os.path.isfile(candidate):
+                log.info(f"Using Visual Studio developer script from env var {var_name}: {candidate}")
+                return candidate
+        except (OSError, PermissionError, ValueError):
             continue
-        candidate = _normalize_windows_path(raw)
-        if candidate and os.path.isfile(candidate):
-            log.info(f"Using Visual Studio developer script from env var {var_name}: {candidate}")
-            return candidate
 
     candidates = [
         os.path.join(installation_path, "Common7", "Tools", "VsDevCmd.bat"),
@@ -2386,8 +2420,11 @@ def _locate_vs_dev_batch(installation_path, env=None):
     ]
 
     for candidate in candidates:
-        if os.path.isfile(candidate):
-            return candidate
+        try:
+            if os.path.isfile(candidate):
+                return candidate
+        except (OSError, PermissionError):
+            continue
 
     return None
 
@@ -2404,36 +2441,54 @@ def _search_default_vs_installations():
     candidates = []
 
     for root in filter(None, search_roots):
-        base = os.path.join(root, "Microsoft Visual Studio")
-        if not os.path.isdir(base):
-            continue
-
-        for version_dir in sorted(os.listdir(base), reverse=True):
-            version_path = os.path.join(base, version_dir)
-            if not os.path.isdir(version_path):
+        try:
+            base = os.path.join(root, "Microsoft Visual Studio")
+            if not os.path.isdir(base):
                 continue
-            for edition_dir in sorted(os.listdir(version_path), reverse=True):
-                install_path = os.path.join(version_path, edition_dir)
-                if os.path.isdir(install_path) and install_path not in seen:
-                    seen.add(install_path)
-                    candidates.append(install_path)
+
+            for version_dir in sorted(os.listdir(base), reverse=True):
+                try:
+                    version_path = os.path.join(base, version_dir)
+                    if not os.path.isdir(version_path):
+                        continue
+                    for edition_dir in sorted(os.listdir(version_path), reverse=True):
+                        try:
+                            install_path = os.path.join(version_path, edition_dir)
+                            if os.path.isdir(install_path) and install_path not in seen:
+                                seen.add(install_path)
+                                candidates.append(install_path)
+                        except (OSError, PermissionError):
+                            # Skip directories we can't access
+                            continue
+                except (OSError, PermissionError):
+                    # Skip version directories we can't access
+                    continue
+        except (OSError, PermissionError) as exc:
+            log.debug(f"Could not search VS installations in {root}: {exc}")
+            continue
 
     return candidates
 
 
 def _has_openmp_header(env):
-    include_var = env.get("INCLUDE", "")
-    if not include_var:
-        return False
+    try:
+        include_var = env.get("INCLUDE", "")
+        if not include_var:
+            return False
 
-    for path in include_var.split(os.pathsep):
-        candidate = path.strip()
-        if not candidate:
-            continue
-        header_path = os.path.join(candidate, "omp.h")
-        if os.path.isfile(header_path):
-            log.debug(f"Detected omp.h at {header_path}")
-            return True
+        for path in include_var.split(os.pathsep):
+            try:
+                candidate = path.strip()
+                if not candidate:
+                    continue
+                header_path = os.path.join(candidate, "omp.h")
+                if os.path.isfile(header_path):
+                    log.debug(f"Detected omp.h at {header_path}")
+                    return True
+            except (OSError, PermissionError):
+                continue
+    except Exception:
+        pass
 
     return False
 
@@ -2452,10 +2507,14 @@ def _capture_env_from_batch(batch_file, extra_args=None, base_env=None):
         "set",
     ]
 
-    with tempfile.NamedTemporaryFile("w", suffix=".bat", delete=False, encoding="utf-8") as script:
-        script_path = script.name
-        script.write("\r\n".join(script_lines))
-        script.write("\r\n")
+    script_path = None
+    try:
+        with tempfile.NamedTemporaryFile("w", suffix=".bat", delete=False, encoding="utf-8") as script:
+            script_path = script.name
+            script.write("\r\n".join(script_lines))
+            script.write("\r\n")
+    except (OSError, IOError) as exc:
+        raise RuntimeError(f"Failed to create temporary batch script: {exc}")
 
     try:
         completed = subprocess.run(
@@ -2465,12 +2524,18 @@ def _capture_env_from_batch(batch_file, extra_args=None, base_env=None):
             encoding="utf-8",
             errors="ignore",
             env=base_env,
+            timeout=120,  # Prevent hanging if VsDevCmd.bat is slow or stuck
         )
+    except subprocess.TimeoutExpired:
+        raise RuntimeError(f"{os.path.basename(batch_file)} timed out after 120 seconds")
+    except (OSError, IOError) as exc:
+        raise RuntimeError(f"Failed to execute {os.path.basename(batch_file)}: {exc}")
     finally:
-        try:
-            os.remove(script_path)
-        except OSError:
-            pass
+        if script_path:
+            try:
+                os.remove(script_path)
+            except OSError:
+                pass
 
     if completed.returncode != 0:
         raise RuntimeError(f"{os.path.basename(batch_file)} exited with code {completed.returncode}")

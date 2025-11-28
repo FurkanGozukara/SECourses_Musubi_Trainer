@@ -1,10 +1,22 @@
 # FP8 Converter Default Settings
 
+# ========== Single File Conversion ==========
+# Input file for single file conversion
+fp8_converter.single_input_file = ""
+
+# ========== Batch Conversion ==========
 # Input folder for model files to convert
 fp8_converter.input_folder = ""
 
 # Output folder for converted models (optional, uses input folder if empty)
 fp8_converter.output_folder = ""
+
+# ========== Shared Settings ==========
+# Model type: "Auto-detect" (recommended), "Qwen Image", or "Z Image"
+# - Qwen Image: For Qwen Image and Qwen Image Edit models
+# - Z Image: For Z Image (Lumina2/NextDiT architecture) models
+# - Auto-detect: Automatically detects the model type based on state dict keys
+fp8_converter.model_type = "Auto-detect"
 
 # Quantization mode: tensor = ComfyUI compatible (recommended), block = Better quality (requires ComfyUI patch)
 fp8_converter.quantization_mode = "tensor"

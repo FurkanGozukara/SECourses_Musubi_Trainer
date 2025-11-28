@@ -26,6 +26,7 @@ var/
 wheels/
 Windows_Install_and_Update.bat
 requirements.txt
+ComfyUI
 share/python-wheels/
 *.egg-info/
 .installed.cfg
