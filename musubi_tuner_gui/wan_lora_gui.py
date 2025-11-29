@@ -871,7 +871,7 @@ class WanModelSettings:
             )
 
         # Torch Compile Settings - for faster training with torch.compile
-        self.torch_compile_accordion = gr.Accordion("Torch Compile Settings", open=False)
+        self.torch_compile_accordion = gr.Accordion("Torch Compile Settings", open=True)
         with self.torch_compile_accordion:
             gr.Markdown(
                 """⚠️ **Important:** If you get errors with torch.compile just disable it but it should work out of box with 0-Trade-off. It increases speed and slightly reduces VRAM with 0 quality loss."""
