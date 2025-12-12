@@ -3135,9 +3135,24 @@ def save_wan_configuration(save_as_bool, file_path, parameters):
             except (ValueError, AttributeError):
                 # If conversion fails, keep as string but log warning
                 log.warning(f"Failed to convert string '{value}' to number for field '{key}', keeping as string")
-        # Clean up optimizer_args to remove trailing commas that could break parsing
+        # Clean up optimizer_args to remove any commas that could break parsing
+        # Note: SaveConfigFile should already handle this, but we do it here as a safety check
         elif key == "optimizer_args" and isinstance(value, list):
-            value = [arg.rstrip(',') for arg in value]
+            # Remove both leading and trailing commas from each arg, and filter out empty strings
+            cleaned_args = []
+            for arg in value:
+                if isinstance(arg, str):
+                    # Strip spaces, then commas, then spaces again
+                    cleaned_arg = arg.strip().strip(',').strip()
+                    if cleaned_arg:  # Only add non-empty arguments
+                        cleaned_args.append(cleaned_arg)
+                else:
+                    # Keep non-string values as-is (shouldn't happen, but just in case)
+                    cleaned_args.append(arg)
+            
+            if cleaned_args != value:
+                log.info(f"Cleaned optimizer_args: removed commas from {len(value)} arguments")
+            value = cleaned_args
         
         # Convert None back to 0 for optional parameters so they get saved properly
         # (None values are excluded by SaveConfigFile, but 0 is a valid value to save)

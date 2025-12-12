@@ -61,7 +61,8 @@ class OptimizerAndScheduler:
 
             self.optimizer_args = gr.Textbox(
                 label="Optimizer Arguments",
-                placeholder='Additional arguments for optimizer. Space separated. e.g. "scale_parameter=False relative_step=False weight_decay=0.01"',
+                placeholder='Additional arguments for optimizer. Space or comma separated. e.g. "scale_parameter=False relative_step=False weight_decay=0.01"',
+                info="Space-separated or comma-separated arguments. Commas will be automatically removed when saving.",
                 value=" ".join(self.config.get("optimizer_args", []) or []) if isinstance(self.config.get("optimizer_args", []), list) else self.config.get("optimizer_args", ""),
             )
 

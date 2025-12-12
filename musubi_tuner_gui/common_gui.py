@@ -1619,8 +1619,15 @@ def SaveConfigFile(
                                 value = value.strip("[]").split() if value.strip("[]") else []
                     else:
                         # Space-separated arguments like "conv_dim=4 conv_alpha=1"
-                        # Clean up each argument to remove any quotes or extra formatting
-                        value = [arg.strip().strip("'\"") for arg in value.split()] if value.strip() else []
+                        # First remove commas (common user error when entering args)
+                        # Then split by whitespace and clean each argument
+                        if value.strip():
+                            # Remove commas from the string first
+                            value_cleaned = value.replace(',', ' ')
+                            # Split by whitespace and clean each arg (remove quotes, extra spaces)
+                            value = [arg.strip().strip("'\"") for arg in value_cleaned.split() if arg.strip()]
+                        else:
+                            value = []
             
             # Convert 0 to None for parameters that musubi tuner expects as None when disabled
             # This prevents ZeroDivisionError and other issues
