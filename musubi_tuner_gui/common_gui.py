@@ -66,6 +66,28 @@ ALL_PRESET_MODELS = V2_BASE_MODELS + V_PARAMETERIZATION_MODELS + V1_MODELS + SDX
 
 ENV_EXCLUSION = ["COLAB_GPU", "RUNPOD_POD_ID"]
 
+def is_display_available() -> bool:
+    """
+    Check if a display is available for Tkinter dialogs.
+    Returns False on Linux/Unix systems without DISPLAY variable set,
+    or if we're running in an excluded environment.
+    Returns True on Windows, or on systems with a display available.
+    """
+    # Check excluded environments first
+    if any(var in os.environ for var in ENV_EXCLUSION):
+        return False
+    
+    # Skip on macOS (specific behavior adjustment)
+    if sys.platform == "darwin":
+        return False
+    
+    # On Linux/Unix, check if DISPLAY is set (required for X11)
+    if sys.platform.startswith("linux") or sys.platform == "posix":
+        if "DISPLAY" not in os.environ and "WAYLAND_DISPLAY" not in os.environ:
+            return False
+    
+    return True
+
 _VS_ENV_CACHE = None
 _VS_ENV_CACHE_FAILED = False
 
@@ -582,7 +604,7 @@ def get_file_path(
         raise TypeError("extension_name must be a string")
 
     # Environment and platform check to decide on showing the file dialog
-    if not any(var in os.environ for var in ENV_EXCLUSION) and sys.platform != "darwin":
+    if is_display_available():
         current_file_path = file_path  # Backup in case no file is selected
 
         initial_dir, initial_file = get_dir_and_file(
@@ -639,7 +661,7 @@ def get_file_path_or_save_as(
         raise TypeError("extension_name must be a string")
 
     # Environment and platform check to decide on showing the file dialog
-    if not any(var in os.environ for var in ENV_EXCLUSION) and sys.platform != "darwin":
+    if is_display_available():
         current_file_path = file_path  # Backup in case no file is selected
 
         initial_dir, initial_file = get_dir_and_file(file_path)
@@ -701,10 +723,7 @@ def get_any_file_path(file_path: str = "") -> str:
 
     try:
         # Check for environment variable conditions
-        if (
-            not any(var in os.environ for var in ENV_EXCLUSION)
-            and sys.platform != "darwin"
-        ):
+        if is_display_available():
             current_file_path: str = file_path
 
             initial_dir, initial_file = get_dir_and_file(file_path)
@@ -771,7 +790,7 @@ def get_model_file_path(file_path: str = "", model_extensions: list = None) -> s
         raise TypeError("model_extensions must be a list")
 
     # Environment and platform check
-    if not any(var in os.environ for var in ENV_EXCLUSION) and sys.platform != "darwin":
+    if is_display_available():
         current_file_path = file_path
 
         initial_dir, initial_file = get_dir_and_file(file_path)
@@ -847,7 +866,7 @@ def get_folder_path(folder_path: str = "") -> str:
 
     try:
         # Check for environment variable conditions
-        if any(var in os.environ for var in ENV_EXCLUSION) or sys.platform == "darwin":
+        if not is_display_available():
             return folder_path or ""
 
         root = Tk()
@@ -871,7 +890,7 @@ def get_saveasfile_path(
     extension_name: str = "Config files",
 ) -> str:
     # Check if the current environment is not macOS and if the environment variables do not match the exclusion list
-    if not any(var in os.environ for var in ENV_EXCLUSION) and sys.platform != "darwin":
+    if is_display_available():
         # Store the initial file path to use as a fallback in case no file is selected
         current_file_path = file_path
 
@@ -946,7 +965,7 @@ def get_saveasfilename_path(
     - The dialog will also be skipped on macOS (`sys.platform == "darwin"`) as a specific behavior adjustment.
     """
     # Check if the current environment is not macOS and if the environment variables do not match the exclusion list
-    if not any(var in os.environ for var in ENV_EXCLUSION) and sys.platform != "darwin":
+    if is_display_available():
         # Store the initial file path to use as a fallback in case no file is selected
         current_file_path: str = file_path
         # log.info(f'current file path: {current_file_path}')
