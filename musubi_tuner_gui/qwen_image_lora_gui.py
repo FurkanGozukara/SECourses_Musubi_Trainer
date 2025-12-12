@@ -1552,13 +1552,15 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
     # Parameters that should be None when their value is 0 (optional parameters)
     # NOTE: Only include parameters where 0 truly means "disabled/not set"
     # DO NOT include parameters where 0 is a valid functional value
+    # NOTE: save_every_n_*, sample_every_n_*, and save_last_n_* should NOT be here
+    #       They should be saved/loaded as their actual numeric values (including 0)
     optional_parameters = {
-        "sample_every_n_steps", "sample_every_n_epochs", 
-        "save_every_n_steps", "save_every_n_epochs", "max_timestep", "min_timestep",
+        "max_timestep", "min_timestep",
         "network_dim", "num_layers",  # NEW: These can be None for auto-detection
         "max_train_epochs"  # NEW: 0 means use max_train_steps instead
         # Removed: "ddp_timeout" (0 = use default 30min timeout - VALID)
         # Removed: "save_last_n_epochs" (0 = keep all epochs - VALID)
+        # Removed: "save_every_n_*", "sample_every_n_*" (0 is a valid value to display and use)
     }
 
     # NOTE: Exclude fields that are legitimately lists like optimizer_args, lr_scheduler_args, network_args

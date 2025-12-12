@@ -1672,6 +1672,65 @@ def wan_gui_actions(
             ],
             args
         )))
+    elif action == "reload_configuration":
+        return open_wan_configuration(False, config_file_name, list(zip(
+            [
+                # accelerate_launch
+                "mixed_precision", "num_cpu_threads_per_process", "num_processes", "num_machines", "multi_gpu", "gpu_ids",
+                "main_process_port", "dynamo_backend", "dynamo_mode", "dynamo_use_fullgraph", "dynamo_use_dynamic", "extra_accelerate_launch_args",
+                # advanced_training
+                "additional_parameters", "debug_mode",
+                # Wan Dataset settings
+                "dataset_config_mode", "dataset_config", "parent_folder_path", "dataset_resolution_width",
+                "dataset_resolution_height", "dataset_caption_extension", "dataset_batch_size",
+                "create_missing_captions", "caption_strategy", "dataset_enable_bucket",
+                "dataset_bucket_no_upscale", "dataset_cache_directory", "generated_toml_path",
+                # Wan Model settings
+                "training_mode", "task", "dit", "vae", "t5", "clip",
+                "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
+                "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
+                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap",
+                # Torch Compile settings
+                "compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit",
+                "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
+                # training_settings
+                "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
+                "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
+                "gradient_checkpointing_cpu_offload", "gradient_accumulation_steps", "full_bf16", "full_fp16",
+                "logging_dir", "log_with", "log_prefix", "log_tracker_name", "wandb_run_name", "log_tracker_config",
+                "wandb_api_key", "log_config", "ddp_timeout", "ddp_gradient_as_bucket_view", "ddp_static_graph",
+                # Sample generation settings (from TrainingSettings)
+                "sample_every_n_steps", "sample_every_n_epochs", "sample_at_first", "sample_prompts", "sample_output_dir",
+                "disable_prompt_enhancement", "sample_width", "sample_height", "sample_num_frames", "sample_steps",
+                "sample_guidance_scale", "sample_seed", "sample_negative_prompt",
+                # Latent Caching Settings
+                "caching_latent_device", "caching_latent_batch_size", "caching_latent_num_workers", "caching_latent_skip_existing",
+                "caching_latent_keep_cache", "caching_latent_debug_mode", "caching_latent_console_width",
+                "caching_latent_console_back", "caching_latent_console_num_images",
+                # Text Encoder Outputs Caching Settings
+                "caching_teo_text_encoder1", "caching_teo_text_encoder2", "caching_teo_text_encoder_dtype", "caching_teo_device",
+                "caching_teo_fp8_llm", "caching_teo_batch_size", "caching_teo_num_workers", "caching_teo_skip_existing",
+                "caching_teo_keep_cache",
+                # Optimizer and Scheduler Settings
+                "optimizer_type", "optimizer_args", "learning_rate", "max_grad_norm", "lr_scheduler", "lr_warmup_steps",
+                "lr_decay_steps", "lr_scheduler_num_cycles", "lr_scheduler_power", "lr_scheduler_timescale",
+                "lr_scheduler_min_lr_ratio", "lr_scheduler_type", "lr_scheduler_args",
+                # Network Settings
+                "no_metadata", "network_weights", "network_module", "network_dim", "network_alpha",
+                "network_dropout", "network_args", "training_comment", "dim_from_weights", "scale_weight_norms",
+                "base_weights", "base_weights_multiplier",
+                # Save/Load Settings
+                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
+                "save_last_n_steps", "save_last_n_epochs_state", "save_last_n_steps_state", "save_state",
+                "save_state_on_train_end", "mem_eff_save",
+                # HuggingFace Settings
+                "huggingface_repo_id", "huggingface_token", "huggingface_repo_type", "huggingface_repo_visibility",
+                "huggingface_path_in_repo", "save_state_to_huggingface", "resume_from_huggingface", "async_upload",
+                # Metadata Settings
+                "metadata_author", "metadata_description", "metadata_license", "metadata_tags", "metadata_title"
+            ],
+            args
+        )))
     elif action == "save_configuration":
         return save_wan_configuration(False, config_file_name, list(zip(
             [
@@ -2562,16 +2621,16 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
     # Parameters that should be None when their value is 0 (optional parameters)
     # NOTE: Only include parameters where 0 truly means "disabled/not set"
     # DO NOT include parameters where 0 is a valid functional value
+    # NOTE: save_every_n_*, sample_every_n_*, and save_last_n_* should NOT be here
+    #       They should be saved/loaded as their actual numeric values (including 0)
     optional_parameters = {
-        "sample_every_n_steps", "sample_every_n_epochs",
-        "save_every_n_steps", "save_every_n_epochs", "max_timestep", "min_timestep",
+        "max_timestep", "min_timestep",
         "network_dim", "num_layers",  # These can be None for auto-detection
         "max_train_epochs",  # 0 means use max_train_steps instead
         "dit_in_channels", "sample_num_frames", "num_timestep_buckets",  # WAN-specific optional params
-        "save_last_n_epochs", "save_last_n_steps",  # 0 = keep all = None for musubi tuner
-        "save_last_n_epochs_state", "save_last_n_steps_state",  # Same pattern for state files
         "blocks_to_swap", "vae_chunk_size", "vae_spatial_tile_sample_min_size"  # Memory optimization params
         # Removed: "ddp_timeout" (0 = use default 30min timeout - VALID)
+        # Removed: "save_every_n_*", "sample_every_n_*", "save_last_n_*" (0 is a valid value to display and use)
     }
 
     # NOTE: Exclude fields that are legitimately lists like optimizer_args, lr_scheduler_args, network_args
@@ -2807,16 +2866,16 @@ def save_wan_configuration(save_as_bool, file_path, parameters):
     
     # Parameters that should be None when their value is 0 (optional parameters)
     # When saving, convert None back to 0 so they get saved properly
+    # NOTE: save_every_n_*, sample_every_n_*, and save_last_n_* should NOT be here
+    #       They should be saved as their actual numeric values (including 0)
     optional_parameters = {
-        "sample_every_n_steps", "sample_every_n_epochs",
-        "save_every_n_steps", "save_every_n_epochs", "max_timestep", "min_timestep",
+        "max_timestep", "min_timestep",
         "network_dim", "num_layers",  # These can be None for auto-detection
         "max_train_epochs",  # 0 means use max_train_steps instead
         "dit_in_channels", "sample_num_frames", "num_timestep_buckets",  # WAN-specific optional params
-        "save_last_n_epochs", "save_last_n_steps",  # 0 = keep all = None for musubi tuner
-        "save_last_n_epochs_state", "save_last_n_steps_state",  # Same pattern for state files
         "blocks_to_swap", "vae_chunk_size", "vae_spatial_tile_sample_min_size"  # Memory optimization params
         # Removed: "ddp_timeout" (0 = use default 30min timeout - VALID)
+        # Removed: "save_every_n_*", "sample_every_n_*", "save_last_n_*" (0 is a valid value to save and load)
     }
 
     for key, value in parameters:
@@ -3359,7 +3418,7 @@ def wan_lora_tab(
 
     configuration.button_load_config.click(
         wan_gui_actions,
-        inputs=[gr.Textbox(value="open_configuration", visible=False), configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
+        inputs=[gr.Textbox(value="reload_configuration", visible=False), configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
         outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
         show_progress=False,
         queue=False,
