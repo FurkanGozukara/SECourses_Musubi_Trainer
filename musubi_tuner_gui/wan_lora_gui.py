@@ -1661,7 +1661,7 @@ def wan_gui_actions(
                 "network_dropout", "network_args", "training_comment", "dim_from_weights", "scale_weight_norms",
                 "base_weights", "base_weights_multiplier",
                 # Save/Load Settings
-                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_last_n_epochs", "save_every_n_steps",
+                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
                 "save_last_n_steps", "save_last_n_epochs_state", "save_last_n_steps_state", "save_state",
                 "save_state_on_train_end", "mem_eff_save",
                 # HuggingFace Settings
@@ -1720,7 +1720,7 @@ def wan_gui_actions(
                 "network_dropout", "network_args", "training_comment", "dim_from_weights", "scale_weight_norms",
                 "base_weights", "base_weights_multiplier",
                 # Save/Load Settings
-                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_last_n_epochs", "save_every_n_steps",
+                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
                 "save_last_n_steps", "save_last_n_epochs_state", "save_last_n_steps_state", "save_state",
                 "save_state_on_train_end", "mem_eff_save",
                 # HuggingFace Settings
@@ -1781,7 +1781,7 @@ def wan_gui_actions(
                 "network_dropout", "network_args", "training_comment", "dim_from_weights", "scale_weight_norms",
                 "base_weights", "base_weights_multiplier",
                 # Save/Load Settings
-                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_last_n_epochs", "save_every_n_steps",
+                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
                 "save_last_n_steps", "save_last_n_epochs_state", "save_last_n_steps_state", "save_state",
                 "save_state_on_train_end", "mem_eff_save",
                 # HuggingFace Settings
