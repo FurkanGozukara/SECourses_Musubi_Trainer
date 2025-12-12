@@ -1888,15 +1888,21 @@ def SaveConfigFileToRun(
                     value = [arg.strip().strip("'\"") for arg in value.split()] if value.strip() else []
         
         # Convert 0 to None for parameters that musubi tuner expects as None when disabled
-        # This prevents ZeroDivisionError and other issues
-        # NOTE: save_every_n_*, sample_every_n_*, and save_last_n_* should be saved as 0, not converted to None
-        # The conversion to None happens later when generating training commands
+        # This prevents ZeroDivisionError in modulo operations in the training backend
+        # Verified against actual backend code in musubi-tuner/src/musubi_tuner/hv_train_network.py
         zero_to_none_params = [
+            # These 4 cause ZeroDivisionError when used in modulo operations:
+            "sample_every_n_steps",  # Line 365: steps % value
+            "sample_every_n_epochs",  # Line 367: epoch % value  
+            "save_every_n_steps",    # Line 2250: step % value
+            "save_every_n_epochs",   # Line 2299: (epoch+1) % value
+            # Note: save_last_n_* parameters are safe as 0 - they never have modulo on themselves
+            # Memory/model optimization parameters:
             "blocks_to_swap", "min_timestep", "num_timestep_buckets",
             "vae_chunk_size", "vae_spatial_tile_sample_min_size",
-            "network_dim", "num_layers",  # NEW: 0 means auto-detection = None
-            "max_train_epochs",  # NEW: 0 means use max_train_steps instead = None
-            "timestep_boundary",  # NEW: 0.0 means auto-detect = None
+            "network_dim", "num_layers",  # 0 means auto-detection = None
+            "max_train_epochs",  # 0 means use max_train_steps instead = None
+            "timestep_boundary",  # 0.0 means auto-detect = None
             "compile_cache_size_limit"  # 0 means use PyTorch default
         ]
         if name in zero_to_none_params and value == 0:
