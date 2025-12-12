@@ -1599,6 +1599,9 @@ def SaveConfigFile(
             # Convert string representations of lists back to actual lists for specific parameters
             if name in ["network_args", "optimizer_args", "lr_scheduler_args"]:
                 if isinstance(value, str):
+                    if name == "optimizer_args":
+                        log.debug(f"[SaveConfigFile] Processing {name}: '{value}' (type: {type(value).__name__})")
+                    
                     if value == "[]" or value == "":
                         value = []
                     elif value.startswith("[") and value.endswith("]"):
@@ -1626,8 +1629,28 @@ def SaveConfigFile(
                             value_cleaned = value.replace(',', ' ')
                             # Split by whitespace and clean each arg (remove quotes, extra spaces)
                             value = [arg.strip().strip("'\"") for arg in value_cleaned.split() if arg.strip()]
+                            if name == "optimizer_args":
+                                log.info(f"[SaveConfigFile] Cleaned {name}: {value}")
                         else:
                             value = []
+                elif isinstance(value, list):
+                    if name == "optimizer_args":
+                        log.debug(f"[SaveConfigFile] {name} is already a list: {value}")
+                    
+                    # Clean commas from list items (in case they were split before comma removal)
+                    cleaned_list = []
+                    for item in value:
+                        if isinstance(item, str):
+                            # Strip spaces, then commas, then spaces again
+                            cleaned_item = item.strip().strip(',').strip()
+                            if cleaned_item:
+                                cleaned_list.append(cleaned_item)
+                        else:
+                            cleaned_list.append(item)
+                    value = cleaned_list
+                    
+                    if name == "optimizer_args" and cleaned_list != value:
+                        log.info(f"[SaveConfigFile] Cleaned commas from {name} list: {cleaned_list}")
             
             # Convert 0 to None for parameters that musubi tuner expects as None when disabled
             # This prevents ZeroDivisionError and other issues
