@@ -80,12 +80,33 @@ class MetaData:
             run_cmd.append("--metadata_tags")
             run_cmd.append(kwargs["metadata_tags"])
 
-        if "metadata_reso" in kwargs and kwargs.get("metadata_reso") != "":
-            run_cmd.append("--metadata_reso")
-            run_cmd.append(kwargs["metadata_reso"])
+        if "metadata_reso" in kwargs:
+            reso_value = kwargs.get("metadata_reso")
+            # Handle None, empty strings, and validate format
+            if reso_value and isinstance(reso_value, str):
+                reso_value = reso_value.strip()
+                if reso_value:
+                    try:
+                        # Validate format: should be comma-separated integers like "1024,1024"
+                        parts = reso_value.split(",")
+                        if len(parts) in [1, 2] and all(p.strip() for p in parts):
+                            # Try to convert to integers to validate - will raise ValueError if invalid
+                            validated_parts = [int(p.strip()) for p in parts]
+                            # Ensure positive integers
+                            if all(v > 0 for v in validated_parts):
+                                run_cmd.append("--metadata_reso")
+                                run_cmd.append(reso_value)
+                    except (ValueError, AttributeError, TypeError):
+                        # Invalid format, skip this parameter to let training use architecture-appropriate default
+                        pass
 
-        if "metadata_arch" in kwargs and kwargs.get("metadata_arch") != "":
-            run_cmd.append("--metadata_arch")
-            run_cmd.append(kwargs["metadata_arch"])
+        if "metadata_arch" in kwargs:
+            arch_value = kwargs.get("metadata_arch")
+            # Handle None, empty strings
+            if arch_value and isinstance(arch_value, str):
+                arch_value = arch_value.strip()
+                if arch_value:
+                    run_cmd.append("--metadata_arch")
+                    run_cmd.append(arch_value)
 
         return run_cmd

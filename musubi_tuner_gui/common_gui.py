@@ -1855,6 +1855,11 @@ def SaveConfigFileToRun(
                                "tracker_run_name", "log_tracker_name", "log_tracker_config"]:
                     continue
         
+        # Skip metadata_reso and metadata_arch when empty to prevent parsing errors
+        # The training script will use architecture-appropriate defaults when these are not present
+        if name in ["metadata_reso", "metadata_arch"] and isinstance(value, str) and value == "":
+            continue
+        
         # Skip HuggingFace parameters if they are empty strings (prevent upload attempts)
         if name in ["huggingface_repo_id", "huggingface_token", "huggingface_path_in_repo", 
                    "huggingface_repo_type", "huggingface_repo_visibility"]:
