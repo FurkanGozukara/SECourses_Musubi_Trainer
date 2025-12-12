@@ -1175,6 +1175,14 @@ class WanModelSettings:
                 step=1,
                 info="0=auto/disabled. Higher=faster but more memory usage"
             )
+            self.vae_spatial_tile_sample_min_size = gr.Number(
+                label="VAE Spatial Tile Min Size",
+                value=self.config.get("vae_spatial_tile_sample_min_size", None),
+                minimum=0,
+                maximum=1024,
+                step=64,
+                info="Minimum sample size for VAE spatial tiling. Default: 256. Lower=more VRAM savings. Only used when VAE Tiling is enabled"
+            )
 
         # Additional Wan-specific options
         with gr.Row():
@@ -1203,6 +1211,185 @@ class WanModelSettings:
                 label="One Frame Training (Experimental)",
                 value=self.config.get("one_frame", False),
                 info="🧪 EXPERIMENTAL: Enable for image-to-image transformations using video models. NOT needed for mixed video+image datasets. Requires I2V/FLF2V models + LoRA training. See Dataset Preparation Details for full explanation."
+            )
+
+        # ============= TIMESTEP SAMPLING SECTION =============
+        gr.Markdown("### ⏱️ Advanced Timestep Sampling")
+        gr.Markdown("Control how timesteps (noise levels) are sampled during training")
+        
+        with gr.Accordion("Timestep Sampling Settings", open=False):
+            gr.HTML("""
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                <p style="color: white; margin: 0;"><strong>📚 What is this?</strong> Controls how the training algorithm selects noise levels (timesteps) for each batch. Different strategies can improve training on specific datasets.</p>
+            </div>
+            """)
+            
+            with gr.Row():
+                self.timestep_sampling = gr.Dropdown(
+                    label="Timestep Sampling Method",
+                    choices=[
+                        ("Sigma (Default - Recommended)", "sigma"),
+                        ("Uniform Random", "uniform"),
+                        ("Sigmoid Distribution", "sigmoid"),
+                        ("Shifted Sigmoid", "shift"),
+                        ("Flux Shift", "flux_shift"),
+                        ("Qwen Shift", "qwen_shift"),
+                        ("Log SNR", "logsnr"),
+                        ("Qinglong Flux", "qinglong_flux"),
+                        ("Qinglong Qwen", "qinglong_qwen"),
+                    ],
+                    value=self.config.get("timestep_sampling", "sigma"),
+                    info="🎯 How to sample timesteps. 'sigma' is default and works best for most cases"
+                )
+                
+                self.discrete_flow_shift = gr.Number(
+                    label="Discrete Flow Shift",
+                    value=self.config.get("discrete_flow_shift", 1.0),
+                    minimum=0.1,
+                    maximum=20.0,
+                    step=0.1,
+                    info="⚡ CRITICAL: Wan 2.2 T2V-A14B needs 12.0, I2V-A14B needs 5.0, Wan 2.1 needs 1.0. Default: 1.0"
+                )
+            
+            with gr.Row():
+                self.min_timestep = gr.Number(
+                    label="Minimum Timestep",
+                    value=self.config.get("min_timestep", None),
+                    minimum=0,
+                    maximum=999,
+                    step=1,
+                    info="🔽 Start of timestep range (0-999). Leave empty for default (0). Use for focused training"
+                )
+                
+                self.max_timestep = gr.Number(
+                    label="Maximum Timestep",
+                    value=self.config.get("max_timestep", None),
+                    minimum=1,
+                    maximum=1000,
+                    step=1,
+                    info="🔼 End of timestep range (1-1000). Leave empty for default (1000). Use for focused training"
+                )
+            
+            with gr.Row():
+                self.num_timestep_buckets = gr.Number(
+                    label="Timestep Buckets (Stratified Sampling)",
+                    value=self.config.get("num_timestep_buckets", None),
+                    minimum=0,
+                    maximum=100,
+                    step=1,
+                    info="📊 Enable stratified sampling. Set to 10-20 for small datasets (<100 videos). Leave empty to disable"
+                )
+                
+                self.sigmoid_scale = gr.Number(
+                    label="Sigmoid Scale",
+                    value=self.config.get("sigmoid_scale", 1.0),
+                    minimum=0.1,
+                    maximum=10.0,
+                    step=0.1,
+                    info="📈 Scale for sigmoid timestep sampling. Only used when method is 'sigmoid' or 'shift'. Default: 1.0"
+                )
+            
+            with gr.Row():
+                self.preserve_distribution_shape = gr.Checkbox(
+                    label="Preserve Distribution Shape",
+                    value=self.config.get("preserve_distribution_shape", False),
+                    info="🎨 Use rejection sampling to preserve original distribution when min/max timestep is set. Disable for simple scaling"
+                )
+                
+                self.show_timesteps = gr.Dropdown(
+                    label="Show Timesteps (Debug)",
+                    choices=[
+                        ("None", ""),
+                        ("Image Output", "image"),
+                        ("Console Output", "console"),
+                    ],
+                    value=self.config.get("show_timesteps", ""),
+                    info="🔍 Debug: Visualize timestep distribution. Training will stop after visualization"
+                )
+        
+        # ============= LOSS WEIGHTING SECTION =============
+        gr.Markdown("### ⚖️ Advanced Loss Weighting")
+        gr.Markdown("Apply different weights to losses at different noise levels for improved training quality")
+        
+        with gr.Accordion("Loss Weighting Settings", open=False):
+            gr.HTML("""
+            <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
+                <p style="color: white; margin: 0;"><strong>📚 What is this?</strong> Loss weighting changes how much the model learns from different noise levels. Advanced technique - start with 'none' for most cases.</p>
+            </div>
+            """)
+            
+            with gr.Row():
+                self.weighting_scheme = gr.Dropdown(
+                    label="Weighting Scheme",
+                    choices=[
+                        ("None (Default - Equal Weighting)", "none"),
+                        ("Logit Normal (SD3-style)", "logit_normal"),
+                        ("Sigma Square Root", "sigma_sqrt"),
+                        ("Cosine Map", "cosmap"),
+                        ("Mode-based", "mode"),
+                    ],
+                    value=self.config.get("weighting_scheme", "none"),
+                    info="🎚️ How to weight losses at different noise levels. 'none' = all equal (recommended). Default: none"
+                )
+            
+            with gr.Row():
+                self.logit_mean = gr.Number(
+                    label="Logit Mean",
+                    value=self.config.get("logit_mean", 0.0),
+                    minimum=-5.0,
+                    maximum=5.0,
+                    step=0.1,
+                    info="📊 Mean for logit normal distribution (only used with scheme=logit_normal). Default: 0.0"
+                )
+                
+                self.logit_std = gr.Number(
+                    label="Logit Standard Deviation",
+                    value=self.config.get("logit_std", 1.0),
+                    minimum=0.1,
+                    maximum=5.0,
+                    step=0.1,
+                    info="📊 Std dev for logit normal distribution (only used with scheme=logit_normal). Default: 1.0"
+                )
+                
+                self.mode_scale = gr.Number(
+                    label="Mode Scale",
+                    value=self.config.get("mode_scale", 1.29),
+                    minimum=0.1,
+                    maximum=5.0,
+                    step=0.01,
+                    info="📈 Scale for mode weighting (only used with scheme=mode). Default: 1.29"
+                )
+        
+        # ============= CUDA OPTIMIZATIONS =============
+        gr.Markdown("### 🚀 CUDA Performance Optimizations")
+        
+        with gr.Row():
+            self.cuda_allow_tf32 = gr.Checkbox(
+                label="Allow TF32 on Ampere+ GPUs",
+                value=self.config.get("cuda_allow_tf32", False),
+                info="⚡ Enable TF32 precision on NVIDIA Ampere GPUs (RTX 30XX, 40XX, A100). ~10-20% faster with minimal quality loss. Default: False"
+            )
+            
+            self.cuda_cudnn_benchmark = gr.Checkbox(
+                label="Enable cuDNN Benchmark",
+                value=self.config.get("cuda_cudnn_benchmark", False),
+                info="🔧 Auto-tune cuDNN algorithms for best performance. Enable if input sizes are consistent. Adds ~30s startup. Default: False"
+            )
+        
+        # ============= ADVANCED MEMORY & MODEL LOADING =============
+        gr.Markdown("### 💾 Advanced Memory & Model Loading")
+        
+        with gr.Row():
+            self.disable_numpy_memmap = gr.Checkbox(
+                label="Disable Numpy Memory Mapping",
+                value=self.config.get("disable_numpy_memmap", False),
+                info="🔧 Disable numpy memmap for model loading (Wan/FramePack/Qwen-Image only). Increases RAM usage but may speed up loading. Default: False"
+            )
+            
+            self.img_in_txt_in_offloading = gr.Checkbox(
+                label="Offload img_in & txt_in to CPU",
+                value=self.config.get("img_in_txt_in_offloading", False),
+                info="💾 Offload img_in and txt_in layers to CPU to save VRAM. May slow down training. Default: False"
             )
 
         # Set up file browser button handlers
@@ -1633,7 +1820,16 @@ def wan_gui_actions(
                 "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap",
                 # Torch Compile settings
                 "compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit",
-                "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
+                "vae_tiling", "vae_chunk_size", "vae_spatial_tile_sample_min_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
+                # Timestep Sampling parameters
+                "timestep_sampling", "discrete_flow_shift", "min_timestep", "max_timestep",
+                "num_timestep_buckets", "sigmoid_scale", "preserve_distribution_shape", "show_timesteps",
+                # Loss Weighting parameters
+                "weighting_scheme", "logit_mean", "logit_std", "mode_scale",
+                # CUDA Optimizations
+                "cuda_allow_tf32", "cuda_cudnn_benchmark",
+                # Advanced Memory & Model Loading
+                "disable_numpy_memmap", "img_in_txt_in_offloading",
                 # training_settings
                 "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
                 "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
@@ -1662,13 +1858,14 @@ def wan_gui_actions(
                 "base_weights", "base_weights_multiplier",
                 # Save/Load Settings
                 "output_dir", "output_name", "resume", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
-                "save_last_n_steps", "save_last_n_epochs_state", "save_last_n_steps_state", "save_state",
+                "save_last_n_epochs_state", "save_last_n_steps", "save_last_n_steps_state", "save_state",
                 "save_state_on_train_end", "mem_eff_save",
                 # HuggingFace Settings
                 "huggingface_repo_id", "huggingface_token", "huggingface_repo_type", "huggingface_repo_visibility",
                 "huggingface_path_in_repo", "save_state_to_huggingface", "resume_from_huggingface", "async_upload",
                 # Metadata Settings
-                "metadata_author", "metadata_description", "metadata_license", "metadata_tags", "metadata_title"
+                "metadata_author", "metadata_description", "metadata_license", "metadata_tags", "metadata_title",
+                "metadata_reso", "metadata_arch"
             ],
             args
         )))
@@ -1692,7 +1889,16 @@ def wan_gui_actions(
                 "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap",
                 # Torch Compile settings
                 "compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit",
-                "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
+                "vae_tiling", "vae_chunk_size", "vae_spatial_tile_sample_min_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
+                # Timestep Sampling parameters
+                "timestep_sampling", "discrete_flow_shift", "min_timestep", "max_timestep",
+                "num_timestep_buckets", "sigmoid_scale", "preserve_distribution_shape", "show_timesteps",
+                # Loss Weighting parameters
+                "weighting_scheme", "logit_mean", "logit_std", "mode_scale",
+                # CUDA Optimizations
+                "cuda_allow_tf32", "cuda_cudnn_benchmark",
+                # Advanced Memory & Model Loading
+                "disable_numpy_memmap", "img_in_txt_in_offloading",
                 # training_settings
                 "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
                 "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
@@ -1721,13 +1927,14 @@ def wan_gui_actions(
                 "base_weights", "base_weights_multiplier",
                 # Save/Load Settings
                 "output_dir", "output_name", "resume", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
-                "save_last_n_steps", "save_last_n_epochs_state", "save_last_n_steps_state", "save_state",
+                "save_last_n_epochs_state", "save_last_n_steps", "save_last_n_steps_state", "save_state",
                 "save_state_on_train_end", "mem_eff_save",
                 # HuggingFace Settings
                 "huggingface_repo_id", "huggingface_token", "huggingface_repo_type", "huggingface_repo_visibility",
                 "huggingface_path_in_repo", "save_state_to_huggingface", "resume_from_huggingface", "async_upload",
                 # Metadata Settings
-                "metadata_author", "metadata_description", "metadata_license", "metadata_tags", "metadata_title"
+                "metadata_author", "metadata_description", "metadata_license", "metadata_tags", "metadata_title",
+                "metadata_reso", "metadata_arch"
             ],
             args
         )))
@@ -1751,7 +1958,16 @@ def wan_gui_actions(
                 "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap",
                 # Torch Compile settings
                 "compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit",
-                "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
+                "vae_tiling", "vae_chunk_size", "vae_spatial_tile_sample_min_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
+                # Timestep Sampling parameters
+                "timestep_sampling", "discrete_flow_shift", "min_timestep", "max_timestep",
+                "num_timestep_buckets", "sigmoid_scale", "preserve_distribution_shape", "show_timesteps",
+                # Loss Weighting parameters
+                "weighting_scheme", "logit_mean", "logit_std", "mode_scale",
+                # CUDA Optimizations
+                "cuda_allow_tf32", "cuda_cudnn_benchmark",
+                # Advanced Memory & Model Loading
+                "disable_numpy_memmap", "img_in_txt_in_offloading",
                 # training_settings
                 "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
                 "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
@@ -1780,13 +1996,14 @@ def wan_gui_actions(
                 "base_weights", "base_weights_multiplier",
                 # Save/Load Settings
                 "output_dir", "output_name", "resume", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
-                "save_last_n_steps", "save_last_n_epochs_state", "save_last_n_steps_state", "save_state",
+                "save_last_n_epochs_state", "save_last_n_steps", "save_last_n_steps_state", "save_state",
                 "save_state_on_train_end", "mem_eff_save",
                 # HuggingFace Settings
                 "huggingface_repo_id", "huggingface_token", "huggingface_repo_type", "huggingface_repo_visibility",
                 "huggingface_path_in_repo", "save_state_to_huggingface", "resume_from_huggingface", "async_upload",
                 # Metadata Settings
-                "metadata_author", "metadata_description", "metadata_license", "metadata_tags", "metadata_title"
+                "metadata_author", "metadata_description", "metadata_license", "metadata_tags", "metadata_title",
+                "metadata_reso", "metadata_arch"
             ],
             args
         )))
@@ -1812,7 +2029,16 @@ def wan_gui_actions(
                 "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap",
                 # Torch Compile settings
                 "compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit",
-                "vae_tiling", "vae_chunk_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
+                "vae_tiling", "vae_chunk_size", "vae_spatial_tile_sample_min_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
+                # Timestep Sampling parameters
+                "timestep_sampling", "discrete_flow_shift", "min_timestep", "max_timestep",
+                "num_timestep_buckets", "sigmoid_scale", "preserve_distribution_shape", "show_timesteps",
+                # Loss Weighting parameters
+                "weighting_scheme", "logit_mean", "logit_std", "mode_scale",
+                # CUDA Optimizations
+                "cuda_allow_tf32", "cuda_cudnn_benchmark",
+                # Advanced Memory & Model Loading
+                "disable_numpy_memmap", "img_in_txt_in_offloading",
                 # training_settings
                 "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
                 "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
@@ -1841,13 +2067,14 @@ def wan_gui_actions(
                 "base_weights", "base_weights_multiplier",
                 # Save/Load Settings
                 "output_dir", "output_name", "resume", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
-                "save_last_n_steps", "save_last_n_epochs_state", "save_last_n_steps_state", "save_state",
+                "save_last_n_epochs_state", "save_last_n_steps", "save_last_n_steps_state", "save_state",
                 "save_state_on_train_end", "mem_eff_save",
                 # HuggingFace Settings
                 "huggingface_repo_id", "huggingface_token", "huggingface_repo_type", "huggingface_repo_visibility",
                 "huggingface_path_in_repo", "save_state_to_huggingface", "resume_from_huggingface", "async_upload",
                 # Metadata Settings
-                "metadata_author", "metadata_description", "metadata_license", "metadata_tags", "metadata_title"
+                "metadata_author", "metadata_description", "metadata_license", "metadata_tags", "metadata_title",
+                "metadata_reso", "metadata_arch"
             ],
             args
         ))
@@ -2628,7 +2855,8 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
         "network_dim", "num_layers",  # These can be None for auto-detection
         "max_train_epochs",  # 0 means use max_train_steps instead
         "dit_in_channels", "sample_num_frames", "num_timestep_buckets",  # WAN-specific optional params
-        "blocks_to_swap", "vae_chunk_size", "vae_spatial_tile_sample_min_size"  # Memory optimization params
+        "blocks_to_swap", "vae_chunk_size", "vae_spatial_tile_sample_min_size",  # Memory optimization params
+        "compile_cache_size_limit"  # Torch compile cache limit
         # Removed: "ddp_timeout" (0 = use default 30min timeout - VALID)
         # Removed: "save_every_n_*", "sample_every_n_*", "save_last_n_*" (0 is a valid value to display and use)
     }
@@ -2651,7 +2879,6 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
         'caching_latent_console_num_images', 'caching_teo_batch_size', 'caching_teo_num_workers',
         'sample_width', 'sample_height', 'sample_steps', 'sample_guidance_scale', 'sample_seed',
         'timestep_boundary', 'num_frames', 'vae_spatial_tile_sample_min_size',
-        # ADD MISSING WAN-SPECIFIC NUMERIC FIELDS:
         'dit_in_channels', 'num_layers', 'network_dropout', 'sample_num_frames', 'num_timestep_buckets',
         'compile_cache_size_limit'
     ]
@@ -3003,6 +3230,26 @@ def wan_lora_tab(
         "one_frame": False,
         "timestep_boundary": None,
         "offload_inactive_dit": False,
+        # Timestep Sampling defaults
+        "timestep_sampling": "sigma",
+        "discrete_flow_shift": 1.0,
+        "min_timestep": None,
+        "max_timestep": None,
+        "num_timestep_buckets": None,
+        "sigmoid_scale": 1.0,
+        "preserve_distribution_shape": False,
+        "show_timesteps": "",
+        # Loss Weighting defaults
+        "weighting_scheme": "none",
+        "logit_mean": 0.0,
+        "logit_std": 1.0,
+        "mode_scale": 1.29,
+        # CUDA Optimizations defaults
+        "cuda_allow_tf32": False,
+        "cuda_cudnn_benchmark": False,
+        # Advanced Memory & Model Loading defaults
+        "disable_numpy_memmap": False,
+        "img_in_txt_in_offloading": False,
         "network_module": "networks.lora_wan",
         "network_dim": 16,
         "network_alpha": 16.0,
@@ -3243,10 +3490,35 @@ def wan_lora_tab(
         
         wan_model_settings.vae_tiling,
         wan_model_settings.vae_chunk_size,
+        wan_model_settings.vae_spatial_tile_sample_min_size,
         wan_model_settings.vae_cache_cpu,
         wan_model_settings.num_frames,
         wan_model_settings.one_frame,
         wan_model_settings.force_v2_1_time_embedding,
+        
+        # Timestep Sampling parameters
+        wan_model_settings.timestep_sampling,
+        wan_model_settings.discrete_flow_shift,
+        wan_model_settings.min_timestep,
+        wan_model_settings.max_timestep,
+        wan_model_settings.num_timestep_buckets,
+        wan_model_settings.sigmoid_scale,
+        wan_model_settings.preserve_distribution_shape,
+        wan_model_settings.show_timesteps,
+        
+        # Loss Weighting parameters
+        wan_model_settings.weighting_scheme,
+        wan_model_settings.logit_mean,
+        wan_model_settings.logit_std,
+        wan_model_settings.mode_scale,
+        
+        # CUDA Optimizations
+        wan_model_settings.cuda_allow_tf32,
+        wan_model_settings.cuda_cudnn_benchmark,
+        
+        # Advanced Memory & Model Loading
+        wan_model_settings.disable_numpy_memmap,
+        wan_model_settings.img_in_txt_in_offloading,
 
         # training_settings
         training_settings.sdpa,
@@ -3372,6 +3644,8 @@ def wan_lora_tab(
         metadata.metadata_license,
         metadata.metadata_tags,
         metadata.metadata_title,
+        metadata.metadata_reso,
+        metadata.metadata_arch,
     ]
 
     # Set up toggle all panels functionality

@@ -42,6 +42,22 @@ class MetaData:
                 interactive=True,
                 value=self.config.get("metadata_tags", ""),
             )
+        
+        with gr.Row():
+            self.metadata_reso = gr.Textbox(
+                label="Metadata Resolution",
+                placeholder="(optional) resolution for model metadata, e.g., 1024,1024 or 720,1280",
+                interactive=True,
+                value=self.config.get("metadata_reso", ""),
+                info="Format: width,height (e.g., 1024,1024)"
+            )
+            self.metadata_arch = gr.Textbox(
+                label="Metadata Architecture",
+                placeholder="(optional) custom architecture string for model metadata",
+                interactive=True,
+                value=self.config.get("metadata_arch", ""),
+                info="Custom architecture identifier"
+            )
 
     def run_cmd(run_cmd: list, **kwargs):
         if "metadata_title" in kwargs and kwargs.get("metadata_title") != "":
@@ -63,5 +79,13 @@ class MetaData:
         if "metadata_tags" in kwargs and kwargs.get("metadata_tags") != "":
             run_cmd.append("--metadata_tags")
             run_cmd.append(kwargs["metadata_tags"])
+
+        if "metadata_reso" in kwargs and kwargs.get("metadata_reso") != "":
+            run_cmd.append("--metadata_reso")
+            run_cmd.append(kwargs["metadata_reso"])
+
+        if "metadata_arch" in kwargs and kwargs.get("metadata_arch") != "":
+            run_cmd.append("--metadata_arch")
+            run_cmd.append(kwargs["metadata_arch"])
 
         return run_cmd
