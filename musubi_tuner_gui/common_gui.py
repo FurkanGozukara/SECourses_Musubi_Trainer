@@ -1661,7 +1661,10 @@ def SaveConfigFile(
                 "vae_chunk_size", "vae_spatial_tile_sample_min_size",
                 "network_dim", "num_layers",  # NEW: 0 means auto-detection = None
                 "max_train_epochs",  # NEW: 0 means use max_train_steps instead = None
-                "timestep_boundary"  # NEW: 0.0 means auto-detect = None
+                "timestep_boundary",  # NEW: 0.0 means auto-detect = None
+                # Checkpoint cleanup parameters: 0 = keep all (None), N = keep only last N
+                "save_last_n_epochs", "save_last_n_steps",
+                "save_last_n_epochs_state", "save_last_n_steps_state"
             ]
             if name in zero_to_none_params:
                 if value == 0:
@@ -1931,7 +1934,9 @@ def SaveConfigFileToRun(
             "sample_every_n_epochs",  # Line 367: epoch % value  
             "save_every_n_steps",    # Line 2250: step % value
             "save_every_n_epochs",   # Line 2299: (epoch+1) % value
-            # Note: save_last_n_* parameters are safe as 0 - they never have modulo on themselves
+            # Checkpoint cleanup parameters: 0 = keep all (None), N = keep only last N
+            "save_last_n_epochs", "save_last_n_steps",
+            "save_last_n_epochs_state", "save_last_n_steps_state",
             # Memory/model optimization parameters:
             "blocks_to_swap", "min_timestep", "num_timestep_buckets",
             "vae_chunk_size", "vae_spatial_tile_sample_min_size",
