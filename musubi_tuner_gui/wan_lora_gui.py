@@ -133,7 +133,7 @@ class WanDataset:
                 self.parent_folder_button = gr.Button(
                     "📂", 
                     elem_id="parent_folder_button", 
-                    size="sm"
+                    size="lg"
                 )
             
             with gr.Row():
@@ -1010,7 +1010,7 @@ class WanModelSettings:
                             value=str(self.config.get("dit", "")), lines=3
                         )
                     with gr.Column(min_width=60):
-                        self.dit_button = gr.Button("📂", size="md")
+                        self.dit_button = gr.Button("📂", size="lg", elem_id="dit_button")
             with gr.Column():
                 with gr.Row():
                     with gr.Column(scale=2):
@@ -1021,7 +1021,7 @@ class WanModelSettings:
                             value=str(self.config.get("vae", "")), lines=3
                         )
                     with gr.Column(min_width=60):
-                        self.vae_button = gr.Button("📂", size="md")
+                        self.vae_button = gr.Button("📂", size="lg", elem_id="vae_button")
 
         with gr.Row():
             with gr.Column():
@@ -1034,7 +1034,7 @@ class WanModelSettings:
                             value=str(self.config.get("t5", "")), lines=3
                         )
                     with gr.Column(min_width=60):
-                        self.t5_button = gr.Button("📂", size="md")
+                        self.t5_button = gr.Button("📂", size="lg", elem_id="t5_button")
             with gr.Column():
                 with gr.Row():
                     with gr.Column(scale=2):
@@ -1045,7 +1045,7 @@ class WanModelSettings:
                             value=str(self.config.get("clip", "")), lines=3
                         )
                     with gr.Column(min_width=60):
-                        self.clip_button = gr.Button("📂", size="md")
+                        self.clip_button = gr.Button("📂", size="lg", elem_id="clip_button")
 
         # Wan 2.2 Advanced Models Settings
         with gr.Row():
@@ -1087,7 +1087,7 @@ class WanModelSettings:
                     value=str(self.config.get("dit_high_noise", ""))
                 )
             with gr.Column(scale=1):
-                self.dit_high_noise_button = gr.Button("📂", size="sm")
+                self.dit_high_noise_button = gr.Button("📂", size="lg", elem_id="dit_high_noise_button")
 
         with gr.Row():
             self.timestep_boundary = gr.Number(
@@ -1096,7 +1096,7 @@ class WanModelSettings:
                 minimum=0.0,
                 maximum=1.0,
                 step=0.01,
-                info="⚡ SWITCH POINT: When to switch from high→low noise model. Leave empty for auto-detect (uses model default), 0.3=switch at 30%, 0.5=switch at 50%. Only used when High Noise DiT path is provided."
+                info="⚡ SWITCH POINT: When to switch from high→low noise model. Leave 0 for auto-detect (uses model default), 0.3=switch at 30%, 0.5=switch at 50%. Only used when High Noise DiT path is provided."
             )
             self.offload_inactive_dit = gr.Checkbox(
                 label="Offload Inactive DiT to CPU",
@@ -1552,7 +1552,7 @@ class WanSampleSettings:
                 )
             self.sample_prompts_button = gr.Button(
                 "📂",
-                size="sm",
+                size="lg",
                 elem_id="sample_prompts_button"
             )
         
@@ -1567,7 +1567,7 @@ class WanSampleSettings:
                 )
             self.sample_output_dir_button = gr.Button(
                 "📂",
-                size="sm",
+                size="lg",
                 elem_id="sample_output_dir_button"
             )
         

@@ -97,15 +97,13 @@ class AccelerateLaunch:
                     info="Whether to enable dynamic shape tracing.",
                 )
 
-        with gr.Accordion("Hardware Selection", open=True):
+        with gr.Accordion("Hardware Selection & Distributed GPUs", open=True):
             with gr.Row():
                 self.multi_gpu = gr.Checkbox(
                     label="Multi GPU",
                     value=self.config.get("multi_gpu", False),
                     info="Whether or not this should launch a distributed GPU training.",
                 )
-        with gr.Accordion("Distributed GPUs", open=True):
-            with gr.Row():
                 self.gpu_ids = gr.Textbox(
                     label="GPU IDs",
                     value=self.config.get("gpu_ids", ""),

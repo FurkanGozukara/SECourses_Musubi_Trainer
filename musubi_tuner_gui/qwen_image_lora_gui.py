@@ -213,7 +213,7 @@ class QwenImageDataset:
                 self.parent_folder_button = gr.Button(
                     "📂", 
                     elem_id="parent_folder_button", 
-                    size="sm"
+                    size="lg"
                 )
             
             with gr.Row():
@@ -701,7 +701,7 @@ class QwenImageModel:
                 )
             self.dit_button = gr.Button(
                 "📁",
-                size="sm",
+                size="lg",
                 elem_id="dit_button"
             )
             with gr.Column(scale=1):
@@ -745,7 +745,7 @@ class QwenImageModel:
                 )
             self.vae_button = gr.Button(
                 "📁",
-                size="sm",
+                size="lg",
                 elem_id="vae_button"
             )
             with gr.Column(scale=1):
@@ -768,7 +768,7 @@ class QwenImageModel:
                 )
             self.text_encoder_button = gr.Button(
                 "📁",
-                size="sm",
+                size="lg",
                 elem_id="text_encoder_button"
             )
             with gr.Column(scale=1):
@@ -2804,7 +2804,7 @@ class QwenImageTrainingSettings:
                 )
             self.logging_dir_button = gr.Button(
                 "📂",
-                size="sm",
+                size="lg",
                 elem_id="logging_dir_button"
             )
 
@@ -2967,7 +2967,7 @@ class QwenImageSampleSettings:
                 )
             self.sample_prompts_button = gr.Button(
                 "📂",
-                size="sm",
+                size="lg",
                 elem_id="sample_prompts_button"
             )
         
@@ -2982,7 +2982,7 @@ class QwenImageSampleSettings:
                 )
             self.sample_output_dir_button = gr.Button(
                 "📂",
-                size="sm",
+                size="lg",
                 elem_id="sample_output_dir_button"
             )
         
@@ -3494,7 +3494,13 @@ class QwenImageSaveLoadSettings:
                 info="[NEW] Automatically convert trained LoRA to Diffusers format after training. Creates additional files compatible with diffusers library. Useful for integration with other tools",
                 value=self.config.get("convert_to_diffusers", False),
             )
+            self.convert_to_safetensors = gr.Checkbox(
+                label="Convert to Safetensors (Alternative Format)",
+                info="[ADVANCED] Convert LoRA to alternative safetensors format with different key naming. Useful for compatibility with certain inference tools",
+                value=self.config.get("convert_to_safetensors", False),
+            )
 
+        with gr.Row():
             self.diffusers_output_dir = gr.Textbox(
                 label="Diffusers Output Directory",
                 info="Directory for converted Diffusers format files. If empty, uses '{output_dir}/diffusers_format'. Only used when conversion is enabled",
@@ -3504,12 +3510,6 @@ class QwenImageSaveLoadSettings:
             )
 
         with gr.Row():
-            self.convert_to_safetensors = gr.Checkbox(
-                label="Convert to Safetensors (Alternative Format)",
-                info="[ADVANCED] Convert LoRA to alternative safetensors format with different key naming. Useful for compatibility with certain inference tools",
-                value=self.config.get("convert_to_safetensors", False),
-            )
-
             self.safetensors_output_dir = gr.Textbox(
                 label="Alternative Safetensors Output Directory",
                 info="Directory for alternative safetensors format. If empty, uses '{output_dir}/safetensors_alt'. Only used when conversion is enabled",

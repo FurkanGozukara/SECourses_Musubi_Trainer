@@ -26,7 +26,7 @@ class SaveLoadSettings:
                 )
             self.output_dir_button = gr.Button(
                 "📂",
-                size="sm",
+                size="lg",
                 elem_id="output_dir_button"
             )
             with gr.Column(scale=4):

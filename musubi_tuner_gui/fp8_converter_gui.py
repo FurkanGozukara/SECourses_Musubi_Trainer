@@ -509,7 +509,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
                     )
                 single_input_button = gr.Button(
                     "📄",
-                    size="sm",
+                    size="lg",
                     elem_id="single_input_button"
                 )
             
@@ -523,7 +523,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
                     )
                 single_output_button = gr.Button(
                     "📄",
-                    size="sm",
+                    size="lg",
                     elem_id="single_output_button"
                 )
             
@@ -572,7 +572,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
                     )
                 input_folder_button = gr.Button(
                     "📂",
-                    size="sm",
+                    size="lg",
                     elem_id="input_folder_button"
                 )
             
@@ -586,7 +586,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
                     )
                 output_folder_button = gr.Button(
                     "📂",
-                    size="sm",
+                    size="lg",
                     elem_id="output_folder_button"
                 )
             
