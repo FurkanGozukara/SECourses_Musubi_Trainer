@@ -281,7 +281,8 @@ class WanDataset:
             )
         
         # Dataset Preparation Details Section
-        with gr.Accordion("📋 Dataset Preparation Details", open=False):
+        self.dataset_preparation_accordion = gr.Accordion("📋 Dataset Preparation Details", open=False)
+        with self.dataset_preparation_accordion:
             gr.HTML("""
             <div style="background: linear-gradient(135deg, #1e40af 0%, #3730a3 100%); padding: 20px; border-radius: 12px; margin: 15px 0;">
                 <h2 style="color: #ffffff; margin-top: 0; text-align: center;">🎯 Complete Wan Dataset Guide</h2>
@@ -1217,7 +1218,8 @@ class WanModelSettings:
         gr.Markdown("### ⏱️ Advanced Timestep Sampling")
         gr.Markdown("Control how timesteps (noise levels) are sampled during training")
         
-        with gr.Accordion("Timestep Sampling Settings", open=False):
+        self.timestep_sampling_accordion = gr.Accordion("Timestep Sampling Settings", open=False)
+        with self.timestep_sampling_accordion:
             gr.HTML("""
             <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
                 <p style="color: white; margin: 0;"><strong>📚 What is this?</strong> Controls how the training algorithm selects noise levels (timesteps) for each batch. Different strategies can improve training on specific datasets.</p>
@@ -1311,7 +1313,8 @@ class WanModelSettings:
         gr.Markdown("### ⚖️ Advanced Loss Weighting")
         gr.Markdown("Apply different weights to losses at different noise levels for improved training quality")
         
-        with gr.Accordion("Loss Weighting Settings", open=False):
+        self.loss_weighting_accordion = gr.Accordion("Loss Weighting Settings", open=False)
+        with self.loss_weighting_accordion:
             gr.HTML("""
             <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); padding: 15px; border-radius: 8px; margin-bottom: 15px;">
                 <p style="color: white; margin: 0;"><strong>📚 What is this?</strong> Loss weighting changes how much the model learns from different noise levels. Advanced technique - start with 'none' for most cases.</p>
@@ -3363,6 +3366,9 @@ def wan_lora_tab(
     accordions.append(wan_dataset_accordion)
     with wan_dataset_accordion:
         wan_dataset = WanDataset(headless=headless, config=config)
+    
+    # Add nested Dataset Preparation Details accordion to the main accordions list for toggle functionality
+    accordions.append(wan_dataset.dataset_preparation_accordion)
 
     # Wan Model Settings accordion
     wan_model_accordion = gr.Accordion("Wan Model Settings", open=False, elem_classes="model_background")
@@ -3370,8 +3376,10 @@ def wan_lora_tab(
     with wan_model_accordion:
         wan_model_settings = WanModelSettings(headless=headless, config=config)
     
-    # Add nested Torch Compile accordion to the main accordions list for toggle functionality
+    # Add nested accordions from WanModelSettings to the main accordions list for toggle functionality
     accordions.append(wan_model_settings.torch_compile_accordion)
+    accordions.append(wan_model_settings.timestep_sampling_accordion)
+    accordions.append(wan_model_settings.loss_weighting_accordion)
     
     # Setup dataset UI events after wan_model_settings is created
     wan_dataset.setup_dataset_ui_events(saveLoadSettings, wan_model_settings)  # Pass both saveLoadSettings and wan_model_settings
