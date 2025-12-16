@@ -1041,7 +1041,7 @@ class WanModelSettings:
                     with gr.Column(scale=2):
                         self.clip = gr.Textbox(
                             label="CLIP Vision Model Path",
-                            info="REQUIRED: Path to CLIP vision encoder. Supports both .safetensors and .pth formats (recommended: models_clip_open-clip-xlm-roberta-large-vit-huge-14.safetensors) . Not necessary for Wan 2.2 Text to Video Models.",
+                            info="REQUIRED ONLY for: i2v-14B, flf2v-14B, i2v-14B-FC. NOT required for: all T2V models (t2v-14B, t2v-1.3B, t2v-A14B), T2I (t2i-14B), i2v-A14B, t2v-FC models. Supports .safetensors/.pth (recommended: models_clip_open-clip-xlm-roberta-large-vit-huge-14.safetensors)",
                             placeholder="e.g., /path/to/models_clip_open-clip-xlm-roberta-large-vit-huge-14.safetensors",
                             value=str(self.config.get("clip", "")), lines=3
                         )

@@ -13,7 +13,7 @@ task = "t2v-14B"  # REQUIRED: Wan model type (t2v-14B, t2v-1.3B, i2v-14B, t2i-14
 dit = ""  # REQUIRED: Path to DiT checkpoint (.safetensors)
 vae = ""  # REQUIRED: Path to VAE checkpoint (Wan2.1_VAE.pth or wan_2.1_vae.safetensors)
 text_encoder = ""  # REQUIRED: Path to T5 text encoder (umt5-xxl-enc-bf16.safetensors)
-clip_vision = ""  # REQUIRED: Path to CLIP vision encoder (models_clip_open-clip-xlm-roberta-large-vit-huge-14.safetensors)
+clip_vision = ""  # REQUIRED ONLY for i2v-14B, flf2v-14B, i2v-14B-FC models. Path to CLIP vision encoder (models_clip_open-clip-xlm-roberta-large-vit-huge-14.safetensors)
 dataset_config = ""  # Path to dataset TOML configuration (required if using "Use TOML File" mode)
 dataset_config_mode = "Generate from Folder Structure"  # Default to auto-generate from folder structure
 
