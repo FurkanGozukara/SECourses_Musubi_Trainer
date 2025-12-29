@@ -50,8 +50,15 @@ blocks_to_swap = 0             # 0 = disabled. Max 59 (Qwen has 60 blocks). High
 # Additional Model Settings  
 guidance_scale = 1.0          # Classifier-free guidance scale. 1.0 = default, higher = stronger prompt adherence
 img_in_txt_in_offloading = false  # Memory optimization for mixed image-text inputs
-edit = false  # Enable Qwen-Image-Edit mode for training with control images
-edit_plus = false  # Enable Qwen-Image-Edit-2509 mode for training with multiple control images (up to 3)
+
+# Model Variant Selection
+# Upstream musubi-tuner now supports:
+# - original (text-to-image)
+# - edit-2509 (Edit Plus, multiple control images)
+# - edit-2511 (Edit-2511, multiple control images)
+# NOTE: The older base "edit" variant is intentionally removed from this GUI.
+model_version = "original"  # Options: "original", "edit-2509", "edit-2511"
+
 faster_model_loading = false  # Faster Model Loading: Disables numpy memmap for faster model loading. Uses more RAM but speeds up loading, especially useful for RunPod and similar environments
 use_pinned_memory_for_block_swap = false  # Use Pinned Memory for Block Swapping: Uses more system RAM but speeds up training. The speed up maybe significant depending on system settings. To work, go to Advanced Graphics settings in System > Display > Graphics as in tutorial video and disable Hardware-Accelerated GPU Scheduling and restart your PC. Only effective when blocks_to_swap > 0
 

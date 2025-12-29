@@ -174,6 +174,42 @@ def upsert_parameter(parameters, key: str, value):
     return updated
 
 
+def normalize_qwen_image_model_version(model_version, legacy_edit: bool = False, legacy_edit_plus: bool = False) -> str:
+    """
+    Normalize model version selection for Qwen Image training.
+
+    Supported (upstream musubi-tuner):
+    - original
+    - edit-2509
+    - edit-2511
+
+    Legacy support:
+    - edit_plus -> edit-2509
+    - edit (base) is intentionally removed in this GUI; we map it to edit-2509 for compatibility.
+    """
+    mv = ""
+    if model_version is not None:
+        mv = str(model_version).strip().lower()
+
+    if mv in {"original", "edit-2509", "edit-2511"}:
+        return mv
+
+    # Legacy / aliases
+    if mv in {"edit_plus", "edit-plus", "plus", "edit2509", "edit_2509", "2509"}:
+        return "edit-2509"
+    if mv in {"edit2511", "edit_2511", "2511"}:
+        return "edit-2511"
+    if mv in {"edit", "edit-base", "base-edit"}:
+        return "edit-2509"
+
+    if bool(legacy_edit_plus):
+        return "edit-2509"
+    if bool(legacy_edit):
+        return "edit-2509"
+
+    return "original"
+
+
 class QwenImageDataset:
     """Qwen Image dataset configuration settings"""
     def __init__(self, headless: bool, config: GUIConfig) -> None:
@@ -284,7 +320,7 @@ class QwenImageDataset:
                 self.dataset_control_directory = gr.Textbox(
                     label="Control Directory Name (Edit Mode)",
                     value=self.config.get("dataset_control_directory", "edit_images"),
-                    info="[EDIT MODE] Directory containing control/reference images for Qwen-Image-Edit training. Only used when edit=true in Model Settings. Place control images in this subfolder within each dataset folder.\n\n📁 Dataset Structure:\n• Training images: dataset_folder/images/\n• Control images: dataset_folder/edit_images/\n• Captions: dataset_folder/images/*.txt\n\n🖼️ File Naming:\n• Single control: image1.jpg → edit_images/image1.png\n• Multiple controls (Edit-2509): image1.jpg → edit_images/image1_0.png, image1_1.png, image1_2.png\n• Supports: .png, .jpg, .jpeg, .webp formats"
+                    info="[EDIT MODE] Directory containing control/reference images for Qwen-Image-Edit training. Only used when Model Version is edit-2509 or edit-2511 in Model Settings. Place control images in this subfolder within each dataset folder.\n\n📁 Dataset Structure:\n• Training images: dataset_folder/images/\n• Control images: dataset_folder/edit_images/\n• Captions: dataset_folder/images/*.txt\n\n🖼️ File Naming:\n• Single control: image1.jpg → edit_images/image1.png\n• Multiple controls (Edit-2509/2511): image1.jpg → edit_images/image1_0.png, image1_1.png, image1_2.png\n• Supports: .png, .jpg, .jpeg, .webp formats"
                 )
             
             with gr.Row():
@@ -300,7 +336,7 @@ class QwenImageDataset:
                     minimum=0,
                     maximum=4096,
                     step=64,
-                    info="[EDIT MODE ONLY] Width for control images. 0 = use training resolution. 1024 = Official Qwen-Image-Edit default. 1328 = Optimal for Qwen models. Only used when edit=true. Cannot be used with 'No Resize Control'."
+                    info="[EDIT MODE ONLY] Width for control images. 0 = use training resolution. 1024 = Official Qwen-Image-Edit default. 1328 = Optimal for Qwen models. Only used when Model Version is edit-2509/edit-2511. Cannot be used with 'No Resize Control'."
                 )
                 
                 self.dataset_qwen_image_edit_control_resolution_height = gr.Number(
@@ -468,7 +504,13 @@ class QwenImageDataset:
                     return "", "", "[ERROR] Failed to generate configuration. Check your folder structure.\n" + "\n".join(messages)
                 
                 # Add control resolution settings to datasets with control directories
-                if control_res_width > 0 and control_res_height > 0:
+                # NOTE: qwen_image_edit_no_resize_control and qwen_image_edit_control_resolution are mutually exclusive.
+                if qwen_no_resize and control_res_width > 0 and control_res_height > 0:
+                    messages.append(
+                        "[WARNING] 'No Resize Control' is enabled, so control resolution settings are ignored "
+                        "(they are mutually exclusive)."
+                    )
+                elif control_res_width > 0 and control_res_height > 0:
                     for dataset_entry in config.get("datasets", []):
                         if "control_directory" in dataset_entry:
                             dataset_entry["qwen_image_edit_control_resolution"] = [int(control_res_width), int(control_res_height)]
@@ -602,27 +644,37 @@ class QwenImageModel:
         # Training Mode Selection (placed at top for visibility)
         with gr.Row():
             gr.Markdown("## Training Mode Configuration")
-        
+
+        # Model version selection (Edit base removed; only Edit-2509 and Edit-2511 are offered)
+        default_model_version = normalize_qwen_image_model_version(
+            self.config.get("model_version", None),
+            legacy_edit=self.config.get("edit", False),
+            legacy_edit_plus=self.config.get("edit_plus", False),
+        )
+
+        # Put Training Mode and Model Version on the same row
         with gr.Row():
-            self.training_mode = gr.Radio(
-                label="Training Mode",
-                choices=["LoRA Training", "DreamBooth Fine-Tuning"],
-                value=self.config.get("training_mode", "LoRA Training"),
-                info="LoRA: Efficient parameter-efficient fine-tuning. Faster to train on lower VRAM GPUs with FP8 Scaled."
-            )
-        
-        # Qwen-Image-Edit mode toggle (placed after training mode)
+            with gr.Column(scale=3):
+                self.training_mode = gr.Radio(
+                    label="Training Mode",
+                    choices=["LoRA Training", "DreamBooth Fine-Tuning"],
+                    value=self.config.get("training_mode", "LoRA Training"),
+                    info="LoRA: Efficient parameter-efficient fine-tuning. Faster to train on lower VRAM GPUs with FP8 Scaled.",
+                )
+            with gr.Column(scale=3):
+                self.model_version = gr.Dropdown(
+                    label="Model Version",
+                    info="Select which Qwen Image variant to train. Edit variants require control images (control_directory) in your dataset TOML.",
+                    choices=[
+                        ("Qwen-Image (original, text-to-image)", "original"),
+                        ("Qwen-Image-Edit Plus (2509)", "edit-2509"),
+                        ("Qwen-Image-Edit (2511)", "edit-2511"),
+                    ],
+                    value=default_model_version,
+                    interactive=True,
+                )
+
         with gr.Row():
-            self.edit = gr.Checkbox(
-                label="Enable Qwen-Image-Edit Mode",
-                info="Enable image editing training with control images. Requires control_image_path in dataset configuration and Qwen-Image-Edit DiT model",
-                value=self.config.get("edit", False),
-            )
-            self.edit_plus = gr.Checkbox(
-                label="Enable Qwen-Image-Edit-2509 Mode",
-                info="Enable Edit-2509 training with multiple control images (up to 3). Requires Qwen-Image-Edit-2509 DiT model. Cannot be used with regular Edit mode.",
-                value=self.config.get("edit_plus", False),
-            )
             self.faster_model_loading = gr.Checkbox(
                 label="Faster Model Loading (Uses more RAM but speeds up model loading speed - Enable for RunPod)",
                 info="Disables numpy memmap for faster model loading. Uses more RAM but speeds up loading, especially useful for RunPod and similar environments.",
@@ -863,33 +915,6 @@ class QwenImageModel:
             if warnings:
                 return gr.update(value="\n\n".join(warnings), visible=True)
             return gr.update(value="", visible=False)
-
-        # Edit mode mutual exclusion logic
-        def handle_edit_mode_change(edit_value, edit_plus_value):
-            """Ensure edit and edit_plus are mutually exclusive"""
-            if edit_value and edit_plus_value:
-                # If both are checked, keep the one that was just checked and uncheck the other
-                return gr.update(value=False), gr.update(value=True)
-            return gr.update(), gr.update()
-        
-        def handle_edit_plus_mode_change(edit_value, edit_plus_value):
-            """Ensure edit and edit_plus are mutually exclusive"""
-            if edit_value and edit_plus_value:
-                # If both are checked, keep the one that was just checked and uncheck the other
-                return gr.update(value=False), gr.update(value=True)
-            return gr.update(), gr.update()
-
-        # Connect edit mode mutual exclusion
-        self.edit.change(
-            fn=handle_edit_mode_change,
-            inputs=[self.edit, self.edit_plus],
-            outputs=[self.edit, self.edit_plus]
-        )
-        self.edit_plus.change(
-            fn=handle_edit_plus_mode_change,
-            inputs=[self.edit, self.edit_plus],
-            outputs=[self.edit, self.edit_plus]
-        )
 
         # Connect FP8 validation
         self.fp8_base.change(
@@ -1202,8 +1227,7 @@ def qwen_image_gui_actions(
     blocks_to_swap,
     guidance_scale,
     img_in_txt_in_offloading,
-    edit,
-    edit_plus,
+    model_version,
     faster_model_loading,
     use_pinned_memory_for_block_swap,
     # Torch Compile settings
@@ -1545,6 +1569,14 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
             status_msg = "Load cancelled"
             gr.Info(status_msg)
 
+    # Backward compatibility: older configs used edit/edit_plus booleans.
+    # We now use model_version: original / edit-2509 / edit-2511.
+    derived_model_version = normalize_qwen_image_model_version(
+        my_data.get("model_version") if isinstance(my_data, dict) else None,
+        legacy_edit=my_data.get("edit", False) if isinstance(my_data, dict) else False,
+        legacy_edit_plus=my_data.get("edit_plus", False) if isinstance(my_data, dict) else False,
+    )
+
     # REMOVED: All minimum constraints to prevent Gradio bounds errors
     # Backend will handle parameter validation
     minimum_constraints = {}
@@ -1593,6 +1625,15 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
         if not key in ["ask_for_file", "apply_preset", "file_path"]:
             included_params.append(key)  # Track this parameter
             toml_value = my_data.get(key)
+
+            # Fill model_version from legacy flags if missing
+            if key == "model_version" and (toml_value is None or str(toml_value).strip() == ""):
+                toml_value = derived_model_version
+
+            # Clean legacy auto-injected metadata_arch from older GUI versions
+            if key == "metadata_arch" and toml_value == "qwen-image-edit-plus":
+                toml_value = ""
+
             if toml_value is not None:
                 # Handle list values that should be single values
                 if isinstance(toml_value, list) and key in numeric_fields:
@@ -1842,6 +1883,25 @@ def train_qwen_image_model(headless, print_only, parameters):
             run_cmd = [python_cmd, "-m", "accelerate.commands.launch"]
 
     param_dict = dict(parameters)
+
+    # Resolve model version (supports new --model_version flow and migrates legacy edit/edit_plus flags)
+    resolved_model_version = normalize_qwen_image_model_version(
+        param_dict.get("model_version"),
+        legacy_edit=param_dict.get("edit", False),
+        legacy_edit_plus=param_dict.get("edit_plus", False),
+    )
+    param_dict["model_version"] = resolved_model_version
+    parameters = upsert_parameter(parameters, "model_version", resolved_model_version)
+
+    # Drop legacy flags if they exist in older saved configs (we no longer expose them in the UI)
+    parameters = [(k, v) for k, v in parameters if k not in ("edit", "edit_plus")]
+
+    # Clean up legacy metadata_arch injected by older GUI versions.
+    # Upstream musubi-tuner will auto-set correct custom arch for edit-2509/edit-2511 when metadata_arch is not provided.
+    if param_dict.get("metadata_arch") == "qwen-image-edit-plus":
+        log.info("Detected legacy metadata_arch='qwen-image-edit-plus' from older presets; clearing it to let musubi-tuner auto-derive architecture.")
+        param_dict["metadata_arch"] = ""
+        parameters = upsert_parameter(parameters, "metadata_arch", "")
     
     # Always use the Dataset Config File path for training
     effective_dataset_config = param_dict.get("dataset_config")
@@ -2030,11 +2090,10 @@ def train_qwen_image_model(headless, print_only, parameters):
             run_cache_latent_cmd.append("--console_num_images")
             run_cache_latent_cmd.append(str(param_dict.get("caching_latent_console_num_images")))
         
-        # Add edit mode flags for latent caching
-        if param_dict.get("edit"):
-            run_cache_latent_cmd.append("--edit")
-        if param_dict.get("edit_plus"):
-            run_cache_latent_cmd.append("--edit_plus")
+        # Add model version selection for caching (edit variants need edit-aware preprocessing)
+        if resolved_model_version != "original":
+            run_cache_latent_cmd.append("--model_version")
+            run_cache_latent_cmd.append(str(resolved_model_version))
 
         log.info(f"Executing command: {run_cache_latent_cmd}")
         log.info("Caching latents...")
@@ -2122,10 +2181,9 @@ def train_qwen_image_model(headless, print_only, parameters):
             run_cache_teo_cmd.append("--num_workers")
             run_cache_teo_cmd.append(str(param_dict.get("caching_teo_num_workers")))
             
-        if param_dict.get("edit"):
-            run_cache_teo_cmd.append("--edit")
-        if param_dict.get("edit_plus"):
-            run_cache_teo_cmd.append("--edit_plus")
+        if resolved_model_version != "original":
+            run_cache_teo_cmd.append("--model_version")
+            run_cache_teo_cmd.append(str(resolved_model_version))
 
         # Store the text encoder caching command to be run as part of training
         teo_cache_cmd = run_cache_teo_cmd
@@ -2387,17 +2445,9 @@ def train_qwen_image_model(headless, print_only, parameters):
             parameters = [(k, v) for k, v in parameters if k != "disable_numpy_memmap"]
             log.info("Removed disable_numpy_memmap from TOML parameters")
         
-        # Handle edit_plus checkbox: save metadata_arch to TOML
-        edit_plus_enabled = param_dict.get("edit_plus", False)
-        log.info(f"edit_plus checkbox value: {edit_plus_enabled}")
-        if edit_plus_enabled:
-            parameters = upsert_parameter(parameters, "metadata_arch", "qwen-image-edit-plus")
-            log.info("Added metadata_arch = 'qwen-image-edit-plus' to TOML parameters")
-        else:
-            # Remove metadata_arch if edit_plus is disabled (set to None to remove from TOML)
-            # Check if it exists and remove it
-            parameters = [(k, v) for k, v in parameters if k != "metadata_arch"]
-            log.info("Removed metadata_arch from TOML parameters")
+        # NOTE: We no longer auto-inject metadata_arch for Qwen edit variants.
+        # Upstream musubi-tuner will set the correct custom architecture automatically from model_version
+        # when metadata_arch is not provided by the user.
         
         # Handle use_pinned_memory_for_block_swap checkbox: check if parameter exists in training script
         use_pinned_memory_enabled = param_dict.get("use_pinned_memory_for_block_swap", False)
@@ -2509,27 +2559,50 @@ def train_qwen_image_model(headless, print_only, parameters):
                 else:
                     additional_params = debug_params
 
-        # Also handle faster_model_loading, edit_plus, and use_pinned_memory_for_block_swap in additional_parameters
+        # Also handle faster_model_loading, model_version, and use_pinned_memory_for_block_swap in additional_parameters
         # to ensure they're passed via command line as well (for backward compatibility)
         args_to_add = []
         args_to_remove = []
-        
+
+        # Remove legacy/duplicate flags first; we will re-add based on current UI selection
+        args_to_remove.extend(["--edit", "--edit_plus", "--model_version"])
+
         if faster_model_loading_enabled:
             args_to_add.append("--disable_numpy_memmap")
         else:
             args_to_remove.append("--disable_numpy_memmap")
-        
-        if edit_plus_enabled:
-            args_to_add.append('--metadata_arch "qwen-image-edit-plus"')
-        else:
-            args_to_remove.append('--metadata_arch "qwen-image-edit-plus"')
-        
+
+        # Add model version for edit variants
+        if resolved_model_version != "original":
+            args_to_add.append(f"--model_version {resolved_model_version}")
+
         # Only add use_pinned_memory_for_block_swap if it's supported by the training script
         if use_pinned_memory_enabled and parameter_supported:
             args_to_add.append("--use_pinned_memory_for_block_swap")
         else:
             args_to_remove.append("--use_pinned_memory_for_block_swap")
-        
+
+        # Strip legacy auto-injected metadata_arch from older GUI versions (only for that exact value)
+        # without touching user-provided custom metadata_arch values.
+        if additional_params and "metadata_arch" in additional_params:
+            try:
+                tokens = shlex.split(additional_params)
+            except Exception:
+                tokens = additional_params.split()
+
+            cleaned = []
+            i = 0
+            while i < len(tokens):
+                tok = tokens[i]
+                if tok in ("--metadata_arch", "metadata_arch"):
+                    if i + 1 < len(tokens) and str(tokens[i + 1]).strip().strip("'\"") == "qwen-image-edit-plus":
+                        i += 2
+                        continue
+                cleaned.append(tok)
+                i += 1
+
+            additional_params = " ".join(cleaned).strip()
+
         # Apply changes to additional_params (preserve user-written values)
         if args_to_add or args_to_remove:
             additional_params = manage_additional_parameters(
@@ -4032,8 +4105,7 @@ def qwen_image_lora_tab(
         qwen_model.blocks_to_swap,
         qwen_model.guidance_scale,
         qwen_model.img_in_txt_in_offloading,
-        qwen_model.edit,
-        qwen_model.edit_plus,
+        qwen_model.model_version,
         qwen_model.faster_model_loading,
         qwen_model.use_pinned_memory_for_block_swap,
         
@@ -4142,8 +4214,9 @@ def qwen_image_lora_tab(
             "text_encoder_dtype": ("Qwen Image Model Settings", "Text Encoder Data Type"),
             "dit_in_channels": ("Qwen Image Model Settings", "DiT Input Channels"),
             "training_mode": ("Qwen Image Model Settings", "Training Mode (LoRA/DreamBooth)"),
-            "edit": ("Qwen Image Model Settings", "Enable Qwen-Image-Edit Mode"),
-            "edit_plus": ("Qwen Image Model Settings", "Enable Qwen-Image-Edit-2509 Mode"),
+            "model_version": ("Qwen Image Model Settings", "Model Version"),
+            "2509": ("Qwen Image Model Settings", "Model Version"),
+            "2511": ("Qwen Image Model Settings", "Model Version"),
             "faster_model_loading": ("Qwen Image Model Settings", "Faster Model Loading (Uses more RAM but speeds up model loading speed - Enable for RunPod)"),
             
             # Torch Compile Settings
