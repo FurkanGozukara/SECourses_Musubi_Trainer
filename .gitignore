@@ -21,6 +21,7 @@ cli_executed_commands
 lib64/
 parts/
 musubi-tuner
+dataset_tomls/
 .vs/
 sdist/
 var/
