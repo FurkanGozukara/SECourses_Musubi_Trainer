@@ -94,6 +94,190 @@ def upsert_parameter(parameters, key: str, value):
     return updated
 
 
+WAN_TARGET_FPS = 16.0  # Musubi Tuner's WAN target FPS (used when source_fps is provided)
+WAN_VIDEO_EXTENSIONS = (".mp4", ".avi", ".mov", ".webm", ".mkv", ".flv", ".wmv", ".m4v")
+
+
+def round_frames_to_n4plus1(frames: int) -> int:
+    """
+    Round down to the nearest valid WAN/Hunyuan frame count: N*4+1 (1,5,9,13,...).
+    """
+    try:
+        frames = int(frames)
+    except Exception:
+        return 1
+    if frames <= 1:
+        return 1
+    return ((frames - 1) // 4) * 4 + 1
+
+
+def count_video_frames_accurate(video_path: str, source_fps: float | None = None, target_fps: float | None = None, early_stop_at: int | None = None) -> int:
+    """
+    Count frames by decoding (accurate). If source_fps and target_fps are provided,
+    mimic Musubi Tuner's WAN frame dropping logic to count the effective frames.
+
+    early_stop_at: if provided, stop once the count reaches this number (used to speed up min-frame scan).
+    """
+    # Prefer PyAV (Musubi Tuner backend), fall back to OpenCV if needed.
+    try:
+        import av  # type: ignore
+
+        container = av.open(video_path)
+        try:
+            count = 0
+            if source_fps is not None and target_fps is not None and source_fps > 0 and target_fps > 0:
+                frame_index_delta = target_fps / source_fps  # e.g. 16/30
+                frame_index_with_fraction = 0.0
+                previous_frame_index = -1
+                for _i, _frame in enumerate(container.decode(video=0)):
+                    target_frame_index = int(frame_index_with_fraction)
+                    frame_index_with_fraction += frame_index_delta
+
+                    if target_frame_index == previous_frame_index:
+                        continue
+
+                    previous_frame_index = target_frame_index
+                    count += 1
+                    if early_stop_at is not None and count >= early_stop_at:
+                        break
+            else:
+                for _frame in container.decode(video=0):
+                    count += 1
+                    if early_stop_at is not None and count >= early_stop_at:
+                        break
+            return count
+        finally:
+            try:
+                container.close()
+            except Exception:
+                pass
+    except Exception:
+        # OpenCV fallback (still decoding-based and accurate, but may be slower)
+        try:
+            import cv2  # type: ignore
+
+            cap = cv2.VideoCapture(video_path)
+            try:
+                if not cap.isOpened():
+                    raise RuntimeError("cv2.VideoCapture could not open the file")
+
+                count = 0
+                if source_fps is not None and target_fps is not None and source_fps > 0 and target_fps > 0:
+                    frame_index_delta = target_fps / source_fps
+                    frame_index_with_fraction = 0.0
+                    previous_frame_index = -1
+                    while True:
+                        ok, _frame = cap.read()
+                        if not ok:
+                            break
+
+                        target_frame_index = int(frame_index_with_fraction)
+                        frame_index_with_fraction += frame_index_delta
+
+                        if target_frame_index == previous_frame_index:
+                            continue
+
+                        previous_frame_index = target_frame_index
+                        count += 1
+                        if early_stop_at is not None and count >= early_stop_at:
+                            break
+                else:
+                    while True:
+                        ok, _frame = cap.read()
+                        if not ok:
+                            break
+                        count += 1
+                        if early_stop_at is not None and count >= early_stop_at:
+                            break
+
+                return count
+            finally:
+                try:
+                    cap.release()
+                except Exception:
+                    pass
+        except Exception as e:
+            raise RuntimeError(
+                f"Unable to count video frames accurately for '{video_path}'. "
+                f"PyAV and OpenCV backends both failed. Last error: {e}"
+            )
+
+
+def find_min_video_frames_in_wan_dataset(parent_folder: str, cache_directory_name: str, source_fps: float | None, early_stop_at: int | None) -> tuple[int | None, str | None, int]:
+    """
+    Scan WAN dataset folder structure and return:
+    - min_frames (int) across all videos found (after optional FPS conversion),
+    - the file path of the video that produced the minimum,
+    - total number of video files scanned.
+
+    This mirrors the dataset generator constraints: it only considers direct media files
+    inside each immediate subfolder of the parent folder, and skips subfolders that contain
+    nested subdirectories (excluding the cache directory).
+    """
+    if not parent_folder or not os.path.isdir(parent_folder):
+        return None, None, 0
+
+    subdirs = [
+        d
+        for d in os.listdir(parent_folder)
+        if os.path.isdir(os.path.join(parent_folder, d)) and not d.startswith(".")
+    ]
+    subdirs.sort()
+
+    min_frames = None
+    min_video_path = None
+    scanned_videos = 0
+
+    for subdir in subdirs:
+        subdir_path = os.path.join(parent_folder, subdir)
+
+        # Skip datasets with nested subfolders (except cache dir) - matches generator behavior
+        try:
+            has_subdirs = any(
+                os.path.isdir(os.path.join(subdir_path, item))
+                for item in os.listdir(subdir_path)
+                if not item.startswith(".") and item not in [cache_directory_name]
+            )
+        except Exception:
+            has_subdirs = False
+
+        if has_subdirs:
+            continue
+
+        # Non-recursive video search
+        try:
+            file_names = os.listdir(subdir_path)
+        except Exception:
+            continue
+
+        for file_name in sorted(file_names):
+            file_path = os.path.join(subdir_path, file_name)
+            if not os.path.isfile(file_path):
+                continue
+            if not file_name.lower().endswith(WAN_VIDEO_EXTENSIONS):
+                continue
+
+            scanned_videos += 1
+            threshold = min_frames if min_frames is not None else early_stop_at
+
+            try:
+                frames = count_video_frames_accurate(
+                    file_path,
+                    source_fps=source_fps,
+                    target_fps=WAN_TARGET_FPS if (source_fps is not None and source_fps > 0) else None,
+                    early_stop_at=threshold,
+                )
+            except Exception as e:
+                log.warning(f"[AUTO TARGET FRAMES] Failed to count frames for {file_path}: {e}")
+                continue
+
+            if min_frames is None or frames < min_frames:
+                min_frames = frames
+                min_video_path = file_path
+
+    return min_frames, min_video_path, scanned_videos
+
+
 class WanDataset:
     """Wan dataset configuration settings"""
     def __init__(self, headless: bool, config: GUIConfig) -> None:
@@ -234,6 +418,19 @@ class WanDataset:
                     maximum=100,
                     step=1,
                     info="Number of samples to extract (only used with 'uniform' method)"
+                )
+                self.target_frames = gr.Number(
+                    label="Target Frames",
+                    value=self.config.get("target_frames", self.config.get("num_frames", 81)),
+                    minimum=1,
+                    maximum=1000,
+                    step=1,
+                    info="Target video frame count written into the generated dataset TOML as target_frames=[N]. For WAN/Hunyuan, valid values are N×4+1 (1, 5, 9, 13, ..., 81)."
+                )
+                self.auto_normalize_target_frames = gr.Checkbox(
+                    label="Auto Normalize Target Frames",
+                    value=self.config.get("auto_normalize_target_frames", True),
+                    info="When enabled, the generator scans your dataset videos and clamps Target Frames down to the minimum video length found (after optional FPS conversion), then rounds to N×4+1. This prevents shorter videos from being skipped. Scanning can take time on large datasets."
                 )
                 self.max_frames = gr.Number(
                     label="Maximum Frames",
@@ -682,7 +879,8 @@ class WanDataset:
             bucket_no_upscale,
             cache_dir,
             output_dir,  # Add output_dir parameter
-            num_frames,  # Add num_frames parameter
+            target_frames,  # User-exposed target_frames
+            auto_normalize_target_frames,  # Auto normalize checkbox
             frame_extraction,
             frame_stride,
             frame_sample,
@@ -692,10 +890,53 @@ class WanDataset:
             """Generate WAN dataset configuration from folder structure"""
             try:
                 if not parent_folder:
-                    return "", "", "[ERROR] Please specify a parent folder path containing your dataset folders"
+                    return "", "", "[ERROR] Please specify a parent folder path containing your dataset folders", gr.update()
 
                 if not os.path.exists(parent_folder):
-                    return "", "", f"[ERROR] Parent folder does not exist: {parent_folder}"
+                    return "", "", f"[ERROR] Parent folder does not exist: {parent_folder}", gr.update()
+
+                # Normalize / validate target frames (WAN uses N*4+1)
+                requested_target_frames = int(target_frames) if target_frames is not None else 81
+                requested_target_frames = max(1, requested_target_frames)
+                requested_target_frames_rounded = round_frames_to_n4plus1(requested_target_frames)
+
+                # Prepare source_fps (used both for config and min-frame scan)
+                source_fps_val = float(source_fps) if source_fps and source_fps > 0 else None
+
+                # Auto normalize: clamp down to minimum effective video frames found in dataset
+                effective_target_frames = requested_target_frames_rounded
+                auto_msg_lines = []
+
+                if requested_target_frames_rounded != requested_target_frames:
+                    auto_msg_lines.append(
+                        f"[INFO] Target Frames rounded to WAN-valid N×4+1: {requested_target_frames} → {requested_target_frames_rounded}"
+                    )
+
+                if auto_normalize_target_frames:
+                    min_frames, min_video_path, scanned_videos = find_min_video_frames_in_wan_dataset(
+                        parent_folder=parent_folder,
+                        cache_directory_name=str(cache_dir) if cache_dir else "cache_dir",
+                        source_fps=source_fps_val,
+                        early_stop_at=effective_target_frames,  # Only need to know if anything is shorter than current target
+                    )
+
+                    if scanned_videos == 0:
+                        auto_msg_lines.append("[INFO] Auto Normalize Target Frames: no videos found (images-only dataset). Target Frames unchanged.")
+                    elif min_frames is None:
+                        auto_msg_lines.append("[WARNING] Auto Normalize Target Frames: could not read frame counts. Target Frames unchanged.")
+                    else:
+                        min_frames_rounded = round_frames_to_n4plus1(min_frames)
+                        if min_frames_rounded < effective_target_frames:
+                            effective_target_frames = min_frames_rounded
+                            auto_msg_lines.append(
+                                f"[OK] Auto Normalize Target Frames: min video frames={min_frames} (rounded to {min_frames_rounded}). Target Frames set to {effective_target_frames}."
+                            )
+                            if min_video_path:
+                                auto_msg_lines.append(f"      Min video: {os.path.basename(min_video_path)}")
+                        else:
+                            auto_msg_lines.append(
+                                f"[OK] Auto Normalize Target Frames: all scanned videos have ≥ {effective_target_frames} frames (after rounding)."
+                            )
 
                 # Create caption files if requested
                 if create_missing:
@@ -740,12 +981,12 @@ class WanDataset:
                     enable_bucket=enable_bucket,
                     bucket_no_upscale=bucket_no_upscale,
                     cache_directory_name=cache_dir,
-                    num_frames=int(num_frames),
+                    num_frames=int(effective_target_frames),
                     frame_extraction=frame_extraction,
                     frame_stride=int(frame_stride),
                     frame_sample=int(frame_sample),
                     max_frames=int(max_frames),
-                    source_fps=float(source_fps) if source_fps and source_fps > 0 else None
+                    source_fps=source_fps_val
                 )
 
                 # Check if config generation was successful
@@ -773,20 +1014,33 @@ class WanDataset:
                 status_msg = f"[SUCCESS] Generated WAN dataset configuration:\n"
                 status_msg += f"  Output: {output_path}\n"
                 status_msg += f"  Datasets: {num_datasets}\n"
+                status_msg += f"  Target Frames: {int(effective_target_frames)}\n"
                 status_msg += f"\n" + "\n".join(messages)
+
+                if auto_msg_lines:
+                    status_msg += "\n\n" + "\n".join(auto_msg_lines)
 
                 if create_missing:
                     status_msg += f"\n  Caption files created with strategy: {caption_strat}"
 
                 # Return both paths - output_path for dataset_config field and display
-                return output_path, output_path, status_msg
+                # Also update Target Frames field if we rounded or auto-normalized it.
+                target_frames_original_int = None
+                try:
+                    target_frames_original_int = int(target_frames) if target_frames is not None else None
+                except Exception:
+                    target_frames_original_int = None
+
+                if target_frames_original_int is None or target_frames_original_int != int(effective_target_frames):
+                    return output_path, output_path, status_msg, gr.update(value=int(effective_target_frames))
+                return output_path, output_path, status_msg, gr.update()
 
             except Exception as e:
                 error_msg = f"[ERROR] Failed to generate WAN dataset configuration:\n{str(e)}"
                 log.error(error_msg)
                 import traceback
                 traceback.print_exc()
-                return "", "", error_msg
+                return "", "", error_msg, gr.update()
 
         def copy_generated_path(generated_path):
             """Copy generated TOML path to dataset config field"""
@@ -796,49 +1050,37 @@ class WanDataset:
 
         # Bind generate button
         if hasattr(self, 'generate_toml_button'):
-            # Pass output_dir from saveLoadSettings if available
+            # Pass output_dir from saveLoadSettings if available, otherwise use a dummy None state
+            output_dir_input = None
             if saveLoadSettings and hasattr(saveLoadSettings, 'output_dir'):
-                self.generate_toml_button.click(
-                    fn=generate_dataset_config,
-                    inputs=[
-                        self.parent_folder_path,
-                        self.dataset_resolution_width,
-                        self.dataset_resolution_height,
-                        self.dataset_caption_extension,
-                        self.create_missing_captions,
-                        self.caption_strategy,
-                        self.dataset_batch_size,
-                        self.dataset_enable_bucket,
-                        self.dataset_bucket_no_upscale,
-                        self.dataset_cache_directory,
-                        saveLoadSettings.output_dir,  # Pass output_dir
-                        wan_model_settings.num_frames if wan_model_settings else 81,  # Pass num_frames
-                        self.frame_extraction,
-                        self.frame_stride,
-                        self.frame_sample,
-                        self.max_frames,
-                        self.source_fps
-                    ],
-                    outputs=[self.dataset_config, self.generated_toml_path, self.dataset_status]
-                )
+                output_dir_input = saveLoadSettings.output_dir
             else:
-                # Fallback without output_dir
-                self.generate_toml_button.click(
-                    fn=lambda *args: generate_dataset_config(*args, None, wan_model_settings.num_frames if wan_model_settings else 81, *[self.frame_extraction, self.frame_stride, self.frame_sample, self.max_frames, self.source_fps]),  # Pass all args + None for output_dir + num_frames + frame params
-                    inputs=[
-                        self.parent_folder_path,
-                        self.dataset_resolution_width,
-                        self.dataset_resolution_height,
-                        self.dataset_caption_extension,
-                        self.create_missing_captions,
-                        self.caption_strategy,
-                        self.dataset_batch_size,
-                        self.dataset_enable_bucket,
-                        self.dataset_bucket_no_upscale,
-                        self.dataset_cache_directory,
-                    ],
-                    outputs=[self.dataset_config, self.generated_toml_path, self.dataset_status]
-                )
+                output_dir_input = gr.State(value=None)
+
+            self.generate_toml_button.click(
+                fn=generate_dataset_config,
+                inputs=[
+                    self.parent_folder_path,
+                    self.dataset_resolution_width,
+                    self.dataset_resolution_height,
+                    self.dataset_caption_extension,
+                    self.create_missing_captions,
+                    self.caption_strategy,
+                    self.dataset_batch_size,
+                    self.dataset_enable_bucket,
+                    self.dataset_bucket_no_upscale,
+                    self.dataset_cache_directory,
+                    output_dir_input,  # Pass output_dir (or None)
+                    self.target_frames,
+                    self.auto_normalize_target_frames,
+                    self.frame_extraction,
+                    self.frame_stride,
+                    self.frame_sample,
+                    self.max_frames,
+                    self.source_fps
+                ],
+                outputs=[self.dataset_config, self.generated_toml_path, self.dataset_status, self.target_frames]
+            )
 
         # Bind copy button
         if hasattr(self, 'copy_generated_path_button'):
@@ -1816,6 +2058,7 @@ def wan_gui_actions(
                 "dataset_resolution_height", "dataset_caption_extension", "dataset_batch_size",
                 "create_missing_captions", "caption_strategy", "dataset_enable_bucket",
                 "dataset_bucket_no_upscale", "dataset_cache_directory", "generated_toml_path",
+                "frame_extraction", "frame_stride", "frame_sample", "target_frames", "auto_normalize_target_frames", "max_frames", "source_fps",
                 # Wan Model settings
                 "training_mode", "task", "dit", "vae", "t5", "clip",
                 "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
@@ -1885,6 +2128,7 @@ def wan_gui_actions(
                 "dataset_resolution_height", "dataset_caption_extension", "dataset_batch_size",
                 "create_missing_captions", "caption_strategy", "dataset_enable_bucket",
                 "dataset_bucket_no_upscale", "dataset_cache_directory", "generated_toml_path",
+                "frame_extraction", "frame_stride", "frame_sample", "target_frames", "auto_normalize_target_frames", "max_frames", "source_fps",
                 # Wan Model settings
                 "training_mode", "task", "dit", "vae", "t5", "clip",
                 "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
@@ -1954,6 +2198,7 @@ def wan_gui_actions(
                 "dataset_resolution_height", "dataset_caption_extension", "dataset_batch_size",
                 "create_missing_captions", "caption_strategy", "dataset_enable_bucket",
                 "dataset_bucket_no_upscale", "dataset_cache_directory", "generated_toml_path",
+                "frame_extraction", "frame_stride", "frame_sample", "target_frames", "auto_normalize_target_frames", "max_frames", "source_fps",
                 # Wan Model settings
                 "training_mode", "task", "dit", "vae", "t5", "clip",
                 "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
@@ -2025,6 +2270,7 @@ def wan_gui_actions(
                 "dataset_resolution_height", "dataset_caption_extension", "dataset_batch_size",
                 "create_missing_captions", "caption_strategy", "dataset_enable_bucket",
                 "dataset_bucket_no_upscale", "dataset_cache_directory", "generated_toml_path",
+                "frame_extraction", "frame_stride", "frame_sample", "target_frames", "auto_normalize_target_frames", "max_frames", "source_fps",
                 # Wan Model settings
                 "training_mode", "task", "dit", "vae", "t5", "clip",
                 "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
@@ -3482,6 +3728,13 @@ def wan_lora_tab(
         wan_dataset.dataset_bucket_no_upscale,
         wan_dataset.dataset_cache_directory,
         wan_dataset.generated_toml_path,
+        wan_dataset.frame_extraction,
+        wan_dataset.frame_stride,
+        wan_dataset.frame_sample,
+        wan_dataset.target_frames,
+        wan_dataset.auto_normalize_target_frames,
+        wan_dataset.max_frames,
+        wan_dataset.source_fps,
 
         # Wan Model settings
         wan_model_settings.training_mode,

@@ -44,6 +44,9 @@ one_frame = false  # Enable one-frame training mode for image-like training on v
 frame_extraction = "head"  # Frame extraction method: "head" (recommended), "chunk", "slide", "uniform", "full"
 frame_stride = 1  # Step size for sliding window extraction (used with "slide" method)
 frame_sample = 1  # Number of samples to extract (used with "uniform" method)
+# Dataset generation target_frames (written into generated dataset TOML for video datasets)
+target_frames = 81  # Target video frame count for dataset generation (saved as target_frames=[N]). Must be N*4+1 (1,5,9,...,81)
+auto_normalize_target_frames = true  # Scan dataset and clamp Target Frames to the minimum video length found (then round to N*4+1)
 max_frames = 129  # Maximum number of frames to extract from any video (used with "full" method)
 source_fps = 0  # Original video FPS for frame rate conversion (0=auto-detect)
 
