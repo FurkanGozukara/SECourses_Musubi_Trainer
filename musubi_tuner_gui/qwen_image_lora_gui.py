@@ -666,7 +666,7 @@ class QwenImageModel:
                     label="Model Version",
                     info="Select which Qwen Image variant to train. Edit variants require control images (control_directory) in your dataset TOML.",
                     choices=[
-                        ("Qwen-Image (original, text-to-image)", "original"),
+                        ("Qwen-Image Older and Newer 2512 (original, text-to-image)", "original"),
                         ("Qwen-Image-Edit Plus (2509)", "edit-2509"),
                         ("Qwen-Image-Edit (2511)", "edit-2511"),
                     ],
