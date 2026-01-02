@@ -1003,8 +1003,8 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
             PRESET_CUSTOM = "Custom (manual)"
             PRESET_A = "Preset A (balanced quality)"
             PRESET_B = "Preset B (high quality)"
-            PRESET_C = "Preset C (max quality / slowest)"
-            PRESET_D = "Preset D (your defaults)"
+            PRESET_C = "Preset C (high quality / slower)"
+            PRESET_D = "Preset D (max quality / slowest)"
             improved_preset = gr.Dropdown(
                 label="Quality Preset",
                 choices=[PRESET_CUSTOM, PRESET_A, PRESET_B, PRESET_C, PRESET_D],
