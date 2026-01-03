@@ -50,6 +50,8 @@ class SaveLoadSettings:
                 label="Save Every N Epochs",
                 info="Save a checkpoint every N epochs",
                 value=self.config.get("save_every_n_epochs", None),
+                minimum=0,
+                maximum=999999,
                 step=1,
                 interactive=True,
             )

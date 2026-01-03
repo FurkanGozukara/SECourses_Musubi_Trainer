@@ -3486,7 +3486,7 @@ class QwenImageSaveLoadSettings:
                 info="[RECOMMENDED] 1 recommended. Save checkpoint every N epochs for backup and progress tracking. 0 = save only at end",
                 value=self.config.get("save_every_n_epochs", 1),
                 minimum=0,
-                maximum=50,
+                maximum=999999,
                 step=1,
                 interactive=True,
             )
