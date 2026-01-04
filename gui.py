@@ -35,10 +35,10 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
     css = read_file_content("./assets/style.css")
 
     # Create the main Gradio Blocks interface
-    ui_interface = gr.Blocks(css=css, title="SECourses Musubi Trainer V26.1", theme=gr.themes.Soft())
+    ui_interface = gr.Blocks(css=css, title="SECourses Musubi Trainer V26.2", theme=gr.themes.Soft())
     with ui_interface:
         # Add title with Patreon link
-        gr.Markdown("# SECourses Musubi Trainer V26.1 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
+        gr.Markdown("# SECourses Musubi Trainer V26.2 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
         
         # Create tabs for different functionalities
         with gr.Tab("Qwen Image Training"):

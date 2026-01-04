@@ -251,6 +251,7 @@ class FP8Converter:
         save_both_formats: bool = False,
         full_precision_matrix_mult: bool = False,
         skip_inefficient_layers: bool = True,
+        verbose_pinned: bool = False,
         calib_samples: int = 256,
         seed: int = 0,
         optimizer: str = "original",
@@ -431,6 +432,7 @@ class FP8Converter:
                     if (not save_both_formats and comfy_quant)
                     else False,
                     skip_inefficient_layers=bool(skip_inefficient_layers),
+                    verbose_pinned=bool(verbose_pinned),
                     include_input_scale=False,
                     no_learned_rounding=bool(no_learned_rounding),
                     save_quant_metadata=False,
@@ -654,6 +656,7 @@ class FP8Converter:
         improved_save_both_formats: bool = False,
         improved_full_precision_matrix_mult: bool = False,
         improved_skip_inefficient_layers: bool = True,
+        improved_verbose_pinned: bool = False,
         improved_calib_samples: int = 256,
         improved_seed: int = 0,
         improved_optimizer: str = "original",
@@ -744,6 +747,7 @@ class FP8Converter:
                         save_both_formats=improved_save_both_formats,
                         full_precision_matrix_mult=improved_full_precision_matrix_mult,
                         skip_inefficient_layers=improved_skip_inefficient_layers,
+                        verbose_pinned=improved_verbose_pinned,
                         calib_samples=improved_calib_samples,
                         seed=improved_seed,
                         optimizer=improved_optimizer,
@@ -804,6 +808,7 @@ class FP8Converter:
         improved_save_both_formats: bool = False,
         improved_full_precision_matrix_mult: bool = False,
         improved_skip_inefficient_layers: bool = True,
+        improved_verbose_pinned: bool = False,
         improved_calib_samples: int = 256,
         improved_seed: int = 0,
         improved_optimizer: str = "original",
@@ -872,6 +877,7 @@ class FP8Converter:
                     save_both_formats=improved_save_both_formats,
                     full_precision_matrix_mult=improved_full_precision_matrix_mult,
                     skip_inefficient_layers=improved_skip_inefficient_layers,
+                    verbose_pinned=improved_verbose_pinned,
                     calib_samples=improved_calib_samples,
                     seed=improved_seed,
                     optimizer=improved_optimizer,
@@ -1012,21 +1018,30 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
                 info="Applies a bundle of recommended settings. You can still tweak values after selecting a preset.",
             )
 
-            improved_comfy_quant = gr.Checkbox(
-                label="Output ComfyUI comfy_quant format (adds .comfy_quant tensors)",
-                value=config.get("fp8_converter.improved.comfy_quant", False),
-                info="OFF keeps legacy scaled_fp8 format (scale_weight + scaled_fp8), matching current Musubi behavior.",
+            with gr.Row():
+                improved_comfy_quant = gr.Checkbox(
+                    label="Output ComfyUI comfy_quant format (adds .comfy_quant tensors)",
+                    value=config.get("fp8_converter.improved.comfy_quant", False),
+                    info="OFF keeps legacy scaled_fp8 format (scale_weight + scaled_fp8), matching current Musubi behavior.",
+                )
+                improved_full_precision_mm = gr.Checkbox(
+                    label="comfy_quant: Full precision matrix multiply (recommended if you get noise)",
+                    value=config.get("fp8_converter.improved.full_precision_matrix_mult", False),
+                    info="Writes full_precision_matrix_mult=true into .comfy_quant. This avoids FP8 activation matmul and behaves more like legacy scaled_fp8 (better quality, slower).",
+                )
+            
+            improved_verbose_pinned = gr.Checkbox(
+                label="Use pinned RAM for faster GPU transfers (page-locked memory)",
+                value=config.get("fp8_converter.improved.verbose_pinned", False),
+                info="Enables pinned (page-locked) memory for faster CPU→GPU tensor transfers during quantization. Uses PyTorch's native pin_memory() with non-blocking DMA transfers. Provides ~10-30% speedup on large models. May use slightly more RAM.",
             )
+            
             improved_save_both_formats = gr.Checkbox(
                 label="Save both formats (legacy scaled_fp8 + comfy_quant) in one run",
                 value=config.get("fp8_converter.improved.save_both_formats", False),
                 info="Runs the expensive quantization once (legacy), then creates a comfy_quant copy via fast format conversion.",
             )
-            improved_full_precision_mm = gr.Checkbox(
-                label="comfy_quant: Full precision matrix multiply (recommended if you get noise)",
-                value=config.get("fp8_converter.improved.full_precision_matrix_mult", False),
-                info="Writes full_precision_matrix_mult=true into .comfy_quant. This avoids FP8 activation matmul and behaves more like legacy scaled_fp8 (better quality, slower).",
-            )
+            
             improved_skip_inefficient_layers = gr.Checkbox(
                 label="Skip inefficient layers (heuristics)",
                 value=config.get("fp8_converter.improved.skip_inefficient_layers", True),
@@ -1403,6 +1418,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
         save_both_formats,
         full_precision_mm,
         skip_inefficient_layers,
+        verbose_pinned,
         calib_samples,
         seed,
         optimizer,
@@ -1428,6 +1444,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
             improved_save_both_formats=bool(save_both_formats),
             improved_full_precision_matrix_mult=bool(full_precision_mm),
             improved_skip_inefficient_layers=skip_inefficient_layers,
+            improved_verbose_pinned=bool(verbose_pinned),
             improved_calib_samples=_as_int(calib_samples, 256),
             improved_seed=_as_int(seed, 0),
             improved_optimizer=str(optimizer),
@@ -1454,6 +1471,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
             improved_save_both_formats,
             improved_full_precision_mm,
             improved_skip_inefficient_layers,
+            improved_verbose_pinned,
             improved_calib_samples,
             improved_seed,
             improved_optimizer,
@@ -1495,6 +1513,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
         save_both_formats,
         full_precision_mm,
         skip_inefficient_layers,
+        verbose_pinned,
         calib_samples,
         seed,
         optimizer,
@@ -1520,6 +1539,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
             improved_save_both_formats=bool(save_both_formats),
             improved_full_precision_matrix_mult=bool(full_precision_mm),
             improved_skip_inefficient_layers=skip_inefficient_layers,
+            improved_verbose_pinned=bool(verbose_pinned),
             improved_calib_samples=_as_int(calib_samples, 256),
             improved_seed=_as_int(seed, 0),
             improved_optimizer=str(optimizer),
@@ -1546,6 +1566,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
             improved_save_both_formats,
             improved_full_precision_mm,
             improved_skip_inefficient_layers,
+            improved_verbose_pinned,
             improved_calib_samples,
             improved_seed,
             improved_optimizer,
