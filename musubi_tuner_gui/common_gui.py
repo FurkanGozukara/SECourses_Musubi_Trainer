@@ -110,32 +110,69 @@ _ENV_VS_DEV_CMD_CANDIDATES = [
 
 
 def _normalize_windows_path(value):
+    """
+    Deprecated: Use normalize_path() instead.
+    Legacy function for backward compatibility.
+    """
     if not value:
         return ""
-    cleaned = value.strip().strip('"')
-    expanded = os.path.expandvars(cleaned)
-    return os.path.abspath(os.path.normpath(expanded))
+    # Use the more robust normalize_path function
+    result = normalize_path(value)
+    return result if result else ""
 
 
 def normalize_path(path: str) -> str:
     """
-    Normalize path for cross-platform compatibility and handle spaces properly.
-    
+    Robustly normalize path for cross-platform compatibility.
+    Handles quoted paths (single/double), spaces, environment variables, etc.
+
     Args:
-        path (str): The path to normalize
-        
+        path (str): The path to normalize (may contain quotes, spaces, etc.)
+
     Returns:
-        str: Normalized path that works on both Windows and Linux
+        str: Normalized absolute path that works on both Windows and Linux
+
+    Examples:
+        >>> normalize_path('"F:\\Models\\my lora.safetensors"')
+        'F:/Models/my lora.safetensors'
+
+        >>> normalize_path("'C:\\path with spaces\\file.txt'")
+        'C:/path with spaces/file.txt'
     """
     if not path:
         return path
-    
-    # Convert to Path object for cross-platform handling
-    normalized = Path(path).resolve()
-    
-    # Convert back to string with forward slashes for consistency
-    # This works on both Windows and Linux
-    return str(normalized).replace("\\", "/")
+
+    # Strip whitespace
+    path = path.strip()
+    if not path:
+        return path
+
+    # Remove quotes (both single and double) from beginning and end
+    while path and path[0] in ('"', "'"):
+        path = path[1:]
+    while path and path[-1] in ('"', "'"):
+        path = path[:-1]
+
+    path = path.strip()
+    if not path:
+        return path
+
+    # Expand environment variables (Windows: %VAR%, Linux: $VAR)
+    path = os.path.expandvars(path)
+
+    # Expand user home directory (~)
+    path = os.path.expanduser(path)
+
+    try:
+        # Convert to Path object for cross-platform handling
+        normalized = Path(path).resolve()
+
+        # Convert back to string with forward slashes for consistency
+        # This works on both Windows and Linux
+        return str(normalized).replace("\\", "/")
+    except (OSError, RuntimeError):
+        # If Path.resolve() fails, fall back to basic normalization
+        return os.path.abspath(os.path.normpath(path)).replace("\\", "/")
 
 
 def validate_path_for_toml(path: str) -> str:
