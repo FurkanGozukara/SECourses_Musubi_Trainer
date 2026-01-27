@@ -504,7 +504,7 @@ class QwenImageDataset:
                     return "", "", "[ERROR] Failed to generate configuration. Check your folder structure.\n" + "\n".join(messages)
                 
                 # Add control resolution settings to datasets with control directories
-                # NOTE: qwen_image_edit_no_resize_control and qwen_image_edit_control_resolution are mutually exclusive.
+                # NOTE: qwen_image_edit_no_resize_control and control_resolution are mutually exclusive.
                 if qwen_no_resize and control_res_width > 0 and control_res_height > 0:
                     messages.append(
                         "[WARNING] 'No Resize Control' is enabled, so control resolution settings are ignored "
@@ -513,7 +513,7 @@ class QwenImageDataset:
                 elif control_res_width > 0 and control_res_height > 0:
                     for dataset_entry in config.get("datasets", []):
                         if "control_directory" in dataset_entry:
-                            dataset_entry["qwen_image_edit_control_resolution"] = [int(control_res_width), int(control_res_height)]
+                            dataset_entry["control_resolution"] = [int(control_res_width), int(control_res_height)]
                             messages.append(f"[OK] Added control resolution {control_res_width}x{control_res_height} to dataset")
                 
                 # Generate output filename with timestamp
