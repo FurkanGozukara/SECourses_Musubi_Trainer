@@ -263,6 +263,46 @@ class FP8Converter:
         min_k: int = 1,
         max_k: int = 16,
         no_learned_rounding: bool = False,
+        # New parameters
+        target_format: str = "fp8",
+        block_size: int = 64,
+        fallback_type: Optional[str] = None,
+        custom_layers: Optional[str] = None,
+        custom_type: Optional[str] = None,
+        custom_block_size: Optional[int] = None,
+        custom_scaling_mode: Optional[str] = None,
+        custom_simple: bool = False,
+        custom_heur: bool = False,
+        fallback_block_size: Optional[int] = None,
+        fallback_simple: bool = False,
+        simple_quant: bool = False,
+        include_input_scale: bool = False,
+        t5xxl: bool = False,
+        mistral: bool = False,
+        visual: bool = False,
+        flux2: bool = False,
+        distillation_large: bool = False,
+        distillation_small: bool = False,
+        nerf_large: bool = False,
+        nerf_small: bool = False,
+        radiance: bool = False,
+        wan: bool = False,
+        hunyuan: bool = False,
+        zimage_refiner: bool = False,
+        # Advanced LR params
+        lr_gamma: float = 0.99,
+        lr_patience: int = 9,
+        lr_factor: float = 0.92,
+        lr_min: float = 1e-10,
+        lr_cooldown: int = 6,
+        lr_threshold: float = 0.0,
+        lr_adaptive_mode: str = "simple-reset",
+        lr_shape_influence: float = 1.0,
+        lr_threshold_mode: str = "rel",
+        # Early stopping
+        early_stop_loss: float = 1e-8,
+        early_stop_lr: float = 1e-10,
+        early_stop_stall: int = 1000,
     ) -> Tuple[bool, str]:
         """
         Convert using convert_to_quant's learned-rounding FP8 scaling (higher quality, slower).
@@ -282,8 +322,8 @@ class FP8Converter:
                 model_type = self.detect_model_type(input_path)
 
             # Map UI modes to convert_to_quant scaling modes
-            scaling_mode = "block" if quantization_mode == "block" else "tensor"
-            block_size = 64
+            scaling_mode = quantization_mode  # Now directly use the mode from UI
+            # block_size is now a parameter
 
             # Seed handling: -1 means random
             if seed is None:
@@ -400,44 +440,46 @@ class FP8Converter:
                     # If saving both: always write legacy first (comfy_quant=False), then convert format
                     comfy_quant=False if save_both_formats else bool(comfy_quant),
                     # Model filter presets
-                    t5xxl=False,
-                    mistral=False,
-                    visual=False,
-                    flux2=False,
-                    distillation_large=False,
-                    distillation_small=False,
-                    nerf_large=False,
-                    nerf_small=False,
-                    radiance=False,
-                    wan=False,
+                    t5xxl=bool(t5xxl),
+                    mistral=bool(mistral),
+                    visual=bool(visual),
+                    flux2=bool(flux2),
+                    distillation_large=bool(distillation_large),
+                    distillation_small=bool(distillation_small),
+                    nerf_large=bool(nerf_large),
+                    nerf_small=bool(nerf_small),
+                    radiance=bool(radiance),
+                    wan=bool(wan),
                     qwen=bool(qwen_flag),
-                    hunyuan=False,
+                    hunyuan=bool(hunyuan),
                     zimage=bool(zimage_flag),
-                    zimage_refiner=False,
+                    zimage_refiner=bool(zimage_refiner),
                     # Bias correction / reproducibility
                     calib_samples=int(calib_samples),
                     seed=int(seed),
-                    # Force FP8 (user requested improved FP8 only)
-                    int8=False,
-                    fallback=None,
-                    custom_layers=None,
-                    custom_type=None,
-                    custom_block_size=None,
-                    custom_scaling_mode=None,
-                    custom_simple=False,
-                    custom_heur=False,
-                    fallback_block_size=None,
-                    fallback_simple=False,
+                    # Quantization format and mode
+                    int8=(target_format == "int8"),
+                    fallback=fallback_type,
+                    custom_layers=custom_layers,
+                    custom_type=custom_type,
+                    custom_block_size=custom_block_size,
+                    custom_scaling_mode=custom_scaling_mode,
+                    custom_simple=bool(custom_simple),
+                    custom_heur=bool(custom_heur),
+                    fallback_block_size=fallback_block_size,
+                    fallback_simple=bool(fallback_simple),
                     full_precision_matrix_mult=bool(full_precision_matrix_mult)
                     if (not save_both_formats and comfy_quant)
                     else False,
                     skip_inefficient_layers=bool(skip_inefficient_layers),
                     verbose_pinned=bool(verbose_pinned),
-                    include_input_scale=False,
+                    include_input_scale=bool(include_input_scale),
                     no_learned_rounding=bool(no_learned_rounding),
                     save_quant_metadata=False,
                     layer_config=None,
                     layer_config_fullmatch=False,
+                    simple=bool(simple_quant),
+                    heur=bool(skip_inefficient_layers),
                     # Converter params (learned rounding)
                     optimizer=str(optimizer),
                     num_iter=int(num_iter),
@@ -449,6 +491,20 @@ class FP8Converter:
                     top_p=float(top_p),
                     min_k=int(min_k),
                     max_k=int(max_k),
+                    # Advanced LR params
+                    lr_gamma=float(lr_gamma),
+                    lr_patience=int(lr_patience),
+                    lr_factor=float(lr_factor),
+                    lr_min=float(lr_min),
+                    lr_cooldown=int(lr_cooldown),
+                    lr_threshold=float(lr_threshold),
+                    lr_adaptive_mode=str(lr_adaptive_mode),
+                    lr_shape_influence=float(lr_shape_influence),
+                    lr_threshold_mode=str(lr_threshold_mode),
+                    # Early stopping
+                    early_stop_loss=float(early_stop_loss),
+                    early_stop_lr=float(early_stop_lr),
+                    early_stop_stall=int(early_stop_stall),
                 )
 
             # If requested, create comfy_quant copy via fast format conversion (no re-quantization)
@@ -668,6 +724,46 @@ class FP8Converter:
         improved_min_k: int = 1,
         improved_max_k: int = 16,
         improved_no_learned_rounding: bool = False,
+        # New parameters (pass-through for convert_to_quant)
+        improved_target_format: str = "fp8",
+        improved_block_size: int = 64,
+        improved_fallback_type: Optional[str] = None,
+        improved_custom_layers: Optional[str] = None,
+        improved_custom_type: Optional[str] = None,
+        improved_custom_block_size: Optional[int] = None,
+        improved_custom_scaling_mode: Optional[str] = None,
+        improved_custom_simple: bool = False,
+        improved_custom_heur: bool = False,
+        improved_fallback_block_size: Optional[int] = None,
+        improved_fallback_simple: bool = False,
+        improved_simple_quant: bool = False,
+        improved_include_input_scale: bool = False,
+        improved_t5xxl: bool = False,
+        improved_mistral: bool = False,
+        improved_visual: bool = False,
+        improved_flux2: bool = False,
+        improved_distillation_large: bool = False,
+        improved_distillation_small: bool = False,
+        improved_nerf_large: bool = False,
+        improved_nerf_small: bool = False,
+        improved_radiance: bool = False,
+        improved_wan: bool = False,
+        improved_hunyuan: bool = False,
+        improved_zimage_refiner: bool = False,
+        # Advanced LR params
+        improved_lr_gamma: float = 0.99,
+        improved_lr_patience: int = 9,
+        improved_lr_factor: float = 0.92,
+        improved_lr_min: float = 1e-10,
+        improved_lr_cooldown: int = 6,
+        improved_lr_threshold: float = 0.0,
+        improved_lr_adaptive_mode: str = "simple-reset",
+        improved_lr_shape_influence: float = 1.0,
+        improved_lr_threshold_mode: str = "rel",
+        # Early stopping
+        improved_early_stop_loss: float = 1e-8,
+        improved_early_stop_lr: float = 1e-10,
+        improved_early_stop_stall: int = 1000,
     ) -> str:
         """
         Batch convert all Qwen Image or Z Image models in a folder to FP8 format
@@ -759,6 +855,46 @@ class FP8Converter:
                         min_k=improved_min_k,
                         max_k=improved_max_k,
                         no_learned_rounding=improved_no_learned_rounding,
+                        # New parameters
+                        target_format=improved_target_format,
+                        block_size=improved_block_size,
+                        fallback_type=improved_fallback_type,
+                        custom_layers=improved_custom_layers,
+                        custom_type=improved_custom_type,
+                        custom_block_size=improved_custom_block_size,
+                        custom_scaling_mode=improved_custom_scaling_mode,
+                        custom_simple=improved_custom_simple,
+                        custom_heur=improved_custom_heur,
+                        fallback_block_size=improved_fallback_block_size,
+                        fallback_simple=improved_fallback_simple,
+                        simple_quant=improved_simple_quant,
+                        include_input_scale=improved_include_input_scale,
+                        t5xxl=improved_t5xxl,
+                        mistral=improved_mistral,
+                        visual=improved_visual,
+                        flux2=improved_flux2,
+                        distillation_large=improved_distillation_large,
+                        distillation_small=improved_distillation_small,
+                        nerf_large=improved_nerf_large,
+                        nerf_small=improved_nerf_small,
+                        radiance=improved_radiance,
+                        wan=improved_wan,
+                        hunyuan=improved_hunyuan,
+                        zimage_refiner=improved_zimage_refiner,
+                        # Advanced LR params
+                        lr_gamma=improved_lr_gamma,
+                        lr_patience=improved_lr_patience,
+                        lr_factor=improved_lr_factor,
+                        lr_min=improved_lr_min,
+                        lr_cooldown=improved_lr_cooldown,
+                        lr_threshold=improved_lr_threshold,
+                        lr_adaptive_mode=improved_lr_adaptive_mode,
+                        lr_shape_influence=improved_lr_shape_influence,
+                        lr_threshold_mode=improved_lr_threshold_mode,
+                        # Early stopping
+                        early_stop_loss=improved_early_stop_loss,
+                        early_stop_lr=improved_early_stop_lr,
+                        early_stop_stall=improved_early_stop_stall,
                     )
                 else:
                     success, message = self.convert_model_to_fp8(
@@ -820,6 +956,46 @@ class FP8Converter:
         improved_min_k: int = 1,
         improved_max_k: int = 16,
         improved_no_learned_rounding: bool = False,
+        # New parameters (pass-through for convert_to_quant)
+        improved_target_format: str = "fp8",
+        improved_block_size: int = 64,
+        improved_fallback_type: Optional[str] = None,
+        improved_custom_layers: Optional[str] = None,
+        improved_custom_type: Optional[str] = None,
+        improved_custom_block_size: Optional[int] = None,
+        improved_custom_scaling_mode: Optional[str] = None,
+        improved_custom_simple: bool = False,
+        improved_custom_heur: bool = False,
+        improved_fallback_block_size: Optional[int] = None,
+        improved_fallback_simple: bool = False,
+        improved_simple_quant: bool = False,
+        improved_include_input_scale: bool = False,
+        improved_t5xxl: bool = False,
+        improved_mistral: bool = False,
+        improved_visual: bool = False,
+        improved_flux2: bool = False,
+        improved_distillation_large: bool = False,
+        improved_distillation_small: bool = False,
+        improved_nerf_large: bool = False,
+        improved_nerf_small: bool = False,
+        improved_radiance: bool = False,
+        improved_wan: bool = False,
+        improved_hunyuan: bool = False,
+        improved_zimage_refiner: bool = False,
+        # Advanced LR params
+        improved_lr_gamma: float = 0.99,
+        improved_lr_patience: int = 9,
+        improved_lr_factor: float = 0.92,
+        improved_lr_min: float = 1e-10,
+        improved_lr_cooldown: int = 6,
+        improved_lr_threshold: float = 0.0,
+        improved_lr_adaptive_mode: str = "simple-reset",
+        improved_lr_shape_influence: float = 1.0,
+        improved_lr_threshold_mode: str = "rel",
+        # Early stopping
+        improved_early_stop_loss: float = 1e-8,
+        improved_early_stop_lr: float = 1e-10,
+        improved_early_stop_stall: int = 1000,
     ) -> str:
         """
         Convert a single model file to FP8 format
@@ -889,6 +1065,46 @@ class FP8Converter:
                     min_k=improved_min_k,
                     max_k=improved_max_k,
                     no_learned_rounding=improved_no_learned_rounding,
+                    # New parameters
+                    target_format=improved_target_format,
+                    block_size=improved_block_size,
+                    fallback_type=improved_fallback_type,
+                    custom_layers=improved_custom_layers,
+                    custom_type=improved_custom_type,
+                    custom_block_size=improved_custom_block_size,
+                    custom_scaling_mode=improved_custom_scaling_mode,
+                    custom_simple=improved_custom_simple,
+                    custom_heur=improved_custom_heur,
+                    fallback_block_size=improved_fallback_block_size,
+                    fallback_simple=improved_fallback_simple,
+                    simple_quant=improved_simple_quant,
+                    include_input_scale=improved_include_input_scale,
+                    t5xxl=improved_t5xxl,
+                    mistral=improved_mistral,
+                    visual=improved_visual,
+                    flux2=improved_flux2,
+                    distillation_large=improved_distillation_large,
+                    distillation_small=improved_distillation_small,
+                    nerf_large=improved_nerf_large,
+                    nerf_small=improved_nerf_small,
+                    radiance=improved_radiance,
+                    wan=improved_wan,
+                    hunyuan=improved_hunyuan,
+                    zimage_refiner=improved_zimage_refiner,
+                    # Advanced LR params
+                    lr_gamma=improved_lr_gamma,
+                    lr_patience=improved_lr_patience,
+                    lr_factor=improved_lr_factor,
+                    lr_min=improved_lr_min,
+                    lr_cooldown=improved_lr_cooldown,
+                    lr_threshold=improved_lr_threshold,
+                    lr_adaptive_mode=improved_lr_adaptive_mode,
+                    lr_shape_influence=improved_lr_shape_influence,
+                    lr_threshold_mode=improved_lr_threshold_mode,
+                    # Early stopping
+                    early_stop_loss=improved_early_stop_loss,
+                    early_stop_lr=improved_early_stop_lr,
+                    early_stop_stall=improved_early_stop_stall,
                 )
             else:
                 success, message = self.convert_model_to_fp8(
@@ -1048,6 +1264,155 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
                 info="Faster; keeps some layers high precision when they are poor candidates for quantization.",
             )
 
+            # NEW: Target format and advanced options
+            with gr.Accordion("Quantization Format & Block Settings", open=False):
+                improved_target_format = gr.Radio(
+                    label="Target Format",
+                    choices=["fp8", "int8"],
+                    value=config.get("fp8_converter.improved.target_format", "fp8"),
+                    info="FP8 (float8_e4m3fn) or INT8 block-wise quantization",
+                )
+
+                with gr.Row():
+                    improved_scaling_mode = gr.Dropdown(
+                        label="FP8 Scaling Mode",
+                        choices=["tensor", "row", "block", "block2d", "block3d"],
+                        value=config.get("fp8_converter.improved.scaling_mode_override", "tensor"),
+                        info="tensor=1 global scale, row=per-row, block=2D tiles, block3d=per-row-group (legacy). block2d is alias for block.",
+                    )
+                    improved_block_size = gr.Slider(
+                        label="Block Size",
+                        minimum=16,
+                        maximum=256,
+                        step=16,
+                        value=config.get("fp8_converter.improved.block_size", 64),
+                        info="Block size for block-wise quantization (INT8 requires this)",
+                    )
+
+                improved_simple_quant = gr.Checkbox(
+                    label="Simple quantization (skip SVD optimization)",
+                    value=config.get("fp8_converter.improved.simple_quant", False),
+                    info="Faster but lower quality. Skips learned rounding.",
+                )
+
+                improved_include_input_scale = gr.Checkbox(
+                    label="Include input_scale tensor (fp32, 1.0)",
+                    value=config.get("fp8_converter.improved.include_input_scale", False),
+                    info="Add input_scale for quantized layers. Always enabled for T5XXL.",
+                )
+
+            # NEW: Fallback and Custom Layers
+            with gr.Accordion("Fallback & Custom Layer Quantization", open=False):
+                gr.Markdown("**Fallback:** Quantize excluded layers instead of keeping them in high precision")
+                improved_fallback_type = gr.Dropdown(
+                    label="Fallback Quantization Type",
+                    choices=[None, "fp8", "int8"],
+                    value=config.get("fp8_converter.improved.fallback_type", None),
+                    info="Apply this quantization to excluded layers (default: keep high precision)",
+                )
+                improved_fallback_block_size = gr.Number(
+                    label="Fallback Block Size",
+                    value=config.get("fp8_converter.improved.fallback_block_size", None),
+                    precision=0,
+                    info="Block size for fallback layers (default: inherit --block_size)",
+                )
+                improved_fallback_simple = gr.Checkbox(
+                    label="Use simple quantization for fallback layers",
+                    value=config.get("fp8_converter.improved.fallback_simple", False),
+                )
+
+                gr.Markdown("**Custom Layers:** Apply different quantization to specific layers by regex pattern")
+                improved_custom_layers = gr.Textbox(
+                    label="Custom Layers Pattern (regex)",
+                    value=config.get("fp8_converter.improved.custom_layers", ""),
+                    placeholder="e.g., .*attention.*|.*mlp.*",
+                    info="Regex pattern for layers to quantize with custom settings",
+                )
+                with gr.Row():
+                    improved_custom_type = gr.Dropdown(
+                        label="Custom Type",
+                        choices=[None, "fp8", "int8"],
+                        value=config.get("fp8_converter.improved.custom_type", None),
+                        info="Quantization type for custom layers",
+                    )
+                    improved_custom_scaling_mode = gr.Dropdown(
+                        label="Custom Scaling Mode",
+                        choices=[None, "tensor", "row", "block", "block2d", "block3d"],
+                        value=config.get("fp8_converter.improved.custom_scaling_mode", None),
+                        info="FP8 scaling mode for custom layers",
+                    )
+                with gr.Row():
+                    improved_custom_block_size = gr.Number(
+                        label="Custom Block Size",
+                        value=config.get("fp8_converter.improved.custom_block_size", None),
+                        precision=0,
+                        info="Block size for custom layers",
+                    )
+                    improved_custom_simple = gr.Checkbox(
+                        label="Custom: Simple quantization",
+                        value=config.get("fp8_converter.improved.custom_simple", False),
+                    )
+                    improved_custom_heur = gr.Checkbox(
+                        label="Custom: Apply heuristics",
+                        value=config.get("fp8_converter.improved.custom_heur", False),
+                    )
+
+            # NEW: Model Presets
+            with gr.Accordion("Additional Model Presets (Layer Exclusions)", open=False):
+                gr.Markdown("Select model-specific layer exclusions. Multiple can be selected.")
+                with gr.Row():
+                    improved_t5xxl = gr.Checkbox(
+                        label="T5XXL",
+                        value=config.get("fp8_converter.improved.t5xxl", False),
+                    )
+                    improved_mistral = gr.Checkbox(
+                        label="Mistral",
+                        value=config.get("fp8_converter.improved.mistral", False),
+                    )
+                    improved_visual = gr.Checkbox(
+                        label="Visual",
+                        value=config.get("fp8_converter.improved.visual", False),
+                    )
+                    improved_flux2 = gr.Checkbox(
+                        label="Flux2",
+                        value=config.get("fp8_converter.improved.flux2", False),
+                    )
+                with gr.Row():
+                    improved_distillation_large = gr.Checkbox(
+                        label="Distillation Large",
+                        value=config.get("fp8_converter.improved.distillation_large", False),
+                    )
+                    improved_distillation_small = gr.Checkbox(
+                        label="Distillation Small",
+                        value=config.get("fp8_converter.improved.distillation_small", False),
+                    )
+                    improved_nerf_large = gr.Checkbox(
+                        label="NeRF Large",
+                        value=config.get("fp8_converter.improved.nerf_large", False),
+                    )
+                    improved_nerf_small = gr.Checkbox(
+                        label="NeRF Small",
+                        value=config.get("fp8_converter.improved.nerf_small", False),
+                    )
+                with gr.Row():
+                    improved_radiance = gr.Checkbox(
+                        label="Radiance",
+                        value=config.get("fp8_converter.improved.radiance", False),
+                    )
+                    improved_wan = gr.Checkbox(
+                        label="WAN",
+                        value=config.get("fp8_converter.improved.wan", False),
+                    )
+                    improved_hunyuan = gr.Checkbox(
+                        label="Hunyuan Video 1.5",
+                        value=config.get("fp8_converter.improved.hunyuan", False),
+                    )
+                    improved_zimage_refiner = gr.Checkbox(
+                        label="Z-Image Refiner",
+                        value=config.get("fp8_converter.improved.zimage_refiner", False),
+                        info="context_refiner, noise_refiner",
+                    )
+
             with gr.Row():
                 improved_num_iter = gr.Slider(
                     label="Iterations per tensor (learned rounding)",
@@ -1115,6 +1480,92 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
                     label="Disable learned rounding (simple quantization)",
                     value=config.get("fp8_converter.improved.no_learned_rounding", False),
                 )
+
+            # NEW: Advanced LR parameters
+            with gr.Accordion("Advanced LR Parameters (Exponential/Plateau schedules)", open=False):
+                gr.Markdown("**Exponential schedule parameters:**")
+                improved_lr_gamma = gr.Number(
+                    label="LR Gamma (decay factor per step)",
+                    value=config.get("fp8_converter.improved.lr_gamma", 0.99),
+                    precision=6,
+                    info="For exponential schedule (default: 0.99)",
+                )
+
+                gr.Markdown("**Plateau schedule parameters:**")
+                with gr.Row():
+                    improved_lr_patience = gr.Number(
+                        label="LR Patience",
+                        value=config.get("fp8_converter.improved.lr_patience", 9),
+                        precision=0,
+                        info="Steps before decay",
+                    )
+                    improved_lr_factor = gr.Number(
+                        label="LR Factor",
+                        value=config.get("fp8_converter.improved.lr_factor", 0.92),
+                        precision=6,
+                        info="LR reduction factor",
+                    )
+                with gr.Row():
+                    improved_lr_min = gr.Number(
+                        label="LR Min",
+                        value=config.get("fp8_converter.improved.lr_min", 1e-10),
+                        precision=12,
+                        info="Minimum LR bound",
+                    )
+                    improved_lr_cooldown = gr.Number(
+                        label="LR Cooldown",
+                        value=config.get("fp8_converter.improved.lr_cooldown", 6),
+                        precision=0,
+                        info="Steps to wait after reduction",
+                    )
+                with gr.Row():
+                    improved_lr_threshold = gr.Number(
+                        label="LR Threshold",
+                        value=config.get("fp8_converter.improved.lr_threshold", 0.0),
+                        precision=6,
+                        info="Min improvement to reset patience",
+                    )
+                    improved_lr_threshold_mode = gr.Dropdown(
+                        label="LR Threshold Mode",
+                        choices=["rel", "abs"],
+                        value=config.get("fp8_converter.improved.lr_threshold_mode", "rel"),
+                        info="Relative or absolute threshold",
+                    )
+
+                improved_lr_adaptive_mode = gr.Dropdown(
+                    label="LR Adaptive Mode",
+                    choices=["simple-reset", "no-reset"],
+                    value=config.get("fp8_converter.improved.lr_adaptive_mode", "simple-reset"),
+                    info="Counter reset behavior for adaptive schedule",
+                )
+
+                improved_lr_shape_influence = gr.Number(
+                    label="LR Shape Influence",
+                    value=config.get("fp8_converter.improved.lr_shape_influence", 1.0),
+                    precision=6,
+                    info="Scale factor based on tensor aspect ratio. 0.0=disabled, 1.0=full effect.",
+                )
+
+            # NEW: Early stopping parameters
+            with gr.Accordion("Early Stopping Parameters", open=False):
+                improved_early_stop_loss = gr.Number(
+                    label="Early Stop Loss Threshold",
+                    value=config.get("fp8_converter.improved.early_stop_loss", 1e-8),
+                    precision=12,
+                    info="Stop when loss drops below this value (default: 1e-8)",
+                )
+                improved_early_stop_lr = gr.Number(
+                    label="Early Stop LR Threshold",
+                    value=config.get("fp8_converter.improved.early_stop_lr", 1e-10),
+                    precision=12,
+                    info="Stop when LR drops below this value (default: 1e-10)",
+                )
+                improved_early_stop_stall = gr.Number(
+                    label="Early Stop Stall Counter",
+                    value=config.get("fp8_converter.improved.early_stop_stall", 1000),
+                    precision=0,
+                    info="Stop when worse_loss_counter exceeds this (default: 1000)",
+                )
     
     # ========== CREATE ALL UI COMPONENTS FIRST ==========
     with gr.Tabs():
@@ -1162,11 +1613,11 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
                     info="Select model architecture or use auto-detection.",
                 )
                 
-                single_quantization_mode = gr.Radio(
-                    label="Quantization Mode",
-                    choices=["tensor", "block"],
+                single_quantization_mode = gr.Dropdown(
+                    label="FP8 Scaling Mode",
+                    choices=["tensor", "row", "block", "block2d", "block3d"],
                     value=config.get("fp8_converter.quantization_mode", "tensor"),
-                    info="tensor = ComfyUI compatible (recommended)",
+                    info="tensor=ComfyUI compatible (1 scale), row=per-row, block=2D tiles. block2d is alias for block.",
                 )
             
             single_delete_original = gr.Checkbox(
@@ -1225,11 +1676,11 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
                     info="Select model architecture or use auto-detection.",
                 )
                 
-                batch_quantization_mode = gr.Radio(
-                    label="Quantization Mode",
-                    choices=["tensor", "block"],
+                batch_quantization_mode = gr.Dropdown(
+                    label="FP8 Scaling Mode",
+                    choices=["tensor", "row", "block", "block2d", "block3d"],
                     value=config.get("fp8_converter.quantization_mode", "tensor"),
-                    info="tensor = ComfyUI compatible (recommended)",
+                    info="tensor=ComfyUI compatible (1 scale), row=per-row, block=2D tiles. block2d is alias for block.",
                 )
             
             batch_delete_original = gr.Checkbox(
@@ -1284,6 +1735,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
                 gr.update(value=64),  # improved_max_k
                 gr.update(value=False),  # improved_full_matrix
                 gr.update(value=False),  # improved_no_learned_rounding
+                gr.update(value="tensor"),  # improved_scaling_mode
             )
         if preset_name == PRESET_B:
             return (
@@ -1303,6 +1755,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
                 gr.update(value=128),
                 gr.update(value=False),
                 gr.update(value=False),
+                gr.update(value="tensor"),  # improved_scaling_mode
             )
         if preset_name == PRESET_C:
             return (
@@ -1322,6 +1775,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
                 gr.update(value=256),
                 gr.update(value=False),
                 gr.update(value=False),
+                gr.update(value="tensor"),  # improved_scaling_mode
             )
         if preset_name == PRESET_D:
             # Matches the user-requested defaults (screenshot):
@@ -1348,6 +1802,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
                 gr.update(value=256),
                 gr.update(value=True),   # improved_full_matrix
                 gr.update(value=False),  # improved_no_learned_rounding
+                gr.update(value="tensor"),  # improved_scaling_mode
             )
         # Custom: no changes
         return (
@@ -1367,6 +1822,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
             gr.update(),
             gr.update(),
             gr.update(),
+            gr.update(),  # improved_scaling_mode
         )
 
     improved_preset.change(
@@ -1389,6 +1845,7 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
             improved_max_k,
             improved_full_matrix,
             improved_no_learned_rounding,
+            improved_scaling_mode,
         ],
         show_progress=False,
     )
@@ -1430,13 +1887,54 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
         max_k,
         full_matrix,
         no_learned_rounding,
+        # New parameters
+        target_format,
+        scaling_mode,
+        block_size,
+        fallback_type,
+        custom_layers,
+        custom_type,
+        custom_block_size,
+        custom_scaling_mode,
+        custom_simple,
+        custom_heur,
+        fallback_block_size,
+        fallback_simple,
+        simple_quant,
+        include_input_scale,
+        t5xxl,
+        mistral,
+        visual,
+        flux2,
+        distillation_large,
+        distillation_small,
+        nerf_large,
+        nerf_small,
+        radiance,
+        wan,
+        hunyuan,
+        zimage_refiner,
+        lr_gamma,
+        lr_patience,
+        lr_factor,
+        lr_min,
+        lr_cooldown,
+        lr_threshold,
+        lr_adaptive_mode,
+        lr_shape_influence,
+        lr_threshold_mode,
+        early_stop_loss,
+        early_stop_lr,
+        early_stop_stall,
     ):
         model_type = get_internal_model_type(model_type_ui)
         engine = get_internal_engine(engine_ui)
+        # Override quantization_mode with scaling_mode if provided (for improved engine)
+        actual_quantization_mode = scaling_mode if engine == "convert_to_quant" else quantization_mode
         return converter.convert_single_file(
             input_file=input_file,
             output_file=output_file,
-            quantization_mode=quantization_mode,
+            quantization_mode=actual_quantization_mode,
             delete_original=delete_original,
             model_type=model_type,
             engine=engine,
@@ -1456,6 +1954,46 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
             improved_max_k=_as_int(max_k, 16),
             improved_full_matrix=bool(full_matrix),
             improved_no_learned_rounding=bool(no_learned_rounding),
+            # New parameters
+            improved_target_format=str(target_format),
+            improved_block_size=_as_int(block_size, 64),
+            improved_fallback_type=fallback_type if fallback_type else None,
+            improved_custom_layers=custom_layers if custom_layers and custom_layers.strip() else None,
+            improved_custom_type=custom_type if custom_type else None,
+            improved_custom_block_size=_as_int(custom_block_size, None) if custom_block_size else None,
+            improved_custom_scaling_mode=custom_scaling_mode if custom_scaling_mode else None,
+            improved_custom_simple=bool(custom_simple),
+            improved_custom_heur=bool(custom_heur),
+            improved_fallback_block_size=_as_int(fallback_block_size, None) if fallback_block_size else None,
+            improved_fallback_simple=bool(fallback_simple),
+            improved_simple_quant=bool(simple_quant),
+            improved_include_input_scale=bool(include_input_scale),
+            improved_t5xxl=bool(t5xxl),
+            improved_mistral=bool(mistral),
+            improved_visual=bool(visual),
+            improved_flux2=bool(flux2),
+            improved_distillation_large=bool(distillation_large),
+            improved_distillation_small=bool(distillation_small),
+            improved_nerf_large=bool(nerf_large),
+            improved_nerf_small=bool(nerf_small),
+            improved_radiance=bool(radiance),
+            improved_wan=bool(wan),
+            improved_hunyuan=bool(hunyuan),
+            improved_zimage_refiner=bool(zimage_refiner),
+            # Advanced LR params
+            improved_lr_gamma=_as_float(lr_gamma, 0.99),
+            improved_lr_patience=_as_int(lr_patience, 9),
+            improved_lr_factor=_as_float(lr_factor, 0.92),
+            improved_lr_min=_as_float(lr_min, 1e-10),
+            improved_lr_cooldown=_as_int(lr_cooldown, 6),
+            improved_lr_threshold=_as_float(lr_threshold, 0.0),
+            improved_lr_adaptive_mode=str(lr_adaptive_mode),
+            improved_lr_shape_influence=_as_float(lr_shape_influence, 1.0),
+            improved_lr_threshold_mode=str(lr_threshold_mode),
+            # Early stopping
+            improved_early_stop_loss=_as_float(early_stop_loss, 1e-8),
+            improved_early_stop_lr=_as_float(early_stop_lr, 1e-10),
+            improved_early_stop_stall=_as_int(early_stop_stall, 1000),
         )
     
     single_convert_button.click(
@@ -1483,6 +2021,45 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
             improved_max_k,
             improved_full_matrix,
             improved_no_learned_rounding,
+            # New parameters
+            improved_target_format,
+            improved_scaling_mode,
+            improved_block_size,
+            improved_fallback_type,
+            improved_custom_layers,
+            improved_custom_type,
+            improved_custom_block_size,
+            improved_custom_scaling_mode,
+            improved_custom_simple,
+            improved_custom_heur,
+            improved_fallback_block_size,
+            improved_fallback_simple,
+            improved_simple_quant,
+            improved_include_input_scale,
+            improved_t5xxl,
+            improved_mistral,
+            improved_visual,
+            improved_flux2,
+            improved_distillation_large,
+            improved_distillation_small,
+            improved_nerf_large,
+            improved_nerf_small,
+            improved_radiance,
+            improved_wan,
+            improved_hunyuan,
+            improved_zimage_refiner,
+            improved_lr_gamma,
+            improved_lr_patience,
+            improved_lr_factor,
+            improved_lr_min,
+            improved_lr_cooldown,
+            improved_lr_threshold,
+            improved_lr_adaptive_mode,
+            improved_lr_shape_influence,
+            improved_lr_threshold_mode,
+            improved_early_stop_loss,
+            improved_early_stop_lr,
+            improved_early_stop_stall,
         ],
         outputs=[output_status],
         show_progress=True,
@@ -1525,13 +2102,54 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
         max_k,
         full_matrix,
         no_learned_rounding,
+        # New parameters
+        target_format,
+        scaling_mode,
+        block_size,
+        fallback_type,
+        custom_layers,
+        custom_type,
+        custom_block_size,
+        custom_scaling_mode,
+        custom_simple,
+        custom_heur,
+        fallback_block_size,
+        fallback_simple,
+        simple_quant,
+        include_input_scale,
+        t5xxl,
+        mistral,
+        visual,
+        flux2,
+        distillation_large,
+        distillation_small,
+        nerf_large,
+        nerf_small,
+        radiance,
+        wan,
+        hunyuan,
+        zimage_refiner,
+        lr_gamma,
+        lr_patience,
+        lr_factor,
+        lr_min,
+        lr_cooldown,
+        lr_threshold,
+        lr_adaptive_mode,
+        lr_shape_influence,
+        lr_threshold_mode,
+        early_stop_loss,
+        early_stop_lr,
+        early_stop_stall,
     ):
         model_type = get_internal_model_type(model_type_ui)
         engine = get_internal_engine(engine_ui)
+        # Override quantization_mode with scaling_mode if provided (for improved engine)
+        actual_quantization_mode = scaling_mode if engine == "convert_to_quant" else quantization_mode
         return converter.batch_convert_models(
             input_folder=input_folder,
             output_folder=output_folder,
-            quantization_mode=quantization_mode,
+            quantization_mode=actual_quantization_mode,
             delete_original=delete_original,
             model_type=model_type,
             engine=engine,
@@ -1551,6 +2169,46 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
             improved_max_k=_as_int(max_k, 16),
             improved_full_matrix=bool(full_matrix),
             improved_no_learned_rounding=bool(no_learned_rounding),
+            # New parameters
+            improved_target_format=str(target_format),
+            improved_block_size=_as_int(block_size, 64),
+            improved_fallback_type=fallback_type if fallback_type else None,
+            improved_custom_layers=custom_layers if custom_layers and custom_layers.strip() else None,
+            improved_custom_type=custom_type if custom_type else None,
+            improved_custom_block_size=_as_int(custom_block_size, None) if custom_block_size else None,
+            improved_custom_scaling_mode=custom_scaling_mode if custom_scaling_mode else None,
+            improved_custom_simple=bool(custom_simple),
+            improved_custom_heur=bool(custom_heur),
+            improved_fallback_block_size=_as_int(fallback_block_size, None) if fallback_block_size else None,
+            improved_fallback_simple=bool(fallback_simple),
+            improved_simple_quant=bool(simple_quant),
+            improved_include_input_scale=bool(include_input_scale),
+            improved_t5xxl=bool(t5xxl),
+            improved_mistral=bool(mistral),
+            improved_visual=bool(visual),
+            improved_flux2=bool(flux2),
+            improved_distillation_large=bool(distillation_large),
+            improved_distillation_small=bool(distillation_small),
+            improved_nerf_large=bool(nerf_large),
+            improved_nerf_small=bool(nerf_small),
+            improved_radiance=bool(radiance),
+            improved_wan=bool(wan),
+            improved_hunyuan=bool(hunyuan),
+            improved_zimage_refiner=bool(zimage_refiner),
+            # Advanced LR params
+            improved_lr_gamma=_as_float(lr_gamma, 0.99),
+            improved_lr_patience=_as_int(lr_patience, 9),
+            improved_lr_factor=_as_float(lr_factor, 0.92),
+            improved_lr_min=_as_float(lr_min, 1e-10),
+            improved_lr_cooldown=_as_int(lr_cooldown, 6),
+            improved_lr_threshold=_as_float(lr_threshold, 0.0),
+            improved_lr_adaptive_mode=str(lr_adaptive_mode),
+            improved_lr_shape_influence=_as_float(lr_shape_influence, 1.0),
+            improved_lr_threshold_mode=str(lr_threshold_mode),
+            # Early stopping
+            improved_early_stop_loss=_as_float(early_stop_loss, 1e-8),
+            improved_early_stop_lr=_as_float(early_stop_lr, 1e-10),
+            improved_early_stop_stall=_as_int(early_stop_stall, 1000),
         )
     
     batch_convert_button.click(
@@ -1578,6 +2236,45 @@ def fp8_converter_tab(headless: bool, config: GUIConfig) -> None:
             improved_max_k,
             improved_full_matrix,
             improved_no_learned_rounding,
+            # New parameters
+            improved_target_format,
+            improved_scaling_mode,
+            improved_block_size,
+            improved_fallback_type,
+            improved_custom_layers,
+            improved_custom_type,
+            improved_custom_block_size,
+            improved_custom_scaling_mode,
+            improved_custom_simple,
+            improved_custom_heur,
+            improved_fallback_block_size,
+            improved_fallback_simple,
+            improved_simple_quant,
+            improved_include_input_scale,
+            improved_t5xxl,
+            improved_mistral,
+            improved_visual,
+            improved_flux2,
+            improved_distillation_large,
+            improved_distillation_small,
+            improved_nerf_large,
+            improved_nerf_small,
+            improved_radiance,
+            improved_wan,
+            improved_hunyuan,
+            improved_zimage_refiner,
+            improved_lr_gamma,
+            improved_lr_patience,
+            improved_lr_factor,
+            improved_lr_min,
+            improved_lr_cooldown,
+            improved_lr_threshold,
+            improved_lr_adaptive_mode,
+            improved_lr_shape_influence,
+            improved_lr_threshold_mode,
+            improved_early_stop_loss,
+            improved_early_stop_lr,
+            improved_early_stop_stall,
         ],
         outputs=[output_status],
         show_progress=True,
