@@ -19,6 +19,9 @@ musubi-tuner2
 lib/
 cli_executed_commands
 lib64/
+Z_Image_BF16.safetensors
+convert_nvfp4_learned.bat
+convert_to_quant2/
 parts/
 musubi-tuner
 convert_to_quant
