@@ -362,7 +362,7 @@ def generate_dataset_config_from_folders(
             
             # Add Qwen Image Edit specific settings if control directory exists
             if qwen_image_edit_no_resize_control:
-                dataset_entry["qwen_image_edit_no_resize_control"] = True
+                dataset_entry["no_resize_control"] = True
             
             messages.append(f"[OK] Found control directory for '{subdir}'")
         

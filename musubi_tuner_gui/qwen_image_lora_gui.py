@@ -504,7 +504,7 @@ class QwenImageDataset:
                     return "", "", "[ERROR] Failed to generate configuration. Check your folder structure.\n" + "\n".join(messages)
                 
                 # Add control resolution settings to datasets with control directories
-                # NOTE: qwen_image_edit_no_resize_control and control_resolution are mutually exclusive.
+                # NOTE: no_resize_control and control_resolution are mutually exclusive.
                 if qwen_no_resize and control_res_width > 0 and control_res_height > 0:
                     messages.append(
                         "[WARNING] 'No Resize Control' is enabled, so control resolution settings are ignored "
