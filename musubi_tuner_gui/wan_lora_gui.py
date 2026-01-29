@@ -1253,7 +1253,7 @@ class WanModelSettings:
                             value=str(self.config.get("dit", "")), lines=3
                         )
                     with gr.Column(min_width=60):
-                        self.dit_button = gr.Button("📂", size="lg", elem_id="dit_button")
+                        self.dit_button = gr.Button("Browse Folder", size="lg", elem_id="dit_button")
             with gr.Column():
                 with gr.Row():
                     with gr.Column(scale=2):
@@ -1264,7 +1264,7 @@ class WanModelSettings:
                             value=str(self.config.get("vae", "")), lines=3
                         )
                     with gr.Column(min_width=60):
-                        self.vae_button = gr.Button("📂", size="lg", elem_id="vae_button")
+                        self.vae_button = gr.Button("Browse Folder", size="lg", elem_id="vae_button")
 
         with gr.Row():
             with gr.Column():
@@ -1277,7 +1277,7 @@ class WanModelSettings:
                             value=str(self.config.get("t5", "")), lines=3
                         )
                     with gr.Column(min_width=60):
-                        self.t5_button = gr.Button("📂", size="lg", elem_id="t5_button")
+                        self.t5_button = gr.Button("Browse Folder", size="lg", elem_id="t5_button")
             with gr.Column():
                 with gr.Row():
                     with gr.Column(scale=2):
@@ -1288,7 +1288,7 @@ class WanModelSettings:
                             value=str(self.config.get("clip", "")), lines=3
                         )
                     with gr.Column(min_width=60):
-                        self.clip_button = gr.Button("📂", size="lg", elem_id="clip_button")
+                        self.clip_button = gr.Button("Browse Folder", size="lg", elem_id="clip_button")
 
         # Wan 2.2 Advanced Models Settings
         with gr.Row():
@@ -1330,7 +1330,7 @@ class WanModelSettings:
                     value=str(self.config.get("dit_high_noise", ""))
                 )
             with gr.Column(scale=1):
-                self.dit_high_noise_button = gr.Button("📂", size="lg", elem_id="dit_high_noise_button")
+                self.dit_high_noise_button = gr.Button("Browse Folder", size="lg", elem_id="dit_high_noise_button")
 
         with gr.Row():
             self.timestep_boundary = gr.Number(

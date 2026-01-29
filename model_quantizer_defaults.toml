@@ -1,0 +1,58 @@
+model_quantizer.workflow = "Quantize (FP8/INT8/NVFP4/MXFP8)"
+model_quantizer.quant_format = "FP8 (E4M3)"
+model_quantizer.comfy_quant = true
+model_quantizer.full_precision_matrix_mult = false
+model_quantizer.scaling_mode = "tensor"
+model_quantizer.block_size = 64
+model_quantizer.include_input_scale = false
+
+model_quantizer.simple = false
+model_quantizer.skip_inefficient_layers = false
+model_quantizer.full_matrix = false
+model_quantizer.calib_samples = 6144
+model_quantizer.manual_seed = -1
+model_quantizer.optimizer = "original"
+model_quantizer.num_iter = 1000
+model_quantizer.lr = 0.008077300000003
+model_quantizer.lr_schedule = "adaptive"
+model_quantizer.top_p = 0.2
+model_quantizer.min_k = 64
+model_quantizer.max_k = 1024
+
+model_quantizer.lr_gamma = 0.99
+model_quantizer.lr_patience = 9
+model_quantizer.lr_factor = 0.95
+model_quantizer.lr_min = 1e-10
+model_quantizer.lr_cooldown = 6
+model_quantizer.lr_threshold = 0.0
+model_quantizer.lr_adaptive_mode = "simple-reset"
+model_quantizer.lr_shape_influence = 1.0
+model_quantizer.lr_threshold_mode = "rel"
+model_quantizer.early_stop_loss = 1e-8
+model_quantizer.early_stop_lr = 1e-10
+model_quantizer.early_stop_stall = 1000
+
+model_quantizer.scale_optimization = "fixed"
+model_quantizer.scale_refinement_rounds = 1
+
+model_quantizer.save_quant_metadata = false
+model_quantizer.no_normalize_scales = false
+model_quantizer.scaled_fp8_marker = 0
+model_quantizer.verbose = "MINIMAL"
+model_quantizer.output_mode = "Compact (hide progress bars)"
+model_quantizer.verbose_pinned = false
+model_quantizer.low_memory = false
+
+model_quantizer.preset = "Custom (manual)"
+model_quantizer.model_preset = "None (manual)"
+
+model_quantizer.single_input_file = ""
+model_quantizer.single_output_file = ""
+model_quantizer.single_delete_original = false
+
+model_quantizer.batch_input_folder = ""
+model_quantizer.batch_output_folder = ""
+model_quantizer.batch_extensions = ".safetensors"
+model_quantizer.batch_recursive = true
+model_quantizer.batch_overwrite = false
+model_quantizer.batch_delete_original = false

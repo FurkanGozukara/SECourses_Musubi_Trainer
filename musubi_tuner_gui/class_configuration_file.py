@@ -70,18 +70,18 @@ class ConfigurationFile:
 
                 # Buttons for opening, saving, and loading configuration files, displayed conditionally based on headless mode.
                 self.button_open_config = gr.Button(
-                    "📂",
+                    "Open",
                     elem_id="open_folder_small",
                     elem_classes=["tool"],
                     visible=(not self.headless),
                 )
                 self.button_save_config = gr.Button(
-                    "💾",
+                    "Save",
                     elem_id="open_folder_small",
                     elem_classes=["tool"],
                 )
                 self.button_load_config = gr.Button(
-                    "↩️ ",
+                    "Load",
                     elem_id="open_folder_small",
                     elem_classes=["tool"],
                 )
