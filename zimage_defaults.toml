@@ -5,7 +5,7 @@
 zimage_variant = "base"  # "base" | "turbo"
 
 # Training mode (GUI only)
-training_mode = "LoRA Training"  # "LoRA Training" | "DreamBooth Fine-Tuning" (not supported for Z-Image yet)
+training_mode = "LoRA Training"  # "LoRA Training" | "DreamBooth Fine-Tuning"
 
 # Optional: Turbo Training Adapter (LoRA). If set, GUI passes it as base_weights (--base_weights) during training.
 training_adapter_path = ""
@@ -77,6 +77,7 @@ optimizer_type = "adamw8bit"
 optimizer_args = ""
 learning_rate = 1e-4
 max_grad_norm = 1.0
+fused_backward_pass = false  # DreamBooth only: reduces VRAM during backward pass with AdaFactor
 lr_scheduler = "constant"
 lr_warmup_steps = 0
 lr_decay_steps = 0

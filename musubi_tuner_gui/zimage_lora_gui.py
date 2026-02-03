@@ -854,6 +854,7 @@ ZIMAGE_PARAM_KEYS = [
     "optimizer_args",
     "learning_rate",
     "max_grad_norm",
+    "fused_backward_pass",
     "lr_scheduler",
     "lr_warmup_steps",
     "lr_decay_steps",
@@ -942,6 +943,7 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
         "sdpa": True,
         "optimizer_type": "adamw8bit",
         "learning_rate": 1e-4,
+        "fused_backward_pass": False,
         "gradient_checkpointing": True,
         "timestep_sampling": "shift",
         "weighting_scheme": "none",
@@ -1560,6 +1562,11 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
     accordions.append(optimizer_accordion)
     with optimizer_accordion:
         optim = OptimizerAndScheduler(headless=headless, config=config)
+        fused_backward_pass = gr.Checkbox(
+            label="fused_backward_pass",
+            value=bool(config.get("fused_backward_pass", False)),
+            info="DreamBooth only: reduces VRAM during backward pass with AdaFactor. Not effective for LoRA training.",
+        )
 
     network_accordion = gr.Accordion("LoRA Settings", open=False, elem_classes="flux1_background")
     accordions.append(network_accordion)
@@ -1710,6 +1717,7 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
         optim.optimizer_args,
         optim.learning_rate,
         optim.max_grad_norm,
+        fused_backward_pass,
         optim.lr_scheduler,
         optim.lr_warmup_steps,
         optim.lr_decay_steps,
@@ -1853,6 +1861,7 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
             "scheduler": ("Learning Rate, Optimizer and Scheduler Settings", "LR Scheduler"),
             "warmup": ("Learning Rate, Optimizer and Scheduler Settings", "LR Warmup Steps"),
             "max_grad_norm": ("Learning Rate, Optimizer and Scheduler Settings", "Max Gradient Norm"),
+            "fused_backward_pass": ("Learning Rate, Optimizer and Scheduler Settings", "Fused Backward Pass"),
 
             # Network/LoRA Settings
             "lora": ("LoRA Settings", "LoRA Configuration"),
