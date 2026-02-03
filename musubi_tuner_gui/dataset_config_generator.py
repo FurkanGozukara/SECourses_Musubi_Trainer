@@ -247,7 +247,9 @@ def generate_dataset_config_from_folders(
     bucket_no_upscale: bool = False,
     cache_directory_name: str = "cache_dir",
     control_directory_name: str = "edit_images",
-    qwen_image_edit_no_resize_control: bool = False
+    qwen_image_edit_no_resize_control: bool = False,
+    no_resize_control: bool = False,
+    control_resolution: Optional[Tuple[int, int]] = None,
 ) -> Tuple[Dict, List[str]]:
     """
     Generate dataset configuration from folder structure.
@@ -360,9 +362,18 @@ def generate_dataset_config_from_folders(
         if os.path.exists(control_dir_path) and os.path.isdir(control_dir_path):
             dataset_entry["control_directory"] = validate_path_for_toml(control_dir_path)
             
-            # Add Qwen Image Edit specific settings if control directory exists
-            if qwen_image_edit_no_resize_control:
+            # Control image resizing options (shared by FLUX.2, FLUX.1 Kontext, Qwen-Image-Edit, etc.)
+            if qwen_image_edit_no_resize_control or no_resize_control:
                 dataset_entry["no_resize_control"] = True
+
+            if control_resolution is not None:
+                try:
+                    cw, ch = int(control_resolution[0]), int(control_resolution[1])
+                    if cw > 0 and ch > 0:
+                        dataset_entry["control_resolution"] = [cw, ch]
+                except Exception:
+                    # Keep generation resilient: invalid values should not crash dataset generation.
+                    pass
             
             messages.append(f"[OK] Found control directory for '{subdir}'")
         

@@ -8,6 +8,8 @@ import gradio as gr
 from musubi_tuner_gui.lora_gui import lora_tab
 from musubi_tuner_gui.qwen_image_lora_gui import qwen_image_lora_tab
 from musubi_tuner_gui.wan_lora_gui import wan_lora_tab
+from musubi_tuner_gui.flux_lora_gui import flux_lora_tab
+from musubi_tuner_gui.zimage_lora_gui import zimage_lora_tab
 from musubi_tuner_gui.image_captioning_gui import image_captioning_tab
 from musubi_tuner_gui.model_quantizer_gui import model_quantizer_tab
 from musubi_tuner_gui.image_preprocessing_gui import image_preprocessing_tab
@@ -48,6 +50,14 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
         with gr.Tab("Wan Models Training"):
             wan_config = config_manager.get_config_for_tab("wan")
             wan_lora_tab(headless=headless, config=wan_config)
+
+        with gr.Tab("FLUX Training"):
+            flux_config = config_manager.get_config_for_tab("flux")
+            flux_lora_tab(headless=headless, config=flux_config)
+
+        with gr.Tab("Z Image Training"):
+            zimage_config = config_manager.get_config_for_tab("zimage")
+            zimage_lora_tab(headless=headless, config=zimage_config)
         
         with gr.Tab("Image Captioning"):
             captioning_config = config_manager.get_config_for_tab("image_captioning")

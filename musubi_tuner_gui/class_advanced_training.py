@@ -62,6 +62,7 @@ class AdvancedTraining:
                 label="Additional parameters",
                 placeholder='(Optional) Use to provide additional parameters not handled by the GUI. Eg: --some_parameters "value"',
                 value=self.config.get("additional_parameters", ""),
+                info="Extra CLI flags appended to the training command (use with care).",
             )
 
         with gr.Row():

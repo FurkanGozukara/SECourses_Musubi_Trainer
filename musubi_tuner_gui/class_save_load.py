@@ -23,6 +23,7 @@ class SaveLoadSettings:
                     placeholder="Directory to save the trained model",
                     value=self.config.get("output_dir", None),
                     interactive=True,
+                    info="Required. Folder where checkpoints and config will be written.",
                 )
             self.output_dir_button = gr.Button(
                 "📂",
@@ -35,6 +36,7 @@ class SaveLoadSettings:
                     placeholder="Base name of the trained model file (excluding extension)",
                     value=self.config.get("output_name", "lora"),
                     interactive=True,
+                    info="Required. Base filename for saved checkpoints (extension is added automatically).",
                 )
 
         with gr.Row():
@@ -43,6 +45,7 @@ class SaveLoadSettings:
                 placeholder="Path to saved state to resume training",
                 value=self.config.get("resume", None),
                 interactive=True,
+                info="Optional. Path to a saved state to resume training from.",
             )
 
         with gr.Row():
@@ -100,12 +103,14 @@ class SaveLoadSettings:
             self.save_state = gr.Checkbox(
                 label="Save Training State",
                 value=self.config.get("save_state", False),
+                info="Save optimizer and training state (needed for resume).",
             )
 
             self.save_state_on_train_end = gr.Checkbox(
                 label="Save State on Train End",
                 value=self.config.get("save_state_on_train_end", False),
                 interactive=True,
+                info="Save state at the end of training even if periodic saving is disabled.",
             )
         
         with gr.Row():

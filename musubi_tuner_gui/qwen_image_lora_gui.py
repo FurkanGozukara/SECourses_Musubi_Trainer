@@ -1370,10 +1370,15 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
         )
     else:
         log.info("Save...")
-        # Auto-append .toml extension if not present
-        if file_path and not file_path.endswith('.toml'):
-            file_path = file_path + '.toml'
-            log.info(f"Auto-appending .toml extension: {file_path}")
+        # Always save as TOML. If user provides a path with another extension, replace it.
+        if file_path:
+            root, ext = os.path.splitext(file_path)
+            if not ext:
+                file_path = file_path + ".toml"
+                log.info(f"Auto-appending .toml extension: {file_path}")
+            elif ext.lower() != ".toml":
+                file_path = root + ".toml"
+                log.info(f"Replacing extension with .toml: {file_path}")
         elif file_path == None or file_path == "":
             file_path = get_saveasfile_path(
                 file_path,
@@ -4621,7 +4626,7 @@ def qwen_image_lora_tab(
     configuration.config_file_name.change(
         fn=lambda config_name, *args: (
             qwen_image_gui_actions("open_configuration", False, config_name, dummy_headless.value, False, *args)
-            if config_name and config_name.endswith('.json')
+            if config_name and str(config_name).lower().endswith((".toml", ".json"))
             else ([config_name, ""] + [gr.update() for _ in settings_list])
         ),
         inputs=[configuration.config_file_name] + settings_list,

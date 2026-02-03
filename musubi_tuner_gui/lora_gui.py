@@ -941,7 +941,7 @@ def lora_tab(
     configuration.config_file_name.change(
         fn=lambda config_name, *args: (
             gui_actions("open_configuration", False, config_name, dummy_headless.value, False, *args)
-            if config_name and config_name.endswith('.json')
+            if config_name and str(config_name).lower().endswith((".toml", ".json"))
             else ([config_name] + [gr.update() for _ in settings_list])
         ),
         inputs=[configuration.config_file_name] + settings_list,

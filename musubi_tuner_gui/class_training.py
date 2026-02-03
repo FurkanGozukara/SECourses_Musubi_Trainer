@@ -19,6 +19,7 @@ class TrainingSettings:
             self.sdpa = gr.Checkbox(
                 label="Use SDPA for CrossAttention",
                 value=self.config.get("sdpa", False),
+                info="Use PyTorch SDPA attention (torch>=2.0).",
             )
 
             self.flash_attn = gr.Checkbox(
@@ -56,7 +57,7 @@ class TrainingSettings:
 
             self.max_train_epochs = gr.Number(
                 label="Max Training Epochs",
-                info='Overrides max_train_steps',
+                info="Optional. Overrides max_train_steps when set.",
                 value=self.config.get("max_train_epochs", None),
             )
 
@@ -118,6 +119,7 @@ class TrainingSettings:
                 label="Logging Directory",
                 placeholder="Directory for TensorBoard logs",
                 value=self.config.get("logging_dir", ""),
+                info="Required when log_with is tensorboard or all.",
             )
 
             self.log_with = gr.Dropdown(
@@ -134,12 +136,14 @@ class TrainingSettings:
                 label="Log Directory Prefix",
                 placeholder="Prefix for each log directory",
                 value=self.config.get("log_prefix", ""),
+                info="Optional. Prefix for generated log directories.",
             )
 
             self.log_tracker_name = gr.Textbox(
                 label="Log Tracker Name",
                 placeholder="Name of the tracker used for logging",
                 value=self.config.get("log_tracker_name", ""),
+                info="Optional. Custom tracker name shown in logs.",
             )
 
         with gr.Row():
@@ -147,12 +151,14 @@ class TrainingSettings:
                 label="WandB Run Name",
                 placeholder="Name of the specific WandB session",
                 value=self.config.get("wandb_run_name", ""),
+                info="Optional. Run name shown in WandB.",
             )
 
             self.wandb_api_key = gr.Textbox(
                 label="WandB API Key",
                 placeholder="Optional: Specify WandB API key to log in before training",
                 value=self.config.get("wandb_api_key", ""),
+                info="Optional. If set, logs in before training.",
             )
 
         with gr.Row():
@@ -160,6 +166,7 @@ class TrainingSettings:
                 label="Log Tracker Config",
                 placeholder="Path to the tracker config file for logging",
                 value=self.config.get("log_tracker_config", ""),
+                info="Optional. Path to a tracker config file.",
             )
 
             self.log_config = gr.Checkbox(
@@ -178,10 +185,12 @@ class TrainingSettings:
             self.ddp_gradient_as_bucket_view = gr.Checkbox(
                 label="Enable Gradient as Bucket View for DDP",
                 value=self.config.get("ddp_gradient_as_bucket_view", False),
+                info="DDP optimization: use gradient_as_bucket_view.",
             )
 
             self.ddp_static_graph = gr.Checkbox(
                 label="Enable Static Graph for DDP",
                 value=self.config.get("ddp_static_graph", False),
+                info="DDP optimization for static graphs.",
             )
 

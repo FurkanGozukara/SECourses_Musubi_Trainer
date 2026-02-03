@@ -16,18 +16,21 @@ class MetaData:
                 placeholder="(optional) title for model metadata (default is output_name)",
                 interactive=True,
                 value=self.config.get("metadata_title", ""),
+                info="Optional title stored in the model metadata.",
             )
             self.metadata_author = gr.Textbox(
                 label="Metadata author",
                 placeholder="(optional) author name for model metadata",
                 interactive=True,
                 value=self.config.get("metadata_author", ""),
+                info="Optional author name stored in metadata.",
             )
         self.metadata_description = gr.Textbox(
             label="Metadata description",
             placeholder="(optional) description for model metadata",
             interactive=True,
             value=self.config.get("metadata_description", ""),
+            info="Optional description stored in metadata.",
         )
         with gr.Row():
             self.metadata_license = gr.Textbox(
@@ -35,12 +38,14 @@ class MetaData:
                 placeholder="(optional) license for model metadata",
                 interactive=True,
                 value=self.config.get("metadata_license", ""),
+                info="Optional license string stored in metadata.",
             )
             self.metadata_tags = gr.Textbox(
                 label="Metadata tags",
                 placeholder="(optional) tags for model metadata, separated by comma",
                 interactive=True,
                 value=self.config.get("metadata_tags", ""),
+                info="Optional comma-separated tags stored in metadata.",
             )
         
         with gr.Row():

@@ -46,8 +46,8 @@ class ConfigurationFile:
         - list: A list of directories.
         """
         self.current_config_dir = path if not path == "" else "."
-        # Lists all .json files in the current configuration directory, used for populating dropdown choices.
-        return list(list_files(self.current_config_dir, exts=[".json"], all=True))
+        # This app saves/loads training presets as TOML. Keep .json for legacy compatibility.
+        return list(list_files(self.current_config_dir, exts=[".toml", ".json"], all=True))
 
     def create_config_gui(self) -> None:
         """
@@ -64,24 +64,25 @@ class ConfigurationFile:
                     value=self.config.get("config_dir", ""),
                     interactive=True,
                     allow_custom_value=True,
+                    info="Select a preset .toml file (or type a path) to load or save settings.",
                 )
 
                 # Refresh button removed - auto-refresh happens on dropdown change
 
                 # Buttons for opening, saving, and loading configuration files, displayed conditionally based on headless mode.
                 self.button_open_config = gr.Button(
-                    "Open",
+                    "📂 Open",
                     elem_id="open_folder_small",
                     elem_classes=["tool"],
                     visible=(not self.headless),
                 )
                 self.button_save_config = gr.Button(
-                    "Save",
+                    "💾 Save",
                     elem_id="open_folder_small",
                     elem_classes=["tool"],
                 )
                 self.button_load_config = gr.Button(
-                    "Load",
+                    "📥 Load",
                     elem_id="open_folder_small",
                     elem_classes=["tool"],
                 )
@@ -92,7 +93,8 @@ class ConfigurationFile:
                 value="",
                 interactive=False,
                 visible=False,
-                elem_id="config_status"
+                elem_id="config_status",
+                info="Shows status messages after save/load actions.",
             )
             
             # Note: Change handler for auto-load is now set in the parent GUI component

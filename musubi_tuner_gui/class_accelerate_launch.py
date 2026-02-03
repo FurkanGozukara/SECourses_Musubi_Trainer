@@ -22,7 +22,7 @@ class AccelerateLaunch:
                     label="Mixed precision",
                     choices=["no", "fp16", "bf16"],
                     value=self.config.get("mixed_precision", "bf16"),
-                    info="✅ bf16 RECOMMENDED for Qwen Image. fp16 may cause instability. fp8 not supported in mixed_precision.",
+                    info="Use mixed precision for training. bf16 is generally recommended for FLUX/Z-Image on supported GPUs; fp16 may be less stable.",
                 )
                 self.num_processes = gr.Number(
                     label="Number of processes",
@@ -48,7 +48,7 @@ class AccelerateLaunch:
                     value=self.config.get(
                         "num_cpu_threads_per_process", 2
                     ),
-                    info="The number of CPU threads per process.",
+                    info="CPU threads per process used by accelerate (data loading and preprocessing).",
                 )
             with gr.Row():
                 self.dynamo_backend = gr.Dropdown(
@@ -69,7 +69,7 @@ class AccelerateLaunch:
                         "tvm",
                     ],
                     value=self.config.get("dynamo_backend", "no"),
-                    info="Backend for dynamo JIT compiler. no = disabled (recommended), inductor = PyTorch 2.0+ optimization",
+                    info="Backend for torch dynamo JIT. Use 'no' to disable (recommended for stability), or 'inductor' for PyTorch 2.x optimizations.",
                 )
                 self.dynamo_mode = gr.Dropdown(
                     label="Dynamo mode",
@@ -108,7 +108,7 @@ class AccelerateLaunch:
                     label="GPU IDs",
                     value=self.config.get("gpu_ids", ""),
                     placeholder="example: 0,1",
-                    info=" What GPUs (by id) should be used for training on this machine as a comma-separated list",
+                    info="Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
                 )
 
                 def validate_gpu_ids(value):
@@ -134,7 +134,7 @@ class AccelerateLaunch:
                     step=1,
                     minimum=0,
                     maximum=65535,
-                    info="The port to use to communicate with the machine of rank 0.",
+                    info="Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
                 )
         with gr.Row():
             self.extra_accelerate_launch_args = gr.Textbox(

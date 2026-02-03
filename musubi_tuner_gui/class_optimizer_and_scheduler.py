@@ -139,6 +139,7 @@ class OptimizerAndScheduler:
                 label="LR Scheduler Type",
                 placeholder="Specify custom scheduler module",
                 value=self.config.get("lr_scheduler_type", ""),
+                info="Optional. Custom scheduler module or class path (overrides preset selection).",
             )
 
         with gr.Row():
@@ -146,4 +147,5 @@ class OptimizerAndScheduler:
                 label="LR Scheduler Arguments",
                 placeholder='Additional arguments for scheduler. Space separated. e.g. "T_max=100 eta_min=1e-7 last_epoch=-1"',
                 value=" ".join(self.config.get("lr_scheduler_args", []) or []),
+                info="Space-separated key=value args passed to the scheduler.",
             )

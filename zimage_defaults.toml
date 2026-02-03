@@ -1,0 +1,134 @@
+# Z-Image Training - Recommended Defaults (Base + Turbo)
+# Based on musubi-tuner/docs/zimage.md training example.
+
+# Z-Image variant selector (GUI-only; training uses your selected DiT checkpoint)
+zimage_variant = "base"  # "base" | "turbo"
+
+# Training mode (GUI only)
+training_mode = "LoRA Training"  # "LoRA Training" | "DreamBooth Fine-Tuning" (not supported for Z-Image yet)
+
+# Required model paths (set these)
+dit = ""          # REQUIRED: path to Z-Image DiT checkpoint (Base or Turbo/De-Turbo)
+vae = ""          # REQUIRED: path to Z-Image VAE checkpoint
+text_encoder = "" # REQUIRED: path to Qwen3 text encoder (split file 00001-of-...)
+
+# Dataset config
+dataset_config_mode = "Generate from Folder Structure"  # "Generate from Folder Structure" | "Use TOML File"
+dataset_config = ""        # Used when dataset_config_mode="Use TOML File"
+parent_folder_path = ""    # Used when dataset_config_mode="Generate from Folder Structure"
+dataset_resolution_width = 1024
+dataset_resolution_height = 1024
+dataset_caption_extension = ".txt"
+create_missing_captions = true
+caption_strategy = "folder_name"
+dataset_batch_size = 1
+dataset_enable_bucket = true
+dataset_bucket_no_upscale = false
+dataset_cache_directory = "cache_dir"
+generated_toml_path = ""
+
+# Precision / memory
+mixed_precision = "bf16"
+num_cpu_threads_per_process = 1
+fp8_base = false
+fp8_scaled = false
+fp8_llm = false
+disable_numpy_memmap = false
+blocks_to_swap = 0
+use_pinned_memory_for_block_swap = false
+
+# Training core
+sdpa = true
+flash_attn = false
+sage_attn = false
+xformers = false
+split_attn = false
+max_train_epochs = 16
+max_train_steps = 1600
+max_data_loader_n_workers = 2
+persistent_data_loader_workers = true
+seed = 42
+gradient_checkpointing = true
+gradient_checkpointing_cpu_offload = false
+gradient_accumulation_steps = 1
+
+# Flow matching / timestep sampling (example defaults; adjust if needed)
+timestep_sampling = "shift"
+weighting_scheme = "none"
+discrete_flow_shift = 2.0
+sigmoid_scale = 1.0
+min_timestep = 0
+max_timestep = 1000
+
+# Optimizer
+optimizer_type = "adamw8bit"
+optimizer_args = ""
+learning_rate = 1e-4
+max_grad_norm = 1.0
+lr_scheduler = "constant"
+lr_warmup_steps = 0
+lr_decay_steps = 0
+lr_scheduler_num_cycles = 1
+lr_scheduler_power = 1.0
+lr_scheduler_timescale = 0
+lr_scheduler_min_lr_ratio = 0.0
+lr_scheduler_type = ""
+lr_scheduler_args = ""
+
+# Network (LoRA)
+network_module = "networks.lora_zimage"
+network_dim = 32
+network_alpha = 32.0
+network_dropout = 0.0
+network_args = ""
+network_weights = ""
+training_comment = ""
+dim_from_weights = false
+scale_weight_norms = 0.0
+base_weights = ""
+base_weights_multiplier = 1.0
+no_metadata = false
+
+# Caching (recommended)
+caching_latent_device = "cuda"
+caching_latent_batch_size = 1
+caching_latent_num_workers = 2
+caching_latent_skip_existing = true
+caching_latent_keep_cache = true
+
+caching_teo_device = "cuda"
+caching_teo_batch_size = 8
+caching_teo_num_workers = 2
+caching_teo_skip_existing = true
+caching_teo_keep_cache = true
+
+# Samples (optional)
+sample_every_n_steps = 0
+sample_every_n_epochs = 0
+sample_at_first = false
+sample_prompts = ""
+sample_output_dir = ""
+sample_width = 1024
+sample_height = 1024
+sample_steps = 25
+sample_seed = 42
+sample_negative_prompt = ""
+sample_cfg_scale = 4.0
+
+# Save / resume
+output_dir = ""
+output_name = "my-zimage-lora"
+resume = ""
+save_every_n_epochs = 1
+save_every_n_steps = 0
+save_last_n_epochs = 0
+save_last_n_steps = 0
+save_last_n_epochs_state = 0
+save_last_n_steps_state = 0
+save_state = false
+save_state_on_train_end = false
+mem_eff_save = false
+
+# Advanced
+additional_parameters = ""
+debug_mode = "None"

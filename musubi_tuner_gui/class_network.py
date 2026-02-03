@@ -19,12 +19,14 @@ class Network:
             self.no_metadata = gr.Checkbox(
                 label="Do Not Save Metadata",
                 value=self.config.get("no_metadata", False),
+                info="Disable saving metadata into the output model file.",
             )
 
             self.network_weights = gr.Textbox(
                 label="Network Weights (LoRA Weights)",
                 placeholder="Path to pretrained LoRA weights for network",
                 value=self.config.get("network_weights", None),
+                info="Optional. Load existing LoRA weights before training.",
             )
 
             default_module = self.config.get("network_module", "")
@@ -35,6 +37,7 @@ class Network:
                 label="Network Module (LoRA Type)",
                 placeholder="LoRA module type to train",
                 value=default_module,
+                info="LoRA module path used by training (e.g., networks.lora_flux_2 or networks.lora_zimage).",
             )
 
         with gr.Row():
@@ -70,6 +73,7 @@ class Network:
                 placeholder="Additional LoRA network arguments. Space separated. e.g. \"conv_dim=4 conv_alpha=1 algo=locon\"",
                 value=" ".join(self.config.get("network_args", []) or []) if isinstance(self.config.get("network_args", []), list) else self.config.get("network_args", ""),
                 interactive=True,
+                info="Space-separated key=value args passed to the LoRA module.",
             )
 
         with gr.Row():
@@ -77,12 +81,14 @@ class Network:
                 label="Training Comment",
                 placeholder="Arbitrary comment string to store in metadata",
                 value=self.config.get("training_comment", None),
+                info="Optional comment stored in metadata.",
             )
 
         with gr.Row():
             self.dim_from_weights = gr.Checkbox(
                 label="Determine Dimensions from LoRA Weights",
                 value=self.config.get("dim_from_weights", False),
+                info="Auto-detect LoRA rank/dim from network_weights.",
             )
 
             self.scale_weight_norms = gr.Number(
@@ -99,10 +105,12 @@ class Network:
                 label="Base Weights (LoRA Base)",
                 placeholder="Paths to LoRA weights to merge into the model before training",
                 value=self.config.get("base_weights", ""),
+                info="Optional. Space-separated paths to LoRA weights to merge before training.",
             )
 
             self.base_weights_multiplier = gr.Textbox(
                 label="Base Weights Multiplier",
                 placeholder="Multipliers for network weights to merge into the model before training",
                 value=self.config.get("base_weights_multiplier", ""),
+                info="Optional. Space-separated multipliers aligned with base_weights order.",
             )

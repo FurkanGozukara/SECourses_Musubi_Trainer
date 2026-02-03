@@ -2009,7 +2009,7 @@ def SaveConfigFileToRun(
             "save_state", "save_state_on_train_end", "save_state_to_huggingface",
             "resume_from_huggingface", "async_upload", "fused_backward_pass",
             # Wan/Qwen specific parameters
-            "fp8_llm", "vae_tiling", "fp8_vl", "fp8_base", "fp8_scaled", "fp8_t5",
+            "fp8_llm", "vae_tiling", "fp8_vl", "fp8_base", "fp8_scaled", "fp8_t5", "fp8_text_encoder",
             "edit", "edit_plus", "full_bf16", "full_fp16", "offload_inactive_dit", "vae_cache_cpu",
             "force_v2_1_time_embedding", "one_frame",
             # Multi-GPU parameter - should not be passed when False
@@ -2281,17 +2281,51 @@ def validate_args_setting(input_string):
         return False
 
 
-def setup_environment():
+def setup_environment(allow_distributed: Optional[bool] = None):
     env = os.environ.copy()
     env["PYTHONPATH"] = (
         rf"{scriptdir}{os.pathsep}{scriptdir}/sd-scripts{os.pathsep}{env.get('PYTHONPATH', '')}"
     )
     env["TF_ENABLE_ONEDNN_OPTS"] = "0"
 
+    if allow_distributed is False:
+        env = _sanitize_distributed_env(env)
+
     if os.name == "nt":
         env["XFORMERS_FORCE_DISABLE_TRITON"] = "1"
         env = _ensure_visual_studio_compiler_env(env)
 
+    return env
+
+
+def _sanitize_distributed_env(env: dict) -> dict:
+    distributed_keys = [
+        "LOCAL_RANK",
+        "RANK",
+        "WORLD_SIZE",
+        "MASTER_ADDR",
+        "MASTER_PORT",
+        "LOCAL_WORLD_SIZE",
+        "GROUP_RANK",
+        "ROLE_RANK",
+        "ROLE_WORLD_SIZE",
+        "NODE_RANK",
+        "PMI_SIZE",
+        "PMI_RANK",
+        "PMI_LOCAL_RANK",
+        "OMPI_COMM_WORLD_SIZE",
+        "OMPI_COMM_WORLD_RANK",
+        "OMPI_COMM_WORLD_LOCAL_RANK",
+        "OMPI_COMM_WORLD_LOCAL_SIZE",
+        "MV2_COMM_WORLD_SIZE",
+        "MV2_COMM_WORLD_RANK",
+        "MV2_COMM_WORLD_LOCAL_RANK",
+        "SLURM_NTASKS",
+        "SLURM_PROCID",
+        "SLURM_LOCALID",
+    ]
+    for key in distributed_keys:
+        env.pop(key, None)
     return env
 
 

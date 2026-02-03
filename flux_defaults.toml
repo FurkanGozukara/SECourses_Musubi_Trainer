@@ -1,0 +1,146 @@
+# FLUX Training - Recommended Defaults
+# Supports both FLUX.2 (dev) and FLUX Klein models
+# Based on musubi-tuner/docs/flux_2.md training example.
+
+# Model family selection (GUI only)
+model_family = "FLUX.2"  # "FLUX.2" | "FLUX Klein"
+
+# Training mode (GUI only)
+training_mode = "LoRA Training"  # "LoRA Training" | "DreamBooth Fine-Tuning" (not supported for FLUX yet)
+
+# Model selection
+model_version = "dev"  # FLUX.2: "dev" | FLUX Klein: "klein-4b", "klein-base-4b", "klein-9b", "klein-base-9b"
+
+# Required model paths (set these)
+dit = ""          # REQUIRED: path to DiT checkpoint (e.g. flux2-dev.safetensors or flux2-klein-9b.safetensors)
+vae = ""          # REQUIRED: path to AE checkpoint (ae.safetensors)
+text_encoder = "" # REQUIRED: path to Text Encoder (Mistral 3 for dev, Qwen3 for Klein)
+
+# Dataset config
+dataset_config_mode = "Generate from Folder Structure"  # "Generate from Folder Structure" | "Use TOML File"
+dataset_config = ""        # Used when dataset_config_mode="Use TOML File"
+parent_folder_path = ""    # Used when dataset_config_mode="Generate from Folder Structure"
+dataset_resolution_width = 1024
+dataset_resolution_height = 1024
+dataset_caption_extension = ".txt"
+create_missing_captions = true
+caption_strategy = "folder_name"  # "folder_name" | "empty"
+dataset_batch_size = 1
+dataset_enable_bucket = true
+dataset_bucket_no_upscale = false
+dataset_cache_directory = "cache_dir"
+generated_toml_path = ""
+
+# FLUX control image dataset defaults (only used when a control directory exists)
+control_directory_name = "control_images"
+no_resize_control = true
+control_resolution_width = 2024
+control_resolution_height = 2024
+
+# Precision / memory
+mixed_precision = "bf16"
+num_cpu_threads_per_process = 1
+fp8_base = false
+fp8_scaled = false
+fp8_text_encoder = false   # Only supported for FLUX Klein (not FLUX.2 dev)
+disable_numpy_memmap = false
+blocks_to_swap = 0
+use_pinned_memory_for_block_swap = false
+
+# Training core
+sdpa = true
+flash_attn = false
+sage_attn = false
+xformers = false
+split_attn = false
+max_train_epochs = 16
+max_train_steps = 1600
+max_data_loader_n_workers = 2
+persistent_data_loader_workers = true
+seed = 42
+gradient_checkpointing = true
+gradient_checkpointing_cpu_offload = false
+gradient_accumulation_steps = 1
+
+# Flow matching / timestep sampling
+timestep_sampling = "flux2_shift"
+weighting_scheme = "none"
+discrete_flow_shift = 1.0
+sigmoid_scale = 1.0
+min_timestep = 0
+max_timestep = 1000
+
+# Optimizer
+optimizer_type = "adamw8bit"
+optimizer_args = ""
+learning_rate = 1e-4
+max_grad_norm = 1.0
+lr_scheduler = "constant"
+lr_warmup_steps = 0
+lr_decay_steps = 0
+lr_scheduler_num_cycles = 1
+lr_scheduler_power = 1.0
+lr_scheduler_timescale = 0
+lr_scheduler_min_lr_ratio = 0.0
+lr_scheduler_type = ""
+lr_scheduler_args = ""
+
+# Network (LoRA)
+network_module = "networks.lora_flux_2"
+network_dim = 32
+network_alpha = 32.0
+network_dropout = 0.0
+network_args = ""
+network_weights = ""
+training_comment = ""
+dim_from_weights = false
+scale_weight_norms = 0.0
+base_weights = ""
+base_weights_multiplier = 1.0
+no_metadata = false
+
+# Caching (recommended)
+caching_latent_device = "cuda"
+caching_latent_batch_size = 1
+caching_latent_num_workers = 2
+caching_latent_skip_existing = true
+caching_latent_keep_cache = true
+
+caching_teo_device = "cuda"
+caching_teo_batch_size = 8
+caching_teo_num_workers = 2
+caching_teo_skip_existing = true
+caching_teo_keep_cache = true
+caching_teo_fp8_text_encoder = false
+
+# Samples (optional)
+# Note: Default values adjust automatically based on model family/version in GUI
+sample_every_n_steps = 0
+sample_every_n_epochs = 0
+sample_at_first = false
+sample_prompts = ""
+sample_output_dir = ""
+sample_width = 1024
+sample_height = 1024
+sample_steps = 50               # FLUX.2/Klein base: 50, Klein distilled: 4
+sample_guidance_scale = 4.0     # FLUX.2/Klein base: 4.0, Klein distilled: 1.0
+sample_seed = 42
+sample_negative_prompt = ""
+
+# Save / resume
+output_dir = ""
+output_name = "my-flux-lora"
+resume = ""
+save_every_n_epochs = 1
+save_every_n_steps = 0
+save_last_n_epochs = 0
+save_last_n_steps = 0
+save_last_n_epochs_state = 0
+save_last_n_steps_state = 0
+save_state = false
+save_state_on_train_end = false
+mem_eff_save = false
+
+# Advanced
+additional_parameters = ""
+debug_mode = "None"
