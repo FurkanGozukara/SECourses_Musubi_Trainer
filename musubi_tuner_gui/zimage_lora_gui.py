@@ -236,9 +236,18 @@ def open_zimage_configuration(ask_for_file, file_path, parameters):
         "caching_latent_num_workers",
         "caching_teo_batch_size",
         "caching_teo_num_workers",
+        "training_adapter_multiplier",
     }
 
-    list_to_str_fields = {"optimizer_args", "lr_scheduler_args", "network_args"}
+    list_to_str_fields = {"optimizer_args", "lr_scheduler_args", "network_args", "base_weights", "base_weights_multiplier"}
+
+    def _quote_if_needed(s: str) -> str:
+        s = str(s)
+        if not s:
+            return s
+        if any(ch.isspace() for ch in s):
+            return f"\"{s}\""
+        return s
 
     loaded_values = []
     for key, default_value in parameters:
@@ -247,7 +256,10 @@ def open_zimage_configuration(ask_for_file, file_path, parameters):
             if isinstance(v, list) and key in numeric_fields:
                 v = v[0] if v else None
             elif isinstance(v, list) and key in list_to_str_fields:
-                v = " ".join(str(x) for x in v)
+                if key == "base_weights":
+                    v = " ".join(_quote_if_needed(str(x)) for x in v)
+                else:
+                    v = " ".join(str(x) for x in v)
             loaded_values.append(v)
         else:
             loaded_values.append(default_value)
@@ -328,6 +340,59 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
 
     param_dict = dict(parameters)
 
+    def _strip_matching_quotes(s: str) -> str:
+        if len(s) >= 2 and ((s[0] == s[-1] == '"') or (s[0] == s[-1] == "'")):
+            return s[1:-1]
+        return s
+
+    def _split_cli_args_windows(value: str) -> list[str]:
+        if not value or not value.strip():
+            return []
+        try:
+            parts = shlex.split(value, posix=False)
+        except Exception:
+            parts = value.replace(",", " ").split()
+        cleaned: list[str] = []
+        for p in parts:
+            p = _strip_matching_quotes(p.strip().strip(",").strip())
+            if p:
+                cleaned.append(p)
+        return cleaned
+
+    def _coerce_str_list(value: object) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            return [str(v) for v in value if v is not None and str(v).strip()]
+        if isinstance(value, str):
+            return _split_cli_args_windows(value)
+        return [str(value)]
+
+    def _coerce_float_list(value: object) -> list[float]:
+        if value is None:
+            return []
+        if isinstance(value, list):
+            out: list[float] = []
+            for v in value:
+                if v is None:
+                    continue
+                try:
+                    out.append(float(v))
+                except Exception:
+                    continue
+            return out
+        if isinstance(value, (int, float)):
+            return [float(value)]
+        if isinstance(value, str):
+            out: list[float] = []
+            for tok in _split_cli_args_windows(value):
+                try:
+                    out.append(float(tok))
+                except Exception:
+                    continue
+            return out
+        return []
+
     training_mode = (param_dict.get("training_mode") or "LoRA Training").strip()
 
     # Prefer generated dataset config when using folder mode.
@@ -361,6 +426,39 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
         raise ValueError("[ERROR] Output directory is required.")
     if not output_name:
         raise ValueError("[ERROR] Output name is required.")
+
+    # Z-Image Turbo training adapter / LoRA adapter support:
+    # - Use the GUI field to populate base_weights (+ multiplier) so musubi-tuner receives --base_weights correctly.
+    # - Also normalize any user-entered base_weights/base_weights_multiplier to lists (argparse expects nargs='*').
+    base_weights_list = _coerce_str_list(param_dict.get("base_weights"))
+    base_weights_multiplier_list = _coerce_float_list(param_dict.get("base_weights_multiplier"))
+
+    training_adapter_path = (param_dict.get("training_adapter_path") or "").strip()
+    training_adapter_multiplier = float(param_dict.get("training_adapter_multiplier") or 1.0)
+    if training_adapter_path:
+        if not os.path.exists(training_adapter_path):
+            raise ValueError(f"[ERROR] Training adapter path does not exist: {training_adapter_path}")
+        if training_adapter_path not in base_weights_list:
+            base_weights_list.append(training_adapter_path)
+        adapter_idx = base_weights_list.index(training_adapter_path)
+        if len(base_weights_multiplier_list) <= adapter_idx:
+            base_weights_multiplier_list.extend([1.0] * (adapter_idx + 1 - len(base_weights_multiplier_list)))
+        base_weights_multiplier_list[adapter_idx] = training_adapter_multiplier
+
+    # Update parameter list with normalized values (lists), so config TOML is compatible with nargs='*'.
+    if base_weights_list:
+        param_dict["base_weights"] = base_weights_list
+        parameters = [(k, (base_weights_list if k == "base_weights" else v)) for k, v in parameters]
+    else:
+        param_dict["base_weights"] = None
+        parameters = [(k, (None if k == "base_weights" else v)) for k, v in parameters]
+
+    if base_weights_multiplier_list:
+        param_dict["base_weights_multiplier"] = base_weights_multiplier_list
+        parameters = [(k, (base_weights_multiplier_list if k == "base_weights_multiplier" else v)) for k, v in parameters]
+    else:
+        param_dict["base_weights_multiplier"] = None
+        parameters = [(k, (None if k == "base_weights_multiplier" else v)) for k, v in parameters]
 
     # Enforce correct LoRA module for LoRA training only.
     if training_mode == "LoRA Training":
@@ -531,6 +629,8 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
             "zimage_variant",
             "sample_cfg_scale",
             "training_mode",
+            "training_adapter_path",
+            "training_adapter_multiplier",
             # Cache-only toggle
             "caching_teo_fp8_llm",
         ]
@@ -670,6 +770,8 @@ ZIMAGE_PARAM_KEYS = [
     # gui-only model selector
     "training_mode",
     "zimage_variant",
+    "training_adapter_path",
+    "training_adapter_multiplier",
     # model
     "dit",
     "vae",
@@ -824,6 +926,8 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
     defaults = {
         "training_mode": "LoRA Training",
         "zimage_variant": "base",
+        "training_adapter_path": "",
+        "training_adapter_multiplier": 1.0,
         "network_module": "networks.lora_zimage",
         "output_name": "my-zimage-lora",
         # Torch compile defaults
@@ -1077,6 +1181,23 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
                 info="Select Base vs Turbo defaults (your actual DiT checkpoint decides what you train).",
             )
         with gr.Row():
+            training_adapter_path = gr.Textbox(
+                label="training_adapter_path",
+                value=config.get("training_adapter_path", ""),
+                placeholder="Optional: zimage_turbo_training_adapter_*.safetensors",
+                interactive=True,
+                info="Optional Turbo Training Adapter (LoRA). If set, it is passed as base_weights (--base_weights).",
+            )
+            adapter_btn = gr.Button("📁", size="lg", visible=not headless)
+            adapter_btn.click(fn=lambda: get_file_path(file_path="", default_extension=".safetensors", extension_name="Model files"), outputs=[training_adapter_path])
+            training_adapter_multiplier = gr.Number(
+                label="training_adapter_multiplier",
+                value=float(config.get("training_adapter_multiplier", 1.0) or 1.0),
+                step=0.1,
+                interactive=True,
+                info="Strength multiplier for the training adapter when merged as base_weights (1.0 = full strength).",
+            )
+        with gr.Row():
             dit = gr.Textbox(
                 label="DiT (Base Model) Checkpoint Path",
                 value=config.get("dit", ""),
@@ -1132,9 +1253,10 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
                 label="blocks_to_swap",
                 value=config.get("blocks_to_swap", 0),
                 minimum=0,
+                maximum=28,
                 step=1,
                 interactive=True,
-                info="Offload N transformer blocks to CPU for VRAM savings.",
+                info="Offload N transformer blocks to CPU for VRAM savings. Maximum 28.",
             )
             use_pinned_memory_for_block_swap = gr.Checkbox(
                 label="use_pinned_memory_for_block_swap",
@@ -1504,6 +1626,8 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
         # variant
         training_mode,
         zimage_variant,
+        training_adapter_path,
+        training_adapter_multiplier,
         # model
         dit,
         vae,
@@ -1656,6 +1780,9 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
             "base": ("Z-Image Model Settings", "Base Model"),
             "turbo": ("Z-Image Model Settings", "Turbo Model (Distilled)"),
             "variant": ("Z-Image Model Settings", "Model Variant"),
+            "adapter": ("Z-Image Model Settings", "Turbo Training Adapter (LoRA)"),
+            "training_adapter": ("Z-Image Model Settings", "Turbo Training Adapter (LoRA)"),
+            "base_weights": ("LoRA Settings", "Base Weights"),
 
             # Model Paths
             "dit": ("Z-Image Model Settings", "DiT (Base Model) Checkpoint Path"),

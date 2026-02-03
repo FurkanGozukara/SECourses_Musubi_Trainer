@@ -7,6 +7,10 @@ zimage_variant = "base"  # "base" | "turbo"
 # Training mode (GUI only)
 training_mode = "LoRA Training"  # "LoRA Training" | "DreamBooth Fine-Tuning" (not supported for Z-Image yet)
 
+# Optional: Turbo Training Adapter (LoRA). If set, GUI passes it as base_weights (--base_weights) during training.
+training_adapter_path = ""
+training_adapter_multiplier = 1.0
+
 # Required model paths (set these)
 dit = ""          # REQUIRED: path to Z-Image DiT checkpoint (Base or Turbo/De-Turbo)
 vae = ""          # REQUIRED: path to Z-Image VAE checkpoint
