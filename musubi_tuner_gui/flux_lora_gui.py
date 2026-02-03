@@ -209,6 +209,13 @@ def open_flux_configuration(ask_for_file, file_path, parameters):
         values.extend([v for _, v in parameters])
         return tuple(values)
 
+    # Some older presets may not include model_family. Infer it from model_version when possible so the UI can be updated.
+    loaded_model_version_raw = (data.get("model_version") or "").strip()
+    inferred_family = "FLUX Klein" if loaded_model_version_raw in {v for _, v in _KLEIN_MODEL_VERSIONS} else None
+    loaded_model_family = (data.get("model_family") or inferred_family or "").strip() or None
+    if loaded_model_family not in {"FLUX.2", "FLUX Klein"}:
+        loaded_model_family = None
+
     numeric_fields = {
         "dataset_resolution_width",
         "dataset_resolution_height",
@@ -255,12 +262,21 @@ def open_flux_configuration(ask_for_file, file_path, parameters):
         "save_last_n_epochs_state",
         "save_last_n_steps_state",
         "ddp_timeout",
+        "compile_cache_size_limit",
     }
 
     list_to_str_fields = {"optimizer_args", "lr_scheduler_args", "network_args"}
 
     loaded_values = []
     for key, default_value in parameters:
+        if key == "model_family":
+            # Ensure the model_family output is always normalized for downstream UI updates.
+            v = (data.get(key) or loaded_model_family or default_value or "FLUX.2").strip()
+            if v not in {"FLUX.2", "FLUX Klein"}:
+                v = "FLUX.2"
+            loaded_values.append(v)
+            continue
+
         if key in data:
             v = data[key]
             if isinstance(v, list) and key in numeric_fields:
@@ -270,6 +286,72 @@ def open_flux_configuration(ask_for_file, file_path, parameters):
             loaded_values.append(v)
         else:
             loaded_values.append(default_value)
+
+    # Prevent dropdown validation errors when loading Klein presets into the combined FLUX UI.
+    # Gradio validates the loaded value against the component's current choices, so we must update choices + value together.
+    try:
+        family_idx = next(i for i, (k, _) in enumerate(parameters) if k == "model_family")
+        mv_idx = next(i for i, (k, _) in enumerate(parameters) if k == "model_version")
+    except StopIteration:
+        family_idx = None
+        mv_idx = None
+
+    if family_idx is not None and mv_idx is not None:
+        family_val = (loaded_values[family_idx] or "FLUX.2").strip()
+        mv_val = (loaded_values[mv_idx] or "").strip()
+
+        if family_val == "FLUX.2":
+            loaded_values[mv_idx] = gr.update(choices=_FLUX2_MODEL_VERSIONS, value="dev", interactive=False)
+        else:
+            if mv_val not in {v for _, v in _KLEIN_MODEL_VERSIONS}:
+                mv_val = "klein-base-9b"
+            loaded_values[mv_idx] = gr.update(choices=_KLEIN_MODEL_VERSIONS, value=mv_val, interactive=True)
+
+        # Keep other family-dependent controls consistent after loading (programmatic updates do not trigger .change).
+        def _idx_for_key(search_key: str):
+            try:
+                return next(i for i, (k, _) in enumerate(parameters) if k == search_key)
+            except StopIteration:
+                return None
+
+        def _maybe_set_checkbox(key: str, *, value: bool, interactive: bool, info: str):
+            idx = _idx_for_key(key)
+            if idx is None:
+                return
+            loaded_values[idx] = gr.update(value=value, interactive=interactive, info=info)
+
+        if family_val == "FLUX.2":
+            _maybe_set_checkbox(
+                "fp8_text_encoder",
+                value=False,
+                interactive=False,
+                info="Not supported for FLUX.2 dev. Available for FLUX Klein.",
+            )
+            _maybe_set_checkbox(
+                "caching_teo_fp8_text_encoder",
+                value=False,
+                interactive=False,
+                info="Not supported for FLUX.2 dev. Available for FLUX Klein.",
+            )
+        else:
+            fp8_idx = _idx_for_key("fp8_text_encoder")
+            teo_fp8_idx = _idx_for_key("caching_teo_fp8_text_encoder")
+            fp8_default = loaded_values[fp8_idx] if fp8_idx is not None else False
+            teo_fp8_default = loaded_values[teo_fp8_idx] if teo_fp8_idx is not None else False
+            fp8_val = bool(data.get("fp8_text_encoder", fp8_default))
+            teo_fp8_val = bool(data.get("caching_teo_fp8_text_encoder", teo_fp8_default))
+            _maybe_set_checkbox(
+                "fp8_text_encoder",
+                value=fp8_val,
+                interactive=True,
+                info="FP8 for text encoder (supported in Klein)",
+            )
+            _maybe_set_checkbox(
+                "caching_teo_fp8_text_encoder",
+                value=teo_fp8_val,
+                interactive=True,
+                info="FP8 for text encoder caching (supported in Klein)",
+            )
 
     msg = f"Loaded configuration: {os.path.basename(file_path)}"
     gr.Info(msg)
@@ -354,7 +436,13 @@ def train_flux_model(headless: bool, print_only: bool, parameters):
 
     training_mode = (param_dict.get("training_mode") or "LoRA Training").strip()
     if training_mode != "LoRA Training":
-        raise ValueError("[ERROR] DreamBooth fine-tuning is not supported for FLUX. Please use LoRA Training.")
+        # FLUX training path uses flux_2_train_network.py which is LoRA/network training.
+        # Some users select "DreamBooth Fine-Tuning" expecting it to mean "fine-tune"; instead of hard-failing,
+        # fall back to LoRA training and keep going.
+        gr.Warning("DreamBooth fine-tuning is not supported for FLUX. Continuing with LoRA Training.")
+        training_mode = "LoRA Training"
+        param_dict["training_mode"] = training_mode
+        parameters = [(k, (training_mode if k == "training_mode" else v)) for k, v in parameters]
 
     # Prefer generated dataset config when using folder mode.
     dataset_config_mode = (param_dict.get("dataset_config_mode") or "").strip()
@@ -365,6 +453,37 @@ def train_flux_model(headless: bool, print_only: bool, parameters):
             parameters = [(k, (gen_path if k == "dataset_config" else v)) for k, v in parameters]
 
     dataset_config = (param_dict.get("dataset_config") or "").strip()
+    if not dataset_config and dataset_config_mode == "Generate from Folder Structure":
+        # Auto-generate the dataset TOML at train-time if the user selected folder mode but didn't click Generate.
+        parent_folder_path = (param_dict.get("parent_folder_path") or "").strip()
+        if parent_folder_path:
+            out_path, gen_path, status = _generate_flux_dataset_toml(
+                parent_folder_path=parent_folder_path,
+                dataset_resolution_width=int(param_dict.get("dataset_resolution_width") or 1024),
+                dataset_resolution_height=int(param_dict.get("dataset_resolution_height") or 1024),
+                dataset_caption_extension=(param_dict.get("dataset_caption_extension") or ".txt"),
+                create_missing_captions=bool(param_dict.get("create_missing_captions", True)),
+                caption_strategy=(param_dict.get("caption_strategy") or "folder_name"),
+                dataset_batch_size=int(param_dict.get("dataset_batch_size") or 1),
+                dataset_enable_bucket=bool(param_dict.get("dataset_enable_bucket", True)),
+                dataset_bucket_no_upscale=bool(param_dict.get("dataset_bucket_no_upscale", False)),
+                dataset_cache_directory=(param_dict.get("dataset_cache_directory") or "cache_dir"),
+                control_directory_name=(param_dict.get("control_directory_name") or "control_images"),
+                no_resize_control=bool(param_dict.get("no_resize_control", True)),
+                control_resolution_width=int(param_dict.get("control_resolution_width") or 2024),
+                control_resolution_height=int(param_dict.get("control_resolution_height") or 2024),
+                output_dir=(param_dict.get("output_dir") or ""),
+            )
+            if not out_path:
+                raise ValueError(status or "[ERROR] Failed to auto-generate dataset TOML from folder structure.")
+
+            gr.Info("Dataset TOML was auto-generated from folder structure for this run.")
+            param_dict["dataset_config"] = out_path
+            param_dict["generated_toml_path"] = gen_path
+            dataset_config = out_path
+            parameters = [(k, (out_path if k == "dataset_config" else v)) for k, v in parameters]
+            parameters = [(k, (gen_path if k == "generated_toml_path" else v)) for k, v in parameters]
+
     if not dataset_config:
         raise ValueError("[ERROR] Dataset config is required. Generate a dataset TOML or set dataset_config.")
     if not os.path.exists(dataset_config):
@@ -725,6 +844,13 @@ FLUX_PARAM_KEYS = [
     "blocks_to_swap",
     "use_pinned_memory_for_block_swap",
     "img_in_txt_in_offloading",
+    # torch compile
+    "compile",
+    "compile_backend",
+    "compile_mode",
+    "compile_dynamic",
+    "compile_fullgraph",
+    "compile_cache_size_limit",
     # schedule
     "timestep_sampling",
     "weighting_scheme",
@@ -887,6 +1013,13 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
         # Sample defaults (FLUX.2)
         "sample_steps": 50,
         "sample_guidance_scale": 4.0,
+        # Torch compile defaults
+        "compile": False,
+        "compile_backend": "inductor",
+        "compile_mode": "default",
+        "compile_dynamic": "auto",
+        "compile_fullgraph": False,
+        "compile_cache_size_limit": 0,
     }
 
     # Align with other tabs: accept either a dict or a GUIConfig.
@@ -898,6 +1031,10 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
             config.config = defaults.copy()
         else:
             config.config.update({k: v for k, v in defaults.items() if k not in config.config})
+
+    initial_model_family = (config.get("model_family", "FLUX.2") or "FLUX.2").strip()
+    if initial_model_family not in {"FLUX.2", "FLUX Klein"}:
+        initial_model_family = "FLUX.2"
 
     with gr.Accordion("Configuration file Settings", open=True):
         configuration = ConfigurationFile(headless=headless, config=config)
@@ -1130,6 +1267,13 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
     model_accordion = gr.Accordion("FLUX Model Settings", open=False, elem_classes="preset_background")
     accordions.append(model_accordion)
     with model_accordion:
+        initial_model_version = (config.get("model_version") or "").strip()
+        if initial_model_family == "FLUX.2":
+            initial_model_version = "dev"
+        else:
+            if initial_model_version not in {v for _, v in _KLEIN_MODEL_VERSIONS}:
+                initial_model_version = "klein-base-9b"
+
         with gr.Row():
             training_mode = gr.Radio(
                 label="Training Mode",
@@ -1140,9 +1284,9 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
         with gr.Row():
             model_version = gr.Dropdown(
                 label="model_version",
-                choices=_FLUX2_MODEL_VERSIONS,
-                value="dev",
-                interactive=False,
+                choices=_FLUX2_MODEL_VERSIONS if initial_model_family == "FLUX.2" else _KLEIN_MODEL_VERSIONS,
+                value=initial_model_version,
+                interactive=(initial_model_family == "FLUX Klein"),
                 info="Model version (changes based on Model Family selection above)",
             )
         with gr.Row():
@@ -1205,9 +1349,9 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
             )
             fp8_text_encoder = gr.Checkbox(
                 label="fp8_text_encoder",
-                value=False,
-                interactive=False,
-                info="Not supported for FLUX.2 dev. Available for FLUX Klein.",
+                value=(bool(config.get("fp8_text_encoder", False)) if initial_model_family == "FLUX Klein" else False),
+                interactive=(initial_model_family == "FLUX Klein"),
+                info=("FP8 for text encoder (supported in Klein)" if initial_model_family == "FLUX Klein" else "Not supported for FLUX.2 dev. Available for FLUX Klein."),
             )
         with gr.Row():
             disable_numpy_memmap = gr.Checkbox(
@@ -1221,7 +1365,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                 minimum=0,
                 step=1,
                 interactive=True,
-                info="Offload N transformer blocks to CPU for VRAM savings (actual count may be adjusted).",
+                info="Offload N transformer blocks to CPU for VRAM savings. Max recommended: FLUX.2 dev = 29; FLUX Klein 9B = 16; FLUX Klein 4B = 13.",
             )
             use_pinned_memory_for_block_swap = gr.Checkbox(
                 label="use_pinned_memory_for_block_swap",
@@ -1232,6 +1376,59 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                 label="img_in_txt_in_offloading",
                 value=bool(config.get("img_in_txt_in_offloading", False)),
                 info="Offload img_in and txt_in tensors to CPU to reduce VRAM.",
+            )
+
+    torch_compile_accordion = gr.Accordion("Torch Compile Settings", open=False)
+    accordions.append(torch_compile_accordion)
+    with torch_compile_accordion:
+        gr.Markdown(
+            """⚠️ **Important:** If you get errors with torch.compile just disable it. It can increase speed and slightly reduce VRAM with no quality loss."""
+        )
+
+        with gr.Row():
+            compile = gr.Checkbox(
+                label="Enable torch.compile",
+                info="Enable torch.compile for faster training (requires PyTorch 2.1+, Triton for CUDA). Disable gradient checkpointing for best results!",
+                value=bool(config.get("compile", False)),
+                interactive=True,
+            )
+            compile_backend = gr.Dropdown(
+                label="Compile Backend",
+                info="Backend for torch.compile (default: inductor)",
+                choices=["inductor", "cudagraphs", "eager", "aot_eager", "aot_ts_nvfuser"],
+                value=config.get("compile_backend", "inductor"),
+                interactive=True,
+            )
+            compile_mode = gr.Dropdown(
+                label="Compile Mode",
+                info="Optimization mode for torch.compile",
+                choices=["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"],
+                value=config.get("compile_mode", "default"),
+                interactive=True,
+            )
+
+        with gr.Row():
+            compile_dynamic = gr.Dropdown(
+                label="Dynamic Shapes",
+                info="Dynamic shape handling: auto (default), true (enable), false (disable)",
+                choices=["auto", "true", "false"],
+                value=config.get("compile_dynamic", "auto"),
+                allow_custom_value=False,
+                interactive=True,
+            )
+            compile_fullgraph = gr.Checkbox(
+                label="Fullgraph Mode",
+                info="Enable fullgraph mode in torch.compile (may fail with complex models)",
+                value=bool(config.get("compile_fullgraph", False)),
+                interactive=True,
+            )
+            compile_cache_size_limit = gr.Number(
+                label="Cache Size Limit",
+                info="Set torch._dynamo.config.cache_size_limit (0 = use PyTorch default, typically 8-32)",
+                value=config.get("compile_cache_size_limit", 0),
+                step=1,
+                minimum=0,
+                interactive=True,
             )
 
     schedule_accordion = gr.Accordion("Flow Matching and Timestep Settings", open=False, elem_classes="flux1_background")
@@ -1445,9 +1642,15 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
             )
             caching_teo_fp8_text_encoder = gr.Checkbox(
                 label="caching_teo_fp8_text_encoder",
-                value=False,
-                interactive=False,
-                info="Not supported for FLUX.2 dev. Available for FLUX Klein.",
+                value=(
+                    bool(config.get("caching_teo_fp8_text_encoder", False)) if initial_model_family == "FLUX Klein" else False
+                ),
+                interactive=(initial_model_family == "FLUX Klein"),
+                info=(
+                    "FP8 for text encoder caching (supported in Klein)"
+                    if initial_model_family == "FLUX Klein"
+                    else "Not supported for FLUX.2 dev. Available for FLUX Klein."
+                ),
             )
 
     optimizer_accordion = gr.Accordion("Learning Rate, Optimizer and Scheduler Settings", open=False, elem_classes="flux1_rank_layers_background")
@@ -1575,6 +1778,13 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
         blocks_to_swap,
         use_pinned_memory_for_block_swap,
         img_in_txt_in_offloading,
+        # torch compile
+        compile,
+        compile_backend,
+        compile_mode,
+        compile_dynamic,
+        compile_fullgraph,
+        compile_cache_size_limit,
         # schedule
         timestep_sampling,
         weighting_scheme,
@@ -1728,6 +1938,14 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
             "disable_numpy_memmap": ("FLUX Model Settings", "Disable NumPy Memmap"),
             "use_pinned_memory_for_block_swap": ("FLUX Model Settings", "Use Pinned Memory for Block Swap"),
             "img_in_txt_in_offloading": ("FLUX Model Settings", "Image-in-Text Input Offloading"),
+
+            # Torch Compile
+            "compile": ("Torch Compile Settings", "Enable torch.compile"),
+            "compile_backend": ("Torch Compile Settings", "Compile Backend"),
+            "compile_mode": ("Torch Compile Settings", "Compile Mode"),
+            "compile_dynamic": ("Torch Compile Settings", "Dynamic Shapes"),
+            "compile_fullgraph": ("Torch Compile Settings", "Fullgraph Mode"),
+            "compile_cache_size_limit": ("Torch Compile Settings", "Cache Size Limit"),
 
             # Dataset Settings
             "dataset": ("FLUX Training Dataset", "Dataset Configuration"),
@@ -1916,15 +2134,16 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
             "Save Models and Resume Training Settings": 1,
             "FLUX Training Dataset": 2,
             "FLUX Model Settings": 3,
-            "Flow Matching and Timestep Settings": 4,
-            "Training Settings": 5,
-            "Sample Generation Settings": 6,
-            "Caching Settings": 7,
-            "Learning Rate, Optimizer and Scheduler Settings": 8,
-            "LoRA Settings": 9,
-            "Advanced Settings": 10,
-            "Metadata Settings": 11,
-            "HuggingFace Settings": 12,
+            "Torch Compile Settings": 4,
+            "Flow Matching and Timestep Settings": 5,
+            "Training Settings": 6,
+            "Sample Generation Settings": 7,
+            "Caching Settings": 8,
+            "Learning Rate, Optimizer and Scheduler Settings": 9,
+            "LoRA Settings": 10,
+            "Advanced Settings": 11,
+            "Metadata Settings": 12,
+            "HuggingFace Settings": 13,
         }
 
         import re

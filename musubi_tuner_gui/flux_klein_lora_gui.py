@@ -500,7 +500,14 @@ def flux_klein_lora_tab(headless=False, config: GUIConfig = {}):
             fp8_text_encoder = gr.Checkbox(label="fp8_text_encoder", value=bool(config.get("fp8_text_encoder", False)), interactive=True)
         with gr.Row():
             disable_numpy_memmap = gr.Checkbox(label="disable_numpy_memmap", value=bool(config.get("disable_numpy_memmap", False)))
-            blocks_to_swap = gr.Number(label="blocks_to_swap", value=config.get("blocks_to_swap", 0), minimum=0, step=1, interactive=True)
+            blocks_to_swap = gr.Number(
+                label="blocks_to_swap",
+                value=config.get("blocks_to_swap", 0),
+                minimum=0,
+                step=1,
+                interactive=True,
+                info="Offload N transformer blocks to CPU for VRAM savings. Max recommended: Klein 9B = 16, Klein 4B = 13.",
+            )
             use_pinned_memory_for_block_swap = gr.Checkbox(label="use_pinned_memory_for_block_swap", value=bool(config.get("use_pinned_memory_for_block_swap", False)))
             img_in_txt_in_offloading = gr.Checkbox(label="img_in_txt_in_offloading", value=bool(config.get("img_in_txt_in_offloading", False)))
 

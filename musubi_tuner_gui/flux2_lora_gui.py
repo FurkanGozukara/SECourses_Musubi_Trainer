@@ -1039,7 +1039,14 @@ def flux2_lora_tab(headless=False, config: GUIConfig = {}):
             )
         with gr.Row():
             disable_numpy_memmap = gr.Checkbox(label="disable_numpy_memmap", value=bool(config.get("disable_numpy_memmap", False)))
-            blocks_to_swap = gr.Number(label="blocks_to_swap", value=config.get("blocks_to_swap", 0), minimum=0, step=1, interactive=True)
+            blocks_to_swap = gr.Number(
+                label="blocks_to_swap",
+                value=config.get("blocks_to_swap", 0),
+                minimum=0,
+                step=1,
+                interactive=True,
+                info="Offload N transformer blocks to CPU for VRAM savings. Max recommended: FLUX.2 dev = 29.",
+            )
             use_pinned_memory_for_block_swap = gr.Checkbox(
                 label="use_pinned_memory_for_block_swap",
                 value=bool(config.get("use_pinned_memory_for_block_swap", False)),

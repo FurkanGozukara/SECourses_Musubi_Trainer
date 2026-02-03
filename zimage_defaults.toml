@@ -52,6 +52,14 @@ gradient_checkpointing = true
 gradient_checkpointing_cpu_offload = false
 gradient_accumulation_steps = 1
 
+# Torch compile (optional)
+compile = false
+compile_backend = "inductor"
+compile_mode = "default"
+compile_dynamic = "auto"         # "auto" | "true" | "false"
+compile_fullgraph = false
+compile_cache_size_limit = 0     # 0 = use PyTorch default
+
 # Flow matching / timestep sampling (example defaults; adjust if needed)
 timestep_sampling = "shift"
 weighting_scheme = "none"

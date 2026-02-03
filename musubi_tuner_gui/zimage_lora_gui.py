@@ -231,6 +231,7 @@ def open_zimage_configuration(ask_for_file, file_path, parameters):
         "save_last_n_epochs_state",
         "save_last_n_steps_state",
         "ddp_timeout",
+        "compile_cache_size_limit",
         "caching_latent_batch_size",
         "caching_latent_num_workers",
         "caching_teo_batch_size",
@@ -680,6 +681,13 @@ ZIMAGE_PARAM_KEYS = [
     "blocks_to_swap",
     "use_pinned_memory_for_block_swap",
     "img_in_txt_in_offloading",
+    # torch compile
+    "compile",
+    "compile_backend",
+    "compile_mode",
+    "compile_dynamic",
+    "compile_fullgraph",
+    "compile_cache_size_limit",
     # schedule
     "timestep_sampling",
     "weighting_scheme",
@@ -818,6 +826,13 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
         "zimage_variant": "base",
         "network_module": "networks.lora_zimage",
         "output_name": "my-zimage-lora",
+        # Torch compile defaults
+        "compile": False,
+        "compile_backend": "inductor",
+        "compile_mode": "default",
+        "compile_dynamic": "auto",
+        "compile_fullgraph": False,
+        "compile_cache_size_limit": 0,
         "mixed_precision": "bf16",
         "num_cpu_threads_per_process": 1,
         "sdpa": True,
@@ -1130,6 +1145,59 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
                 label="img_in_txt_in_offloading",
                 value=bool(config.get("img_in_txt_in_offloading", False)),
                 info="Offload img_in and txt_in tensors to CPU to reduce VRAM.",
+            )
+
+    torch_compile_accordion = gr.Accordion("Torch Compile Settings", open=False)
+    accordions.append(torch_compile_accordion)
+    with torch_compile_accordion:
+        gr.Markdown(
+            """⚠️ **Important:** If you get errors with torch.compile just disable it. It can increase speed and slightly reduce VRAM with no quality loss."""
+        )
+
+        with gr.Row():
+            compile = gr.Checkbox(
+                label="Enable torch.compile",
+                info="Enable torch.compile for faster training (requires PyTorch 2.1+, Triton for CUDA). Disable gradient checkpointing for best results!",
+                value=bool(config.get("compile", False)),
+                interactive=True,
+            )
+            compile_backend = gr.Dropdown(
+                label="Compile Backend",
+                info="Backend for torch.compile (default: inductor)",
+                choices=["inductor", "cudagraphs", "eager", "aot_eager", "aot_ts_nvfuser"],
+                value=config.get("compile_backend", "inductor"),
+                interactive=True,
+            )
+            compile_mode = gr.Dropdown(
+                label="Compile Mode",
+                info="Optimization mode for torch.compile",
+                choices=["default", "reduce-overhead", "max-autotune", "max-autotune-no-cudagraphs"],
+                value=config.get("compile_mode", "default"),
+                interactive=True,
+            )
+
+        with gr.Row():
+            compile_dynamic = gr.Dropdown(
+                label="Dynamic Shapes",
+                info="Dynamic shape handling: auto (default), true (enable), false (disable)",
+                choices=["auto", "true", "false"],
+                value=config.get("compile_dynamic", "auto"),
+                allow_custom_value=False,
+                interactive=True,
+            )
+            compile_fullgraph = gr.Checkbox(
+                label="Fullgraph Mode",
+                info="Enable fullgraph mode in torch.compile (may fail with complex models)",
+                value=bool(config.get("compile_fullgraph", False)),
+                interactive=True,
+            )
+            compile_cache_size_limit = gr.Number(
+                label="Cache Size Limit",
+                info="Set torch._dynamo.config.cache_size_limit (0 = use PyTorch default, typically 8-32)",
+                value=config.get("compile_cache_size_limit", 0),
+                step=1,
+                minimum=0,
+                interactive=True,
             )
 
     schedule_accordion = gr.Accordion("Flow Matching and Timestep Settings", open=False, elem_classes="flux1_background")
@@ -1447,6 +1515,13 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
         blocks_to_swap,
         use_pinned_memory_for_block_swap,
         img_in_txt_in_offloading,
+        # torch compile
+        compile,
+        compile_backend,
+        compile_mode,
+        compile_dynamic,
+        compile_fullgraph,
+        compile_cache_size_limit,
         # schedule
         timestep_sampling,
         weighting_scheme,
@@ -1598,6 +1673,14 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
             "disable_numpy_memmap": ("Z-Image Model Settings", "Disable NumPy Memmap"),
             "use_pinned_memory_for_block_swap": ("Z-Image Model Settings", "Use Pinned Memory for Block Swap"),
             "img_in_txt_in_offloading": ("Z-Image Model Settings", "Image-in-Text Input Offloading"),
+
+            # Torch Compile
+            "compile": ("Torch Compile Settings", "Enable torch.compile"),
+            "compile_backend": ("Torch Compile Settings", "Compile Backend"),
+            "compile_mode": ("Torch Compile Settings", "Compile Mode"),
+            "compile_dynamic": ("Torch Compile Settings", "Dynamic Shapes"),
+            "compile_fullgraph": ("Torch Compile Settings", "Fullgraph Mode"),
+            "compile_cache_size_limit": ("Torch Compile Settings", "Cache Size Limit"),
 
             # Dataset Settings
             "dataset": ("Z-Image Training Dataset", "Dataset Configuration"),
@@ -1783,15 +1866,16 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
             "Save Models and Resume Training Settings": 1,
             "Z-Image Training Dataset": 2,
             "Z-Image Model Settings": 3,
-            "Flow Matching and Timestep Settings": 4,
-            "Training Settings": 5,
-            "Sample Generation Settings": 6,
-            "Caching Settings": 7,
-            "Learning Rate, Optimizer and Scheduler Settings": 8,
-            "LoRA Settings": 9,
-            "Advanced Settings": 10,
-            "Metadata Settings": 11,
-            "HuggingFace Settings": 12,
+            "Torch Compile Settings": 4,
+            "Flow Matching and Timestep Settings": 5,
+            "Training Settings": 6,
+            "Sample Generation Settings": 7,
+            "Caching Settings": 8,
+            "Learning Rate, Optimizer and Scheduler Settings": 9,
+            "LoRA Settings": 10,
+            "Advanced Settings": 11,
+            "Metadata Settings": 12,
+            "HuggingFace Settings": 13,
         }
 
         import re
