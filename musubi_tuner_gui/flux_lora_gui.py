@@ -27,6 +27,8 @@ from .common_gui import (
     get_file_path,
     get_file_path_or_save_as,
     get_folder_path,
+    list_files,
+    normalize_path,
     print_command_and_toml,
     run_cmd_advanced_training,
     save_executed_script,
@@ -56,9 +58,9 @@ def _get_debug_parameters_for_mode(debug_mode: str) -> str:
         "Show Timesteps (Image)": "--show_timesteps image",
         "Show Timesteps (Console)": "--show_timesteps console",
         "RCM Debug Save": "--rcm_debug_save",
-        "Enable Logging (TensorBoard)": "--log_with tensorboard --logging_dir ./logs",
+        "Enable Logging (TensorBoard)": "--log_with tensorboard",
         "Enable Logging (WandB)": "--log_with wandb",
-        "Enable Logging (All)": "--log_with all --logging_dir ./logs",
+        "Enable Logging (All)": "--log_with all",
     }
     return debug_params.get(debug_mode, "")
 
@@ -155,7 +157,30 @@ def save_flux_configuration(save_as_bool, file_path, parameters):
         file_path = get_file_path_or_save_as(file_path, default_extension=".toml", extension_name="TOML files")
 
     if not file_path:
-        return original_file_path, gr.update(value="No file selected.", visible=True)
+        return gr.update(value=original_file_path), gr.update(value="No file selected.", visible=True)
+
+    def _config_file_dropdown_update(value: str):
+        value = normalize_path(value) if isinstance(value, str) and value else value
+        directory = value
+        if isinstance(directory, str) and directory:
+            try:
+                if not os.path.isdir(directory):
+                    directory = os.path.dirname(directory) or "."
+            except OSError:
+                directory = os.path.dirname(directory) or "."
+        else:
+            directory = "."
+
+        choices = [""]
+        try:
+            choices.extend(list(list_files(directory, exts=[".toml", ".json"], all=True)))
+        except Exception:
+            pass
+
+        if isinstance(value, str) and value and value not in choices:
+            choices.insert(1, value)
+
+        return gr.update(value=value, choices=choices)
 
     try:
         SaveConfigFile(
@@ -165,12 +190,12 @@ def save_flux_configuration(save_as_bool, file_path, parameters):
         )
         msg = f"Configuration saved: {os.path.basename(file_path)}"
         gr.Info(msg)
-        return file_path, gr.update(value=msg, visible=True)
+        return _config_file_dropdown_update(file_path), gr.update(value=msg, visible=True)
     except Exception as e:
         msg = f"Failed to save configuration: {e}"
         log.error(msg)
         gr.Error(msg)
-        return original_file_path, gr.update(value=msg, visible=True)
+        return _config_file_dropdown_update(original_file_path), gr.update(value=msg, visible=True)
 
 
 def open_flux_configuration(ask_for_file, file_path, parameters):
@@ -184,17 +209,40 @@ def open_flux_configuration(ask_for_file, file_path, parameters):
         values.extend([v for _, v in parameters])
         return tuple(values)
 
+    def _config_file_dropdown_update(value: str):
+        value = normalize_path(value) if isinstance(value, str) and value else value
+        directory = value
+        if isinstance(directory, str) and directory:
+            try:
+                if not os.path.isdir(directory):
+                    directory = os.path.dirname(directory) or "."
+            except OSError:
+                directory = os.path.dirname(directory) or "."
+        else:
+            directory = "."
+
+        choices = [""]
+        try:
+            choices.extend(list(list_files(directory, exts=[".toml", ".json"], all=True)))
+        except Exception:
+            pass
+
+        if isinstance(value, str) and value and value not in choices:
+            choices.insert(1, value)
+
+        return gr.update(value=value, choices=choices)
+
     if ask_for_file and not os.path.isfile(file_path):
         msg = f"New configuration file will be created at: {os.path.basename(file_path)}"
         gr.Info(msg)
-        values = [file_path, gr.update(value=msg, visible=True)]
+        values = [_config_file_dropdown_update(file_path), gr.update(value=msg, visible=True)]
         values.extend([v for _, v in parameters])
         return tuple(values)
 
     if not os.path.isfile(file_path):
         msg = f"Config file does not exist: {file_path}"
         gr.Error(msg)
-        values = [original_file_path, gr.update(value=msg, visible=True)]
+        values = [_config_file_dropdown_update(original_file_path), gr.update(value=msg, visible=True)]
         values.extend([v for _, v in parameters])
         return tuple(values)
 
@@ -205,7 +253,7 @@ def open_flux_configuration(ask_for_file, file_path, parameters):
         msg = f"Failed to load configuration: {e}"
         log.error(msg)
         gr.Error(msg)
-        values = [original_file_path, gr.update(value=msg, visible=True)]
+        values = [_config_file_dropdown_update(original_file_path), gr.update(value=msg, visible=True)]
         values.extend([v for _, v in parameters])
         return tuple(values)
 
@@ -355,7 +403,7 @@ def open_flux_configuration(ask_for_file, file_path, parameters):
 
     msg = f"Loaded configuration: {os.path.basename(file_path)}"
     gr.Info(msg)
-    return tuple([file_path, gr.update(value=msg, visible=True)] + loaded_values)
+    return tuple([_config_file_dropdown_update(file_path), gr.update(value=msg, visible=True)] + loaded_values)
 
 
 def _maybe_create_enhanced_sample_prompts(param_dict: dict, parameters: list[tuple[str, object]]) -> tuple[dict, list[tuple[str, object]]]:
@@ -1689,28 +1737,68 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                 variant="secondary"
             )
 
-    # Dynamic UI updates based on model family selection
-    def update_model_settings(family):
+    # Dynamic UI updates based on model family selection.
+    # NOTE: This runs on programmatic updates too (e.g. when loading a preset),
+    # so it must preserve already-loaded values instead of always forcing defaults.
+    def update_model_settings(
+        family: str,
+        current_model_version: str,
+        current_fp8_text_encoder: bool,
+        current_caching_teo_fp8_text_encoder: bool,
+        current_sample_steps,
+        current_sample_guidance_scale,
+    ):
+        family = (family or "").strip()
+        current_model_version = (current_model_version or "").strip()
+
+        def _as_int(value, default: int):
+            try:
+                if value is None or value == "":
+                    return default
+                return int(value)
+            except (TypeError, ValueError):
+                return default
+
+        def _as_float(value, default: float):
+            try:
+                if value is None or value == "":
+                    return default
+                return float(value)
+            except (TypeError, ValueError):
+                return default
+
         if family == "FLUX.2":
             return (
-                gr.Dropdown(choices=_FLUX2_MODEL_VERSIONS, value="dev", interactive=False, info="FLUX.2 dev (Mistral 3)"),
-                gr.Checkbox(value=False, interactive=False, info="Not supported for FLUX.2 dev."),
-                gr.Checkbox(value=False, interactive=False, info="Not supported for FLUX.2 dev."),
-                gr.Number(value=50),  # sample_steps
-                gr.Number(value=4.0),  # sample_guidance_scale
+                gr.update(choices=_FLUX2_MODEL_VERSIONS, value="dev", interactive=False, info="FLUX.2 dev (Mistral 3)"),
+                gr.update(value=False, interactive=False, info="Not supported for FLUX.2 dev."),
+                gr.update(value=False, interactive=False, info="Not supported for FLUX.2 dev."),
+                gr.update(value=_as_int(current_sample_steps, 50)),
+                gr.update(value=_as_float(current_sample_guidance_scale, 4.0)),
             )
-        else:  # FLUX Klein
-            return (
-                gr.Dropdown(choices=_KLEIN_MODEL_VERSIONS, value="klein-base-9b", interactive=True, info="Select FLUX Klein model version"),
-                gr.Checkbox(value=False, interactive=True, info="FP8 for text encoder (supported in Klein)"),
-                gr.Checkbox(value=False, interactive=True, info="FP8 for text encoder caching (supported in Klein)"),
-                gr.Number(value=50),  # sample_steps (base model default)
-                gr.Number(value=4.0),  # sample_guidance_scale (base model default)
-            )
+
+        # FLUX Klein
+        allowed_klein = {v for _, v in _KLEIN_MODEL_VERSIONS}
+        if current_model_version not in allowed_klein:
+            current_model_version = "klein-base-9b"
+
+        # Recommended sampling defaults for Klein:
+        # - distilled klein-4b / klein-9b: 4 steps @ guidance 1.0
+        # - base klein models: 50 steps @ guidance 4.0
+        is_distilled = current_model_version in {"klein-4b", "klein-9b"}
+        default_steps = 4 if is_distilled else 50
+        default_guidance = 1.0 if is_distilled else 4.0
+
+        return (
+            gr.update(choices=_KLEIN_MODEL_VERSIONS, value=current_model_version, interactive=True, info="Select FLUX Klein model version"),
+            gr.update(value=bool(current_fp8_text_encoder), interactive=True, info="FP8 for text encoder (supported in Klein)"),
+            gr.update(value=bool(current_caching_teo_fp8_text_encoder), interactive=True, info="FP8 for text encoder caching (supported in Klein)"),
+            gr.update(value=_as_int(current_sample_steps, default_steps)),
+            gr.update(value=_as_float(current_sample_guidance_scale, default_guidance)),
+        )
 
     model_family.change(
         fn=update_model_settings,
-        inputs=[model_family],
+        inputs=[model_family, model_version, fp8_text_encoder, caching_teo_fp8_text_encoder, sample_steps, sample_guidance_scale],
         outputs=[model_version, fp8_text_encoder, caching_teo_fp8_text_encoder, sample_steps, sample_guidance_scale],
     )
 

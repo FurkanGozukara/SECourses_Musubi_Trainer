@@ -63,9 +63,9 @@ def get_debug_parameters_for_mode(debug_mode: str) -> str:
         "Show Timesteps (Image)": "--show_timesteps image",
         "Show Timesteps (Console)": "--show_timesteps console",
         "RCM Debug Save": "--rcm_debug_save",
-        "Enable Logging (TensorBoard)": "--log_with tensorboard --logging_dir ./logs",
+        "Enable Logging (TensorBoard)": "--log_with tensorboard",
         "Enable Logging (WandB)": "--log_with wandb",
-        "Enable Logging (All)": "--log_with all --logging_dir ./logs",
+        "Enable Logging (All)": "--log_with all",
     }
     return debug_params.get(debug_mode, "")
 
