@@ -16,6 +16,7 @@ from musubi_tuner_gui.image_preprocessing_gui import image_preprocessing_tab
 from musubi_tuner_gui.changelog_gui import version_history_tab
 from musubi_tuner_gui.lora_extractor_gui import lora_extractor_tab
 from musubi_tuner_gui.lora_merge_gui import lora_merge_tab
+from musubi_tuner_gui.lora_convert_gui import lora_convert_tab
 from musubi_tuner_gui.custom_logging import setup_logging
 from musubi_tuner_gui.class_gui_config import GUIConfig
 from musubi_tuner_gui.class_tab_config_manager import TabConfigManager
@@ -37,10 +38,10 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
     css = read_file_content("./assets/style.css")
 
     # Create the main Gradio Blocks interface
-    ui_interface = gr.Blocks(css=css, title="SECourses Musubi Trainer V27.2", theme=gr.themes.Soft())
+    ui_interface = gr.Blocks(css=css, title="SECourses Musubi Trainer V27.3", theme=gr.themes.Soft())
     with ui_interface:
         # Add title with Patreon link
-        gr.Markdown("# SECourses Musubi Trainer V27.2 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
+        gr.Markdown("# SECourses Musubi Trainer V27.3 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
         
         # Create tabs for different functionalities
         with gr.Tab("Qwen Image Training"):
@@ -72,6 +73,9 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
 
         with gr.Tab("LoRA Merger"):
             lora_merge_tab(headless=headless, config=None)
+
+        with gr.Tab("LoRA Converter"):
+            lora_convert_tab(headless=headless, config=None)
         
         with gr.Tab("Image Preprocessing"):
             preprocessing_config = config_manager.get_config_for_tab("image_preprocessing")
