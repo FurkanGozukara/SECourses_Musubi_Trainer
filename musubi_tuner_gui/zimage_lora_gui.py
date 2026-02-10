@@ -275,6 +275,9 @@ def _maybe_create_enhanced_sample_prompts_zimage(param_dict: dict, parameters: l
         return param_dict, parameters
     if not os.path.isfile(sample_prompts):
         return param_dict, parameters
+    if bool(param_dict.get("disable_prompt_enhancement", False)):
+        log.info("Z-Image prompt enhancement disabled; using original sample prompt file.")
+        return param_dict, parameters
 
     output_dir = (param_dict.get("output_dir") or "").strip()
     if not output_dir:
@@ -291,7 +294,7 @@ def _maybe_create_enhanced_sample_prompts_zimage(param_dict: dict, parameters: l
     cfg_scale = float(param_dict.get("sample_cfg_scale") or 4.0)
 
     def has_flag(s: str, flag: str) -> bool:
-        return re.search(rf"(?:^|\\s)--{re.escape(flag)}\\s+", s) is not None
+        return re.search(rf"(?<!\S)--{re.escape(flag)}(?:\s+|=)", s, flags=re.IGNORECASE) is not None
 
     enhanced_lines = []
     with open(sample_prompts, "r", encoding="utf-8") as f:
@@ -303,6 +306,9 @@ def _maybe_create_enhanced_sample_prompts_zimage(param_dict: dict, parameters: l
                 continue
 
             s = stripped
+            # Normalize common short/equals forms to canonical Kohya-style options that musubi parses.
+            s = re.sub(r"(?<!\S)-(?P<flag>fs|w|h|s|d|l|n|g)(?=\s|=)", r"--\g<flag>", s, flags=re.IGNORECASE)
+            s = re.sub(r"(?<!\S)--(?P<flag>fs|w|h|s|d|l|g)=(?P<value>[^\s]+)", r"--\g<flag> \g<value>", s, flags=re.IGNORECASE)
             if not has_flag(s, "w"):
                 s += f" --w {width}"
             if not has_flag(s, "h"):
@@ -628,6 +634,7 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
             # GUI-only variant selector and prompt helper
             "zimage_variant",
             "sample_cfg_scale",
+            "disable_prompt_enhancement",
             "training_mode",
             "training_adapter_path",
             "training_adapter_multiplier",
@@ -829,6 +836,7 @@ ZIMAGE_PARAM_KEYS = [
     "sample_every_n_epochs",
     "sample_at_first",
     "sample_prompts",
+    "disable_prompt_enhancement",
     "sample_output_dir",
     "sample_width",
     "sample_height",
@@ -966,6 +974,7 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
         "caching_teo_keep_cache": True,
         "caching_teo_fp8_llm": False,
         # Samples
+        "disable_prompt_enhancement": False,
         "sample_width": 1024,
         "sample_height": 1024,
         "sample_steps": 25,
@@ -1411,10 +1420,16 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
                 label="sample_prompts",
                 value=config.get("sample_prompts", ""),
                 interactive=True,
-                info="Path to a prompt file (one prompt per line).",
+                info="Path to a prompt file (one prompt per line). Missing defaults are auto-added unless disabled below.",
             )
             sample_prompts_btn = gr.Button("📁", size="lg", visible=not headless)
             sample_prompts_btn.click(fn=lambda: get_file_path(file_path="", default_extension=".txt", extension_name="Text files"), outputs=[sample_prompts])
+        with gr.Row():
+            disable_prompt_enhancement = gr.Checkbox(
+                label="Disable Automatic Prompt Enhancement",
+                value=bool(config.get("disable_prompt_enhancement", False)),
+                info="Use prompt file as-is (do not auto-add default --w/--h/--s/--l/--d/--n values).",
+            )
         with gr.Row():
             sample_output_dir = gr.Textbox(
                 label="sample_output_dir",
@@ -1692,6 +1707,7 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
         sample_every_n_epochs,
         sample_at_first,
         sample_prompts,
+        disable_prompt_enhancement,
         sample_output_dir,
         sample_width,
         sample_height,
@@ -1887,6 +1903,7 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
             # Samples
             "sample": ("Sample Generation Settings", "Sample Generation"),
             "sample_prompts": ("Sample Generation Settings", "Sample Prompts File"),
+            "disable_prompt_enhancement": ("Sample Generation Settings", "Disable Automatic Prompt Enhancement"),
             "sample_steps": ("Sample Generation Settings", "Sample Steps"),
             "sample_cfg_scale": ("Sample Generation Settings", "Sample CFG Scale"),
             "guidance": ("Sample Generation Settings", "Guidance Scale"),
