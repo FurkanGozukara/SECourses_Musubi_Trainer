@@ -417,6 +417,9 @@ def _maybe_create_enhanced_sample_prompts(param_dict: dict, parameters: list[tup
         return param_dict, parameters
     if not os.path.isfile(sample_prompts):
         return param_dict, parameters
+    if bool(param_dict.get("disable_prompt_enhancement", False)):
+        log.info("FLUX prompt enhancement disabled; using original sample prompt file.")
+        return param_dict, parameters
 
     output_dir = (param_dict.get("output_dir") or "").strip()
     if not output_dir:
@@ -433,7 +436,7 @@ def _maybe_create_enhanced_sample_prompts(param_dict: dict, parameters: list[tup
     neg = (param_dict.get("sample_negative_prompt") or "").strip()
 
     def has_flag(s: str, flag: str) -> bool:
-        return re.search(rf"(?:^|\\s)--{re.escape(flag)}\\s+", s) is not None
+        return re.search(rf"(?<!\S)--{re.escape(flag)}(?:\s+|=)", s, flags=re.IGNORECASE) is not None
 
     enhanced_lines = []
     with open(sample_prompts, "r", encoding="utf-8") as f:
@@ -445,6 +448,9 @@ def _maybe_create_enhanced_sample_prompts(param_dict: dict, parameters: list[tup
                 continue
 
             s = stripped
+            # Normalize common short/equals forms to canonical Kohya-style options that musubi parses.
+            s = re.sub(r"(?<!\S)-(?P<flag>fs|w|h|s|d|l|n|g)(?=\s|=)", r"--\g<flag>", s, flags=re.IGNORECASE)
+            s = re.sub(r"(?<!\S)--(?P<flag>fs|w|h|s|d|l|n|g)=(?P<value>[^\s]+)", r"--\g<flag> \g<value>", s, flags=re.IGNORECASE)
             if not has_flag(s, "w"):
                 s += f" --w {width}"
             if not has_flag(s, "h"):
@@ -728,6 +734,7 @@ def train_flux_model(headless: bool, print_only: bool, parameters):
             "caching_teo_fp8_text_encoder",
             "model_family",  # GUI-only selector
             "training_mode",  # GUI-only selector
+            "disable_prompt_enhancement",
         ]
         + pattern_exclusion,
         mandatory_keys=["dataset_config", "dit", "vae", "text_encoder", "model_version", "network_module"],
@@ -938,6 +945,7 @@ FLUX_PARAM_KEYS = [
     "sample_every_n_epochs",
     "sample_at_first",
     "sample_prompts",
+    "disable_prompt_enhancement",
     "sample_output_dir",
     "sample_width",
     "sample_height",
@@ -1059,6 +1067,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
         "caching_teo_keep_cache": True,
         "caching_teo_fp8_text_encoder": False,
         # Sample defaults (FLUX.2)
+        "disable_prompt_enhancement": False,
         "sample_steps": 50,
         "sample_guidance_scale": 4.0,
         # Torch compile defaults
@@ -1563,10 +1572,16 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                 label="sample_prompts",
                 value=config.get("sample_prompts", ""),
                 interactive=True,
-                info="Path to a prompt file (one prompt per line).",
+                info="Path to a prompt file (one prompt per line). Missing defaults are auto-added unless disabled below.",
             )
             sample_prompts_btn = gr.Button("📁", size="lg", visible=not headless)
             sample_prompts_btn.click(fn=lambda: get_file_path(file_path="", default_extension=".txt", extension_name="Text files"), outputs=[sample_prompts])
+        with gr.Row():
+            disable_prompt_enhancement = gr.Checkbox(
+                label="Disable Automatic Prompt Enhancement",
+                value=bool(config.get("disable_prompt_enhancement", False)),
+                info="Use prompt file as-is (do not auto-add default --w/--h/--s/--g/--d/--n values).",
+            )
         with gr.Row():
             sample_output_dir = gr.Textbox(
                 label="sample_output_dir",
@@ -1912,6 +1927,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
         sample_every_n_epochs,
         sample_at_first,
         sample_prompts,
+        disable_prompt_enhancement,
         sample_output_dir,
         sample_width,
         sample_height,
@@ -2109,6 +2125,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
             # Samples
             "sample": ("Sample Generation Settings", "Sample Generation"),
             "sample_prompts": ("Sample Generation Settings", "Sample Prompts File"),
+            "disable_prompt_enhancement": ("Sample Generation Settings", "Disable Automatic Prompt Enhancement"),
             "sample_steps": ("Sample Generation Settings", "Sample Steps"),
             "guidance": ("Sample Generation Settings", "Guidance Scale"),
 

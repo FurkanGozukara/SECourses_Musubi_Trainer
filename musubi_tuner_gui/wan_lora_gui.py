@@ -1871,7 +1871,7 @@ class WanSampleSettings:
 
             self.sample_guidance_scale = gr.Number(
                 label="Default Guidance Scale",
-                info="Guidance scale for sample generation (higher = stronger prompt adherence, Wan optimal: 7.0)",
+                info="Default CFG scale for WAN training samples (written as --l in prompts; Wan optimal: 7.0)",
                 value=self.config.get("sample_guidance_scale", 7.0),
                 minimum=1.0,
                 maximum=20.0,
@@ -1933,7 +1933,6 @@ def generate_enhanced_prompt_file(
         sample_steps: Default number of denoising steps
         sample_guidance_scale: Default guidance scale
         sample_seed: Default seed (99 for WAN, -1 would be random)
-        sample_scheduler: Default scheduler
         sample_negative_prompt: Default negative prompt
 
     Returns:
@@ -1950,6 +1949,13 @@ def generate_enhanced_prompt_file(
 
         # Process each line
         enhanced_lines = []
+        def has_flag(s: str, flag: str) -> bool:
+            return re.search(rf"(?<!\S)--{re.escape(flag)}(?:\s+|=)", s, flags=re.IGNORECASE) is not None
+
+        def get_flag_value(s: str, flag: str):
+            m = re.search(rf"(?<!\S)--{re.escape(flag)}(?:\s+|=)([^\s]+)", s, flags=re.IGNORECASE)
+            return m.group(1) if m else None
+
         for line in lines:
             line = line.strip()
 
@@ -1958,18 +1964,27 @@ def generate_enhanced_prompt_file(
                 enhanced_lines.append(line)
                 continue
 
-            # Check if line already has parameters
-            has_width = '--w ' in line or '-w ' in line
-            has_height = '--h ' in line or '-h ' in line
-            has_frames = '--f ' in line or '-f ' in line
-            has_steps = '--s ' in line or '-s ' in line
-            has_guidance = '--g ' in line or '-g ' in line
-            has_seed = '--d ' in line or '-d ' in line
-            has_negative = '--n ' in line or '-n ' in line
-            has_one_frame = '--of ' in line or '-of ' in line
-
-            # Build enhanced line with defaults for missing parameters
+            # Build enhanced line with defaults for missing parameters.
+            # Normalize common short/equals forms to canonical Kohya-style options that musubi parses.
             enhanced_line = line
+            enhanced_line = re.sub(r"(?<!\S)-(?P<flag>fs|w|h|f|s|d|l|n|g|of)(?=\s|=)", r"--\g<flag>", enhanced_line, flags=re.IGNORECASE)
+            enhanced_line = re.sub(
+                r"(?<!\S)--(?P<flag>fs|w|h|f|s|d|l|g|of)=(?P<value>[^\s]+)",
+                r"--\g<flag> \g<value>",
+                enhanced_line,
+                flags=re.IGNORECASE,
+            )
+
+            # Check if line already has parameters
+            has_width = has_flag(enhanced_line, "w")
+            has_height = has_flag(enhanced_line, "h")
+            has_frames = has_flag(enhanced_line, "f")
+            has_steps = has_flag(enhanced_line, "s")
+            has_cfg_scale = has_flag(enhanced_line, "l")
+            has_guidance = has_flag(enhanced_line, "g")
+            has_seed = has_flag(enhanced_line, "d")
+            has_negative = has_flag(enhanced_line, "n")
+            has_one_frame = has_flag(enhanced_line, "of")
 
             # Add width and height if not present
             if not has_width:
@@ -1985,9 +2000,17 @@ def generate_enhanced_prompt_file(
             if not has_steps:
                 enhanced_line += f" --s {sample_steps}"
 
-            # Add guidance if not present
-            if not has_guidance:
-                enhanced_line += f" --g {sample_guidance_scale}"
+            # Wan training samples consume `--l` (cfg_scale) in hv_train_network parsing.
+            # If user provided only `--g`, mirror it into `--l` so it actually affects sample output.
+            if has_guidance and not has_cfg_scale:
+                g_val = get_flag_value(enhanced_line, "g")
+                if g_val is not None:
+                    enhanced_line += f" --l {g_val}"
+                    has_cfg_scale = True
+
+            # Add guidance/cfg if not present (prefer `--l` for Wan training path)
+            if not has_cfg_scale:
+                enhanced_line += f" --l {sample_guidance_scale}"
 
             # Add negative prompt if not present and not empty
             if not has_negative and sample_negative_prompt and sample_negative_prompt.strip():

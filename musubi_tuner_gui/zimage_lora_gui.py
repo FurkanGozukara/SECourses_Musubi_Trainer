@@ -295,6 +295,9 @@ def _maybe_create_enhanced_sample_prompts_zimage(param_dict: dict, parameters: l
 
     def has_flag(s: str, flag: str) -> bool:
         return re.search(rf"(?<!\S)--{re.escape(flag)}(?:\s+|=)", s, flags=re.IGNORECASE) is not None
+    def get_flag_value(s: str, flag: str):
+        m = re.search(rf"(?<!\S)--{re.escape(flag)}(?:\s+|=)([^\s]+)", s, flags=re.IGNORECASE)
+        return m.group(1) if m else None
 
     enhanced_lines = []
     with open(sample_prompts, "r", encoding="utf-8") as f:
@@ -308,7 +311,7 @@ def _maybe_create_enhanced_sample_prompts_zimage(param_dict: dict, parameters: l
             s = stripped
             # Normalize common short/equals forms to canonical Kohya-style options that musubi parses.
             s = re.sub(r"(?<!\S)-(?P<flag>fs|w|h|s|d|l|n|g)(?=\s|=)", r"--\g<flag>", s, flags=re.IGNORECASE)
-            s = re.sub(r"(?<!\S)--(?P<flag>fs|w|h|s|d|l|g)=(?P<value>[^\s]+)", r"--\g<flag> \g<value>", s, flags=re.IGNORECASE)
+            s = re.sub(r"(?<!\S)--(?P<flag>fs|w|h|s|d|l|n|g)=(?P<value>[^\s]+)", r"--\g<flag> \g<value>", s, flags=re.IGNORECASE)
             if not has_flag(s, "w"):
                 s += f" --w {width}"
             if not has_flag(s, "h"):
@@ -317,7 +320,18 @@ def _maybe_create_enhanced_sample_prompts_zimage(param_dict: dict, parameters: l
                 s += f" --s {steps}"
             if seed is not None and int(seed) >= 0 and not has_flag(s, "d"):
                 s += f" --d {int(seed)}"
-            if not has_flag(s, "l"):
+
+            # Z-Image training samples are controlled by cfg_scale (`--l`).
+            # Mirror legacy `--g` into `--l` when `--l` is missing.
+            has_cfg_scale = has_flag(s, "l")
+            has_guidance = has_flag(s, "g")
+            if has_guidance and not has_cfg_scale:
+                g_val = get_flag_value(s, "g")
+                if g_val is not None:
+                    s += f" --l {g_val}"
+                    has_cfg_scale = True
+
+            if not has_cfg_scale:
                 s += f" --l {cfg_scale}"
             if neg and not has_flag(s, "n"):
                 s += f" --n {neg}"

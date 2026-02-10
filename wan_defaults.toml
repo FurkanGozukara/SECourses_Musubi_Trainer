@@ -200,15 +200,16 @@ sample_every_n_steps = 0  # Generate samples every N steps (0=disabled)
 sample_every_n_epochs = 0  # Generate samples every N epochs (0=disabled)
 sample_at_first = false  # Generate samples before training starts
 sample_prompts = ""  # Path to file with sample prompts
+disable_prompt_enhancement = false  # true = use prompt file exactly as written (no auto-added defaults)
 
 # Default Sample Parameters for Video Generation
 sample_width = 960  # Sample video width. Optimal resolutions: 960×960, 1280×720, 720×1280
 sample_height = 960  # Sample video height. Optimal resolutions: 960×960, 1280×720, 720×1280
 sample_num_frames = 81  # Number of frames in sample videos
 sample_steps = 20  # Number of inference steps for samples
-sample_guidance_scale = 7.0  # Guidance scale for sample generation
+sample_guidance_scale = 7.0  # Default WAN training sample CFG scale (written as --l in enhanced prompts)
 sample_seed = 99  # Seed for sample generation (-1=random)
-sample_scheduler = "unipc"  # Scheduler for sample generation
+sample_scheduler = "unipc"  # Legacy field; WAN training samples use musubi's internal sampler path
 sample_negative_prompt = ""  # Default negative prompt for samples
 
 # Metadata Settings
