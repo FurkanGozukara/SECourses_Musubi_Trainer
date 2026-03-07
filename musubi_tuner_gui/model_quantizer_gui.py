@@ -48,6 +48,8 @@ PRESET_INT8_TENSOR = "INT8 Tensorwise (Fastest)"
 PRESET_MXFP8_BALANCED = "MXFP8 Balanced (Blackwell)"
 PRESET_NVFP4_BALANCED = "NVFP4 Balanced (Blackwell)"
 PRESET_NVFP4_Z = "NVFP4 Z-Image (Best Quality)"
+PRESET_FP8_SCALED = "FP8 Scaled (Blockwise)"
+PRESET_FP8_MIXED = "FP8 Mixed (Int8 fallback)"
 
 MODEL_PRESET_NONE = "None (manual)"
 
@@ -76,6 +78,9 @@ def _load_model_filters() -> Dict[str, Dict[str, object]]:
             "radiance": {"help": "Radiance diffusion", "category": "diffusion"},
             "wan": {"help": "WAN video model", "category": "video"},
             "hunyuan": {"help": "Hunyuan video model", "category": "video"},
+            "ltx2": {"help": "LTX v2 / v2.3 video model", "category": "video"},
+            "ltx2_3": {"help": "LTX 2.3 video model", "category": "video"},
+            "ltxv2": {"help": "LTXv2 video model", "category": "video"},
             "qwen": {"help": "Qwen Image", "category": "image"},
             "zimage": {"help": "Z-Image", "category": "image"},
             "zimage_refiner": {"help": "Z-Image Refiner", "category": "image"},
@@ -131,6 +136,21 @@ MODEL_PRESET_SETTINGS.update({
         "quant_format": QUANT_FORMAT_NVFP4,
         "scaling_mode": "tensor",
     },
+    "ltxv2": {
+        "preset": PRESET_FP8_MIXED,
+        "quant_format": QUANT_FORMAT_FP8,
+        "scaling_mode": "block",
+    },
+    "ltx2": {
+        "preset": PRESET_FP8_MIXED,
+        "quant_format": QUANT_FORMAT_FP8,
+        "scaling_mode": "block",
+    },
+    "ltx2_3": {
+        "preset": PRESET_FP8_MIXED,
+        "quant_format": QUANT_FORMAT_FP8,
+        "scaling_mode": "block",
+    },
 })
 
 PRESET_OVERRIDES = {
@@ -174,6 +194,45 @@ PRESET_OVERRIDES = {
         "min_k": 64,
         "max_k": 256,
         "full_matrix": True,
+        "full_precision_matrix_mult": True,
+    },
+    PRESET_FP8_SCALED: {
+        "quant_format": QUANT_FORMAT_FP8,
+        "comfy_quant": True,
+        "scaling_mode": "block",
+        "block_size": 64,
+        "simple": False,
+        "skip_inefficient_layers": True,
+        "num_iter": 700,
+        "calib_samples": 2048,
+        "optimizer": "original",
+        "lr_schedule": "adaptive",
+        "lr": 8.077300000003e-3,
+        "top_p": 0.08,
+        "min_k": 32,
+        "max_k": 512,
+        "full_matrix": False,
+        "full_precision_matrix_mult": True,
+    },
+    PRESET_FP8_MIXED: {
+        "quant_format": QUANT_FORMAT_FP8,
+        "comfy_quant": True,
+        "fallback_type": "int8",
+        "fallback_block_size": 128,
+        "fallback_simple": False,
+        "scaling_mode": "block",
+        "block_size": 64,
+        "simple": False,
+        "skip_inefficient_layers": True,
+        "num_iter": 600,
+        "calib_samples": 2048,
+        "optimizer": "original",
+        "lr_schedule": "adaptive",
+        "lr": 8.077300000003e-3,
+        "top_p": 0.06,
+        "min_k": 32,
+        "max_k": 512,
+        "full_matrix": False,
         "full_precision_matrix_mult": True,
     },
     PRESET_INT8_FAST: {
@@ -311,7 +370,10 @@ class ModelQuantizer:
         return [sys.executable]
 
     def _base_cmd(self) -> List[str]:
-        return self._resolve_python() + ["-m", "convert_to_quant.cli.main"]
+        return self._resolve_python() + [
+            "-m",
+            "convert_to_quant.convert_to_quant.cli.main",
+        ]
 
     def _tail_text(self, text: str, max_chars: int = 40000) -> str:
         if len(text) <= max_chars:
@@ -894,6 +956,8 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
                     PRESET_FAST,
                     PRESET_NORMAL,
                     PRESET_HIGH,
+                    PRESET_FP8_SCALED,
+                    PRESET_FP8_MIXED,
                     PRESET_INT8_FAST,
                     PRESET_INT8_TENSOR,
                     PRESET_MXFP8_BALANCED,
@@ -1506,6 +1570,14 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             "full_precision_matrix_mult",
             "scaling_mode",
             "block_size",
+            "custom_type",
+            "custom_block_size",
+            "custom_scaling_mode",
+            "custom_simple",
+            "custom_heur",
+            "fallback_type",
+            "fallback_block_size",
+            "fallback_simple",
             "simple",
             "skip_inefficient_layers",
             "num_iter",
@@ -1539,6 +1611,14 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             full_precision_matrix_mult,
             scaling_mode,
             block_size,
+            custom_type,
+            custom_block_size,
+            custom_scaling_mode,
+            custom_simple,
+            custom_heur,
+            fallback_type,
+            fallback_block_size,
+            fallback_simple,
             simple,
             skip_inefficient_layers,
             num_iter,
@@ -2078,6 +2158,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                             PRESET_FAST,
                             PRESET_NORMAL,
                             PRESET_HIGH,
+                            PRESET_FP8_SCALED,
+                            PRESET_FP8_MIXED,
                             PRESET_INT8_FAST,
                             PRESET_INT8_TENSOR,
                             PRESET_MXFP8_BALANCED,
@@ -2694,6 +2776,14 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         "full_precision_matrix_mult",
         "scaling_mode",
         "block_size",
+        "custom_type",
+        "custom_block_size",
+        "custom_scaling_mode",
+        "custom_simple",
+        "custom_heur",
+        "fallback_type",
+        "fallback_block_size",
+        "fallback_simple",
         "simple",
         "skip_inefficient_layers",
         "num_iter",
@@ -2717,6 +2807,14 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         full_precision_matrix_mult,
         scaling_mode,
         block_size,
+        custom_type,
+        custom_block_size,
+        custom_scaling_mode,
+        custom_simple,
+        custom_heur,
+        fallback_type,
+        fallback_block_size,
+        fallback_simple,
         simple,
         skip_inefficient_layers,
         num_iter,
