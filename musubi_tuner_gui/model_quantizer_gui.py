@@ -47,7 +47,7 @@ PRESET_INT8_FAST = "INT8 Fast (Block 128)"
 PRESET_INT8_TENSOR = "INT8 Tensorwise (Fastest)"
 PRESET_MXFP8_BALANCED = "MXFP8 Balanced (Blackwell)"
 PRESET_NVFP4_BALANCED = "NVFP4 Balanced (Blackwell)"
-PRESET_NVFP4_Z = "NVFP4 Z-Image (Best Quality)"
+PRESET_NVFP4_Z = "NVFP4 Z-Image (Aggressive / Expert)"
 PRESET_FP8_SCALED = "FP8 Scaled (Blockwise)"
 PRESET_FP8_MIXED = "FP8 Mixed (Int8 fallback)"
 
@@ -95,17 +95,65 @@ MODEL_CATEGORY_LABELS = {
     "image": "Image Models",
 }
 
+MODEL_PRESET_DISPLAY_NAMES = {
+    "ltxv2": "ltxv2_2.3",
+    "ltx2": "ltxv2 / ltx2",
+    "ltx2_3": "ltxv2.3 / ltx2_3",
+}
 
-def _ordered_filter_names() -> List[str]:
+SCALING_MODE_INFO = (
+    "Tensor uses one scale for the whole tensor: lowest scale overhead and usually the simplest/fastest path, "
+    "but less adaptive when different channels or regions have very different ranges. "
+    "Block uses one scale per block/group: usually better quality on uneven weights, but adds more scale metadata. "
+    "Row sits between them with one scale per output row."
+)
+
+BLOCK_SIZE_INFO = (
+    "Only used for block-wise quantization. Smaller blocks mean more local scales and usually better accuracy, "
+    "but more scale overhead and sometimes more memory/runtime cost. Larger blocks reduce scale overhead, but usually "
+    "reduce quality. Common starting points: FP8 block-wise 64, INT8 block-wise 128. INT8 block-wise layers must "
+    "also be divisible by the chosen block size."
+)
+
+CALIB_SAMPLES_INFO = (
+    "Used here for bias-correction calibration, not dataset calibration. The tool generates random inputs and uses "
+    "them to estimate output bias shift after quantization. More samples usually make the correction more stable, "
+    "but cost more time and memory. Diminishing returns usually start after a few thousand samples."
+)
+
+ACTCAL_SAMPLES_INFO = (
+    "Used only by activation calibration (actcal) to estimate input_scale values. More samples can improve stability, "
+    "but increase calibration time and memory use."
+)
+
+INPUT_SCALE_INFO = (
+    "Writes per-layer input_scale tensors to the output model. This is mostly for loader compatibility; for many "
+    "FP8/INT8 exports it is just 1.0, but some text-encoder and calibrated paths can use real non-default values."
+)
+
+MODEL_PRESET_VALUE_BY_LABEL = {
+    label: key for key, label in MODEL_PRESET_DISPLAY_NAMES.items()
+}
+
+
+def _model_preset_label(value: str) -> str:
+    return MODEL_PRESET_DISPLAY_NAMES.get(value, value)
+
+
+def _model_preset_value(value: str) -> str:
+    return MODEL_PRESET_VALUE_BY_LABEL.get(value, value)
+
+
+def _ordered_filter_choices() -> List[str]:
     def _sort_key(item):
         name, cfg = item
         cat = cfg.get("category", "")
         return (cat, name)
 
-    return [name for name, _ in sorted(MODEL_FILTERS.items(), key=_sort_key)]
+    return [_model_preset_label(name) for name, _ in sorted(MODEL_FILTERS.items(), key=_sort_key)]
 
 
-MODEL_PRESET_CHOICES = [MODEL_PRESET_NONE] + _ordered_filter_names()
+MODEL_PRESET_CHOICES = [MODEL_PRESET_NONE] + _ordered_filter_choices()
 
 MODEL_PRESET_OVERRIDES = {
     "t5xxl": {"include_input_scale": True},
@@ -126,8 +174,18 @@ MODEL_PRESET_SETTINGS.update({
         "scaling_mode": "tensor",
         "include_input_scale": True,
     },
+    "wan": {
+        "preset": PRESET_FP8_SCALED,
+        "quant_format": QUANT_FORMAT_FP8,
+        "scaling_mode": "block",
+    },
+    "qwen": {
+        "preset": PRESET_FP8_SCALED,
+        "quant_format": QUANT_FORMAT_FP8,
+        "scaling_mode": "block",
+    },
     "zimage": {
-        "preset": PRESET_NVFP4_Z,
+        "preset": PRESET_NVFP4_BALANCED,
         "quant_format": QUANT_FORMAT_NVFP4,
         "scaling_mode": "tensor",
     },
@@ -156,7 +214,7 @@ MODEL_PRESET_SETTINGS.update({
 PRESET_OVERRIDES = {
     PRESET_FAST: {
         "simple": True,
-        "skip_inefficient_layers": True,
+        "skip_inefficient_layers": False,
         "num_iter": 200,
         "calib_samples": 1024,
         "optimizer": "original",
@@ -170,7 +228,7 @@ PRESET_OVERRIDES = {
     },
     PRESET_NORMAL: {
         "simple": False,
-        "skip_inefficient_layers": True,
+        "skip_inefficient_layers": False,
         "num_iter": 400,
         "calib_samples": 1024,
         "optimizer": "original",
@@ -202,7 +260,7 @@ PRESET_OVERRIDES = {
         "scaling_mode": "block",
         "block_size": 64,
         "simple": False,
-        "skip_inefficient_layers": True,
+        "skip_inefficient_layers": False,
         "num_iter": 700,
         "calib_samples": 2048,
         "optimizer": "original",
@@ -219,11 +277,11 @@ PRESET_OVERRIDES = {
         "comfy_quant": True,
         "fallback_type": "int8",
         "fallback_block_size": 128,
-        "fallback_simple": False,
+        "fallback_simple": True,
         "scaling_mode": "block",
         "block_size": 64,
         "simple": False,
-        "skip_inefficient_layers": True,
+        "skip_inefficient_layers": False,
         "num_iter": 600,
         "calib_samples": 2048,
         "optimizer": "original",
@@ -241,7 +299,7 @@ PRESET_OVERRIDES = {
         "scaling_mode": "block",
         "block_size": 128,
         "simple": True,
-        "skip_inefficient_layers": True,
+        "skip_inefficient_layers": False,
         "num_iter": 200,
         "calib_samples": 1024,
         "optimizer": "original",
@@ -259,7 +317,7 @@ PRESET_OVERRIDES = {
         "scaling_mode": "tensor",
         "block_size": None,
         "simple": True,
-        "skip_inefficient_layers": True,
+        "skip_inefficient_layers": False,
         "num_iter": 120,
         "calib_samples": 512,
         "optimizer": "original",
@@ -275,7 +333,7 @@ PRESET_OVERRIDES = {
         "quant_format": QUANT_FORMAT_MXFP8,
         "comfy_quant": True,
         "simple": False,
-        "skip_inefficient_layers": True,
+        "skip_inefficient_layers": False,
         "num_iter": 800,
         "calib_samples": 2048,
         "optimizer": "original",
@@ -332,6 +390,13 @@ def _to_int(value, default: Optional[int]) -> Optional[int]:
         return int(value)
     except Exception:
         return default
+
+
+def _to_optional_positive_int(value, default: Optional[int] = None) -> Optional[int]:
+    parsed = _to_int(value, default)
+    if parsed is None:
+        return default
+    return parsed if parsed > 0 else default
 
 
 def _to_float(value, default: Optional[float]) -> Optional[float]:
@@ -650,7 +715,7 @@ class ModelQuantizer:
             cmd += ["--exclude-layers", str(params.get("exclude_layers"))]
         if params.get("custom_type"):
             cmd += ["--custom-type", str(params.get("custom_type"))]
-        if params.get("custom_block_size") is not None:
+        if isinstance(params.get("custom_block_size"), int) and params.get("custom_block_size") > 0:
             cmd += ["--custom-block-size", str(params.get("custom_block_size"))]
         if params.get("custom_scaling_mode"):
             cmd += ["--custom-scaling-mode", str(params.get("custom_scaling_mode"))]
@@ -661,7 +726,7 @@ class ModelQuantizer:
 
         if params.get("fallback_type"):
             cmd += ["--fallback", str(params.get("fallback_type"))]
-        if params.get("fallback_block_size") is not None:
+        if isinstance(params.get("fallback_block_size"), int) and params.get("fallback_block_size") > 0:
             cmd += ["--fallback-block-size", str(params.get("fallback_block_size"))]
         if params.get("fallback_simple"):
             cmd.append("--fallback-simple")
@@ -970,7 +1035,7 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             model_preset_dropdown = gr.Dropdown(
                 label="Model Preset (Recommended Filters)",
                 choices=MODEL_PRESET_CHOICES,
-                value=config.get("model_quantizer.model_preset", MODEL_PRESET_NONE),
+                value=_model_preset_label(config.get("model_quantizer.model_preset", MODEL_PRESET_NONE)),
                 info="Select a model to apply its recommended exclusion filters.",
             )
 
@@ -1012,16 +1077,19 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
                 label="Scaling Mode",
                 choices=["tensor", "row", "block", "block3d", "block2d"],
                 value=config.get("model_quantizer.scaling_mode", "tensor"),
+                info=SCALING_MODE_INFO,
             )
             block_size = gr.Number(
                 label="Block Size",
                 value=config.get("model_quantizer.block_size", 64),
                 step=1,
                 interactive=True,
+                info=BLOCK_SIZE_INFO,
             )
             include_input_scale = gr.Checkbox(
                 label="Include input_scale tensors",
                 value=config.get("model_quantizer.include_input_scale", False),
+                info=INPUT_SCALE_INFO,
             )
 
     with gr.Accordion("Model Filters", open=False) as model_filter_group:
@@ -1065,11 +1133,13 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
                 label="Custom Block Size",
                 value=config.get("model_quantizer.custom_block_size", None),
                 step=1,
+                info=BLOCK_SIZE_INFO,
             )
             custom_scaling_mode = gr.Dropdown(
                 label="Custom Scaling Mode",
                 choices=[None, "tensor", "row", "block", "block3d", "block2d"],
                 value=config.get("model_quantizer.custom_scaling_mode", None),
+                info=SCALING_MODE_INFO,
             )
         with gr.Row():
             custom_simple = gr.Checkbox(
@@ -1091,6 +1161,7 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
                 label="Fallback Block Size",
                 value=config.get("model_quantizer.fallback_block_size", None),
                 step=1,
+                info=BLOCK_SIZE_INFO,
             )
             fallback_simple = gr.Checkbox(
                 label="Fallback: Simple quantization",
@@ -1116,6 +1187,7 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
                 label="Calibration Samples",
                 value=config.get("model_quantizer.calib_samples", 6144),
                 step=1,
+                info=CALIB_SAMPLES_INFO,
             )
             manual_seed = gr.Number(
                 label="Manual Seed (-1=random)",
@@ -1501,12 +1573,12 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             "custom_layers": custom_layers_value.strip() if isinstance(custom_layers_value, str) else custom_layers_value,
             "exclude_layers": exclude_layers_value.strip() if isinstance(exclude_layers_value, str) else exclude_layers_value,
             "custom_type": custom_type_value,
-            "custom_block_size": _to_int(custom_block_size_value, None),
+            "custom_block_size": _to_optional_positive_int(custom_block_size_value, None),
             "custom_scaling_mode": custom_scaling_mode_value,
             "custom_simple": bool(custom_simple_value),
             "custom_heur": bool(custom_heur_value),
             "fallback_type": fallback_type_value,
-            "fallback_block_size": _to_int(fallback_block_size_value, None),
+            "fallback_block_size": _to_optional_positive_int(fallback_block_size_value, None),
             "fallback_simple": bool(fallback_simple_value),
             "simple": bool(simple_value),
             "skip_inefficient_layers": bool(skip_inefficient_layers_value),
@@ -2169,12 +2241,12 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         value=config.get("model_quantizer.preset", PRESET_CUSTOM),
                         info="Quickly apply recommended optimization settings.",
                     )
-                    model_preset_dropdown = gr.Dropdown(
-                        label="Model Preset (Recommended Filters)",
-                        choices=MODEL_PRESET_CHOICES,
-                        value=config.get("model_quantizer.model_preset", MODEL_PRESET_NONE),
-                        info="Select a model to apply its recommended exclusion filters and defaults.",
-                    )
+            model_preset_dropdown = gr.Dropdown(
+                label="Model Preset (Recommended Filters)",
+                choices=MODEL_PRESET_CHOICES,
+                value=_model_preset_label(config.get("model_quantizer.model_preset", MODEL_PRESET_NONE)),
+                info="Select a model to apply its recommended exclusion filters and defaults.",
+            )
 
             with gr.Accordion("Workflow", open=True):
                 workflow = gr.Dropdown(
@@ -2214,16 +2286,19 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         label="Scaling Mode",
                         choices=["tensor", "row", "block", "block3d", "block2d"],
                         value=config.get("model_quantizer.scaling_mode", "tensor"),
+                        info=SCALING_MODE_INFO,
                     )
                     block_size = gr.Number(
                         label="Block Size",
                         value=config.get("model_quantizer.block_size", 64),
                         step=1,
                         interactive=True,
+                        info=BLOCK_SIZE_INFO,
                     )
                     include_input_scale = gr.Checkbox(
                         label="Include input_scale tensors",
                         value=config.get("model_quantizer.include_input_scale", False),
+                        info=INPUT_SCALE_INFO,
                     )
 
             with gr.Accordion("Model Filters", open=False) as model_filter_group:
@@ -2267,11 +2342,13 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         label="Custom Block Size",
                         value=config.get("model_quantizer.custom_block_size", None),
                         step=1,
+                        info=BLOCK_SIZE_INFO,
                     )
                     custom_scaling_mode = gr.Dropdown(
                         label="Custom Scaling Mode",
                         choices=[None, "tensor", "row", "block", "block3d", "block2d"],
                         value=config.get("model_quantizer.custom_scaling_mode", None),
+                        info=SCALING_MODE_INFO,
                     )
                 with gr.Row():
                     custom_simple = gr.Checkbox(
@@ -2293,6 +2370,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         label="Fallback Block Size",
                         value=config.get("model_quantizer.fallback_block_size", None),
                         step=1,
+                        info=BLOCK_SIZE_INFO,
                     )
                     fallback_simple = gr.Checkbox(
                         label="Fallback: Simple quantization",
@@ -2319,6 +2397,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         label="Calibration Samples",
                         value=config.get("model_quantizer.calib_samples", 6144),
                         step=1,
+                        info=CALIB_SAMPLES_INFO,
                     )
                     manual_seed = gr.Number(
                         label="Manual Seed (-1=random)",
@@ -2468,9 +2547,10 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             with gr.Accordion("Activation Calibration (actcal)", open=False):
                 with gr.Row():
                     actcal_samples = gr.Number(
-                        label="Calibration Samples",
+                        label="Activation Calibration Samples",
                         value=config.get("model_quantizer.actcal_samples", 64),
                         step=1,
+                        info=ACTCAL_SAMPLES_INFO,
                     )
                     actcal_percentile = gr.Number(
                         label="Percentile",
@@ -2710,12 +2790,12 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             "custom_layers": custom_layers_value.strip() if isinstance(custom_layers_value, str) else custom_layers_value,
             "exclude_layers": exclude_layers_value.strip() if isinstance(exclude_layers_value, str) else exclude_layers_value,
             "custom_type": custom_type_value,
-            "custom_block_size": _to_int(custom_block_size_value, None),
+            "custom_block_size": _to_optional_positive_int(custom_block_size_value, None),
             "custom_scaling_mode": custom_scaling_mode_value,
             "custom_simple": bool(custom_simple_value),
             "custom_heur": bool(custom_heur_value),
             "fallback_type": fallback_type_value,
-            "fallback_block_size": _to_int(fallback_block_size_value, None),
+            "fallback_block_size": _to_optional_positive_int(fallback_block_size_value, None),
             "fallback_simple": bool(fallback_simple_value),
             "simple": bool(simple_value),
             "skip_inefficient_layers": bool(skip_inefficient_layers_value),
@@ -2850,7 +2930,9 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
     )
 
     def _apply_model_preset(selected: str):
-        if selected == MODEL_PRESET_NONE:
+        selected_value = _model_preset_value(selected)
+
+        if selected_value == MODEL_PRESET_NONE:
             return (
                 [gr.update() for _ in filter_checkboxes.values()]
                 + [gr.update()]
@@ -2858,14 +2940,14 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 + [gr.update()]
             )
 
-        model_settings = MODEL_PRESET_SETTINGS.get(selected, {})
+        model_settings = MODEL_PRESET_SETTINGS.get(selected_value, {})
         preset_name = model_settings.get("preset", PRESET_NORMAL)
         combined: Dict[str, object] = {}
         combined.update(PRESET_OVERRIDES.get(preset_name, {}))
         combined.update(model_settings)
 
         filter_updates = [
-            gr.update(value=(name == selected))
+            gr.update(value=(name == selected_value))
             for name in filter_checkboxes.keys()
         ]
         preset_update = gr.update(value=preset_name)
