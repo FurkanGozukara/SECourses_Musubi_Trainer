@@ -43,13 +43,13 @@ PRESET_CUSTOM = "Custom (manual)"
 PRESET_FAST = "Fast (Simple Quantization)"
 PRESET_NORMAL = "Normal (Balanced)"
 PRESET_HIGH = "High Quality (Slow)"
-PRESET_INT8_FAST = "INT8 Fast (Block 128)"
-PRESET_INT8_TENSOR = "INT8 Tensorwise (Fastest)"
+PRESET_INT8_FAST = "INT8 (Unsupported in current ComfyUI)"
+PRESET_INT8_TENSOR = "INT8 Tensorwise (Unsupported in current ComfyUI)"
 PRESET_MXFP8_BALANCED = "MXFP8 Balanced (Blackwell)"
 PRESET_NVFP4_BALANCED = "NVFP4 Balanced (Blackwell)"
 PRESET_NVFP4_Z = "NVFP4 Z-Image (Aggressive / Expert)"
-PRESET_FP8_SCALED = "FP8 Scaled (Blockwise)"
-PRESET_FP8_MIXED = "FP8 Mixed (Int8 fallback)"
+PRESET_FP8_SCALED = "FP8 Scaled (Tensorwise)"
+PRESET_FP8_MIXED = "FP8 Compatibility (Tensorwise)"
 
 MODEL_PRESET_NONE = "None (manual)"
 
@@ -96,9 +96,9 @@ MODEL_CATEGORY_LABELS = {
 }
 
 MODEL_PRESET_DISPLAY_NAMES = {
-    "ltxv2": "ltxv2_2.3",
-    "ltx2": "ltxv2 / ltx2",
-    "ltx2_3": "ltxv2.3 / ltx2_3",
+    "ltxv2": "LTX_2_and_2.3",
+    "ltx2": "LTX_2_and_2.3",
+    "ltx2_3": "LTX_2_and_2.3",
 }
 
 SCALING_MODE_INFO = (
@@ -131,9 +131,51 @@ INPUT_SCALE_INFO = (
     "FP8/INT8 exports it is just 1.0, but some text-encoder and calibrated paths can use real non-default values."
 )
 
+FULL_MATRIX_INFO = (
+    "Uses full SVD instead of the faster low-rank SVD approximation. This can improve quality or stability on some "
+    "sensitive layers, but it is much slower and uses much more memory."
+)
+
+BIAS_CORRECTION_PANEL_MD = """
+### How bias correction works
+
+Quantization changes the weights, so a layer's output can shift a little away from the original BF16/FP16 behavior.
+Bias correction tries to cancel that average output shift.
+
+The quantizer does this:
+
+1. Generate synthetic calibration inputs `X`
+2. Run the original layer and the quantized-dequantized layer
+3. Measure the output difference per channel
+4. Average that difference across samples
+5. Add that average correction back into the bias
+
+In simplified form:
+
+```text
+Y_original = X @ W_original^T
+Y_quant    = X @ W_dequantized^T
+delta      = mean(Y_original - Y_quant, dim=0)
+b_new      = b_original + delta
+```
+
+What this helps with:
+- Reduces average output offset after quantization
+- Makes the quantized layer behave closer to the original layer
+
+What this does not do:
+- It does not restore the original weights
+- It does not fix all quantization error
+- It mainly fixes the average per-channel drift
+
+Practical note:
+- More `Calibration Samples` usually makes the correction estimate more stable, but also increases time and memory use.
+"""
+
 MODEL_PRESET_VALUE_BY_LABEL = {
     label: key for key, label in MODEL_PRESET_DISPLAY_NAMES.items()
 }
+MODEL_PRESET_VALUE_BY_LABEL["LTX_2_and_2.3"] = "ltx2_3"
 
 
 def _model_preset_label(value: str) -> str:
@@ -150,7 +192,15 @@ def _ordered_filter_choices() -> List[str]:
         cat = cfg.get("category", "")
         return (cat, name)
 
-    return [_model_preset_label(name) for name, _ in sorted(MODEL_FILTERS.items(), key=_sort_key)]
+    choices: List[str] = []
+    seen = set()
+    for name, _ in sorted(MODEL_FILTERS.items(), key=_sort_key):
+        label = _model_preset_label(name)
+        if label in seen:
+            continue
+        seen.add(label)
+        choices.append(label)
+    return choices
 
 
 MODEL_PRESET_CHOICES = [MODEL_PRESET_NONE] + _ordered_filter_choices()
@@ -177,12 +227,12 @@ MODEL_PRESET_SETTINGS.update({
     "wan": {
         "preset": PRESET_FP8_SCALED,
         "quant_format": QUANT_FORMAT_FP8,
-        "scaling_mode": "block",
+        "scaling_mode": "tensor",
     },
     "qwen": {
         "preset": PRESET_FP8_SCALED,
         "quant_format": QUANT_FORMAT_FP8,
-        "scaling_mode": "block",
+        "scaling_mode": "tensor",
     },
     "zimage": {
         "preset": PRESET_NVFP4_BALANCED,
@@ -197,17 +247,17 @@ MODEL_PRESET_SETTINGS.update({
     "ltxv2": {
         "preset": PRESET_FP8_MIXED,
         "quant_format": QUANT_FORMAT_FP8,
-        "scaling_mode": "block",
+        "scaling_mode": "tensor",
     },
     "ltx2": {
         "preset": PRESET_FP8_MIXED,
         "quant_format": QUANT_FORMAT_FP8,
-        "scaling_mode": "block",
+        "scaling_mode": "tensor",
     },
     "ltx2_3": {
         "preset": PRESET_FP8_MIXED,
         "quant_format": QUANT_FORMAT_FP8,
-        "scaling_mode": "block",
+        "scaling_mode": "tensor",
     },
 })
 
@@ -257,8 +307,8 @@ PRESET_OVERRIDES = {
     PRESET_FP8_SCALED: {
         "quant_format": QUANT_FORMAT_FP8,
         "comfy_quant": True,
-        "scaling_mode": "block",
-        "block_size": 64,
+        "scaling_mode": "tensor",
+        "block_size": None,
         "simple": False,
         "skip_inefficient_layers": False,
         "num_iter": 700,
@@ -275,11 +325,11 @@ PRESET_OVERRIDES = {
     PRESET_FP8_MIXED: {
         "quant_format": QUANT_FORMAT_FP8,
         "comfy_quant": True,
-        "fallback_type": "int8",
-        "fallback_block_size": 128,
-        "fallback_simple": True,
-        "scaling_mode": "block",
-        "block_size": 64,
+        "fallback_type": None,
+        "fallback_block_size": None,
+        "fallback_simple": False,
+        "scaling_mode": "tensor",
+        "block_size": None,
         "simple": False,
         "skip_inefficient_layers": False,
         "num_iter": 600,
@@ -296,8 +346,8 @@ PRESET_OVERRIDES = {
     PRESET_INT8_FAST: {
         "quant_format": QUANT_FORMAT_INT8,
         "comfy_quant": True,
-        "scaling_mode": "block",
-        "block_size": 128,
+        "scaling_mode": "tensor",
+        "block_size": None,
         "simple": True,
         "skip_inefficient_layers": False,
         "num_iter": 200,
@@ -1181,6 +1231,7 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             full_matrix = gr.Checkbox(
                 label="Use full SVD matrix",
                 value=config.get("model_quantizer.full_matrix", False),
+                info=FULL_MATRIX_INFO,
             )
         with gr.Row():
             calib_samples = gr.Number(
@@ -1410,7 +1461,7 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             verbose = gr.Dropdown(
                 label="Verbosity",
                 choices=["DEBUG", "VERBOSE", "NORMAL", "MINIMAL"],
-                value=config.get("model_quantizer.verbose", "MINIMAL"),
+                value=config.get("model_quantizer.verbose", "NORMAL"),
             )
             verbose_pinned = gr.Checkbox(
                 label="Verbose pinned memory transfers",
@@ -1420,6 +1471,8 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
                 label="Low memory mode",
                 value=config.get("model_quantizer.low_memory", False),
             )
+    with gr.Accordion("How bias correction works", open=False):
+        gr.Markdown(BIAS_CORRECTION_PANEL_MD)
 
     with gr.Tabs():
         with gr.Tab("Single File"):
@@ -2391,6 +2444,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     full_matrix = gr.Checkbox(
                         label="Use full SVD matrix",
                         value=config.get("model_quantizer.full_matrix", False),
+                        info=FULL_MATRIX_INFO,
                     )
                 with gr.Row():
                     calib_samples = gr.Number(
@@ -2621,7 +2675,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     verbose = gr.Dropdown(
                         label="Verbosity",
                         choices=["DEBUG", "VERBOSE", "NORMAL", "MINIMAL"],
-                        value=config.get("model_quantizer.verbose", "MINIMAL"),
+                        value=config.get("model_quantizer.verbose", "NORMAL"),
                     )
                     verbose_pinned = gr.Checkbox(
                         label="Verbose pinned memory transfers",
@@ -2631,6 +2685,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         label="Low memory mode",
                         value=config.get("model_quantizer.low_memory", False),
                     )
+            with gr.Accordion("How bias correction works", open=False):
+                gr.Markdown(BIAS_CORRECTION_PANEL_MD)
                 with gr.Row():
                     output_mode = gr.Dropdown(
                         label="Output Mode",
