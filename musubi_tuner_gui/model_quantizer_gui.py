@@ -1258,7 +1258,7 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             )
             lr = gr.Number(
                 label="Learning Rate",
-                value=config.get("model_quantizer.lr", 8.077300000003e-3),
+                value=config.get("model_quantizer.lr", 8.077300000003e-2),
             )
             lr_schedule = gr.Dropdown(
                 label="LR Schedule",
@@ -2471,7 +2471,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     )
                     lr = gr.Number(
                         label="Learning Rate",
-                        value=config.get("model_quantizer.lr", 8.077300000003e-3),
+                        value=config.get("model_quantizer.lr", 8.077300000003e-2),
                     )
                     lr_schedule = gr.Dropdown(
                         label="LR Schedule",
