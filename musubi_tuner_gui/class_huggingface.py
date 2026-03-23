@@ -13,6 +13,18 @@ class HuggingFace:
         self.initialize_ui_components()
 
     def initialize_ui_components(self) -> None:
+        resume_from_hf_value = self.config.get("resume_from_huggingface", "")
+        resume_value = self.config.get("resume", "")
+
+        if isinstance(resume_from_hf_value, str):
+            normalized_resume_from_hf = resume_from_hf_value.strip()
+            if normalized_resume_from_hf.lower() in {"", "false", "0", "none", "null"}:
+                normalized_resume_from_hf = ""
+        elif resume_from_hf_value:
+            normalized_resume_from_hf = resume_value if isinstance(resume_value, str) else ""
+        else:
+            normalized_resume_from_hf = ""
+
         # --huggingface_repo_id HUGGINGFACE_REPO_ID
         #                         huggingface repo name to upload / huggingfaceにアップロードするリポジトリ名
         # --huggingface_repo_type HUGGINGFACE_REPO_TYPE
@@ -79,8 +91,8 @@ class HuggingFace:
             self.resume_from_huggingface = gr.Textbox(
                 label="Resume from huggingface",
                 placeholder="resume from huggingface",
-                value=self.config.get("resume_from_huggingface", ""),
-                info="Resume string: {repo_id}/{path}:{revision}:{repo_type}.",
+                value=normalized_resume_from_hf,
+                info="Optional HF resume spec. Leave empty for local resume. Local filesystem paths belong in 'Resume Training State'.",
             )
 
             self.async_upload = gr.Checkbox(

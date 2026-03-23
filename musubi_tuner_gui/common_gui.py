@@ -66,6 +66,106 @@ ALL_PRESET_MODELS = V2_BASE_MODELS + V_PARAMETERIZATION_MODELS + V1_MODELS + SDX
 
 ENV_EXCLUSION = ["COLAB_GPU", "RUNPOD_POD_ID"]
 
+
+def _looks_like_local_resume_path(value: str) -> bool:
+    if not isinstance(value, str):
+        return False
+
+    value = os.path.expandvars(os.path.expanduser(value.strip()))
+    if not value:
+        return False
+
+    # Hugging Face repo specs use forward slashes. Any backslash is a strong
+    # local-path signal, especially on Windows.
+    if "\\" in value:
+        return True
+
+    # Handle absolute and explicitly relative local paths across platforms.
+    return bool(
+        re.match(r"^[A-Za-z]:[\\/]", value)
+        or os.path.isabs(value)
+        or value.startswith(("./", ".\\", "../", "..\\", "/", "\\\\"))
+        or value.startswith(("~/", "~\\"))
+        or os.path.exists(value)
+    )
+
+
+def _normalize_resume_parameters(parameters):
+    """
+    Normalize GUI resume fields to match musubi-tuner's backend contract.
+
+    The backend expects:
+    - local resume: `resume=<local path>`, `resume_from_huggingface=False`
+    - HF resume: `resume=<repo/path spec>`, `resume_from_huggingface=True`
+
+    The GUI historically used a textbox named `resume_from_huggingface`, so this
+    helper accepts those legacy textbox values and converts them into the shape
+    the trainer actually expects.
+    """
+    if not parameters:
+        return parameters
+
+    normalized_parameters = list(parameters)
+    param_dict = dict(normalized_parameters)
+
+    resume_value = param_dict.get("resume")
+    hf_resume_value = param_dict.get("resume_from_huggingface")
+
+    normalized_resume = resume_value
+    normalized_hf_resume = hf_resume_value
+
+    if isinstance(normalized_resume, str):
+        normalized_resume = normalized_resume.strip() or None
+
+    if isinstance(hf_resume_value, str):
+        stripped = hf_resume_value.strip()
+        lowered = stripped.lower()
+
+        if lowered in {"", "false", "0", "none", "null"}:
+            normalized_hf_resume = False
+        elif lowered == "true":
+            normalized_hf_resume = True
+        elif _looks_like_local_resume_path(stripped):
+            if not normalized_resume:
+                normalized_resume = stripped
+            normalized_hf_resume = False
+            log.info("Normalizing local resume path from resume_from_huggingface into resume.")
+        else:
+            if normalized_resume and normalized_resume != stripped:
+                log.warning(
+                    "Both resume and resume_from_huggingface are set. "
+                    "Preferring the Hugging Face resume target from resume_from_huggingface."
+                )
+            normalized_resume = stripped
+            normalized_hf_resume = True
+            log.info("Normalizing legacy Hugging Face resume textbox into resume + resume_from_huggingface.")
+    elif hf_resume_value is None:
+        normalized_hf_resume = False
+    elif isinstance(hf_resume_value, bool):
+        normalized_hf_resume = hf_resume_value
+    elif not hf_resume_value:
+        normalized_hf_resume = False
+
+    updated_parameters = []
+    saw_resume = False
+    saw_hf_resume = False
+
+    for name, value in normalized_parameters:
+        if name == "resume":
+            value = normalized_resume
+            saw_resume = True
+        elif name == "resume_from_huggingface":
+            value = normalized_hf_resume
+            saw_hf_resume = True
+        updated_parameters.append((name, value))
+
+    if not saw_resume and normalized_resume is not None:
+        updated_parameters.append(("resume", normalized_resume))
+    if not saw_hf_resume:
+        updated_parameters.append(("resume_from_huggingface", normalized_hf_resume))
+
+    return updated_parameters
+
 def is_display_available() -> bool:
     """
     Check if a display is available for Tkinter dialogs.
@@ -1579,6 +1679,8 @@ def SaveConfigFile(
         file_path (str): Path to the file where the filtered parameters should be saved.
         exclusion (list): List of keys to exclude from saving. Defaults to ["file_path", "save_as", "headless", "print_only"].
     """
+    parameters = _normalize_resume_parameters(parameters)
+
     # File path parameters that should be excluded if empty (same as SaveConfigFileToRun)
     FILE_PATH_PARAMETERS = [
         # Model and weight paths
@@ -1872,6 +1974,8 @@ def SaveConfigFileToRun(
         file_path (str): Path to the file where the filtered parameters should be saved.
         exclusion (list): List of keys to exclude from saving. Defaults to ["file_path", "save_as", "headless", "print_only"].
     """
+    parameters = _normalize_resume_parameters(parameters)
+
     # File path parameters that should be excluded if empty
     FILE_PATH_PARAMETERS = [
         # Model and weight paths
