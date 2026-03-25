@@ -1956,6 +1956,88 @@ def manage_additional_parameters(additional_params: str, args_to_add: list = Non
     return ' '.join(filtered_args) if filtered_args else ""
 
 
+def _normalize_logging_fields_for_run_config(variables: dict) -> None:
+    """
+    Clean logging-related values before saving a runtime TOML.
+
+    Empty strings from the GUI must not be written for `logging_dir` or `log_with`
+    because the training backend treats any non-None logging_dir as active and will
+    append a timestamp to it. An empty string therefore becomes a root-level
+    `/<timestamp>` path on Linux or `F:\\<timestamp>` on Windows.
+    """
+
+    def _normalize_optional_text(value):
+        if isinstance(value, str):
+            value = value.strip()
+            return value or None
+        return value
+
+    def _to_forward_slashes(value: str) -> str:
+        return value.replace("\\", "/") if isinstance(value, str) else value
+
+    def _is_rootish_logging_dir(value: str) -> bool:
+        normalized = _normalize_optional_text(value)
+        if not normalized:
+            return False
+
+        normalized = os.path.expandvars(os.path.expanduser(normalized)).replace("\\", "/")
+        return normalized in {"/", "//"} or re.fullmatch(r"[A-Za-z]:/*", normalized) is not None
+
+    debug_mode_to_log_with = {
+        "Enable Logging (TensorBoard)": "tensorboard",
+        "Enable Logging (WandB)": "wandb",
+        "Enable Logging (All)": "all",
+    }
+
+    log_with = _normalize_optional_text(variables.get("log_with"))
+    debug_mode = variables.get("debug_mode")
+
+    if not log_with and isinstance(debug_mode, str):
+        log_with = debug_mode_to_log_with.get(debug_mode.strip())
+
+    if not log_with:
+        additional_parameters = variables.get("additional_parameters")
+        if isinstance(additional_parameters, str) and additional_parameters.strip():
+            try:
+                tokens = shlex.split(additional_parameters, posix=False)
+            except Exception:
+                tokens = additional_parameters.split()
+
+            for idx, token in enumerate(tokens):
+                if token.startswith("--log_with="):
+                    candidate = token.split("=", 1)[1].strip()
+                elif token == "--log_with" and idx + 1 < len(tokens):
+                    candidate = str(tokens[idx + 1]).strip()
+                else:
+                    continue
+
+                if candidate in ["tensorboard", "wandb", "all"]:
+                    log_with = candidate
+                    break
+
+    output_dir = _normalize_optional_text(variables.get("output_dir")) or ""
+    logging_dir = _normalize_optional_text(variables.get("logging_dir"))
+    if logging_dir and _is_rootish_logging_dir(logging_dir):
+        logging_dir = None
+
+    if log_with in ["tensorboard", "wandb", "all"]:
+        if not logging_dir:
+            base_dir = output_dir if output_dir else "."
+            logging_dir = os.path.join(base_dir, "logs")
+        elif not os.path.isabs(logging_dir) and output_dir:
+            logging_dir = os.path.join(output_dir, logging_dir)
+
+    if log_with:
+        variables["log_with"] = log_with
+    else:
+        variables.pop("log_with", None)
+
+    if logging_dir:
+        variables["logging_dir"] = _to_forward_slashes(logging_dir)
+    else:
+        variables.pop("logging_dir", None)
+
+
 def SaveConfigFileToRun(
     parameters,
     file_path: str,
@@ -2149,70 +2231,7 @@ def SaveConfigFileToRun(
         os.makedirs(folder_path)
         log.info(f"Creating folder {folder_path} for the configuration file...")
 
-    # --- Logging dir normalization (keeps logs under output_dir when unset/relative) ---
-    # Users can enable logging via either the dedicated log_with/logging_dir fields, or
-    # via the Advanced debug_mode dropdown ("Enable Logging ..."). In both cases, if
-    # logging_dir is empty or relative, scope it under output_dir to avoid creating a
-    # top-level ./logs folder in the project root / current drive.
-    debug_mode_to_log_with = {
-        "Enable Logging (TensorBoard)": "tensorboard",
-        "Enable Logging (WandB)": "wandb",
-        "Enable Logging (All)": "all",
-    }
-
-    debug_mode = variables.get("debug_mode")
-    log_with = variables.get("log_with")
-    if not log_with and isinstance(debug_mode, str):
-        inferred = debug_mode_to_log_with.get(debug_mode.strip())
-        if inferred:
-            variables["log_with"] = inferred
-            log_with = inferred
-
-    if not log_with:
-        # Also infer from additional CLI flags, e.g. user typed `--log_with tensorboard`.
-        additional_parameters = variables.get("additional_parameters")
-        if isinstance(additional_parameters, str) and additional_parameters.strip():
-            try:
-                import shlex
-
-                tokens = shlex.split(additional_parameters, posix=False)
-            except Exception:
-                tokens = additional_parameters.split()
-
-            for idx, token in enumerate(tokens):
-                if token.startswith("--log_with="):
-                    candidate = token.split("=", 1)[1].strip()
-                elif token == "--log_with" and idx + 1 < len(tokens):
-                    candidate = str(tokens[idx + 1]).strip()
-                else:
-                    continue
-
-                if candidate in ["tensorboard", "wandb", "all"]:
-                    variables["log_with"] = candidate
-                    log_with = candidate
-                    break
-
-    if log_with in ["tensorboard", "all"]:
-        output_dir = variables.get("output_dir") or ""
-        logging_dir = variables.get("logging_dir")
-
-        def _to_forward_slashes(value: str) -> str:
-            return value.replace("\\", "/") if isinstance(value, str) else value
-
-        # Treat missing/empty/unsafe root values as "unset".
-        if not logging_dir or logging_dir in ["", "/"]:
-            from datetime import datetime
-
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            base_dir = output_dir if output_dir else "."
-            logging_dir = os.path.join(base_dir, "logs", f"session_{timestamp}")
-        elif isinstance(logging_dir, str) and not os.path.isabs(logging_dir):
-            # Relative paths should be relative to output_dir when possible.
-            if output_dir:
-                logging_dir = os.path.join(output_dir, logging_dir)
-
-        if isinstance(logging_dir, str):
-            variables["logging_dir"] = _to_forward_slashes(logging_dir)
+    _normalize_logging_fields_for_run_config(variables)
 
     with open(file_path, "w", encoding="utf-8") as file:
         toml.dump(variables, file)
