@@ -3,6 +3,7 @@ import os
 import sys
 import subprocess
 import re
+import importlib.util
 from typing import Dict, List, Optional, Tuple
 import psutil
 import toml
@@ -58,33 +59,69 @@ OUTPUT_MODE_COMPACT = "Compact (hide progress bars)"
 OUTPUT_MODE_SUMMARY = "Summary only (warnings/errors)"
 OUTPUT_MODE_CHOICES = [OUTPUT_MODE_FULL, OUTPUT_MODE_COMPACT, OUTPUT_MODE_SUMMARY]
 
+OPTIMIZER_CHOICES = ["prodigy", "original", "adamw", "radam"]
+OPTIMIZER_INFO = "Prodigy is convert_to_quant's current upstream default and requires prodigy-plus-schedule-free."
+MANUAL_QUANT_DEFAULTS = {
+    "calib_samples": 3072,
+    "optimizer": "prodigy",
+    "num_iter": 4000,
+    "lr": 1.0,
+    "lr_schedule": "plateau",
+    "top_p": 0.2,
+    "min_k": 256,
+    "max_k": 1280,
+    "lr_gamma": 0.99,
+    "lr_patience": 1,
+    "lr_factor": 0.95,
+    "lr_min": 1e-8,
+    "lr_cooldown": 0,
+    "lr_threshold": 0.0,
+    "lr_adaptive_mode": "simple-reset",
+    "lr_shape_influence": 1.0,
+    "lr_threshold_mode": "rel",
+    "early_stop_loss": 5e-9,
+    "early_stop_lr": 1.01e-8,
+    "early_stop_stall": 2000,
+}
+
+
+def _has_prodigy_optimizer() -> bool:
+    return importlib.util.find_spec("prodigyplus") is not None
+
 
 def _load_model_filters() -> Dict[str, Dict[str, object]]:
-    try:
-        from convert_to_quant.constants import MODEL_FILTERS
+    import_errors = []
+    for import_path in (
+        "convert_to_quant.constants",
+        "convert_to_quant.convert_to_quant.constants",
+    ):
+        try:
+            module = __import__(import_path, fromlist=["MODEL_FILTERS"])
+            return getattr(module, "MODEL_FILTERS")
+        except Exception as exc:
+            import_errors.append(f"{import_path}: {exc}")
 
-        return MODEL_FILTERS
-    except Exception as exc:
-        log.warning(f"Could not import convert_to_quant MODEL_FILTERS: {exc}")
-        return {
-            "t5xxl": {"help": "T5-XXL text encoder", "category": "text"},
-            "mistral": {"help": "Mistral text encoder", "category": "text"},
-            "visual": {"help": "Visual encoder", "category": "text"},
-            "flux2": {"help": "Flux.2 diffusion", "category": "diffusion"},
-            "distillation_large": {"help": "Chroma distilled (large)", "category": "diffusion"},
-            "distillation_small": {"help": "Chroma distilled (small)", "category": "diffusion"},
-            "nerf_large": {"help": "NeRF (large)", "category": "diffusion"},
-            "nerf_small": {"help": "NeRF (small)", "category": "diffusion"},
-            "radiance": {"help": "Radiance diffusion", "category": "diffusion"},
-            "wan": {"help": "WAN video model", "category": "video"},
-            "hunyuan": {"help": "Hunyuan video model", "category": "video"},
-            "ltx2": {"help": "LTX v2 / v2.3 video model", "category": "video"},
-            "ltx2_3": {"help": "LTX 2.3 video model", "category": "video"},
-            "ltxv2": {"help": "LTXv2 video model", "category": "video"},
-            "qwen": {"help": "Qwen Image", "category": "image"},
-            "zimage": {"help": "Z-Image", "category": "image"},
-            "zimage_refiner": {"help": "Z-Image Refiner", "category": "image"},
-        }
+    log.warning("Could not import convert_to_quant MODEL_FILTERS: %s", " | ".join(import_errors))
+    return {
+        "t5xxl": {"help": "T5-XXL text encoder", "category": "text"},
+        "mistral": {"help": "Mistral text encoder", "category": "text"},
+        "visual": {"help": "Visual encoder", "category": "text"},
+        "flux1": {"help": "Flux.1 diffusion", "category": "diffusion"},
+        "flux2": {"help": "Flux.2 diffusion", "category": "diffusion"},
+        "distillation_large": {"help": "Chroma distilled (large)", "category": "diffusion"},
+        "distillation_small": {"help": "Chroma distilled (small)", "category": "diffusion"},
+        "nerf_large": {"help": "NeRF (large)", "category": "diffusion"},
+        "nerf_small": {"help": "NeRF (small)", "category": "diffusion"},
+        "radiance": {"help": "Radiance diffusion", "category": "diffusion"},
+        "wan": {"help": "WAN video model", "category": "video"},
+        "hunyuan": {"help": "Hunyuan video model", "category": "video"},
+        "ltx2": {"help": "LTX v2 / v2.3 video model", "category": "video"},
+        "ltx2_3": {"help": "LTX 2.3 video model", "category": "video"},
+        "ltxv2": {"help": "LTXv2 video model", "category": "video"},
+        "qwen": {"help": "Qwen Image", "category": "image"},
+        "zimage": {"help": "Z-Image", "category": "image"},
+        "zimage_refiner": {"help": "Z-Image Refiner", "category": "image"},
+    }
 
 
 MODEL_FILTERS = _load_model_filters()
@@ -96,6 +133,7 @@ MODEL_CATEGORY_LABELS = {
 }
 
 MODEL_PRESET_DISPLAY_NAMES = {
+    "flux1": "FLUX.1",
     "ltxv2": "LTX_2_and_2.3",
     "ltx2": "LTX_2_and_2.3",
     "ltx2_3": "LTX_2_and_2.3",
@@ -218,6 +256,11 @@ MODEL_PRESET_SETTINGS = {
     for name in MODEL_FILTERS.keys()
 }
 MODEL_PRESET_SETTINGS.update({
+    "flux1": {
+        "preset": PRESET_NORMAL,
+        "quant_format": QUANT_FORMAT_FP8,
+        "scaling_mode": "tensor",
+    },
     "t5xxl": {
         "preset": PRESET_NORMAL,
         "quant_format": QUANT_FORMAT_FP8,
@@ -277,52 +320,47 @@ PRESET_OVERRIDES = {
         "full_precision_matrix_mult": False,
     },
     PRESET_NORMAL: {
+        **MANUAL_QUANT_DEFAULTS,
         "simple": False,
         "skip_inefficient_layers": False,
-        "num_iter": 400,
-        "calib_samples": 1024,
-        "optimizer": "original",
-        "lr_schedule": "adaptive",
-        "lr": 8.077300000003e-3,
-        "top_p": 0.02,
-        "min_k": 16,
-        "max_k": 64,
+        "num_iter": 2000,
+        "calib_samples": 2048,
+        "top_p": 0.12,
+        "min_k": 128,
+        "max_k": 896,
         "full_matrix": False,
         "full_precision_matrix_mult": True,
     },
     PRESET_HIGH: {
+        **MANUAL_QUANT_DEFAULTS,
         "simple": False,
         "skip_inefficient_layers": False,
-        "num_iter": 3000,
+        "num_iter": 6000,
         "calib_samples": 4096,
-        "optimizer": "original",
-        "lr_schedule": "adaptive",
-        "lr": 8.077300000003e-3,
-        "top_p": 0.1,
-        "min_k": 64,
-        "max_k": 256,
+        "top_p": 0.2,
+        "min_k": 256,
+        "max_k": 1536,
         "full_matrix": True,
         "full_precision_matrix_mult": True,
     },
     PRESET_FP8_SCALED: {
+        **MANUAL_QUANT_DEFAULTS,
         "quant_format": QUANT_FORMAT_FP8,
         "comfy_quant": True,
         "scaling_mode": "tensor",
         "block_size": None,
         "simple": False,
         "skip_inefficient_layers": False,
-        "num_iter": 700,
-        "calib_samples": 2048,
-        "optimizer": "original",
-        "lr_schedule": "adaptive",
-        "lr": 8.077300000003e-3,
-        "top_p": 0.08,
-        "min_k": 32,
-        "max_k": 512,
+        "num_iter": 3000,
+        "calib_samples": 3072,
+        "top_p": 0.16,
+        "min_k": 128,
+        "max_k": 1024,
         "full_matrix": False,
         "full_precision_matrix_mult": True,
     },
     PRESET_FP8_MIXED: {
+        **MANUAL_QUANT_DEFAULTS,
         "quant_format": QUANT_FORMAT_FP8,
         "comfy_quant": True,
         "fallback_type": None,
@@ -332,14 +370,11 @@ PRESET_OVERRIDES = {
         "block_size": None,
         "simple": False,
         "skip_inefficient_layers": False,
-        "num_iter": 600,
-        "calib_samples": 2048,
-        "optimizer": "original",
-        "lr_schedule": "adaptive",
-        "lr": 8.077300000003e-3,
-        "top_p": 0.06,
-        "min_k": 32,
-        "max_k": 512,
+        "num_iter": 2500,
+        "calib_samples": 3072,
+        "top_p": 0.14,
+        "min_k": 128,
+        "max_k": 1024,
         "full_matrix": False,
         "full_precision_matrix_mult": True,
     },
@@ -380,55 +415,50 @@ PRESET_OVERRIDES = {
         "full_precision_matrix_mult": False,
     },
     PRESET_MXFP8_BALANCED: {
+        **MANUAL_QUANT_DEFAULTS,
         "quant_format": QUANT_FORMAT_MXFP8,
         "comfy_quant": True,
         "simple": False,
         "skip_inefficient_layers": False,
-        "num_iter": 800,
-        "calib_samples": 2048,
-        "optimizer": "original",
-        "lr_schedule": "adaptive",
-        "lr": 8.077300000003e-3,
+        "num_iter": 3000,
+        "calib_samples": 3072,
         "top_p": 0.2,
-        "min_k": 64,
-        "max_k": 1024,
+        "min_k": 128,
+        "max_k": 1280,
         "full_matrix": False,
         "full_precision_matrix_mult": True,
     },
     PRESET_NVFP4_BALANCED: {
+        **MANUAL_QUANT_DEFAULTS,
         "quant_format": QUANT_FORMAT_NVFP4,
         "comfy_quant": True,
         "simple": False,
         "skip_inefficient_layers": True,
-        "num_iter": 5000,
+        "num_iter": 4000,
         "calib_samples": 4096,
-        "optimizer": "original",
-        "lr_schedule": "adaptive",
-        "lr": 8.077300000003e-3,
         "top_p": 0.2,
-        "min_k": 64,
-        "max_k": 1024,
+        "min_k": 128,
+        "max_k": 1280,
         "scale_optimization": "iterative",
         "scale_refinement_rounds": 1,
         "full_precision_matrix_mult": True,
     },
     PRESET_NVFP4_Z: {
+        **MANUAL_QUANT_DEFAULTS,
         "quant_format": QUANT_FORMAT_NVFP4,
         "comfy_quant": True,
         "simple": False,
         "skip_inefficient_layers": False,
-        "num_iter": 90000,
+        "num_iter": 12000,
         "calib_samples": 8192,
-        "optimizer": "original",
-        "lr_schedule": "adaptive",
-        "lr": 1.60773,
         "top_p": 0.2,
-        "min_k": 32,
+        "min_k": 256,
         "max_k": 2048,
         "scale_optimization": "iterative",
         "scale_refinement_rounds": 1,
         "manual_seed": 42,
         "verbose": "NORMAL",
+        "full_precision_matrix_mult": True,
     },
 }
 
@@ -858,6 +888,20 @@ class ModelQuantizer:
 
         return cmd
 
+    def _validate_quantization_params(self, params: Dict[str, object]) -> Optional[str]:
+        if params.get("workflow") != WORKFLOW_QUANTIZE:
+            return None
+        if params.get("simple"):
+            return None
+        if params.get("optimizer") != "prodigy":
+            return None
+        if _has_prodigy_optimizer():
+            return None
+        return (
+            "Optimizer 'prodigy' requires the optional package 'prodigy-plus-schedule-free'. "
+            "Install it in the active environment, or switch the optimizer to 'original', 'adamw', or 'radam'."
+        )
+
     def _default_output_name(self, input_path: str, params: Dict[str, object]) -> str:
         base, _ = os.path.splitext(input_path)
         workflow = params.get("workflow")
@@ -923,6 +967,9 @@ class ModelQuantizer:
             return "Input file is required."
         if not os.path.isfile(input_file):
             return f"Input file not found: {input_file}"
+        validation_error = self._validate_quantization_params(params)
+        if validation_error:
+            return validation_error
 
         output_path = output_file or self._default_output_name(input_file, params)
         if output_path and os.path.abspath(output_path) == os.path.abspath(input_file):
@@ -973,6 +1020,9 @@ class ModelQuantizer:
             return "Input folder is required."
         if not os.path.isdir(input_folder):
             return f"Input folder not found: {input_folder}"
+        validation_error = self._validate_quantization_params(params)
+        if validation_error:
+            return validation_error
 
         ext_list = [ext.strip().lower() for ext in (extensions or ".safetensors").split(",") if ext.strip()]
         if not ext_list:
@@ -1236,7 +1286,7 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
         with gr.Row():
             calib_samples = gr.Number(
                 label="Calibration Samples",
-                value=config.get("model_quantizer.calib_samples", 6144),
+                value=config.get("model_quantizer.calib_samples", MANUAL_QUANT_DEFAULTS["calib_samples"]),
                 step=1,
                 info=CALIB_SAMPLES_INFO,
             )
@@ -1247,37 +1297,38 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             )
             optimizer = gr.Dropdown(
                 label="Optimizer",
-                choices=["original", "adamw", "radam"],
-                value=config.get("model_quantizer.optimizer", "original"),
+                choices=OPTIMIZER_CHOICES,
+                value=config.get("model_quantizer.optimizer", MANUAL_QUANT_DEFAULTS["optimizer"]),
+                info=OPTIMIZER_INFO,
             )
         with gr.Row():
             num_iter = gr.Number(
                 label="Iterations",
-                value=config.get("model_quantizer.num_iter", 1000),
+                value=config.get("model_quantizer.num_iter", MANUAL_QUANT_DEFAULTS["num_iter"]),
                 step=1,
             )
             lr = gr.Number(
                 label="Learning Rate",
-                value=config.get("model_quantizer.lr", 8.077300000003e-2),
+                value=config.get("model_quantizer.lr", MANUAL_QUANT_DEFAULTS["lr"]),
             )
             lr_schedule = gr.Dropdown(
                 label="LR Schedule",
                 choices=["adaptive", "exponential", "plateau"],
-                value=config.get("model_quantizer.lr_schedule", "adaptive"),
+                value=config.get("model_quantizer.lr_schedule", MANUAL_QUANT_DEFAULTS["lr_schedule"]),
             )
         with gr.Row():
             top_p = gr.Number(
                 label="Top P",
-                value=config.get("model_quantizer.top_p", 0.2),
+                value=config.get("model_quantizer.top_p", MANUAL_QUANT_DEFAULTS["top_p"]),
             )
             min_k = gr.Number(
                 label="Min K",
-                value=config.get("model_quantizer.min_k", 64),
+                value=config.get("model_quantizer.min_k", MANUAL_QUANT_DEFAULTS["min_k"]),
                 step=1,
             )
             max_k = gr.Number(
                 label="Max K",
-                value=config.get("model_quantizer.max_k", 1024),
+                value=config.get("model_quantizer.max_k", MANUAL_QUANT_DEFAULTS["max_k"]),
                 step=1,
             )
 
@@ -1285,58 +1336,58 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
         with gr.Row():
             lr_gamma = gr.Number(
                 label="LR Gamma",
-                value=config.get("model_quantizer.lr_gamma", 0.99),
+                value=config.get("model_quantizer.lr_gamma", MANUAL_QUANT_DEFAULTS["lr_gamma"]),
             )
             lr_patience = gr.Number(
                 label="LR Patience",
-                value=config.get("model_quantizer.lr_patience", 9),
+                value=config.get("model_quantizer.lr_patience", MANUAL_QUANT_DEFAULTS["lr_patience"]),
                 step=1,
             )
             lr_factor = gr.Number(
                 label="LR Factor",
-                value=config.get("model_quantizer.lr_factor", 0.95),
+                value=config.get("model_quantizer.lr_factor", MANUAL_QUANT_DEFAULTS["lr_factor"]),
             )
         with gr.Row():
             lr_min = gr.Number(
                 label="LR Min",
-                value=config.get("model_quantizer.lr_min", 1e-10),
+                value=config.get("model_quantizer.lr_min", MANUAL_QUANT_DEFAULTS["lr_min"]),
             )
             lr_cooldown = gr.Number(
                 label="LR Cooldown",
-                value=config.get("model_quantizer.lr_cooldown", 6),
+                value=config.get("model_quantizer.lr_cooldown", MANUAL_QUANT_DEFAULTS["lr_cooldown"]),
                 step=1,
             )
             lr_threshold = gr.Number(
                 label="LR Threshold",
-                value=config.get("model_quantizer.lr_threshold", 0.0),
+                value=config.get("model_quantizer.lr_threshold", MANUAL_QUANT_DEFAULTS["lr_threshold"]),
             )
         with gr.Row():
             lr_adaptive_mode = gr.Dropdown(
                 label="LR Adaptive Mode",
                 choices=["simple-reset", "no-reset"],
-                value=config.get("model_quantizer.lr_adaptive_mode", "simple-reset"),
+                value=config.get("model_quantizer.lr_adaptive_mode", MANUAL_QUANT_DEFAULTS["lr_adaptive_mode"]),
             )
             lr_shape_influence = gr.Number(
                 label="LR Shape Influence",
-                value=config.get("model_quantizer.lr_shape_influence", 1.0),
+                value=config.get("model_quantizer.lr_shape_influence", MANUAL_QUANT_DEFAULTS["lr_shape_influence"]),
             )
             lr_threshold_mode = gr.Dropdown(
                 label="LR Threshold Mode",
                 choices=["rel", "abs"],
-                value=config.get("model_quantizer.lr_threshold_mode", "rel"),
+                value=config.get("model_quantizer.lr_threshold_mode", MANUAL_QUANT_DEFAULTS["lr_threshold_mode"]),
             )
         with gr.Row():
             early_stop_loss = gr.Number(
                 label="Early Stop Loss",
-                value=config.get("model_quantizer.early_stop_loss", 1e-8),
+                value=config.get("model_quantizer.early_stop_loss", MANUAL_QUANT_DEFAULTS["early_stop_loss"]),
             )
             early_stop_lr = gr.Number(
                 label="Early Stop LR",
-                value=config.get("model_quantizer.early_stop_lr", 1e-10),
+                value=config.get("model_quantizer.early_stop_lr", MANUAL_QUANT_DEFAULTS["early_stop_lr"]),
             )
             early_stop_stall = gr.Number(
                 label="Early Stop Stall",
-                value=config.get("model_quantizer.early_stop_stall", 1000),
+                value=config.get("model_quantizer.early_stop_stall", MANUAL_QUANT_DEFAULTS["early_stop_stall"]),
                 step=1,
             )
 
@@ -2449,7 +2500,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 with gr.Row():
                     calib_samples = gr.Number(
                         label="Calibration Samples",
-                        value=config.get("model_quantizer.calib_samples", 6144),
+                        value=config.get("model_quantizer.calib_samples", MANUAL_QUANT_DEFAULTS["calib_samples"]),
                         step=1,
                         info=CALIB_SAMPLES_INFO,
                     )
@@ -2460,37 +2511,38 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     )
                     optimizer = gr.Dropdown(
                         label="Optimizer",
-                        choices=["original", "adamw", "radam"],
-                        value=config.get("model_quantizer.optimizer", "original"),
+                        choices=OPTIMIZER_CHOICES,
+                        value=config.get("model_quantizer.optimizer", MANUAL_QUANT_DEFAULTS["optimizer"]),
+                        info=OPTIMIZER_INFO,
                     )
                 with gr.Row():
                     num_iter = gr.Number(
                         label="Iterations",
-                        value=config.get("model_quantizer.num_iter", 1000),
+                        value=config.get("model_quantizer.num_iter", MANUAL_QUANT_DEFAULTS["num_iter"]),
                         step=1,
                     )
                     lr = gr.Number(
                         label="Learning Rate",
-                        value=config.get("model_quantizer.lr", 8.077300000003e-2),
+                        value=config.get("model_quantizer.lr", MANUAL_QUANT_DEFAULTS["lr"]),
                     )
                     lr_schedule = gr.Dropdown(
                         label="LR Schedule",
                         choices=["adaptive", "exponential", "plateau"],
-                        value=config.get("model_quantizer.lr_schedule", "adaptive"),
+                        value=config.get("model_quantizer.lr_schedule", MANUAL_QUANT_DEFAULTS["lr_schedule"]),
                     )
                 with gr.Row():
                     top_p = gr.Number(
                         label="Top P",
-                        value=config.get("model_quantizer.top_p", 0.2),
+                        value=config.get("model_quantizer.top_p", MANUAL_QUANT_DEFAULTS["top_p"]),
                     )
                     min_k = gr.Number(
                         label="Min K",
-                        value=config.get("model_quantizer.min_k", 64),
+                        value=config.get("model_quantizer.min_k", MANUAL_QUANT_DEFAULTS["min_k"]),
                         step=1,
                     )
                     max_k = gr.Number(
                         label="Max K",
-                        value=config.get("model_quantizer.max_k", 1024),
+                        value=config.get("model_quantizer.max_k", MANUAL_QUANT_DEFAULTS["max_k"]),
                         step=1,
                     )
 
@@ -2498,58 +2550,58 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 with gr.Row():
                     lr_gamma = gr.Number(
                         label="LR Gamma",
-                        value=config.get("model_quantizer.lr_gamma", 0.99),
+                        value=config.get("model_quantizer.lr_gamma", MANUAL_QUANT_DEFAULTS["lr_gamma"]),
                     )
                     lr_patience = gr.Number(
                         label="LR Patience",
-                        value=config.get("model_quantizer.lr_patience", 9),
+                        value=config.get("model_quantizer.lr_patience", MANUAL_QUANT_DEFAULTS["lr_patience"]),
                         step=1,
                     )
                     lr_factor = gr.Number(
                         label="LR Factor",
-                        value=config.get("model_quantizer.lr_factor", 0.95),
+                        value=config.get("model_quantizer.lr_factor", MANUAL_QUANT_DEFAULTS["lr_factor"]),
                     )
                 with gr.Row():
                     lr_min = gr.Number(
                         label="LR Min",
-                        value=config.get("model_quantizer.lr_min", 1e-10),
+                        value=config.get("model_quantizer.lr_min", MANUAL_QUANT_DEFAULTS["lr_min"]),
                     )
                     lr_cooldown = gr.Number(
                         label="LR Cooldown",
-                        value=config.get("model_quantizer.lr_cooldown", 6),
+                        value=config.get("model_quantizer.lr_cooldown", MANUAL_QUANT_DEFAULTS["lr_cooldown"]),
                         step=1,
                     )
                     lr_threshold = gr.Number(
                         label="LR Threshold",
-                        value=config.get("model_quantizer.lr_threshold", 0.0),
+                        value=config.get("model_quantizer.lr_threshold", MANUAL_QUANT_DEFAULTS["lr_threshold"]),
                     )
                 with gr.Row():
                     lr_adaptive_mode = gr.Dropdown(
                         label="LR Adaptive Mode",
                         choices=["simple-reset", "no-reset"],
-                        value=config.get("model_quantizer.lr_adaptive_mode", "simple-reset"),
+                        value=config.get("model_quantizer.lr_adaptive_mode", MANUAL_QUANT_DEFAULTS["lr_adaptive_mode"]),
                     )
                     lr_shape_influence = gr.Number(
                         label="LR Shape Influence",
-                        value=config.get("model_quantizer.lr_shape_influence", 1.0),
+                        value=config.get("model_quantizer.lr_shape_influence", MANUAL_QUANT_DEFAULTS["lr_shape_influence"]),
                     )
                     lr_threshold_mode = gr.Dropdown(
                         label="LR Threshold Mode",
                         choices=["rel", "abs"],
-                        value=config.get("model_quantizer.lr_threshold_mode", "rel"),
+                        value=config.get("model_quantizer.lr_threshold_mode", MANUAL_QUANT_DEFAULTS["lr_threshold_mode"]),
                     )
                 with gr.Row():
                     early_stop_loss = gr.Number(
                         label="Early Stop Loss",
-                        value=config.get("model_quantizer.early_stop_loss", 1e-8),
+                        value=config.get("model_quantizer.early_stop_loss", MANUAL_QUANT_DEFAULTS["early_stop_loss"]),
                     )
                     early_stop_lr = gr.Number(
                         label="Early Stop LR",
-                        value=config.get("model_quantizer.early_stop_lr", 1e-10),
+                        value=config.get("model_quantizer.early_stop_lr", MANUAL_QUANT_DEFAULTS["early_stop_lr"]),
                     )
                     early_stop_stall = gr.Number(
                         label="Early Stop Stall",
-                        value=config.get("model_quantizer.early_stop_stall", 1000),
+                        value=config.get("model_quantizer.early_stop_stall", MANUAL_QUANT_DEFAULTS["early_stop_stall"]),
                         step=1,
                     )
 
