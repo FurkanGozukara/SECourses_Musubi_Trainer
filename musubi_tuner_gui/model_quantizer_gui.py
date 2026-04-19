@@ -120,6 +120,7 @@ def _load_model_filters() -> Dict[str, Dict[str, object]]:
         "ltx2_3": {"help": "LTX 2.3 video model", "category": "video"},
         "ltxv2": {"help": "LTXv2 video model", "category": "video"},
         "qwen": {"help": "Qwen Image", "category": "image"},
+        "ernie_image": {"help": "ERNIE Image diffusion transformer", "category": "image"},
         "zimage": {"help": "Z-Image", "category": "image"},
         "zimage_refiner": {"help": "Z-Image Refiner", "category": "image"},
     }
@@ -134,6 +135,7 @@ MODEL_CATEGORY_LABELS = {
 }
 
 MODEL_PRESET_DISPLAY_NAMES = {
+    "ernie_image": "ERNIE Image",
     "flux1": "FLUX.1",
     "flux2": "FLUX.2",
     "flux_klein": "FLUX 2 Klein Models",
@@ -305,6 +307,12 @@ MODEL_PRESET_SETTINGS.update({
     "qwen": {
         "preset": PRESET_FP8_SCALED,
         "quant_format": QUANT_FORMAT_FP8,
+        "scaling_mode": "tensor",
+    },
+    "ernie_image": {
+        "preset": PRESET_FP8_SCALED,
+        "quant_format": QUANT_FORMAT_FP8,
+        "comfy_quant": True,
         "scaling_mode": "tensor",
     },
     "zimage": {
