@@ -108,6 +108,7 @@ def _load_model_filters() -> Dict[str, Dict[str, object]]:
         "visual": {"help": "Visual encoder", "category": "text"},
         "flux1": {"help": "Flux.1 diffusion", "category": "diffusion"},
         "flux2": {"help": "Flux.2 diffusion", "category": "diffusion"},
+        "flux_klein": {"help": "FLUX.2 Klein diffusion", "category": "diffusion"},
         "distillation_large": {"help": "Chroma distilled (large)", "category": "diffusion"},
         "distillation_small": {"help": "Chroma distilled (small)", "category": "diffusion"},
         "nerf_large": {"help": "NeRF (large)", "category": "diffusion"},
@@ -134,9 +135,33 @@ MODEL_CATEGORY_LABELS = {
 
 MODEL_PRESET_DISPLAY_NAMES = {
     "flux1": "FLUX.1",
+    "flux2": "FLUX.2",
+    "flux_klein": "FLUX.2 Klein",
     "ltxv2": "LTX_2_and_2.3",
     "ltx2": "LTX_2_and_2.3",
     "ltx2_3": "LTX_2_and_2.3",
+}
+
+MODEL_PRESET_ALIASES = {
+    "flux2_klein_9b": {
+        "label": "FLUX.2-klein-9B",
+        "filter": "flux_klein",
+    },
+    "flux2_klein_9b_kv": {
+        "label": "FLUX.2-klein-9b-kv",
+        "filter": "flux_klein",
+    },
+    "flux2_klein_4b": {
+        "label": "FLUX.2-klein-4B",
+        "filter": "flux_klein",
+    },
+}
+
+FLUX_KLEIN_MODEL_SETTINGS = {
+    "preset": PRESET_NORMAL,
+    "quant_format": QUANT_FORMAT_FP8,
+    "comfy_quant": True,
+    "scaling_mode": "tensor",
 }
 
 SCALING_MODE_INFO = (
@@ -214,14 +239,27 @@ MODEL_PRESET_VALUE_BY_LABEL = {
     label: key for key, label in MODEL_PRESET_DISPLAY_NAMES.items()
 }
 MODEL_PRESET_VALUE_BY_LABEL["LTX_2_and_2.3"] = "ltx2_3"
+MODEL_PRESET_VALUE_BY_LABEL.update(
+    {cfg["label"]: key for key, cfg in MODEL_PRESET_ALIASES.items()}
+)
+
+MODEL_PRESET_FILTER_BY_VALUE = {
+    key: cfg["filter"] for key, cfg in MODEL_PRESET_ALIASES.items()
+}
 
 
 def _model_preset_label(value: str) -> str:
+    if value in MODEL_PRESET_ALIASES:
+        return MODEL_PRESET_ALIASES[value]["label"]
     return MODEL_PRESET_DISPLAY_NAMES.get(value, value)
 
 
 def _model_preset_value(value: str) -> str:
     return MODEL_PRESET_VALUE_BY_LABEL.get(value, value)
+
+
+def _model_preset_filter(value: str) -> str:
+    return MODEL_PRESET_FILTER_BY_VALUE.get(value, value)
 
 
 def _ordered_filter_choices() -> List[str]:
@@ -238,6 +276,13 @@ def _ordered_filter_choices() -> List[str]:
             continue
         seen.add(label)
         choices.append(label)
+        if name == "flux_klein":
+            for alias_key, alias_cfg in MODEL_PRESET_ALIASES.items():
+                alias_label = alias_cfg["label"]
+                if alias_label in seen:
+                    continue
+                seen.add(alias_label)
+                choices.append(alias_label)
     return choices
 
 
@@ -260,6 +305,11 @@ MODEL_PRESET_SETTINGS.update({
         "preset": PRESET_NORMAL,
         "quant_format": QUANT_FORMAT_FP8,
         "scaling_mode": "tensor",
+    },
+    "flux_klein": FLUX_KLEIN_MODEL_SETTINGS.copy(),
+    **{
+        alias_key: FLUX_KLEIN_MODEL_SETTINGS.copy()
+        for alias_key in MODEL_PRESET_ALIASES.keys()
     },
     "t5xxl": {
         "preset": PRESET_NORMAL,
@@ -1815,10 +1865,12 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
     )
 
     def _apply_model_preset(selected: str):
+        selected_value = _model_preset_value(selected)
+        selected_filter = _model_preset_filter(selected_value)
         updates = []
-        overrides = MODEL_PRESET_OVERRIDES.get(selected, {})
+        overrides = MODEL_PRESET_OVERRIDES.get(selected_value, {})
         for name in filter_checkboxes.keys():
-            updates.append(gr.update(value=(name == selected)))
+            updates.append(gr.update(value=(name == selected_filter)))
         include_update = overrides.get("include_input_scale")
         if include_update is None:
             include_update = gr.update()
@@ -3039,6 +3091,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
 
     def _apply_model_preset(selected: str):
         selected_value = _model_preset_value(selected)
+        selected_filter = _model_preset_filter(selected_value)
 
         if selected_value == MODEL_PRESET_NONE:
             return (
@@ -3055,7 +3108,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         combined.update(model_settings)
 
         filter_updates = [
-            gr.update(value=(name == selected_value))
+            gr.update(value=(name == selected_filter))
             for name in filter_checkboxes.keys()
         ]
         preset_update = gr.update(value=preset_name)
