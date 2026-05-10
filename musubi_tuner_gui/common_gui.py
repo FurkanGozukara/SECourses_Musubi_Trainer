@@ -2964,10 +2964,19 @@ def generate_script_content(run_cmd: list, script_type: str = "training") -> str
         str: The script content for the current platform
     """
     import platform
+
+    def _quote_windows_batch_arg(arg: object) -> str:
+        value = str(arg)
+        if value == "":
+            return '""'
+        cmd_metachars = set(" \t&()[]{}^=;!'+,`~|<>")
+        if not any(ch in cmd_metachars for ch in value):
+            return value
+        return '"' + value.replace('"', r'\"') + '"'
     
     if platform.system() == "Windows":
         # Windows batch file
-        cmd_str = ' '.join([f'"{arg}"' if ' ' in str(arg) else str(arg) for arg in run_cmd])
+        cmd_str = ' '.join(_quote_windows_batch_arg(arg) for arg in run_cmd)
         script_content = f"""@echo off
 echo Starting {script_type}...
 {cmd_str}

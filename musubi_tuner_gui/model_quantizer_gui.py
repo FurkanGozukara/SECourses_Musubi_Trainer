@@ -53,6 +53,11 @@ PRESET_FP8_SCALED = "FP8 Scaled (Tensorwise)"
 PRESET_FP8_MIXED = "FP8 Compatibility (Tensorwise)"
 
 MODEL_PRESET_NONE = "None (manual)"
+ERNIE_IMAGE_EXCLUDE_LAYERS = (
+    r"(time_embedding|adaLN_modulation|final_linear|final_norm|x_embedder|"
+    r"layers[.]0[.]self_attention|layers[.]0[.]mlp.gate_proj|"
+    r"layers[.]0[.]mlp[.]up_proj|text_proj)"
+)
 
 OUTPUT_MODE_FULL = "Full (all logs)"
 OUTPUT_MODE_COMPACT = "Compact (hide progress bars)"
@@ -283,6 +288,7 @@ MODEL_PRESET_SETTINGS = {
         "preset": PRESET_NORMAL,
         "quant_format": QUANT_FORMAT_FP8,
         "scaling_mode": "tensor",
+        "exclude_layers": "",
     }
     for name in MODEL_FILTERS.keys()
 }
@@ -314,6 +320,7 @@ MODEL_PRESET_SETTINGS.update({
         "quant_format": QUANT_FORMAT_FP8,
         "comfy_quant": True,
         "scaling_mode": "tensor",
+        "exclude_layers": ERNIE_IMAGE_EXCLUDE_LAYERS,
     },
     "zimage": {
         "preset": PRESET_NVFP4_BALANCED,
@@ -3004,6 +3011,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         "full_precision_matrix_mult",
         "scaling_mode",
         "block_size",
+        "exclude_layers",
         "custom_type",
         "custom_block_size",
         "custom_scaling_mode",
@@ -3035,6 +3043,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         full_precision_matrix_mult,
         scaling_mode,
         block_size,
+        exclude_layers,
         custom_type,
         custom_block_size,
         custom_scaling_mode,
