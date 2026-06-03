@@ -33,6 +33,7 @@ jsonl_output_file = ""  # Output file path for JSONL format
 scan_subfolders = false  # Include images from all subfolders recursively
 copy_images = false  # Copy images to output folder
 overwrite_existing_captions = false  # Replace existing caption files
+append_existing_captions = false  # Append new captions to existing caption files when not overwriting
 
 # Advanced Settings
 enable_progress_tracking = true  # Show progress during batch processing

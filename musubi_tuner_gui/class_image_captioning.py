@@ -331,6 +331,7 @@ class ImageCaptioning:
         scan_subfolders: bool = False,
         copy_images: bool = False,
         overwrite_existing_captions: bool = False,
+        append_existing_captions: bool = False,
         progress: gr.Progress = None,
         # Generation parameters
         do_sample: bool = True,
@@ -395,6 +396,7 @@ class ImageCaptioning:
             processed_count = 0
             error_count = 0
             skipped_count = 0
+            appended_count = 0
             start_time = time.time()
             processing_times = []  # To track average processing time per image
             
@@ -605,8 +607,14 @@ class ImageCaptioning:
                         # Save alongside image (same directory as image)
                         text_file_path = image_path_obj.with_suffix(".txt")
                     
-                    # Check if caption already exists and skip if not overwriting (BEFORE generating caption)
-                    if text_file_path.exists() and not overwrite_existing_captions:
+                    append_to_existing = (
+                        text_file_path.exists()
+                        and append_existing_captions
+                        and not overwrite_existing_captions
+                    )
+
+                    # Check if caption already exists and skip if not overwriting/appending (BEFORE generating caption)
+                    if text_file_path.exists() and not overwrite_existing_captions and not append_existing_captions:
                         log.info(f"Skipping {image_path} - caption already exists at {text_file_path}")
                         skipped_count += 1
                         continue
@@ -639,8 +647,20 @@ class ImageCaptioning:
                                 shutil.copy2(image_path, image_output_path)
                         
                         # Write caption to text file
-                        with open(text_file_path, "w", encoding="utf-8") as f:
+                        write_mode = "a" if append_to_existing else "w"
+                        add_separator = False
+                        if append_to_existing and text_file_path.stat().st_size > 0:
+                            with open(text_file_path, "rb") as existing_file:
+                                existing_file.seek(-1, os.SEEK_END)
+                                add_separator = existing_file.read(1) not in (b"\n", b"\r")
+
+                        with open(text_file_path, write_mode, encoding="utf-8") as f:
+                            if add_separator:
+                                f.write("\n")
                             f.write(caption)
+
+                        if append_to_existing:
+                            appended_count += 1
                         processed_count += 1
                     else:
                         log.error(f"Failed to caption {image_path}: {caption}")
@@ -670,6 +690,8 @@ class ImageCaptioning:
                     f"  • Processed: {processed_count}\n"
                 )
                 
+                if appended_count > 0:
+                    result_msg += f"  • Appended: {appended_count} (existing caption files)\n"
                 if skipped_count > 0:
                     result_msg += f"  • Skipped: {skipped_count} (already had captions)\n"
                 if error_count > 0:

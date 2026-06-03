@@ -334,8 +334,14 @@ class ImageCaptioningTab:
                             
                             self.overwrite_existing_captions = gr.Checkbox(
                                 label="Overwrite Existing Captions",
-                                info="Replace existing caption files. If unchecked, skips images that already have captions",
+                                info="Replace existing caption files. If unchecked, existing files are skipped unless append is enabled",
                                 value=self.config.get("image_captioning.overwrite_existing_captions", False)
+                            )
+
+                            self.append_existing_captions = gr.Checkbox(
+                                label="Append Existing Captions",
+                                info="When overwrite is off, append new captions to existing text files instead of skipping them",
+                                value=self.config.get("image_captioning.append_existing_captions", False)
                             )
                         
                         with gr.Row():
@@ -420,6 +426,7 @@ class ImageCaptioningTab:
                 self.scan_subfolders,
                 self.copy_images,
                 self.overwrite_existing_captions,
+                self.append_existing_captions,
                 # Generation parameters
                 self.do_sample,
                 self.temperature,
@@ -515,6 +522,7 @@ class ImageCaptioningTab:
                 self.scan_subfolders,
                 self.copy_images,
                 self.overwrite_existing_captions,
+                self.append_existing_captions,
                 self.model_path,
                 # Generation parameters
                 self.do_sample,
@@ -555,6 +563,7 @@ class ImageCaptioningTab:
                 self.scan_subfolders,
                 self.copy_images,
                 self.overwrite_existing_captions,
+                self.append_existing_captions,
                 # Generation parameters
                 self.do_sample,
                 self.temperature,
@@ -587,6 +596,7 @@ class ImageCaptioningTab:
                 self.scan_subfolders,
                 self.copy_images,
                 self.overwrite_existing_captions,
+                self.append_existing_captions,
                 # Generation parameters
                 self.do_sample,
                 self.temperature,
@@ -724,8 +734,8 @@ class ImageCaptioningTab:
         
         # If no file was selected, return current state (no changes)
         if not file_path:
-            # Return None for all fields to keep current values (23 fields + status)
-            return (current_path,) + (gr.update(),) * 23 + ("No file selected",)
+            # Return None for all fields to keep current values (24 fields + status)
+            return (current_path,) + (gr.update(),) * 24 + ("No file selected",)
         
         # Check if the selected file exists
         if os.path.isfile(file_path):
@@ -737,8 +747,8 @@ class ImageCaptioningTab:
         else:
             # File doesn't exist - it's a new file path for saving
             log.info(f"New configuration file path selected: {file_path}")
-            # Return the new path but keep all other values unchanged (23 fields + status)
-            return (file_path,) + (gr.update(),) * 23 + (f"Ready to save configuration to: {os.path.basename(file_path)}",)
+            # Return the new path but keep all other values unchanged (24 fields + status)
+            return (file_path,) + (gr.update(),) * 24 + (f"Ready to save configuration to: {os.path.basename(file_path)}",)
     
     def batch_caption_wrapper(
         self,
@@ -758,6 +768,7 @@ class ImageCaptioningTab:
         scan_subfolders: bool,
         copy_images: bool,
         overwrite_existing_captions: bool,
+        append_existing_captions: bool,
         model_path: str,
         # Generation parameters
         do_sample: bool,
@@ -782,7 +793,7 @@ class ImageCaptioningTab:
             image_dir, output_format, jsonl_output_file, output_folder, max_new_tokens,
             custom_prompt, max_size, fp8_vl, prefix, suffix, replace_words,
             replace_case_insensitive, replace_whole_words_only, scan_subfolders,
-            copy_images, overwrite_existing_captions, model_path,
+            copy_images, overwrite_existing_captions, append_existing_captions, model_path,
             do_sample, temperature, top_k, top_p, repetition_penalty, auto_unload_after_caption
         )
         
@@ -807,6 +818,7 @@ class ImageCaptioningTab:
         scan_subfolders: bool,
         copy_images: bool,
         overwrite_existing_captions: bool,
+        append_existing_captions: bool,
         model_path: str,
         # Generation parameters
         do_sample: bool,
@@ -854,7 +866,8 @@ class ImageCaptioningTab:
         success, message = self.captioning.batch_caption_images(
             image_dir, output_format, jsonl_output_file, output_folder, max_new_tokens,
             prompt, max_size, fp8_vl, prefix, suffix, replace_words, replace_case_insensitive,
-            replace_whole_words_only, scan_subfolders, copy_images, overwrite_existing_captions, progress,
+            replace_whole_words_only, scan_subfolders, copy_images, overwrite_existing_captions,
+            append_existing_captions, progress,
             do_sample, temperature, top_k, top_p, repetition_penalty
         )
         
@@ -912,6 +925,7 @@ class ImageCaptioningTab:
         scan_subfolders: bool,
         copy_images: bool,
         overwrite_existing_captions: bool,
+        append_existing_captions: bool,
         # Generation parameters
         do_sample: bool,
         temperature: float,
@@ -949,6 +963,7 @@ class ImageCaptioningTab:
                     "scan_subfolders": scan_subfolders,
                     "copy_images": copy_images,
                     "overwrite_existing_captions": overwrite_existing_captions,
+                    "append_existing_captions": append_existing_captions,
                     # Generation parameters
                     "do_sample": do_sample,
                     "temperature": temperature,
@@ -983,16 +998,16 @@ class ImageCaptioningTab:
             gr.Error(error_msg)
             return config_file_path, error_msg
     
-    def load_configuration(self, config_file_path: str) -> Tuple[str, bool, int, int, str, str, str, bool, bool, str, str, str, str, str, bool, bool, bool, bool, float, int, float, float, bool, str]:
+    def load_configuration(self, config_file_path: str) -> Tuple:
         """Load configuration from file"""
         if not config_file_path:
-            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, True, 0.7, 50, 0.95, 1.05, False, "Please provide a configuration file path"
+            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, False, True, 0.7, 50, 0.95, 1.05, False, "Please provide a configuration file path"
         
         if not os.path.isfile(config_file_path):
             error_msg = f"❌ Configuration file does not exist: {config_file_path}"
             log.error(error_msg)
             gr.Error(error_msg)
-            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, True, 0.7, 50, 0.95, 1.05, False, error_msg
+            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, False, True, 0.7, 50, 0.95, 1.05, False, error_msg
         
         try:
             import toml
@@ -1026,6 +1041,7 @@ class ImageCaptioningTab:
                 captioning_config.get("scan_subfolders", False),
                 captioning_config.get("copy_images", False),
                 captioning_config.get("overwrite_existing_captions", False),
+                captioning_config.get("append_existing_captions", False),
                 # Generation parameters - load with proper defaults
                 captioning_config.get("do_sample", True),
                 captioning_config.get("temperature", 0.7),
@@ -1039,7 +1055,7 @@ class ImageCaptioningTab:
             error_msg = f"❌ Error loading configuration: {str(e)}"
             log.error(error_msg)
             gr.Error(error_msg)
-            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, True, 0.7, 50, 0.95, 1.05, False, error_msg
+            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, False, True, 0.7, 50, 0.95, 1.05, False, error_msg
 
 
 def image_captioning_tab(headless: bool = False, config: GUIConfig = None) -> None:
