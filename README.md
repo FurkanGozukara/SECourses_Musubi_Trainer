@@ -41,7 +41,7 @@
 ## Updates
 **- Click images to see their full sizes**
 
-### 25 June 2026 V28.4 Update
+### 25 June 2026 V28.6 Update
 
 - Quantize model backend code fully updated
 - Quantize presets fully updated and vastly improved
