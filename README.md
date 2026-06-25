@@ -46,44 +46,116 @@
 - Quantize model presets fully updated as below
 
 <img height="600" alt="image" src="https://github.com/user-attachments/assets/96491a5f-b001-4480-a043-a1979979beb3" />
+
+---
+
 <img   height="600" alt="0010" src="https://github.com/user-attachments/assets/fc0f58c5-bdda-499a-9983-1db1f80236a1" />
+
+---
+
 <img   height="600" alt="0010" src="https://github.com/user-attachments/assets/696f344a-d904-4005-bdef-d9ab2520272a" />
 
-<img   height="600" alt="44" src="https://github.com/user-attachments/assets/ad6b8c54-cbf2-4cc1-b8cb-91f4ae70d5ab" />
-<img   height="600" alt="43" src="https://github.com/user-attachments/assets/b801e2ee-c4a1-4cbc-b83d-4cde74b40fab" />
-<img   height="600" alt="42" src="https://github.com/user-attachments/assets/2bf3cfbc-b943-4268-8f2e-7fce65d23eed" />
-<img  height="600" alt="41" src="https://github.com/user-attachments/assets/b6b5f050-65d6-4dc6-acb5-bb68fe2bec49" />
-<img   height="600" alt="40" src="https://github.com/user-attachments/assets/acae6299-1d28-44b2-920a-1d04a3b85a3c" />
+---
 
+<img   height="600" alt="44" src="https://github.com/user-attachments/assets/ad6b8c54-cbf2-4cc1-b8cb-91f4ae70d5ab" />
+
+---
+
+<img   height="600" alt="43" src="https://github.com/user-attachments/assets/b801e2ee-c4a1-4cbc-b83d-4cde74b40fab" />
+
+---
+
+<img   height="600" alt="42" src="https://github.com/user-attachments/assets/2bf3cfbc-b943-4268-8f2e-7fce65d23eed" />
+
+---
+
+<img  height="600" alt="41" src="https://github.com/user-attachments/assets/b6b5f050-65d6-4dc6-acb5-bb68fe2bec49" />
+
+---
+
+<img   height="600" alt="40" src="https://github.com/user-attachments/assets/acae6299-1d28-44b2-920a-1d04a3b85a3c" />
 
 ## Stage 1 Training Published Config Results Examples
 
 30+ examples shared here : https://medium.com/@furkangozukara/qwen-image-lora-trainings-stage-1-results-and-pre-made-configs-published-as-low-as-training-with-ba0d41d76a05
 
 <img   height="600" alt="04" src="https://github.com/user-attachments/assets/3c7c5fd0-fc0d-4978-8800-ed485054db22" />
-<img   height="600" alt="03" src="https://github.com/user-attachments/assets/1e73012e-06f3-4181-ac49-ef10294d4119" />
-<img   height="600" alt="02" src="https://github.com/user-attachments/assets/ce432e3f-5f74-4df2-bb43-0f911ab55184" />
-<img   height="600" alt="01" src="https://github.com/user-attachments/assets/fe40513f-cfb9-4c91-9eb3-cfe45689e7a6" />
-<img   height="600" alt="06" src="https://github.com/user-attachments/assets/f254bd98-1171-46e6-b1cb-8c5e1837dd5c" />
-<img   height="600" alt="05" src="https://github.com/user-attachments/assets/cfa561ef-6323-4040-a8e2-05b43109ee1c" />
 
+---
+
+<img   height="600" alt="03" src="https://github.com/user-attachments/assets/1e73012e-06f3-4181-ac49-ef10294d4119" />
+
+---
+
+<img   height="600" alt="02" src="https://github.com/user-attachments/assets/ce432e3f-5f74-4df2-bb43-0f911ab55184" />
+
+---
+
+<img   height="600" alt="01" src="https://github.com/user-attachments/assets/fe40513f-cfb9-4c91-9eb3-cfe45689e7a6" />
+
+---
+
+<img   height="600" alt="06" src="https://github.com/user-attachments/assets/f254bd98-1171-46e6-b1cb-8c5e1837dd5c" />
+
+---
+
+<img   height="600" alt="05" src="https://github.com/user-attachments/assets/cfa561ef-6323-4040-a8e2-05b43109ee1c" />
 
 
 ## App Screenshots
 
 <img   height="600" alt="14" src="https://github.com/user-attachments/assets/11158887-696c-4eec-b5ee-6077f7a47873" />
+
+---
+
 <img   height="600" alt="13" src="https://github.com/user-attachments/assets/6f8e02ef-e37c-4da8-8eeb-41f873c236e9" />
+
+---
+
 <img   height="600" alt="12" src="https://github.com/user-attachments/assets/4b9d4871-4f24-4d09-b257-ea05b5e0ae58" />
+
+---
+
 <img   height="600" alt="11" src="https://github.com/user-attachments/assets/cbd2afaf-d4df-409c-a341-334122151e0b" />
+
+---
+
 <img   height="600" alt="10" src="https://github.com/user-attachments/assets/6cc09542-5c01-4685-a8d7-e8f90039fc8a" />
+
+---
+
 <img   height="600" alt="09" src="https://github.com/user-attachments/assets/e0e49752-4e32-46f1-b6ad-ea0f132fe461" />
+
+---
+
 <img   height="600" alt="08" src="https://github.com/user-attachments/assets/5cf90326-2351-4fb9-b486-a9244eddf81f" />
+
+---
+
 <img   height="600" alt="07" src="https://github.com/user-attachments/assets/cc010ec9-bfd6-4c35-b1da-b8fec426ffbf" />
+
+---
+
 <img   height="600" alt="06" src="https://github.com/user-attachments/assets/8ec0f71f-d4c4-4f34-a3d1-bedb062c3c69" />
+
+---
+
 <img   height="600" alt="05" src="https://github.com/user-attachments/assets/c6d12948-a2d5-413a-959e-be683b82f196" />
+
+---
+
 <img  height="600" alt="04" src="https://github.com/user-attachments/assets/55c43c0e-77dd-4435-91cb-a17b4960e4ad" />
+
+---
+
 <img   height="600" alt="03" src="https://github.com/user-attachments/assets/ed0b7055-dc99-419a-ae03-f377705a8a03" />
+
+---
+
 <img   height="600" alt="02" src="https://github.com/user-attachments/assets/4c6685ba-146e-4b1a-af50-3b93da24f472" />
+
+---
+
 <img   height="600" alt="01" src="https://github.com/user-attachments/assets/33ecd80c-6a53-41a1-bdc2-e35719bb9726" />
 
 
