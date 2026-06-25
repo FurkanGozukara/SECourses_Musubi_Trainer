@@ -4,6 +4,8 @@ import sys
 import subprocess
 import re
 import importlib.util
+import copy
+import threading
 from typing import Dict, List, Optional, Tuple
 import psutil
 import toml
@@ -241,10 +243,12 @@ FLUX_KLEIN_MODEL_SETTINGS = {
 }
 
 SCALING_MODE_INFO = (
-    "Tensor uses one scale for the whole tensor: lowest scale overhead and usually the simplest/fastest path, "
-    "but less adaptive when different channels or regions have very different ranges. "
-    "Block uses one scale per block/group: usually better quality on uneven weights, but adds more scale metadata. "
-    "Row sits between them with one scale per output row."
+    "Quality/compatibility tradeoff. Tensor uses one scale for the whole weight tensor: lowest scale overhead and "
+    "usually the simplest, fastest, most compatible path, but least adaptive when channels or regions have very "
+    "different ranges. Row uses one scale per output row: usually better than tensor for uneven per-channel ranges, "
+    "with modest scale overhead; for INT8 row this is the ConvRot route and needs matching runtime support. "
+    "Block uses one scale per 2D block: usually the best quality of these modes on uneven weights, especially for "
+    "INT8 blockwise, but it adds scale metadata and requires dimensions divisible by the block size."
 )
 
 BLOCK_SIZE_INFO = (
@@ -253,6 +257,23 @@ BLOCK_SIZE_INFO = (
     "reduce quality. Common starting points: FP8 block-wise 64, INT8 block-wise 128. INT8 block-wise layers must "
     "also be divisible by the chosen block size."
 )
+
+SCALING_MODE_CHOICES = ["tensor", "row", "block"]
+CUSTOM_SCALING_MODE_CHOICES = [None] + SCALING_MODE_CHOICES
+
+
+def _normalize_scaling_mode(value, default="tensor"):
+    if value in ("block2d", "block3d"):
+        return "block"
+    if value in SCALING_MODE_CHOICES:
+        return value
+    return default
+
+
+def _normalize_optional_scaling_mode(value):
+    if value is None or value == "":
+        return None
+    return _normalize_scaling_mode(value, None)
 
 CALIB_SAMPLES_INFO = (
     "Used here for bias-correction calibration, not dataset calibration. The tool generates random inputs and uses "
@@ -335,9 +356,10 @@ Model-specific notes from upstream issues:
 - Z-Image and Anima: avoid NVFP4 as the default route; issue reports showed noisy output. Use FP8 Compatibility first.
 - Boogu: use the Boogu preset, which applies the known exclusion regex for image/reference embedding layers.
 - ERNIE Image: use the ERNIE preset, which applies the tested exclusion regex.
-- Krea 2 Raw/Turbo: use the Krea 2 preset to match the official Comfy quantized files: simple FP8, Krea-specific projection/time/final-layer exclusions, selective full-precision matrix multiplication for gate/output/down projections, metadata, and low-memory. Published third-party INT8 guidance uses INT8 Rowwise plus ConvRot.
-- ComfyUI-QuantOps: load these exports with QuantOps quantized loader nodes. Keep metadata enabled so QuantOps can identify tensor, row, block, MXFP8, and NVFP4 layouts instead of guessing from scales.
-- INT8 Blockwise is available through QuantOps. INT8 Tensorwise and ConvRot require the custom comfy-kitchen INT8 build plus `--enable-triton-backend`; without that, expect fallback behavior or load failure.
+- Krea 2 Raw/Turbo: use the Krea 2 preset to match the official Comfy quantized files: simple FP8, Krea-specific projection/time/final-layer exclusions, selective full-precision matrix multiplication for gate/output/down projections, metadata, and low-memory. For Krea INT8 Blockwise, the bundled layer config keeps those protected FP8 layers tensor-scaled so metadata and scale shapes agree.
+- ComfyUI-QuantOps: load these exports with QuantOps quantized loader nodes or a patched QuantOps stock-loader auto integration. Keep metadata enabled so QuantOps can identify tensor, row, block, MXFP8, and NVFP4 layouts instead of guessing from scales.
+- INT8 Blockwise requires QuantOps runtime support. Stock ComfyUI `Load Diffusion Model` and SwarmUI's normal model dropdown need a QuantOps stock-loader auto patch; otherwise use the QuantOps quantized loader nodes.
+- INT8 Tensorwise and ConvRot require the custom comfy-kitchen INT8 build plus `--enable-triton-backend`; without that, expect fallback behavior or load failure.
 - QuantOps loader nodes have their own `low_memory` and `disable_dynamic` toggles. For quantized text encoders, upstream issue comments recommend enabling both when the pipeline clogs or memory spikes.
 - INT8 text encoders, especially T5, have reported Triton NaNs on short prompts. If that happens, use the QuantOps loader with the PyTorch backend or stay with FP8 for text encoders.
 - RTX 30xx and 40xx should prefer FP8/INT8 routes. MXFP8 and NVFP4 are Blackwell-oriented expert presets; treat them as compatibility/quality experiments unless your ComfyUI runtime has the required comfy-kitchen layouts.
@@ -752,6 +774,58 @@ class ModelQuantizer:
         self.batch_process: Optional[subprocess.Popen] = None
         self.single_cancel_requested = False
         self.batch_cancel_requested = False
+        self.single_queue_lock = threading.RLock()
+        self.single_queue: List[Dict[str, object]] = []
+        self.single_current_job: Optional[Dict[str, object]] = None
+        self.single_worker_thread: Optional[threading.Thread] = None
+        self.single_job_counter = 0
+        self.single_status_text = "Ready."
+
+    def _format_single_job(self, job: Dict[str, object]) -> str:
+        input_file = str(job.get("input_file") or "")
+        output_path = str(job.get("output_path") or "")
+        input_name = os.path.basename(input_file) or input_file
+        output_name = os.path.basename(output_path) or output_path
+        if output_name:
+            return f"#{job.get('id')} {input_name} -> {output_name}"
+        return f"#{job.get('id')} {input_name}"
+
+    def _single_queue_text_locked(self) -> str:
+        lines: List[str] = []
+        if self.single_current_job is not None:
+            lines.append(f"Running: {self._format_single_job(self.single_current_job)}")
+        else:
+            lines.append("Running: none")
+
+        if self.single_queue:
+            lines.append("")
+            lines.append(f"Queued: {len(self.single_queue)}")
+            for index, job in enumerate(self.single_queue, start=1):
+                lines.append(f"{index}. {self._format_single_job(job)}")
+        else:
+            lines.append("")
+            lines.append("Queued: none")
+        return "\n".join(lines)
+
+    def single_queue_text(self) -> str:
+        with self.single_queue_lock:
+            return self._single_queue_text_locked()
+
+    def single_queue_and_status(self) -> Tuple[str, str]:
+        with self.single_queue_lock:
+            return self._single_queue_text_locked(), self.single_status_text
+
+    def _set_single_status(self, text: str) -> None:
+        with self.single_queue_lock:
+            self.single_status_text = self._tail_text(text)
+
+    def _append_single_status(self, text: str) -> None:
+        with self.single_queue_lock:
+            if self.single_status_text and self.single_status_text != "Ready.":
+                combined = f"{self.single_status_text}\n{text}"
+            else:
+                combined = text
+            self.single_status_text = self._tail_text(combined)
 
     def _resolve_python(self) -> List[str]:
         venv_python = os.path.join(REPO_ROOT, "venv", "Scripts", "python.exe")
@@ -909,13 +983,25 @@ class ModelQuantizer:
         finally:
             setattr(self, process_attr, None)
 
-    def cancel_single(self) -> str:
-        if not self._is_running(self.single_process):
-            return "No single-file conversion is running."
-        self.single_cancel_requested = True
-        if self._terminate_process(self.single_process):
-            return "Cancellation requested. Stopping conversion..."
-        return "Unable to cancel conversion. It may have already finished."
+    def cancel_single(self) -> Tuple[str, str]:
+        with self.single_queue_lock:
+            queued_count = len(self.single_queue)
+            self.single_queue.clear()
+            running = self._is_running(self.single_process)
+            self.single_cancel_requested = True
+
+        if running:
+            if self._terminate_process(self.single_process):
+                message = f"Cancellation requested. Cleared {queued_count} queued conversion(s) and stopped the running conversion."
+            else:
+                message = f"Cleared {queued_count} queued conversion(s), but the running conversion may have already finished."
+        elif queued_count:
+            message = f"Cancelled {queued_count} queued conversion(s)."
+        else:
+            message = "No single-file conversion is running or queued."
+
+        self._set_single_status(message)
+        return self.single_queue_and_status()
 
     def cancel_batch(self) -> str:
         if not self._is_running(self.batch_process):
@@ -1203,6 +1289,77 @@ class ModelQuantizer:
 
         return f"{base}_{prefix}{format_str}{mixed_suffix}{scaling_str}.safetensors"
 
+    def _start_single_worker_locked(self) -> None:
+        if self.single_worker_thread and self.single_worker_thread.is_alive():
+            return
+        self.single_worker_thread = threading.Thread(
+            target=self._single_worker_loop,
+            name="model-quantizer-single-queue",
+            daemon=True,
+        )
+        self.single_worker_thread.start()
+
+    def enqueue_single(
+        self,
+        input_file: str,
+        output_file: str,
+        delete_original: bool,
+        params: Dict[str, object],
+    ) -> Tuple[str, str]:
+        if not input_file:
+            self._set_single_status("Input file is required.")
+            return self.single_queue_and_status()
+        if not os.path.isfile(input_file):
+            self._set_single_status(f"Input file not found: {input_file}")
+            return self.single_queue_and_status()
+        validation_error = self._validate_quantization_params(params)
+        if validation_error:
+            self._set_single_status(validation_error)
+            return self.single_queue_and_status()
+
+        output_path = output_file or self._default_output_name(input_file, params)
+        if output_path and os.path.abspath(output_path) == os.path.abspath(input_file):
+            self._set_single_status("Output file cannot be the same as input file.")
+            return self.single_queue_and_status()
+
+        with self.single_queue_lock:
+            self.single_job_counter += 1
+            job = {
+                "id": self.single_job_counter,
+                "input_file": input_file,
+                "output_path": output_path,
+                "delete_original": bool(delete_original),
+                "params": copy.deepcopy(params),
+            }
+            self.single_queue.append(job)
+            self.single_status_text = f"Queued single-file conversion: {self._format_single_job(job)}"
+            self._start_single_worker_locked()
+            return self._single_queue_text_locked(), self.single_status_text
+
+    def _single_worker_loop(self) -> None:
+        while True:
+            with self.single_queue_lock:
+                if not self.single_queue:
+                    self.single_current_job = None
+                    self.single_worker_thread = None
+                    return
+                job = self.single_queue.pop(0)
+                self.single_current_job = job
+                self.single_cancel_requested = False
+                self.single_status_text = f"Starting conversion: {self._format_single_job(job)}"
+
+            result = self.run_single(
+                input_file=str(job.get("input_file") or ""),
+                output_file=str(job.get("output_path") or ""),
+                delete_original=bool(job.get("delete_original")),
+                params=copy.deepcopy(job.get("params") or {}),
+            )
+
+            with self.single_queue_lock:
+                finished_label = self._format_single_job(job)
+                self.single_current_job = None
+                self.single_status_text = self._tail_text(f"{finished_label}\n\n{result}")
+
     def run_single(
         self,
         input_file: str,
@@ -1427,8 +1584,8 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
         with gr.Row():
             scaling_mode = gr.Dropdown(
                 label="Scaling Mode",
-                choices=["tensor", "row", "block", "block3d", "block2d"],
-                value=config.get("model_quantizer.scaling_mode", "tensor"),
+                choices=SCALING_MODE_CHOICES,
+                value=_normalize_scaling_mode(config.get("model_quantizer.scaling_mode", "tensor")),
                 info=SCALING_MODE_INFO,
             )
             block_size = gr.Number(
@@ -1501,8 +1658,8 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             )
             custom_scaling_mode = gr.Dropdown(
                 label="Custom Scaling Mode",
-                choices=[None, "tensor", "row", "block", "block3d", "block2d"],
-                value=config.get("model_quantizer.custom_scaling_mode", None),
+                choices=CUSTOM_SCALING_MODE_CHOICES,
+                value=_normalize_optional_scaling_mode(config.get("model_quantizer.custom_scaling_mode", None)),
                 info=SCALING_MODE_INFO,
             )
         with gr.Row():
@@ -1812,6 +1969,13 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
                 )
             single_run_button = gr.Button("Start Conversion", variant="primary")
             single_cancel_button = gr.Button("Cancel", variant="secondary")
+            single_queue_status = gr.Textbox(
+                label="Single Conversion Queue",
+                value=quantizer.single_queue_text(),
+                lines=6,
+                max_lines=18,
+                interactive=False,
+            )
             single_status = gr.Textbox(
                 label="Single Conversion Log",
                 lines=16,
@@ -1937,7 +2101,7 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             "quant_format": quant_format_value,
             "comfy_quant": bool(comfy_quant_value),
             "full_precision_matrix_mult": bool(full_precision_matrix_mult_value),
-            "scaling_mode": scaling_mode_value,
+            "scaling_mode": _normalize_scaling_mode(scaling_mode_value),
             "block_size": _to_int(block_size_value, None),
             "include_input_scale": bool(include_input_scale_value),
             "convrot": bool(convrot_value),
@@ -1946,7 +2110,7 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             "exclude_layers": exclude_layers_value.strip() if isinstance(exclude_layers_value, str) else exclude_layers_value,
             "custom_type": custom_type_value,
             "custom_block_size": _to_optional_positive_int(custom_block_size_value, None),
-            "custom_scaling_mode": custom_scaling_mode_value,
+            "custom_scaling_mode": _normalize_optional_scaling_mode(custom_scaling_mode_value),
             "custom_simple": bool(custom_simple_value),
             "custom_heur": bool(custom_heur_value),
             "fallback_type": fallback_type_value,
@@ -2276,7 +2440,7 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             *base_values,
             filter_values=filter_values,
         )
-        return quantizer.run_single(
+        return quantizer.enqueue_single(
             input_file=single_input_file_value,
             output_file=single_output_file_value,
             delete_original=bool(single_delete_original_value),
@@ -2286,15 +2450,26 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
     single_run_button.click(
         fn=_run_single,
         inputs=[single_input_file, single_output_file, single_delete_original] + single_inputs,
-        outputs=[single_status],
-        show_progress=True,
+        outputs=[single_queue_status, single_status],
+        show_progress=False,
+        queue=False,
     )
 
     single_cancel_button.click(
         fn=quantizer.cancel_single,
         inputs=[],
-        outputs=[single_status],
+        outputs=[single_queue_status, single_status],
         show_progress=False,
+        queue=False,
+    )
+
+    single_queue_timer = gr.Timer(2.0)
+    single_queue_timer.tick(
+        fn=quantizer.single_queue_and_status,
+        inputs=[],
+        outputs=[single_queue_status, single_status],
+        show_progress=False,
+        queue=False,
     )
 
     def _run_batch(
@@ -2552,6 +2727,10 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             if value is None:
                 values_out.append(current)
             else:
+                if name == "scaling_mode":
+                    value = _normalize_scaling_mode(value)
+                elif name == "custom_scaling_mode":
+                    value = _normalize_optional_scaling_mode(value)
                 values_out.append(value)
         return [file_path, f"Loaded: {os.path.basename(file_path)}"] + values_out
 
@@ -2675,8 +2854,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 with gr.Row():
                     scaling_mode = gr.Dropdown(
                         label="Scaling Mode",
-                        choices=["tensor", "row", "block", "block3d", "block2d"],
-                        value=config.get("model_quantizer.scaling_mode", "tensor"),
+                        choices=SCALING_MODE_CHOICES,
+                        value=_normalize_scaling_mode(config.get("model_quantizer.scaling_mode", "tensor")),
                         info=SCALING_MODE_INFO,
                     )
                     block_size = gr.Number(
@@ -2749,8 +2928,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     )
                     custom_scaling_mode = gr.Dropdown(
                         label="Custom Scaling Mode",
-                        choices=[None, "tensor", "row", "block", "block3d", "block2d"],
-                        value=config.get("model_quantizer.custom_scaling_mode", None),
+                        choices=CUSTOM_SCALING_MODE_CHOICES,
+                        value=_normalize_optional_scaling_mode(config.get("model_quantizer.custom_scaling_mode", None)),
                         info=SCALING_MODE_INFO,
                     )
                 with gr.Row():
@@ -3069,6 +3248,13 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 )
             single_run_button = gr.Button("Start Conversion", variant="primary")
             single_cancel_button = gr.Button("Cancel", variant="secondary")
+            single_queue_status = gr.Textbox(
+                label="Single Conversion Queue",
+                value=quantizer.single_queue_text(),
+                lines=6,
+                max_lines=18,
+                interactive=False,
+            )
             single_status = gr.Textbox(
                 label="Single Conversion Log",
                 lines=16,
@@ -3193,7 +3379,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             "quant_format": quant_format_value,
             "comfy_quant": bool(comfy_quant_value),
             "full_precision_matrix_mult": bool(full_precision_matrix_mult_value),
-            "scaling_mode": scaling_mode_value,
+            "scaling_mode": _normalize_scaling_mode(scaling_mode_value),
             "block_size": _to_int(block_size_value, None),
             "include_input_scale": bool(include_input_scale_value),
             "convrot": bool(convrot_value),
@@ -3202,7 +3388,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             "exclude_layers": exclude_layers_value.strip() if isinstance(exclude_layers_value, str) else exclude_layers_value,
             "custom_type": custom_type_value,
             "custom_block_size": _to_optional_positive_int(custom_block_size_value, None),
-            "custom_scaling_mode": custom_scaling_mode_value,
+            "custom_scaling_mode": _normalize_optional_scaling_mode(custom_scaling_mode_value),
             "custom_simple": bool(custom_simple_value),
             "custom_heur": bool(custom_heur_value),
             "fallback_type": fallback_type_value,
@@ -3390,7 +3576,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
     )
 
     def _apply_scaling_mode_defaults(selected_scaling: str, selected_format: str):
-        if selected_scaling in ("block", "block2d", "block3d"):
+        selected_scaling = _normalize_scaling_mode(selected_scaling)
+        if selected_scaling == "block":
             block_default = 128 if selected_format == QUANT_FORMAT_INT8 else 64
             return gr.update(value=block_default), gr.update(value=False)
         if selected_scaling == "row":
@@ -3613,7 +3800,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             *base_values,
             filter_values=filter_values,
         )
-        return quantizer.run_single(
+        return quantizer.enqueue_single(
             input_file=single_input_file_value,
             output_file=single_output_file_value,
             delete_original=bool(single_delete_original_value),
@@ -3623,15 +3810,26 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
     single_run_button.click(
         fn=_run_single,
         inputs=[single_input_file, single_output_file, single_delete_original] + single_inputs,
-        outputs=[single_status],
-        show_progress=True,
+        outputs=[single_queue_status, single_status],
+        show_progress=False,
+        queue=False,
     )
 
     single_cancel_button.click(
         fn=quantizer.cancel_single,
         inputs=[],
-        outputs=[single_status],
+        outputs=[single_queue_status, single_status],
         show_progress=False,
+        queue=False,
+    )
+
+    single_queue_timer = gr.Timer(2.0)
+    single_queue_timer.tick(
+        fn=quantizer.single_queue_and_status,
+        inputs=[],
+        outputs=[single_queue_status, single_status],
+        show_progress=False,
+        queue=False,
     )
 
     def _run_batch(
@@ -3887,6 +4085,10 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             if value is None:
                 values_out.append(current)
             else:
+                if name == "scaling_mode":
+                    value = _normalize_scaling_mode(value)
+                elif name == "custom_scaling_mode":
+                    value = _normalize_optional_scaling_mode(value)
                 values_out.append(value)
         return [file_path, f"Loaded: {os.path.basename(file_path)}"] + values_out
 
