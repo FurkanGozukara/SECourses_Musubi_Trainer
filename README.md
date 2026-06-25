@@ -43,9 +43,18 @@
 
 ### 25 June 2026 V28.4 Update
 
-- Quantize model presets fully updated as below
+- Quantize model backend code fully updated
+- Quantize presets fully updated and vastly improved
+- Queue system added so set your settings and click start conversion it will auto queue
+- Following presets fully added and default quality set to Normal - pretty good quality
 
-<img height="600" alt="image" src="https://github.com/user-attachments/assets/96491a5f-b001-4480-a043-a1979979beb3" />
+<img height="600" alt="image" src="https://github.com/user-attachments/assets/6dfa218f-e053-4d0c-aad6-2acda950f637" />
+
+- Full new screenshot of the quantize page as below
+- I am currently testing FP8 Krea 2 Tensor vs Blockwise vs INT8 Blockwise
+- Just run Windows_Install_and_Update.bat
+
+<img height="600" alt="image" src="https://github.com/user-attachments/assets/43d31e3a-1839-4d16-b6be-7b09ea180b08" />
 
 ---
 
