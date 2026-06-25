@@ -200,8 +200,8 @@ MODEL_CATEGORY_LABELS = {
 }
 
 MODEL_PRESET_DISPLAY_NAMES = {
-    "anima": "Anima",
-    "boogu": "Boogu",
+    "anima": "Anima (Base/Turbo)",
+    "boogu": "Boogu-Image",
     "ernie_image": "ERNIE Image",
     "flux1": "FLUX.1",
     "flux2": "FLUX.2",
@@ -209,14 +209,14 @@ MODEL_PRESET_DISPLAY_NAMES = {
     "generic_text": "Generic Text Encoder",
     "hunyuan": "Hunyuan Video 1.5",
     "krea2": "Krea 2 (Raw/Turbo)",
-    "lens": "LENS",
-    "ltxv2": "LTX_2_and_2.3",
-    "ltx2": "LTX_2_and_2.3",
-    "ltx2_3": "LTX_2_and_2.3",
-    "qwen": "Qwen Image / Edit",
+    "lens": "Microsoft LENS",
+    "ltxv2": "LTX (2 / 2.3)",
+    "ltx2": "LTX (2 / 2.3)",
+    "ltx2_3": "LTX (2 / 2.3)",
+    "qwen": "Qwen Image / Edit (2509, 2511, 2512)",
     "qwen35": "Qwen2.5 Text/Multimodal",
     "t5xxl": "T5-XXL",
-    "wan": "WAN Video",
+    "wan": "WAN (2.1 / 2.2)",
     "zimage": "Z-Image",
     "zimage_refiner": "Z-Image Refiner",
 }
@@ -227,12 +227,34 @@ MODEL_PRESET_LEGACY_ALIASES = {
     "flux2_klein_4b": "flux_klein",
 }
 MODEL_PRESET_LEGACY_LABELS = {
+    "Anima": "anima",
+    "Boogu": "boogu",
     "FLUX.2 Klein": "flux_klein",
     "FLUX.2-klein-9B": "flux_klein",
     "FLUX.2-klein-9b-kv": "flux_klein",
     "FLUX.2-klein-4B": "flux_klein",
+    "LENS": "lens",
+    "LTX_2_and_2.3": "ltxv2",
+    "Qwen Image / Edit": "qwen",
+    "WAN Video": "wan",
 }
 REGEX_ONLY_MODEL_PRESETS = {"boogu", "ernie_image", "krea2"}
+GUI_ONLY_MODEL_PRESETS = {"flux1", "flux_klein"}
+PRIMARY_MODEL_PRESET_VALUES = {
+    "anima",
+    "boogu",
+    "ernie_image",
+    "flux1",
+    "flux2",
+    "hunyuan",
+    "krea2",
+    "lens",
+    "ltxv2",
+    "qwen",
+    "wan",
+    "zimage",
+    "zimage_refiner",
+}
 MODEL_PRESET_FILTER_ALIASES = {}
 
 FLUX_KLEIN_MODEL_SETTINGS = {
@@ -352,11 +374,12 @@ Use these changes when you can spend more time and memory for better fidelity:
 
 Model-specific notes from upstream issues:
 
-- Qwen Image / Edit: use FP8 Scaled or Compatibility, keep full precision matrix multiplication enabled, and do not use Simple for best quality.
-- Z-Image and Anima: avoid NVFP4 as the default route; issue reports showed noisy output. Use FP8 Compatibility first.
-- Boogu: use the Boogu preset, which applies the known exclusion regex for image/reference embedding layers.
+- Qwen Image / Edit (2509, 2511, 2512): use FP8 Scaled or Compatibility, keep full precision matrix multiplication enabled, and do not use Simple for best quality.
+- FLUX.1: use the FLUX.1 preset for the modern equivalent of Comfy's scaled-FP8 reference: FP8 E4M3 tensor scaling, `.comfy_quant`, quant metadata, low-memory, full precision matrix multiplication, and input_scale tensors. The old public Comfy checkpoint uses legacy `scaled_fp8` tensors without metadata; new exports should keep metadata enabled.
+- Z-Image and Anima (Base/Turbo): avoid NVFP4 as the default route; issue reports showed noisy output. Use FP8 Compatibility first.
+- Boogu-Image: use the Boogu-Image preset, which applies the known exclusion regex for image/reference embedding layers.
 - ERNIE Image: use the ERNIE preset, which applies the tested exclusion regex.
-- Krea 2 Raw/Turbo: use the Krea 2 preset to match the official Comfy quantized files: simple FP8, Krea-specific projection/time/final-layer exclusions, selective full-precision matrix multiplication for gate/output/down projections, metadata, and low-memory. For Krea INT8 Blockwise, the bundled layer config keeps those protected FP8 layers tensor-scaled so metadata and scale shapes agree.
+- Krea 2 Raw/Turbo: the Krea 2 preset starts on Normal (Balanced): learned FP8 tensor scaling, Krea-specific projection/time/final-layer exclusions, selective full-precision matrix multiplication for gate/output/down projections, metadata, and low-memory. Switch Quality Preset to Fast only when you specifically want the simpler official-style FP8 route. For Krea INT8 Blockwise, the bundled layer config keeps those protected FP8 layers tensor-scaled so metadata and scale shapes agree.
 - ComfyUI-QuantOps: load these exports with QuantOps quantized loader nodes or a patched QuantOps stock-loader auto integration. Keep metadata enabled so QuantOps can identify tensor, row, block, MXFP8, and NVFP4 layouts instead of guessing from scales.
 - INT8 Blockwise requires QuantOps runtime support. Stock ComfyUI `Load Diffusion Model` and SwarmUI's normal model dropdown need a QuantOps stock-loader auto patch; otherwise use the QuantOps quantized loader nodes.
 - INT8 Tensorwise and ConvRot require the custom comfy-kitchen INT8 build plus `--enable-triton-backend`; without that, expect fallback behavior or load failure.
@@ -372,11 +395,17 @@ Model-specific notes from upstream issues:
 MODEL_PRESET_VALUE_BY_LABEL = {
     label: key for key, label in MODEL_PRESET_DISPLAY_NAMES.items()
 }
-MODEL_PRESET_VALUE_BY_LABEL["LTX_2_and_2.3"] = "ltx2_3"
 MODEL_PRESET_VALUE_BY_LABEL.update(MODEL_PRESET_LEGACY_LABELS)
+MODEL_PRESET_VALUE_BY_LABEL["LTX (2 / 2.3)"] = "ltxv2"
+MODEL_PRESET_VALUE_BY_LABEL["LTX_2_and_2.3"] = "ltxv2"
+
+MODEL_PRESET_FIELD = "model_preset"
+MODEL_PRESET_PRIMARY_FIELD = "model_preset_primary"
+MODEL_PRESET_OTHER_FIELD = "model_preset_other"
 
 
 def _model_preset_label(value: str) -> str:
+    value = MODEL_PRESET_VALUE_BY_LABEL.get(value, value)
     value = MODEL_PRESET_LEGACY_ALIASES.get(value, value)
     return MODEL_PRESET_DISPLAY_NAMES.get(value, value)
 
@@ -392,31 +421,58 @@ def _model_preset_filter(value: str) -> str:
     return MODEL_PRESET_FILTER_ALIASES.get(value, value)
 
 
-def _ordered_filter_choices() -> List[str]:
-    def _sort_key(item):
-        name, cfg = item
-        cat = cfg.get("category", "")
-        return (cat, name)
-
-    choices: List[str] = []
-    seen = set()
-    for name, _ in sorted(MODEL_FILTERS.items(), key=_sort_key):
-        label = _model_preset_label(name)
-        if label in seen:
-            continue
-        seen.add(label)
-        choices.append(label)
-    for name in ("boogu", "ernie_image", "krea2"):
-        label = _model_preset_label(name)
-        if label not in seen:
-            seen.add(label)
-            choices.append(label)
-    return choices
+def _model_preset_sort_key(label: str) -> str:
+    return label.casefold()
 
 
-MODEL_PRESET_CHOICES = [MODEL_PRESET_NONE] + _ordered_filter_choices()
+def _ordered_model_preset_choices(values) -> List[str]:
+    labels = {
+        _model_preset_label(value)
+        for value in values
+        if _model_preset_label(value) != MODEL_PRESET_NONE
+    }
+    labels.add(MODEL_PRESET_NONE)
+    return sorted(labels, key=_model_preset_sort_key)
+
+
+def _all_model_preset_values():
+    return set(MODEL_FILTERS.keys()) | REGEX_ONLY_MODEL_PRESETS | GUI_ONLY_MODEL_PRESETS
+
+
+MODEL_PRESET_PRIMARY_CHOICES = _ordered_model_preset_choices(PRIMARY_MODEL_PRESET_VALUES)
+MODEL_PRESET_OTHER_CHOICES = _ordered_model_preset_choices(
+    value
+    for value in _all_model_preset_values()
+    if _model_preset_label(value) not in MODEL_PRESET_PRIMARY_CHOICES
+)
+MODEL_PRESET_CHOICES = _ordered_model_preset_choices(_all_model_preset_values())
+
+
+def _split_model_preset_selection(value: str):
+    selected_value = _model_preset_value(value)
+    if selected_value == MODEL_PRESET_NONE:
+        return MODEL_PRESET_NONE, MODEL_PRESET_NONE, MODEL_PRESET_NONE
+
+    label = _model_preset_label(selected_value)
+    if label in MODEL_PRESET_PRIMARY_CHOICES:
+        return label, MODEL_PRESET_NONE, selected_value
+    if label in MODEL_PRESET_OTHER_CHOICES:
+        return MODEL_PRESET_NONE, label, selected_value
+    return MODEL_PRESET_NONE, MODEL_PRESET_NONE, MODEL_PRESET_NONE
+
+
+def _model_preset_component_value(field_name: str, raw_value: str, current_value):
+    primary_value, other_value, effective_value = _split_model_preset_selection(raw_value)
+    if field_name == MODEL_PRESET_FIELD:
+        return effective_value
+    if field_name == MODEL_PRESET_PRIMARY_FIELD:
+        return primary_value
+    if field_name == MODEL_PRESET_OTHER_FIELD:
+        return other_value
+    return current_value
 
 MODEL_PRESET_OVERRIDES = {
+    "flux1": {"include_input_scale": True},
     "t5xxl": {"include_input_scale": True},
 }
 
@@ -431,9 +487,17 @@ MODEL_PRESET_SETTINGS = {
 }
 MODEL_PRESET_SETTINGS.update({
     "flux1": {
-        "preset": PRESET_NORMAL,
+        "preset": PRESET_FP8_SCALED,
         "quant_format": QUANT_FORMAT_FP8,
+        "comfy_quant": True,
         "scaling_mode": "tensor",
+        "block_size": None,
+        "simple": False,
+        "skip_inefficient_layers": False,
+        "full_precision_matrix_mult": True,
+        "include_input_scale": True,
+        "low_memory": True,
+        "save_quant_metadata": True,
     },
     "flux_klein": FLUX_KLEIN_MODEL_SETTINGS.copy(),
     "t5xxl": {
@@ -471,13 +535,13 @@ MODEL_PRESET_SETTINGS.update({
         "fallback_simple": False,
     },
     "krea2": {
-        "preset": PRESET_FAST,
+        "preset": PRESET_NORMAL,
         "quant_format": QUANT_FORMAT_FP8,
         "comfy_quant": True,
         "full_precision_matrix_mult": False,
         "scaling_mode": "tensor",
         "block_size": None,
-        "simple": True,
+        "simple": False,
         "skip_inefficient_layers": False,
         "exclude_layers": KREA2_EXCLUDE_LAYERS,
         "layer_config_path": KREA2_LAYER_CONFIG_PATH,
@@ -1514,6 +1578,9 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
     dummy_true = gr.Checkbox(value=True, visible=False)
     dummy_false = gr.Checkbox(value=False, visible=False)
     dummy_headless = gr.Checkbox(value=headless, visible=False)
+    initial_model_preset_primary, initial_model_preset_other, initial_model_preset_value = _split_model_preset_selection(
+        config.get("model_quantizer.model_preset", "krea2")
+    )
 
     with gr.Accordion("Configuration file Settings", open=True):
         configuration = ConfigurationFile(headless=headless, config=config)
@@ -1536,15 +1603,22 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
                     PRESET_NVFP4_BALANCED,
                     PRESET_NVFP4_Z,
                 ],
-                value=config.get("model_quantizer.preset", PRESET_FAST),
+                value=config.get("model_quantizer.preset", PRESET_NORMAL),
                 info="Quickly apply recommended optimization settings.",
             )
-            model_preset_dropdown = gr.Dropdown(
+            model_preset_primary_dropdown = gr.Dropdown(
                 label="Model Preset (Recommended Filters)",
-                choices=MODEL_PRESET_CHOICES,
-                value=_model_preset_label(config.get("model_quantizer.model_preset", MODEL_PRESET_NONE)),
+                choices=MODEL_PRESET_PRIMARY_CHOICES,
+                value=initial_model_preset_primary,
                 info="Select a model to apply its recommended exclusion filters.",
             )
+            model_preset_other_dropdown = gr.Dropdown(
+                label="Model Preset (Other Filters)",
+                choices=MODEL_PRESET_OTHER_CHOICES,
+                value=initial_model_preset_other,
+                info="Additional presets and upstream filters.",
+            )
+            model_preset_value = gr.Textbox(value=initial_model_preset_value, visible=False)
         with gr.Accordion("Quality Upgrade Notes", open=False):
             gr.Markdown(QUALITY_GUIDANCE_MD)
 
@@ -2257,6 +2331,12 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
     def _apply_model_preset(selected: str):
         selected_value = _model_preset_value(selected)
         selected_filter = _model_preset_filter(selected_value)
+        reset_other_update = (
+            gr.update(value=MODEL_PRESET_NONE)
+            if selected_value != MODEL_PRESET_NONE
+            else gr.update()
+        )
+        effective_update = gr.update(value=selected_value)
         updates = []
         overrides = MODEL_PRESET_OVERRIDES.get(selected_value, {})
         for name in filter_checkboxes.keys():
@@ -2266,12 +2346,19 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             include_update = gr.update()
         else:
             include_update = gr.update(value=include_update)
-        return updates + [include_update]
+        return [reset_other_update, effective_update] + updates + [include_update]
 
-    model_preset_dropdown.change(
+    model_preset_primary_dropdown.change(
         fn=_apply_model_preset,
-        inputs=[model_preset_dropdown],
-        outputs=list(filter_checkboxes.values()) + [include_input_scale],
+        inputs=[model_preset_primary_dropdown],
+        outputs=[model_preset_other_dropdown, model_preset_value] + list(filter_checkboxes.values()) + [include_input_scale],
+        show_progress=False,
+    )
+
+    model_preset_other_dropdown.change(
+        fn=_apply_model_preset,
+        inputs=[model_preset_other_dropdown],
+        outputs=[model_preset_primary_dropdown, model_preset_value] + list(filter_checkboxes.values()) + [include_input_scale],
         show_progress=False,
     )
 
@@ -2601,7 +2688,9 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
         "batch_overwrite",
         "batch_delete_original",
         "preset",
-        "model_preset",
+        MODEL_PRESET_FIELD,
+        MODEL_PRESET_PRIMARY_FIELD,
+        MODEL_PRESET_OTHER_FIELD,
     ] + [f"filter.{name}" for name in filter_checkboxes.keys()]
 
     settings_components = [
@@ -2682,7 +2771,9 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
         batch_overwrite,
         batch_delete_original,
         preset_dropdown,
-        model_preset_dropdown,
+        model_preset_value,
+        model_preset_primary_dropdown,
+        model_preset_other_dropdown,
     ] + list(filter_checkboxes.values())
 
     def _save_configuration(action, save_as_bool, file_path, headless_value, print_only, *values):
@@ -2698,7 +2789,17 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
         if destination_directory:
             os.makedirs(destination_directory, exist_ok=True)
         from .common_gui import SaveConfigFile
-        SaveConfigFile(parameters=parameters, file_path=file_path, exclusion=["file_path", "save_as", "save_as_bool"])
+        SaveConfigFile(
+            parameters=parameters,
+            file_path=file_path,
+            exclusion=[
+                "file_path",
+                "save_as",
+                "save_as_bool",
+                MODEL_PRESET_PRIMARY_FIELD,
+                MODEL_PRESET_OTHER_FIELD,
+            ],
+        )
         config_name = os.path.basename(file_path)
         return file_path, f"Saved: {config_name}"
 
@@ -2719,8 +2820,17 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
         except Exception as exc:
             return [original_file_path, f"Failed to load: {exc}"] + [gr.update() for _ in settings_components]
         flat = _flatten_dict(data)
+        loaded_model_preset = flat.get(MODEL_PRESET_FIELD)
+        if loaded_model_preset is None:
+            loaded_model_preset = flat.get(f"model_quantizer.{MODEL_PRESET_FIELD}")
         values_out = []
         for name, current in zip(settings_names, values):
+            if name in (MODEL_PRESET_FIELD, MODEL_PRESET_PRIMARY_FIELD, MODEL_PRESET_OTHER_FIELD):
+                if loaded_model_preset is None:
+                    values_out.append(current)
+                else:
+                    values_out.append(_model_preset_component_value(name, loaded_model_preset, current))
+                continue
             value = flat.get(name)
             if value is None:
                 value = flat.get(f"model_quantizer.{name}")
@@ -2782,6 +2892,9 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
     dummy_true = gr.Checkbox(value=True, visible=False)
     dummy_false = gr.Checkbox(value=False, visible=False)
     dummy_headless = gr.Checkbox(value=headless, visible=False)
+    initial_model_preset_primary, initial_model_preset_other, initial_model_preset_value = _split_model_preset_selection(
+        config.get("model_quantizer.model_preset", "krea2")
+    )
 
     with gr.Accordion("Configuration file Settings", open=True):
         configuration = ConfigurationFile(headless=headless, config=config)
@@ -2806,15 +2919,22 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                             PRESET_NVFP4_BALANCED,
                             PRESET_NVFP4_Z,
                         ],
-                        value=config.get("model_quantizer.preset", PRESET_FAST),
+                        value=config.get("model_quantizer.preset", PRESET_NORMAL),
                         info="Quickly apply recommended optimization settings.",
                     )
-            model_preset_dropdown = gr.Dropdown(
-                label="Model Preset (Recommended Filters)",
-                choices=MODEL_PRESET_CHOICES,
-                value=_model_preset_label(config.get("model_quantizer.model_preset", MODEL_PRESET_NONE)),
-                info="Select a model to apply its recommended exclusion filters and defaults.",
-            )
+                    model_preset_primary_dropdown = gr.Dropdown(
+                        label="Model Preset (Recommended Filters)",
+                        choices=MODEL_PRESET_PRIMARY_CHOICES,
+                        value=initial_model_preset_primary,
+                        info="Select a model to apply its recommended exclusion filters and defaults.",
+                    )
+                    model_preset_other_dropdown = gr.Dropdown(
+                        label="Model Preset (Other Filters)",
+                        choices=MODEL_PRESET_OTHER_CHOICES,
+                        value=initial_model_preset_other,
+                        info="Additional presets and upstream filters.",
+                    )
+                    model_preset_value = gr.Textbox(value=initial_model_preset_value, visible=False)
             with gr.Accordion("Quality Upgrade Notes", open=False):
                 gr.Markdown(QUALITY_GUIDANCE_MD)
 
@@ -3591,29 +3711,36 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         show_progress=False,
     )
 
-    def _apply_model_preset(selected: str):
+    def _apply_model_preset(selected: str, selected_preset: str):
         selected_value = _model_preset_value(selected)
         selected_filter = _model_preset_filter(selected_value)
+        reset_other_update = (
+            gr.update(value=MODEL_PRESET_NONE)
+            if selected_value != MODEL_PRESET_NONE
+            else gr.update()
+        )
+        effective_update = gr.update(value=selected_value)
 
         if selected_value == MODEL_PRESET_NONE:
             return (
-                [gr.update() for _ in filter_checkboxes.values()]
-                + [gr.update()]
+                [reset_other_update, effective_update]
+                + [gr.update() for _ in filter_checkboxes.values()]
                 + [gr.update() for _ in preset_field_components]
                 + [gr.update()]
             )
 
         model_settings = MODEL_PRESET_SETTINGS.get(selected_value, {})
-        preset_name = model_settings.get("preset", PRESET_NORMAL)
+        preset_name = selected_preset or PRESET_NORMAL
         combined: Dict[str, object] = {}
         combined.update(PRESET_OVERRIDES.get(preset_name, {}))
-        combined.update(model_settings)
+        combined.update(
+            {name: value for name, value in model_settings.items() if name != "preset"}
+        )
 
         filter_updates = [
             gr.update(value=(name == selected_filter))
             for name in filter_checkboxes.keys()
         ]
-        preset_update = gr.update(value=preset_name)
 
         field_updates = []
         for name in preset_field_names:
@@ -3627,12 +3754,19 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             if "include_input_scale" in combined
             else gr.update()
         )
-        return filter_updates + [preset_update] + field_updates + [include_update]
+        return [reset_other_update, effective_update] + filter_updates + field_updates + [include_update]
 
-    model_preset_dropdown.change(
+    model_preset_primary_dropdown.change(
         fn=_apply_model_preset,
-        inputs=[model_preset_dropdown],
-        outputs=list(filter_checkboxes.values()) + [preset_dropdown] + preset_field_components + [include_input_scale],
+        inputs=[model_preset_primary_dropdown, preset_dropdown],
+        outputs=[model_preset_other_dropdown, model_preset_value] + list(filter_checkboxes.values()) + preset_field_components + [include_input_scale],
+        show_progress=False,
+    )
+
+    model_preset_other_dropdown.change(
+        fn=_apply_model_preset,
+        inputs=[model_preset_other_dropdown, preset_dropdown],
+        outputs=[model_preset_primary_dropdown, model_preset_value] + list(filter_checkboxes.values()) + preset_field_components + [include_input_scale],
         show_progress=False,
     )
 
@@ -3960,7 +4094,9 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         "batch_overwrite",
         "batch_delete_original",
         "preset",
-        "model_preset",
+        MODEL_PRESET_FIELD,
+        MODEL_PRESET_PRIMARY_FIELD,
+        MODEL_PRESET_OTHER_FIELD,
     ] + [f"filter.{name}" for name in filter_checkboxes.keys()]
 
     settings_components = [
@@ -4040,7 +4176,9 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         batch_overwrite,
         batch_delete_original,
         preset_dropdown,
-        model_preset_dropdown,
+        model_preset_value,
+        model_preset_primary_dropdown,
+        model_preset_other_dropdown,
     ] + list(filter_checkboxes.values())
 
     def _save_configuration(action, save_as_bool, file_path, headless_value, print_only, *values):
@@ -4056,7 +4194,17 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         if destination_directory:
             os.makedirs(destination_directory, exist_ok=True)
         from .common_gui import SaveConfigFile
-        SaveConfigFile(parameters=parameters, file_path=file_path, exclusion=["file_path", "save_as", "save_as_bool"])
+        SaveConfigFile(
+            parameters=parameters,
+            file_path=file_path,
+            exclusion=[
+                "file_path",
+                "save_as",
+                "save_as_bool",
+                MODEL_PRESET_PRIMARY_FIELD,
+                MODEL_PRESET_OTHER_FIELD,
+            ],
+        )
         config_name = os.path.basename(file_path)
         return file_path, f"Saved: {config_name}"
 
@@ -4077,8 +4225,17 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         except Exception as exc:
             return [original_file_path, f"Failed to load: {exc}"] + [gr.update() for _ in settings_components]
         flat = _flatten_dict(data)
+        loaded_model_preset = flat.get(MODEL_PRESET_FIELD)
+        if loaded_model_preset is None:
+            loaded_model_preset = flat.get(f"model_quantizer.{MODEL_PRESET_FIELD}")
         values_out = []
         for name, current in zip(settings_names, values):
+            if name in (MODEL_PRESET_FIELD, MODEL_PRESET_PRIMARY_FIELD, MODEL_PRESET_OTHER_FIELD):
+                if loaded_model_preset is None:
+                    values_out.append(current)
+                else:
+                    values_out.append(_model_preset_component_value(name, loaded_model_preset, current))
+                continue
             value = flat.get(name)
             if value is None:
                 value = flat.get(f"model_quantizer.{name}")

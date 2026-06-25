@@ -8,18 +8,18 @@ model_quantizer.include_input_scale = false
 model_quantizer.convrot = false
 model_quantizer.convrot_group_size = 256
 
-model_quantizer.simple = true
+model_quantizer.simple = false
 model_quantizer.skip_inefficient_layers = false
 model_quantizer.full_matrix = false
-model_quantizer.calib_samples = 1024
+model_quantizer.calib_samples = 2048
 model_quantizer.manual_seed = -1
-model_quantizer.optimizer = "original"
-model_quantizer.num_iter = 200
-model_quantizer.lr = 8.077300000003e-3
-model_quantizer.lr_schedule = "adaptive"
-model_quantizer.top_p = 0.02
-model_quantizer.min_k = 16
-model_quantizer.max_k = 64
+model_quantizer.optimizer = "prodigy"
+model_quantizer.num_iter = 2000
+model_quantizer.lr = 1.0
+model_quantizer.lr_schedule = "plateau"
+model_quantizer.top_p = 0.12
+model_quantizer.min_k = 128
+model_quantizer.max_k = 896
 
 model_quantizer.lr_gamma = 0.99
 model_quantizer.lr_patience = 1
@@ -37,6 +37,10 @@ model_quantizer.early_stop_stall = 2000
 model_quantizer.scale_optimization = "fixed"
 model_quantizer.scale_refinement_rounds = 1
 
+model_quantizer.exclude_layers = '^(first|last|tmlp|tproj|txtmlp|img_in|final_layer|time_embed|time_mod_proj)([.]|$)|^(txtfusion|text_fusion)[.]projector([.]|$)'
+model_quantizer.layer_config_path = "model_quantizer_presets/krea2_fp8_layer_config.json"
+model_quantizer.layer_config_fullmatch = false
+
 model_quantizer.save_quant_metadata = true
 model_quantizer.no_normalize_scales = false
 model_quantizer.scaled_fp8_marker = 0
@@ -45,8 +49,8 @@ model_quantizer.output_mode = "Compact (hide progress bars)"
 model_quantizer.verbose_pinned = false
 model_quantizer.low_memory = true
 
-model_quantizer.preset = "Fast (Simple Quantization)"
-model_quantizer.model_preset = "None (manual)"
+model_quantizer.preset = "Normal (Balanced)"
+model_quantizer.model_preset = "krea2"
 
 model_quantizer.single_input_file = ""
 model_quantizer.single_output_file = ""
