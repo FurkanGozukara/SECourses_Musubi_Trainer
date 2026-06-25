@@ -1,0 +1,10 @@
+{
+  "(^|[.])attn[.](gate|wo|to_gate|to_out[.]0)$": {
+    "format": "float8_e4m3fn",
+    "full_precision_matrix_mult": true
+  },
+  "(^|[.])(mlp|ff)[.]down$": {
+    "format": "float8_e4m3fn",
+    "full_precision_matrix_mult": true
+  }
+}

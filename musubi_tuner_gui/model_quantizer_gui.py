@@ -32,7 +32,7 @@ WORKFLOW_LEGACY_INPUT = "Legacy: Add input_scale"
 WORKFLOW_CLEANUP_FP8 = "Legacy: Cleanup FP8 scaled"
 WORKFLOW_ACTCAL = "Activation calibration (actcal)"
 WORKFLOW_EDIT_QUANT = "Edit comfy_quant metadata"
-WORKFLOW_HYBRID_MXFP8 = "Hybrid MXFP8 (tensorwise fallback)"
+WORKFLOW_HYBRID_MXFP8 = "Hybrid MXFP8 (requires HybridMXFP8Layout)"
 WORKFLOW_DRY_RUN = "Dry Run (Analyze / Create Template)"
 
 QUANT_FORMAT_FP8 = "FP8 (E4M3)"
@@ -44,10 +44,11 @@ PRESET_CUSTOM = "Custom (manual)"
 PRESET_FAST = "Fast (Simple Quantization)"
 PRESET_NORMAL = "Normal (Balanced)"
 PRESET_HIGH = "High Quality (Slow)"
-PRESET_INT8_FAST = "INT8 (Unsupported in current ComfyUI)"
-PRESET_INT8_TENSOR = "INT8 Tensorwise (Unsupported in current ComfyUI)"
-PRESET_MXFP8_BALANCED = "MXFP8 Balanced (Blackwell)"
-PRESET_NVFP4_BALANCED = "NVFP4 Balanced (Blackwell)"
+PRESET_INT8_FAST = "INT8 Blockwise (QuantOps / Experimental)"
+PRESET_INT8_TENSOR = "INT8 Tensorwise (QuantOps custom / RTX 30xx+)"
+PRESET_INT8_CONVROT = "INT8 ConvRot Rowwise (QuantOps custom / Best INT8)"
+PRESET_MXFP8_BALANCED = "MXFP8 Balanced (QuantOps / Blackwell)"
+PRESET_NVFP4_BALANCED = "NVFP4 Balanced (QuantOps / Blackwell)"
 PRESET_NVFP4_Z = "NVFP4 Z-Image (Aggressive / Expert)"
 PRESET_FP8_SCALED = "FP8 Scaled (Tensorwise)"
 PRESET_FP8_MIXED = "FP8 Compatibility (Tensorwise)"
@@ -58,6 +59,12 @@ ERNIE_IMAGE_EXCLUDE_LAYERS = (
     r"layers[.]0[.]self_attention|layers[.]0[.]mlp.gate_proj|"
     r"layers[.]0[.]mlp[.]up_proj|text_proj)"
 )
+BOOGU_EXCLUDE_LAYERS = r"(image_index_embedding|ref_image_patch_embedder)"
+KREA2_EXCLUDE_LAYERS = (
+    r"^(first|last|tmlp|tproj|txtmlp|img_in|final_layer|time_embed|time_mod_proj)([.]|$)|"
+    r"^(txtfusion|text_fusion)[.]projector([.]|$)"
+)
+KREA2_LAYER_CONFIG_PATH = os.path.join(REPO_ROOT, "model_quantizer_presets", "krea2_fp8_layer_config.json")
 
 OUTPUT_MODE_FULL = "Full (all logs)"
 OUTPUT_MODE_COMPACT = "Compact (hide progress bars)"
@@ -66,6 +73,53 @@ OUTPUT_MODE_CHOICES = [OUTPUT_MODE_FULL, OUTPUT_MODE_COMPACT, OUTPUT_MODE_SUMMAR
 
 OPTIMIZER_CHOICES = ["prodigy", "original", "adamw", "radam"]
 OPTIMIZER_INFO = "Prodigy is convert_to_quant's current upstream default and requires prodigy-plus-schedule-free."
+SAFE_RUNTIME_DEFAULTS = {
+    "low_memory": True,
+    "save_quant_metadata": True,
+    "comfy_quant": True,
+}
+FORMAT_DEFAULTS = {
+    QUANT_FORMAT_FP8: {
+        "comfy_quant": True,
+        "full_precision_matrix_mult": False,
+        "scaling_mode": "tensor",
+        "block_size": None,
+        "convrot": False,
+        "convrot_group_size": 256,
+        "low_memory": True,
+        "save_quant_metadata": True,
+    },
+    QUANT_FORMAT_INT8: {
+        "comfy_quant": True,
+        "full_precision_matrix_mult": False,
+        "scaling_mode": "block",
+        "block_size": 128,
+        "convrot": False,
+        "convrot_group_size": 256,
+        "low_memory": True,
+        "save_quant_metadata": True,
+    },
+    QUANT_FORMAT_MXFP8: {
+        "comfy_quant": True,
+        "full_precision_matrix_mult": False,
+        "scaling_mode": "tensor",
+        "block_size": None,
+        "convrot": False,
+        "convrot_group_size": 256,
+        "low_memory": True,
+        "save_quant_metadata": True,
+    },
+    QUANT_FORMAT_NVFP4: {
+        "comfy_quant": True,
+        "full_precision_matrix_mult": False,
+        "scaling_mode": "tensor",
+        "block_size": None,
+        "convrot": False,
+        "convrot_group_size": 256,
+        "low_memory": True,
+        "save_quant_metadata": True,
+    },
+}
 MANUAL_QUANT_DEFAULTS = {
     "calib_samples": 3072,
     "optimizer": "prodigy",
@@ -108,9 +162,13 @@ def _load_model_filters() -> Dict[str, Dict[str, object]]:
 
     log.warning("Could not import convert_to_quant MODEL_FILTERS: %s", " | ".join(import_errors))
     return {
+        "qwen35": {"help": "Qwen2.5 text/multimodal model", "category": "text"},
         "t5xxl": {"help": "T5-XXL text encoder", "category": "text"},
         "mistral": {"help": "Mistral text encoder", "category": "text"},
         "visual": {"help": "Visual encoder", "category": "text"},
+        "generic_text": {"help": "Generic text encoder", "category": "text"},
+        "anima": {"help": "Anima diffusion model", "category": "diffusion"},
+        "lens": {"help": "LENS diffusion model", "category": "diffusion"},
         "flux1": {"help": "Flux.1 diffusion", "category": "diffusion"},
         "flux2": {"help": "Flux.2 diffusion", "category": "diffusion"},
         "flux_klein": {"help": "FLUX.2 Klein diffusion", "category": "diffusion"},
@@ -140,13 +198,25 @@ MODEL_CATEGORY_LABELS = {
 }
 
 MODEL_PRESET_DISPLAY_NAMES = {
+    "anima": "Anima",
+    "boogu": "Boogu",
     "ernie_image": "ERNIE Image",
     "flux1": "FLUX.1",
     "flux2": "FLUX.2",
     "flux_klein": "FLUX 2 Klein Models",
+    "generic_text": "Generic Text Encoder",
+    "hunyuan": "Hunyuan Video 1.5",
+    "krea2": "Krea 2 (Raw/Turbo)",
+    "lens": "LENS",
     "ltxv2": "LTX_2_and_2.3",
     "ltx2": "LTX_2_and_2.3",
     "ltx2_3": "LTX_2_and_2.3",
+    "qwen": "Qwen Image / Edit",
+    "qwen35": "Qwen2.5 Text/Multimodal",
+    "t5xxl": "T5-XXL",
+    "wan": "WAN Video",
+    "zimage": "Z-Image",
+    "zimage_refiner": "Z-Image Refiner",
 }
 
 MODEL_PRESET_LEGACY_ALIASES = {
@@ -160,6 +230,8 @@ MODEL_PRESET_LEGACY_LABELS = {
     "FLUX.2-klein-9b-kv": "flux_klein",
     "FLUX.2-klein-4B": "flux_klein",
 }
+REGEX_ONLY_MODEL_PRESETS = {"boogu", "ernie_image", "krea2"}
+MODEL_PRESET_FILTER_ALIASES = {}
 
 FLUX_KLEIN_MODEL_SETTINGS = {
     "preset": PRESET_NORMAL,
@@ -239,6 +311,42 @@ Practical note:
 - More `Calibration Samples` usually makes the correction estimate more stable, but also increases time and memory use.
 """
 
+QUALITY_GUIDANCE_MD = """
+### Default route
+
+The default preset is tuned to avoid OOM first: simple FP8, low-memory streaming, and quant metadata enabled.
+This is the safest starting point for very large checkpoints or smaller GPUs.
+
+### Higher quality route
+
+Use these changes when you can spend more time and memory for better fidelity:
+
+1. Pick the closest Model Preset first so sensitive layers stay high precision.
+2. Change Quality Preset from Fast to FP8 Scaled, FP8 Compatibility, Normal, or High Quality.
+3. Disable Simple quantization to enable learned rounding.
+4. Keep Save Quantization Metadata and Low memory mode enabled unless you have a reason to turn them off.
+5. Raise Calibration Samples gradually, for example 2048, 3072, then 4096.
+6. Use Full SVD only for difficult layers or final high-quality runs, because it is much heavier.
+7. For unsupported models, run Dry Run / Create Template and add regex exclusions for remaining 2D BF16-sensitive layers.
+
+Model-specific notes from upstream issues:
+
+- Qwen Image / Edit: use FP8 Scaled or Compatibility, keep full precision matrix multiplication enabled, and do not use Simple for best quality.
+- Z-Image and Anima: avoid NVFP4 as the default route; issue reports showed noisy output. Use FP8 Compatibility first.
+- Boogu: use the Boogu preset, which applies the known exclusion regex for image/reference embedding layers.
+- ERNIE Image: use the ERNIE preset, which applies the tested exclusion regex.
+- Krea 2 Raw/Turbo: use the Krea 2 preset to match the official Comfy quantized files: simple FP8, Krea-specific projection/time/final-layer exclusions, selective full-precision matrix multiplication for gate/output/down projections, metadata, and low-memory. Published third-party INT8 guidance uses INT8 Rowwise plus ConvRot.
+- ComfyUI-QuantOps: load these exports with QuantOps quantized loader nodes. Keep metadata enabled so QuantOps can identify tensor, row, block, MXFP8, and NVFP4 layouts instead of guessing from scales.
+- INT8 Blockwise is available through QuantOps. INT8 Tensorwise and ConvRot require the custom comfy-kitchen INT8 build plus `--enable-triton-backend`; without that, expect fallback behavior or load failure.
+- QuantOps loader nodes have their own `low_memory` and `disable_dynamic` toggles. For quantized text encoders, upstream issue comments recommend enabling both when the pipeline clogs or memory spikes.
+- INT8 text encoders, especially T5, have reported Triton NaNs on short prompts. If that happens, use the QuantOps loader with the PyTorch backend or stay with FP8 for text encoders.
+- RTX 30xx and 40xx should prefer FP8/INT8 routes. MXFP8 and NVFP4 are Blackwell-oriented expert presets; treat them as compatibility/quality experiments unless your ComfyUI runtime has the required comfy-kitchen layouts.
+- On older cards, enabling Triton for FP8 may trip unsupported FP8 dtype compilation errors in unrelated non-QuantOps workflows. Disable the Triton backend for those workflows if that happens.
+- Hybrid MXFP8 needs `HybridMXFP8Layout` from comfy-kitchen. If that layout is not registered in ComfyUI, use MXFP8 Balanced or FP8 instead.
+- Blockwise FP8/INT8 require layer dimensions compatible with their block size. Tensor/row scaling is safer for broad model coverage and lower risk of unsupported layers.
+- Published third-party Krea 2 quantized checkpoints exist, but their visual quality is not independently validated here.
+"""
+
 MODEL_PRESET_VALUE_BY_LABEL = {
     label: key for key, label in MODEL_PRESET_DISPLAY_NAMES.items()
 }
@@ -257,7 +365,9 @@ def _model_preset_value(value: str) -> str:
 
 
 def _model_preset_filter(value: str) -> str:
-    return value
+    if value in REGEX_ONLY_MODEL_PRESETS:
+        return ""
+    return MODEL_PRESET_FILTER_ALIASES.get(value, value)
 
 
 def _ordered_filter_choices() -> List[str]:
@@ -274,6 +384,11 @@ def _ordered_filter_choices() -> List[str]:
             continue
         seen.add(label)
         choices.append(label)
+    for name in ("boogu", "ernie_image", "krea2"):
+        label = _model_preset_label(name)
+        if label not in seen:
+            seen.add(label)
+            choices.append(label)
     return choices
 
 
@@ -314,6 +429,41 @@ MODEL_PRESET_SETTINGS.update({
         "preset": PRESET_FP8_SCALED,
         "quant_format": QUANT_FORMAT_FP8,
         "scaling_mode": "tensor",
+        "simple": False,
+        "full_precision_matrix_mult": True,
+    },
+    "boogu": {
+        "preset": PRESET_INT8_FAST,
+        "quant_format": QUANT_FORMAT_INT8,
+        "comfy_quant": True,
+        "scaling_mode": "block",
+        "block_size": 128,
+        "exclude_layers": BOOGU_EXCLUDE_LAYERS,
+        "custom_type": None,
+        "custom_block_size": None,
+        "custom_scaling_mode": None,
+        "custom_simple": False,
+        "custom_heur": False,
+        "fallback_type": None,
+        "fallback_block_size": None,
+        "fallback_simple": False,
+    },
+    "krea2": {
+        "preset": PRESET_FAST,
+        "quant_format": QUANT_FORMAT_FP8,
+        "comfy_quant": True,
+        "full_precision_matrix_mult": False,
+        "scaling_mode": "tensor",
+        "block_size": None,
+        "simple": True,
+        "skip_inefficient_layers": False,
+        "exclude_layers": KREA2_EXCLUDE_LAYERS,
+        "layer_config_path": KREA2_LAYER_CONFIG_PATH,
+        "layer_config_fullmatch": False,
+        "convrot": False,
+        "convrot_group_size": 256,
+        "low_memory": True,
+        "save_quant_metadata": True,
     },
     "ernie_image": {
         "preset": PRESET_FP8_SCALED,
@@ -322,14 +472,19 @@ MODEL_PRESET_SETTINGS.update({
         "scaling_mode": "tensor",
         "exclude_layers": ERNIE_IMAGE_EXCLUDE_LAYERS,
     },
+    "anima": {
+        "preset": PRESET_FP8_MIXED,
+        "quant_format": QUANT_FORMAT_FP8,
+        "scaling_mode": "tensor",
+    },
     "zimage": {
-        "preset": PRESET_NVFP4_BALANCED,
-        "quant_format": QUANT_FORMAT_NVFP4,
+        "preset": PRESET_FP8_MIXED,
+        "quant_format": QUANT_FORMAT_FP8,
         "scaling_mode": "tensor",
     },
     "zimage_refiner": {
-        "preset": PRESET_NVFP4_BALANCED,
-        "quant_format": QUANT_FORMAT_NVFP4,
+        "preset": PRESET_FP8_MIXED,
+        "quant_format": QUANT_FORMAT_FP8,
         "scaling_mode": "tensor",
     },
     "ltxv2": {
@@ -351,6 +506,10 @@ MODEL_PRESET_SETTINGS.update({
 
 PRESET_OVERRIDES = {
     PRESET_FAST: {
+        "quant_format": QUANT_FORMAT_FP8,
+        "comfy_quant": True,
+        "scaling_mode": "tensor",
+        "block_size": None,
         "simple": True,
         "skip_inefficient_layers": False,
         "num_iter": 200,
@@ -366,6 +525,10 @@ PRESET_OVERRIDES = {
     },
     PRESET_NORMAL: {
         **MANUAL_QUANT_DEFAULTS,
+        "quant_format": QUANT_FORMAT_FP8,
+        "comfy_quant": True,
+        "scaling_mode": "tensor",
+        "block_size": None,
         "simple": False,
         "skip_inefficient_layers": False,
         "num_iter": 2000,
@@ -378,6 +541,10 @@ PRESET_OVERRIDES = {
     },
     PRESET_HIGH: {
         **MANUAL_QUANT_DEFAULTS,
+        "quant_format": QUANT_FORMAT_FP8,
+        "comfy_quant": True,
+        "scaling_mode": "tensor",
+        "block_size": None,
         "simple": False,
         "skip_inefficient_layers": False,
         "num_iter": 6000,
@@ -426,8 +593,8 @@ PRESET_OVERRIDES = {
     PRESET_INT8_FAST: {
         "quant_format": QUANT_FORMAT_INT8,
         "comfy_quant": True,
-        "scaling_mode": "tensor",
-        "block_size": None,
+        "scaling_mode": "block",
+        "block_size": 128,
         "simple": True,
         "skip_inefficient_layers": False,
         "num_iter": 200,
@@ -459,10 +626,32 @@ PRESET_OVERRIDES = {
         "full_matrix": False,
         "full_precision_matrix_mult": False,
     },
+    PRESET_INT8_CONVROT: {
+        "quant_format": QUANT_FORMAT_INT8,
+        "comfy_quant": True,
+        "scaling_mode": "row",
+        "block_size": None,
+        "convrot": True,
+        "convrot_group_size": 256,
+        "simple": True,
+        "skip_inefficient_layers": False,
+        "num_iter": 200,
+        "calib_samples": 1024,
+        "optimizer": "original",
+        "lr_schedule": "adaptive",
+        "lr": 8.077300000003e-3,
+        "top_p": 0.02,
+        "min_k": 16,
+        "max_k": 64,
+        "full_matrix": False,
+        "full_precision_matrix_mult": False,
+    },
     PRESET_MXFP8_BALANCED: {
         **MANUAL_QUANT_DEFAULTS,
         "quant_format": QUANT_FORMAT_MXFP8,
         "comfy_quant": True,
+        "scaling_mode": "tensor",
+        "block_size": None,
         "simple": False,
         "skip_inefficient_layers": False,
         "num_iter": 3000,
@@ -477,6 +666,8 @@ PRESET_OVERRIDES = {
         **MANUAL_QUANT_DEFAULTS,
         "quant_format": QUANT_FORMAT_NVFP4,
         "comfy_quant": True,
+        "scaling_mode": "tensor",
+        "block_size": None,
         "simple": False,
         "skip_inefficient_layers": True,
         "num_iter": 4000,
@@ -492,6 +683,8 @@ PRESET_OVERRIDES = {
         **MANUAL_QUANT_DEFAULTS,
         "quant_format": QUANT_FORMAT_NVFP4,
         "comfy_quant": True,
+        "scaling_mode": "tensor",
+        "block_size": None,
         "simple": False,
         "skip_inefficient_layers": False,
         "num_iter": 12000,
@@ -506,6 +699,13 @@ PRESET_OVERRIDES = {
         "full_precision_matrix_mult": True,
     },
 }
+
+for _preset_settings in PRESET_OVERRIDES.values():
+    _preset_settings.setdefault("low_memory", SAFE_RUNTIME_DEFAULTS["low_memory"])
+    _preset_settings.setdefault("save_quant_metadata", SAFE_RUNTIME_DEFAULTS["save_quant_metadata"])
+    _preset_settings.setdefault("comfy_quant", SAFE_RUNTIME_DEFAULTS["comfy_quant"])
+    _preset_settings.setdefault("convrot", False)
+    _preset_settings.setdefault("convrot_group_size", 256)
 
 
 def _to_int(value, default: Optional[int]) -> Optional[int]:
@@ -828,6 +1028,10 @@ class ModelQuantizer:
             cmd.append("--full_precision_matrix_mult")
         if params.get("include_input_scale"):
             cmd.append("--input_scale")
+        if params.get("convrot"):
+            cmd.append("--convrot")
+            if params.get("convrot_group_size") is not None:
+                cmd += ["--convrot-group-size", str(params.get("convrot_group_size"))]
 
         if params.get("scaling_mode"):
             cmd += ["--scaling_mode", str(params.get("scaling_mode"))]
@@ -1170,11 +1374,12 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
                     PRESET_FP8_MIXED,
                     PRESET_INT8_FAST,
                     PRESET_INT8_TENSOR,
+                    PRESET_INT8_CONVROT,
                     PRESET_MXFP8_BALANCED,
                     PRESET_NVFP4_BALANCED,
                     PRESET_NVFP4_Z,
                 ],
-                value=config.get("model_quantizer.preset", PRESET_CUSTOM),
+                value=config.get("model_quantizer.preset", PRESET_FAST),
                 info="Quickly apply recommended optimization settings.",
             )
             model_preset_dropdown = gr.Dropdown(
@@ -1183,6 +1388,8 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
                 value=_model_preset_label(config.get("model_quantizer.model_preset", MODEL_PRESET_NONE)),
                 info="Select a model to apply its recommended exclusion filters.",
             )
+        with gr.Accordion("Quality Upgrade Notes", open=False):
+            gr.Markdown(QUALITY_GUIDANCE_MD)
 
     with gr.Accordion("Workflow", open=True):
         workflow = gr.Dropdown(
@@ -1235,6 +1442,18 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
                 label="Include input_scale tensors",
                 value=config.get("model_quantizer.include_input_scale", False),
                 info=INPUT_SCALE_INFO,
+            )
+        with gr.Row():
+            convrot = gr.Checkbox(
+                label="ConvRot (INT8 Rowwise)",
+                value=config.get("model_quantizer.convrot", False),
+                info="Applies Hadamard rotation before INT8 row-wise quantization. Useful for Krea2 INT8 quality; ignored unless INT8 + row scaling is used.",
+            )
+            convrot_group_size = gr.Number(
+                label="ConvRot Group Size",
+                value=config.get("model_quantizer.convrot_group_size", 256),
+                step=1,
+                info="Power-of-4 group size for ConvRot. Upstream default is 256.",
             )
 
     with gr.Accordion("Model Filters", open=False) as model_filter_group:
@@ -1317,7 +1536,7 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
         with gr.Row():
             simple = gr.Checkbox(
                 label="Simple quantization (skip SVD)",
-                value=config.get("model_quantizer.simple", False),
+                value=config.get("model_quantizer.simple", True),
             )
             skip_inefficient_layers = gr.Checkbox(
                 label="Skip inefficient layers (heuristics)",
@@ -1331,7 +1550,7 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
         with gr.Row():
             calib_samples = gr.Number(
                 label="Calibration Samples",
-                value=config.get("model_quantizer.calib_samples", MANUAL_QUANT_DEFAULTS["calib_samples"]),
+                value=config.get("model_quantizer.calib_samples", 1024),
                 step=1,
                 info=CALIB_SAMPLES_INFO,
             )
@@ -1343,37 +1562,37 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             optimizer = gr.Dropdown(
                 label="Optimizer",
                 choices=OPTIMIZER_CHOICES,
-                value=config.get("model_quantizer.optimizer", MANUAL_QUANT_DEFAULTS["optimizer"]),
+                value=config.get("model_quantizer.optimizer", "original"),
                 info=OPTIMIZER_INFO,
             )
         with gr.Row():
             num_iter = gr.Number(
                 label="Iterations",
-                value=config.get("model_quantizer.num_iter", MANUAL_QUANT_DEFAULTS["num_iter"]),
+                value=config.get("model_quantizer.num_iter", 200),
                 step=1,
             )
             lr = gr.Number(
                 label="Learning Rate",
-                value=config.get("model_quantizer.lr", MANUAL_QUANT_DEFAULTS["lr"]),
+                value=config.get("model_quantizer.lr", 8.077300000003e-3),
             )
             lr_schedule = gr.Dropdown(
                 label="LR Schedule",
                 choices=["adaptive", "exponential", "plateau"],
-                value=config.get("model_quantizer.lr_schedule", MANUAL_QUANT_DEFAULTS["lr_schedule"]),
+                value=config.get("model_quantizer.lr_schedule", "adaptive"),
             )
         with gr.Row():
             top_p = gr.Number(
                 label="Top P",
-                value=config.get("model_quantizer.top_p", MANUAL_QUANT_DEFAULTS["top_p"]),
+                value=config.get("model_quantizer.top_p", 0.02),
             )
             min_k = gr.Number(
                 label="Min K",
-                value=config.get("model_quantizer.min_k", MANUAL_QUANT_DEFAULTS["min_k"]),
+                value=config.get("model_quantizer.min_k", 16),
                 step=1,
             )
             max_k = gr.Number(
                 label="Max K",
-                value=config.get("model_quantizer.max_k", MANUAL_QUANT_DEFAULTS["max_k"]),
+                value=config.get("model_quantizer.max_k", 64),
                 step=1,
             )
 
@@ -1440,7 +1659,7 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
         with gr.Row():
             scale_optimization = gr.Dropdown(
                 label="Scale Optimization (NVFP4)",
-                choices=["fixed", "iterative", "joint"],
+                choices=["fixed", "iterative", "joint", "dualround"],
                 value=config.get("model_quantizer.scale_optimization", "fixed"),
             )
             scale_refinement_rounds = gr.Number(
@@ -1514,7 +1733,7 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
         with gr.Row():
             save_quant_metadata = gr.Checkbox(
                 label="Save Quantization Metadata",
-                value=config.get("model_quantizer.save_quant_metadata", False),
+                value=config.get("model_quantizer.save_quant_metadata", True),
             )
             no_normalize_scales = gr.Checkbox(
                 label="Disable Scale Normalization",
@@ -1565,7 +1784,7 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             )
             low_memory = gr.Checkbox(
                 label="Low memory mode",
-                value=config.get("model_quantizer.low_memory", False),
+                value=config.get("model_quantizer.low_memory", True),
             )
     with gr.Accordion("How bias correction works", open=False):
         gr.Markdown(BIAS_CORRECTION_PANEL_MD)
@@ -1651,6 +1870,8 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
         scaling_mode_value,
         block_size_value,
         include_input_scale_value,
+        convrot_value,
+        convrot_group_size_value,
         custom_layers_value,
         exclude_layers_value,
         custom_type_value,
@@ -1719,6 +1940,8 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             "scaling_mode": scaling_mode_value,
             "block_size": _to_int(block_size_value, None),
             "include_input_scale": bool(include_input_scale_value),
+            "convrot": bool(convrot_value),
+            "convrot_group_size": _to_int(convrot_group_size_value, 256),
             "custom_layers": custom_layers_value.strip() if isinstance(custom_layers_value, str) else custom_layers_value,
             "exclude_layers": exclude_layers_value.strip() if isinstance(exclude_layers_value, str) else exclude_layers_value,
             "custom_type": custom_type_value,
@@ -1791,6 +2014,8 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             "full_precision_matrix_mult",
             "scaling_mode",
             "block_size",
+            "convrot",
+            "convrot_group_size",
             "custom_type",
             "custom_block_size",
             "custom_scaling_mode",
@@ -1814,6 +2039,8 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             "scale_refinement_rounds",
             "manual_seed",
             "verbose",
+            "low_memory",
+            "save_quant_metadata",
         ]
         updates = []
         for name in field_names:
@@ -1832,6 +2059,8 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             full_precision_matrix_mult,
             scaling_mode,
             block_size,
+            convrot,
+            convrot_group_size,
             custom_type,
             custom_block_size,
             custom_scaling_mode,
@@ -1855,6 +2084,8 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
             scale_refinement_rounds,
             manual_seed,
             verbose,
+            low_memory,
+            save_quant_metadata,
         ],
         show_progress=False,
     )
@@ -1966,6 +2197,8 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
         scaling_mode,
         block_size,
         include_input_scale,
+        convrot,
+        convrot_group_size,
         custom_layers,
         exclude_layers,
         custom_type,
@@ -2123,6 +2356,8 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
         "scaling_mode",
         "block_size",
         "include_input_scale",
+        "convrot",
+        "convrot_group_size",
         "custom_layers",
         "exclude_layers",
         "custom_type",
@@ -2202,6 +2437,8 @@ def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
         scaling_mode,
         block_size,
         include_input_scale,
+        convrot,
+        convrot_group_size,
         custom_layers,
         exclude_layers,
         custom_type,
@@ -2385,11 +2622,12 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                             PRESET_FP8_MIXED,
                             PRESET_INT8_FAST,
                             PRESET_INT8_TENSOR,
+                            PRESET_INT8_CONVROT,
                             PRESET_MXFP8_BALANCED,
                             PRESET_NVFP4_BALANCED,
                             PRESET_NVFP4_Z,
                         ],
-                        value=config.get("model_quantizer.preset", PRESET_CUSTOM),
+                        value=config.get("model_quantizer.preset", PRESET_FAST),
                         info="Quickly apply recommended optimization settings.",
                     )
             model_preset_dropdown = gr.Dropdown(
@@ -2398,6 +2636,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 value=_model_preset_label(config.get("model_quantizer.model_preset", MODEL_PRESET_NONE)),
                 info="Select a model to apply its recommended exclusion filters and defaults.",
             )
+            with gr.Accordion("Quality Upgrade Notes", open=False):
+                gr.Markdown(QUALITY_GUIDANCE_MD)
 
             with gr.Accordion("Workflow", open=True):
                 workflow = gr.Dropdown(
@@ -2450,6 +2690,18 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         label="Include input_scale tensors",
                         value=config.get("model_quantizer.include_input_scale", False),
                         info=INPUT_SCALE_INFO,
+                    )
+                with gr.Row():
+                    convrot = gr.Checkbox(
+                        label="ConvRot (INT8 Rowwise)",
+                        value=config.get("model_quantizer.convrot", False),
+                        info="Applies Hadamard rotation before INT8 row-wise quantization. Useful for Krea2 INT8 quality; ignored unless INT8 + row scaling is used.",
+                    )
+                    convrot_group_size = gr.Number(
+                        label="ConvRot Group Size",
+                        value=config.get("model_quantizer.convrot_group_size", 256),
+                        step=1,
+                        info="Power-of-4 group size for ConvRot. Upstream default is 256.",
                     )
 
             with gr.Accordion("Model Filters", open=False) as model_filter_group:
@@ -2533,7 +2785,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 with gr.Row():
                     simple = gr.Checkbox(
                         label="Simple quantization (skip SVD)",
-                        value=config.get("model_quantizer.simple", False),
+                        value=config.get("model_quantizer.simple", True),
                     )
                     skip_inefficient_layers = gr.Checkbox(
                         label="Skip inefficient layers (heuristics)",
@@ -2547,7 +2799,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 with gr.Row():
                     calib_samples = gr.Number(
                         label="Calibration Samples",
-                        value=config.get("model_quantizer.calib_samples", MANUAL_QUANT_DEFAULTS["calib_samples"]),
+                        value=config.get("model_quantizer.calib_samples", 1024),
                         step=1,
                         info=CALIB_SAMPLES_INFO,
                     )
@@ -2559,37 +2811,37 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     optimizer = gr.Dropdown(
                         label="Optimizer",
                         choices=OPTIMIZER_CHOICES,
-                        value=config.get("model_quantizer.optimizer", MANUAL_QUANT_DEFAULTS["optimizer"]),
+                        value=config.get("model_quantizer.optimizer", "original"),
                         info=OPTIMIZER_INFO,
                     )
                 with gr.Row():
                     num_iter = gr.Number(
                         label="Iterations",
-                        value=config.get("model_quantizer.num_iter", MANUAL_QUANT_DEFAULTS["num_iter"]),
+                        value=config.get("model_quantizer.num_iter", 200),
                         step=1,
                     )
                     lr = gr.Number(
                         label="Learning Rate",
-                        value=config.get("model_quantizer.lr", MANUAL_QUANT_DEFAULTS["lr"]),
+                        value=config.get("model_quantizer.lr", 8.077300000003e-3),
                     )
                     lr_schedule = gr.Dropdown(
                         label="LR Schedule",
                         choices=["adaptive", "exponential", "plateau"],
-                        value=config.get("model_quantizer.lr_schedule", MANUAL_QUANT_DEFAULTS["lr_schedule"]),
+                        value=config.get("model_quantizer.lr_schedule", "adaptive"),
                     )
                 with gr.Row():
                     top_p = gr.Number(
                         label="Top P",
-                        value=config.get("model_quantizer.top_p", MANUAL_QUANT_DEFAULTS["top_p"]),
+                        value=config.get("model_quantizer.top_p", 0.02),
                     )
                     min_k = gr.Number(
                         label="Min K",
-                        value=config.get("model_quantizer.min_k", MANUAL_QUANT_DEFAULTS["min_k"]),
+                        value=config.get("model_quantizer.min_k", 16),
                         step=1,
                     )
                     max_k = gr.Number(
                         label="Max K",
-                        value=config.get("model_quantizer.max_k", MANUAL_QUANT_DEFAULTS["max_k"]),
+                        value=config.get("model_quantizer.max_k", 64),
                         step=1,
                     )
 
@@ -2656,7 +2908,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 with gr.Row():
                     scale_optimization = gr.Dropdown(
                         label="Scale Optimization (NVFP4)",
-                        choices=["fixed", "iterative", "joint"],
+                        choices=["fixed", "iterative", "joint", "dualround"],
                         value=config.get("model_quantizer.scale_optimization", "fixed"),
                     )
                     scale_refinement_rounds = gr.Number(
@@ -2731,7 +2983,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 with gr.Row():
                     save_quant_metadata = gr.Checkbox(
                         label="Save Quantization Metadata",
-                        value=config.get("model_quantizer.save_quant_metadata", False),
+                        value=config.get("model_quantizer.save_quant_metadata", True),
                     )
                     no_normalize_scales = gr.Checkbox(
                         label="Disable Scale Normalization",
@@ -2782,7 +3034,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     )
                     low_memory = gr.Checkbox(
                         label="Low memory mode",
-                        value=config.get("model_quantizer.low_memory", False),
+                        value=config.get("model_quantizer.low_memory", True),
                     )
             with gr.Accordion("How bias correction works", open=False):
                 gr.Markdown(BIAS_CORRECTION_PANEL_MD)
@@ -2875,6 +3127,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         scaling_mode_value,
         block_size_value,
         include_input_scale_value,
+        convrot_value,
+        convrot_group_size_value,
         custom_layers_value,
         exclude_layers_value,
         custom_type_value,
@@ -2942,6 +3196,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             "scaling_mode": scaling_mode_value,
             "block_size": _to_int(block_size_value, None),
             "include_input_scale": bool(include_input_scale_value),
+            "convrot": bool(convrot_value),
+            "convrot_group_size": _to_int(convrot_group_size_value, 256),
             "custom_layers": custom_layers_value.strip() if isinstance(custom_layers_value, str) else custom_layers_value,
             "exclude_layers": exclude_layers_value.strip() if isinstance(exclude_layers_value, str) else exclude_layers_value,
             "custom_type": custom_type_value,
@@ -3011,6 +3267,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         "full_precision_matrix_mult",
         "scaling_mode",
         "block_size",
+        "convrot",
+        "convrot_group_size",
         "exclude_layers",
         "custom_type",
         "custom_block_size",
@@ -3033,8 +3291,12 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         "full_matrix",
         "scale_optimization",
         "scale_refinement_rounds",
+        "layer_config_path",
+        "layer_config_fullmatch",
         "manual_seed",
         "verbose",
+        "low_memory",
+        "save_quant_metadata",
     ]
 
     preset_field_components = [
@@ -3043,6 +3305,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         full_precision_matrix_mult,
         scaling_mode,
         block_size,
+        convrot,
+        convrot_group_size,
         exclude_layers,
         custom_type,
         custom_block_size,
@@ -3065,8 +3329,12 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         full_matrix,
         scale_optimization,
         scale_refinement_rounds,
+        layer_config_path,
+        layer_config_fullmatch,
         manual_seed,
         verbose,
+        low_memory,
+        save_quant_metadata,
     ]
 
     def _apply_preset(preset_name: str):
@@ -3083,6 +3351,56 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         fn=_apply_preset,
         inputs=[preset_dropdown],
         outputs=preset_field_components,
+        show_progress=False,
+    )
+
+    format_default_field_names = [
+        "comfy_quant",
+        "full_precision_matrix_mult",
+        "scaling_mode",
+        "block_size",
+        "convrot",
+        "convrot_group_size",
+        "low_memory",
+        "save_quant_metadata",
+    ]
+    format_default_components = [
+        comfy_quant,
+        full_precision_matrix_mult,
+        scaling_mode,
+        block_size,
+        convrot,
+        convrot_group_size,
+        low_memory,
+        save_quant_metadata,
+    ]
+
+    def _apply_quant_format_defaults(selected_format: str):
+        defaults = FORMAT_DEFAULTS.get(selected_format, {})
+        return [
+            gr.update(value=defaults[name]) if name in defaults else gr.update()
+            for name in format_default_field_names
+        ]
+
+    quant_format.change(
+        fn=_apply_quant_format_defaults,
+        inputs=[quant_format],
+        outputs=format_default_components,
+        show_progress=False,
+    )
+
+    def _apply_scaling_mode_defaults(selected_scaling: str, selected_format: str):
+        if selected_scaling in ("block", "block2d", "block3d"):
+            block_default = 128 if selected_format == QUANT_FORMAT_INT8 else 64
+            return gr.update(value=block_default), gr.update(value=False)
+        if selected_scaling == "row":
+            return gr.update(value=None), gr.update(value=False)
+        return gr.update(value=None), gr.update(value=False)
+
+    scaling_mode.change(
+        fn=_apply_scaling_mode_defaults,
+        inputs=[scaling_mode, quant_format],
+        outputs=[block_size, convrot],
         show_progress=False,
     )
 
@@ -3217,6 +3535,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         scaling_mode,
         block_size,
         include_input_scale,
+        convrot,
+        convrot_group_size,
         custom_layers,
         exclude_layers,
         custom_type,
@@ -3373,6 +3693,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         "scaling_mode",
         "block_size",
         "include_input_scale",
+        "convrot",
+        "convrot_group_size",
         "custom_layers",
         "exclude_layers",
         "custom_type",
@@ -3451,6 +3773,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         scaling_mode,
         block_size,
         include_input_scale,
+        convrot,
+        convrot_group_size,
         custom_layers,
         exclude_layers,
         custom_type,

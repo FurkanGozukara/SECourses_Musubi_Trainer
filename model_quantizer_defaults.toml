@@ -5,19 +5,21 @@ model_quantizer.full_precision_matrix_mult = false
 model_quantizer.scaling_mode = "tensor"
 model_quantizer.block_size = 64
 model_quantizer.include_input_scale = false
+model_quantizer.convrot = false
+model_quantizer.convrot_group_size = 256
 
-model_quantizer.simple = false
+model_quantizer.simple = true
 model_quantizer.skip_inefficient_layers = false
 model_quantizer.full_matrix = false
-model_quantizer.calib_samples = 3072
+model_quantizer.calib_samples = 1024
 model_quantizer.manual_seed = -1
-model_quantizer.optimizer = "prodigy"
-model_quantizer.num_iter = 4000
-model_quantizer.lr = 1.0
-model_quantizer.lr_schedule = "plateau"
-model_quantizer.top_p = 0.2
-model_quantizer.min_k = 256
-model_quantizer.max_k = 1280
+model_quantizer.optimizer = "original"
+model_quantizer.num_iter = 200
+model_quantizer.lr = 8.077300000003e-3
+model_quantizer.lr_schedule = "adaptive"
+model_quantizer.top_p = 0.02
+model_quantizer.min_k = 16
+model_quantizer.max_k = 64
 
 model_quantizer.lr_gamma = 0.99
 model_quantizer.lr_patience = 1
@@ -35,15 +37,15 @@ model_quantizer.early_stop_stall = 2000
 model_quantizer.scale_optimization = "fixed"
 model_quantizer.scale_refinement_rounds = 1
 
-model_quantizer.save_quant_metadata = false
+model_quantizer.save_quant_metadata = true
 model_quantizer.no_normalize_scales = false
 model_quantizer.scaled_fp8_marker = 0
 model_quantizer.verbose = "NORMAL"
 model_quantizer.output_mode = "Compact (hide progress bars)"
 model_quantizer.verbose_pinned = false
-model_quantizer.low_memory = false
+model_quantizer.low_memory = true
 
-model_quantizer.preset = "Custom (manual)"
+model_quantizer.preset = "Fast (Simple Quantization)"
 model_quantizer.model_preset = "None (manual)"
 
 model_quantizer.single_input_file = ""
