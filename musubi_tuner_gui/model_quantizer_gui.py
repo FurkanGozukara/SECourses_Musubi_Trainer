@@ -270,7 +270,8 @@ SCALING_MODE_INFO = (
     "different ranges. Row uses one scale per output row: usually better than tensor for uneven per-channel ranges, "
     "with modest scale overhead; for INT8 row this is the ConvRot route and needs matching runtime support. "
     "Block uses one scale per 2D block: usually the best quality of these modes on uneven weights, especially for "
-    "INT8 blockwise, but it adds scale metadata and requires dimensions divisible by the block size."
+    "INT8 blockwise, but it adds scale metadata and requires dimensions divisible by the block size. Some models "
+    "are layer-sensitive; the Krea 2 preset keeps its main attention and MLP projections on FP8 tensor scaling."
 )
 
 BLOCK_SIZE_INFO = (
@@ -379,7 +380,7 @@ Model-specific notes from upstream issues:
 - Z-Image and Anima (Base/Turbo): avoid NVFP4 as the default route; issue reports showed noisy output. Use FP8 Compatibility first.
 - Boogu-Image: use the Boogu-Image preset, which applies the known exclusion regex for image/reference embedding layers.
 - ERNIE Image: use the ERNIE preset, which applies the tested exclusion regex.
-- Krea 2 Raw/Turbo: the Krea 2 preset starts on Normal (Balanced): learned FP8 tensor scaling, Krea-specific projection/time/final-layer exclusions, selective full-precision matrix multiplication for gate/output/down projections, metadata, and low-memory. Switch Quality Preset to Fast only when you specifically want the simpler official-style FP8 route. For Krea INT8 Blockwise, the bundled layer config keeps those protected FP8 layers tensor-scaled so metadata and scale shapes agree.
+- Krea 2 Raw/Turbo: the Krea 2 preset starts on Normal (Balanced): learned FP8 tensor scaling, Krea-specific projection/time/final-layer exclusions, metadata, and low-memory. Local SwarmUI tests showed Krea 2 FP8 tensor output stayed good while FP8 blockwise and INT8 blockwise degraded when Q/K/V and MLP gate/up were block-quantized. The bundled layer config now keeps all eight main per-block attention/MLP projections on FP8 tensor scaling, with full-precision matrix multiplication only on gate/output/down projections. Switch Quality Preset to Fast only when you specifically want the simpler official-style FP8 route.
 - ComfyUI-QuantOps: load these exports with QuantOps quantized loader nodes or a patched QuantOps stock-loader auto integration. Keep metadata enabled so QuantOps can identify tensor, row, block, MXFP8, and NVFP4 layouts instead of guessing from scales.
 - INT8 Blockwise requires QuantOps runtime support. Stock ComfyUI `Load Diffusion Model` and SwarmUI's normal model dropdown need a QuantOps stock-loader auto patch; otherwise use the QuantOps quantized loader nodes.
 - INT8 Tensorwise and ConvRot require the custom comfy-kitchen INT8 build plus `--enable-triton-backend`; without that, expect fallback behavior or load failure.
