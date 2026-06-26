@@ -300,7 +300,8 @@ SCALING_MODE_INFO = (
     "with modest scale overhead; for INT8 row this is the ConvRot route and needs matching runtime support. "
     "Block uses one scale per 2D block: usually the best quality of these modes on uneven weights, especially for "
     "INT8 blockwise, but it adds scale metadata and requires dimensions divisible by the block size. Some models "
-    "are layer-sensitive; for FP8 runs, the Krea 2 preset keeps its main attention and MLP projections on FP8 tensor scaling."
+    "are layer-sensitive; for FP8 runs, the Krea 2 preset keeps its main attention and MLP projections on FP8 tensor scaling. "
+    "NVFP4 and MXFP8 use fixed internal block microscaling, so their generic Scaling Mode control is locked to tensor."
 )
 
 BLOCK_SIZE_INFO = (
@@ -312,6 +313,19 @@ BLOCK_SIZE_INFO = (
 
 SCALING_MODE_CHOICES = ["tensor", "row", "block"]
 CUSTOM_SCALING_MODE_CHOICES = [None] + SCALING_MODE_CHOICES
+FIXED_SCALING_QUANT_FORMATS = {QUANT_FORMAT_NVFP4, QUANT_FORMAT_MXFP8}
+FORMAT_SCALING_MODE_CHOICES = {
+    QUANT_FORMAT_FP8: SCALING_MODE_CHOICES,
+    QUANT_FORMAT_INT8: SCALING_MODE_CHOICES,
+    QUANT_FORMAT_NVFP4: ["tensor"],
+    QUANT_FORMAT_MXFP8: ["tensor"],
+}
+QUANT_TYPE_TO_FORMAT = {
+    "fp8": QUANT_FORMAT_FP8,
+    "int8": QUANT_FORMAT_INT8,
+    "nvfp4": QUANT_FORMAT_NVFP4,
+    "mxfp8": QUANT_FORMAT_MXFP8,
+}
 
 
 def _normalize_scaling_mode(value, default="tensor"):
@@ -320,6 +334,44 @@ def _normalize_scaling_mode(value, default="tensor"):
     if value in SCALING_MODE_CHOICES:
         return value
     return default
+
+
+def _scaling_mode_choices_for_format(selected_format: str) -> List[str]:
+    return FORMAT_SCALING_MODE_CHOICES.get(selected_format, SCALING_MODE_CHOICES)
+
+
+def _coerce_scaling_mode_for_format(selected_format: str, value, default: str = "tensor") -> str:
+    choices = _scaling_mode_choices_for_format(selected_format)
+    normalized = _normalize_scaling_mode(value, default)
+    return normalized if normalized in choices else choices[0]
+
+
+def _uses_block_size(selected_format: str, selected_scaling: str) -> bool:
+    if selected_format in FIXED_SCALING_QUANT_FORMATS:
+        return False
+    return selected_scaling == "block" or (
+        selected_format == QUANT_FORMAT_INT8 and selected_scaling == "row"
+    )
+
+
+def _coerce_block_size_for_format(selected_format: str, selected_scaling: str, value):
+    if not _uses_block_size(selected_format, selected_scaling):
+        return None
+    return _to_int(value, None)
+
+
+def _scaling_mode_choices_for_quant_type(quant_type: Optional[str]) -> List[object]:
+    selected_format = QUANT_TYPE_TO_FORMAT.get(quant_type)
+    if selected_format:
+        return _scaling_mode_choices_for_format(selected_format)
+    return [None]
+
+
+def _coerce_optional_scaling_mode_for_quant_type(quant_type: Optional[str], value):
+    selected_format = QUANT_TYPE_TO_FORMAT.get(quant_type)
+    if not selected_format:
+        return None
+    return _coerce_scaling_mode_for_format(selected_format, value or "tensor")
 
 
 def _normalize_optional_scaling_mode(value):
@@ -1718,6 +1770,35 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
     initial_model_preset_primary, initial_model_preset_other, _ = _split_model_preset_selection(
         config.get("model_quantizer.model_preset", "krea2")
     )
+    initial_quant_format = config.get("model_quantizer.quant_format", QUANT_FORMAT_FP8)
+    initial_scaling_mode = _coerce_scaling_mode_for_format(
+        initial_quant_format,
+        config.get("model_quantizer.scaling_mode", "tensor"),
+    )
+    initial_block_size = _coerce_block_size_for_format(
+        initial_quant_format,
+        initial_scaling_mode,
+        config.get("model_quantizer.block_size", 64),
+    )
+    initial_custom_type = config.get("model_quantizer.custom_type", None)
+    initial_custom_scaling_mode = _coerce_optional_scaling_mode_for_quant_type(
+        initial_custom_type,
+        config.get("model_quantizer.custom_scaling_mode", None),
+    )
+    initial_custom_block_size = (
+        None
+        if not _uses_block_size(QUANT_TYPE_TO_FORMAT.get(initial_custom_type), initial_custom_scaling_mode)
+        else config.get("model_quantizer.custom_block_size", None)
+    )
+    initial_fallback_type = config.get("model_quantizer.fallback_type", None)
+    initial_fallback_block_size = (
+        None
+        if not initial_fallback_type or QUANT_TYPE_TO_FORMAT.get(initial_fallback_type) in FIXED_SCALING_QUANT_FORMATS
+        else config.get(
+            "model_quantizer.fallback_block_size",
+            128 if initial_fallback_type == "int8" else 64,
+        )
+    )
 
     with gr.Accordion("Configuration file Settings", open=True):
         configuration = ConfigurationFile(headless=headless, config=config)
@@ -1783,7 +1864,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     quant_format = gr.Dropdown(
                         label="Primary Format",
                         choices=[QUANT_FORMAT_FP8, QUANT_FORMAT_INT8, QUANT_FORMAT_NVFP4, QUANT_FORMAT_MXFP8],
-                        value=config.get("model_quantizer.quant_format", QUANT_FORMAT_FP8),
+                        value=initial_quant_format,
                     )
                     comfy_quant = gr.Checkbox(
                         label="Write ComfyUI Metadata (.comfy_quant)",
@@ -1797,15 +1878,15 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 with gr.Row():
                     scaling_mode = gr.Dropdown(
                         label="Scaling Mode",
-                        choices=SCALING_MODE_CHOICES,
-                        value=_normalize_scaling_mode(config.get("model_quantizer.scaling_mode", "tensor")),
+                        choices=_scaling_mode_choices_for_format(initial_quant_format),
+                        value=initial_scaling_mode,
                         info=SCALING_MODE_INFO,
                     )
                     block_size = gr.Number(
                         label="Block Size",
-                        value=config.get("model_quantizer.block_size", 64),
+                        value=initial_block_size,
                         step=1,
-                        interactive=True,
+                        interactive=initial_quant_format not in FIXED_SCALING_QUANT_FORMATS and initial_scaling_mode != "tensor",
                         info=BLOCK_SIZE_INFO,
                     )
                     include_input_scale = gr.Checkbox(
@@ -1860,19 +1941,23 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     custom_type = gr.Dropdown(
                         label="Custom Type",
                         choices=[None, "fp8", "int8", "mxfp8", "nvfp4"],
-                        value=config.get("model_quantizer.custom_type", None),
+                        value=initial_custom_type,
                         allow_custom_value=False,
                     )
                     custom_block_size = gr.Number(
                         label="Custom Block Size",
-                        value=config.get("model_quantizer.custom_block_size", None),
+                        value=initial_custom_block_size,
                         step=1,
+                        interactive=(
+                            bool(initial_custom_type)
+                            and _uses_block_size(QUANT_TYPE_TO_FORMAT.get(initial_custom_type), initial_custom_scaling_mode)
+                        ),
                         info=BLOCK_SIZE_INFO,
                     )
                     custom_scaling_mode = gr.Dropdown(
                         label="Custom Scaling Mode",
-                        choices=CUSTOM_SCALING_MODE_CHOICES,
-                        value=_normalize_optional_scaling_mode(config.get("model_quantizer.custom_scaling_mode", None)),
+                        choices=_scaling_mode_choices_for_quant_type(initial_custom_type),
+                        value=initial_custom_scaling_mode,
                         info=SCALING_MODE_INFO,
                     )
                 with gr.Row():
@@ -1889,12 +1974,16 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     fallback_type = gr.Dropdown(
                         label="Fallback Type",
                         choices=[None, "fp8", "int8", "mxfp8", "nvfp4"],
-                        value=config.get("model_quantizer.fallback_type", None),
+                        value=initial_fallback_type,
                     )
                     fallback_block_size = gr.Number(
                         label="Fallback Block Size",
-                        value=config.get("model_quantizer.fallback_block_size", None),
+                        value=initial_fallback_block_size,
                         step=1,
+                        interactive=(
+                            bool(initial_fallback_type)
+                            and QUANT_TYPE_TO_FORMAT.get(initial_fallback_type) not in FIXED_SCALING_QUANT_FORMATS
+                        ),
                         info=BLOCK_SIZE_INFO,
                     )
                     fallback_simple = gr.Checkbox(
@@ -2317,25 +2406,54 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         actcal_device_value,
         filter_values: Dict[str, bool],
     ) -> Dict[str, object]:
+        normalized_scaling_mode = _coerce_scaling_mode_for_format(
+            quant_format_value,
+            scaling_mode_value,
+        )
+        normalized_block_size = _coerce_block_size_for_format(
+            quant_format_value,
+            normalized_scaling_mode,
+            block_size_value,
+        )
+        custom_scaling_mode_normalized = _coerce_optional_scaling_mode_for_quant_type(
+            custom_type_value,
+            custom_scaling_mode_value,
+        )
+        custom_block_size_normalized = (
+            None
+            if (
+                QUANT_TYPE_TO_FORMAT.get(custom_type_value) in FIXED_SCALING_QUANT_FORMATS
+                or not _uses_block_size(QUANT_TYPE_TO_FORMAT.get(custom_type_value), custom_scaling_mode_normalized)
+            )
+            else _to_optional_positive_int(custom_block_size_value, None)
+        )
+        fallback_block_size_normalized = (
+            None
+            if (
+                not fallback_type_value
+                or QUANT_TYPE_TO_FORMAT.get(fallback_type_value) in FIXED_SCALING_QUANT_FORMATS
+            )
+            else _to_optional_positive_int(fallback_block_size_value, None)
+        )
         return {
             "workflow": workflow_value,
             "quant_format": quant_format_value,
             "comfy_quant": bool(comfy_quant_value),
             "full_precision_matrix_mult": bool(full_precision_matrix_mult_value),
-            "scaling_mode": _normalize_scaling_mode(scaling_mode_value),
-            "block_size": _to_int(block_size_value, None),
+            "scaling_mode": normalized_scaling_mode,
+            "block_size": normalized_block_size,
             "include_input_scale": bool(include_input_scale_value),
             "convrot": bool(convrot_value),
             "convrot_group_size": _to_int(convrot_group_size_value, 256),
             "custom_layers": custom_layers_value.strip() if isinstance(custom_layers_value, str) else custom_layers_value,
             "exclude_layers": exclude_layers_value.strip() if isinstance(exclude_layers_value, str) else exclude_layers_value,
             "custom_type": custom_type_value,
-            "custom_block_size": _to_optional_positive_int(custom_block_size_value, None),
-            "custom_scaling_mode": _normalize_optional_scaling_mode(custom_scaling_mode_value),
+            "custom_block_size": custom_block_size_normalized,
+            "custom_scaling_mode": custom_scaling_mode_normalized,
             "custom_simple": bool(custom_simple_value),
             "custom_heur": bool(custom_heur_value),
             "fallback_type": fallback_type_value,
-            "fallback_block_size": _to_optional_positive_int(fallback_block_size_value, None),
+            "fallback_block_size": fallback_block_size_normalized,
             "fallback_simple": bool(fallback_simple_value),
             "simple": bool(simple_value),
             "skip_inefficient_layers": bool(skip_inefficient_layers_value),
@@ -2492,8 +2610,54 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
 
     def _preset_field_updates(overrides: Dict[str, object]):
         updates = []
+        selected_format = overrides.get("quant_format")
+        selected_scaling = _coerce_scaling_mode_for_format(
+            selected_format,
+            overrides.get("scaling_mode", "tensor"),
+        ) if selected_format else None
+        selected_custom_type = overrides.get("custom_type")
+        selected_fallback_type = overrides.get("fallback_type")
         for name in preset_field_names:
-            if name in overrides:
+            if name == "scaling_mode" and selected_format:
+                updates.append(
+                    gr.update(
+                        value=selected_scaling,
+                        choices=_scaling_mode_choices_for_format(selected_format),
+                    )
+                )
+            elif name == "block_size" and not _uses_block_size(selected_format, selected_scaling):
+                updates.append(gr.update(value=None, interactive=False))
+            elif name == "block_size" and selected_format:
+                updates.append(gr.update(value=overrides.get(name), interactive=True))
+            elif name == "custom_scaling_mode" and "custom_type" in overrides:
+                updates.append(
+                    gr.update(
+                        value=_coerce_optional_scaling_mode_for_quant_type(
+                            selected_custom_type,
+                            overrides.get(name),
+                        ),
+                        choices=_scaling_mode_choices_for_quant_type(selected_custom_type),
+                    )
+                )
+            elif name == "custom_block_size" and not _uses_block_size(
+                QUANT_TYPE_TO_FORMAT.get(selected_custom_type),
+                _coerce_optional_scaling_mode_for_quant_type(
+                    selected_custom_type,
+                    overrides.get("custom_scaling_mode"),
+                ),
+            ):
+                updates.append(gr.update(value=None, interactive=False))
+            elif name == "custom_block_size" and "custom_type" in overrides:
+                updates.append(gr.update(value=overrides.get(name), interactive=True))
+            elif name == "fallback_block_size" and (
+                not selected_fallback_type
+                or QUANT_TYPE_TO_FORMAT.get(selected_fallback_type) in FIXED_SCALING_QUANT_FORMATS
+            ):
+                updates.append(gr.update(value=None, interactive=False))
+            elif name == "fallback_block_size" and "fallback_type" in overrides:
+                default_block_size = 128 if selected_fallback_type == "int8" else 64
+                updates.append(gr.update(value=overrides.get(name) or default_block_size, interactive=True))
+            elif name in overrides:
                 updates.append(gr.update(value=overrides[name]))
             else:
                 updates.append(gr.update())
@@ -2534,10 +2698,26 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
 
     def _apply_quant_format_defaults(selected_format: str):
         defaults = FORMAT_DEFAULTS.get(selected_format, {})
-        return [
-            gr.update(value=defaults[name]) if name in defaults else gr.update()
-            for name in format_default_field_names
-        ]
+        selected_scaling = _coerce_scaling_mode_for_format(
+            selected_format,
+            defaults.get("scaling_mode", "tensor"),
+        )
+        updates = []
+        for name in format_default_field_names:
+            if name == "scaling_mode":
+                updates.append(
+                    gr.update(
+                        value=selected_scaling,
+                        choices=_scaling_mode_choices_for_format(selected_format),
+                    )
+                )
+            elif name == "block_size" and not _uses_block_size(selected_format, selected_scaling):
+                updates.append(gr.update(value=None, interactive=False))
+            elif name in defaults:
+                updates.append(gr.update(value=defaults[name], interactive=True) if name == "block_size" else gr.update(value=defaults[name]))
+            else:
+                updates.append(gr.update())
+        return updates
 
     quant_format.input(
         fn=_apply_quant_format_defaults,
@@ -2547,19 +2727,86 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
     )
 
     def _apply_scaling_mode_defaults(selected_scaling: str, selected_format: str):
-        selected_scaling = _normalize_scaling_mode(selected_scaling)
+        selected_scaling = _coerce_scaling_mode_for_format(selected_format, selected_scaling)
+        if not _uses_block_size(selected_format, selected_scaling):
+            return gr.update(value=None, interactive=False), gr.update(value=False)
         if selected_scaling == "block":
             block_default = 128 if selected_format == QUANT_FORMAT_INT8 else 64
-            return gr.update(value=block_default), gr.update(value=False)
+            return gr.update(value=block_default, interactive=True), gr.update(value=False)
         if selected_scaling == "row":
-            block_default = 128 if selected_format == QUANT_FORMAT_INT8 else None
-            return gr.update(value=block_default), gr.update(value=False)
-        return gr.update(value=None), gr.update(value=False)
+            return gr.update(value=128, interactive=True), gr.update(value=False)
+        return gr.update(value=None, interactive=False), gr.update(value=False)
 
     scaling_mode.input(
         fn=_apply_scaling_mode_defaults,
         inputs=[scaling_mode, quant_format],
         outputs=[block_size, convrot],
+        show_progress=False,
+    )
+
+    def _apply_custom_type_defaults(selected_type: str, current_scaling: str):
+        selected_format = QUANT_TYPE_TO_FORMAT.get(selected_type)
+        selected_scaling = _coerce_optional_scaling_mode_for_quant_type(
+            selected_type,
+            current_scaling,
+        )
+        scaling_update = gr.update(
+            value=selected_scaling,
+            choices=_scaling_mode_choices_for_quant_type(selected_type),
+        )
+        if not selected_type or not _uses_block_size(selected_format, selected_scaling):
+            return gr.update(value=None, interactive=False), scaling_update
+        default_block_size = 128 if selected_type == "int8" else 64
+        return gr.update(value=default_block_size, interactive=True), scaling_update
+
+    custom_type.input(
+        fn=_apply_custom_type_defaults,
+        inputs=[custom_type, custom_scaling_mode],
+        outputs=[custom_block_size, custom_scaling_mode],
+        show_progress=False,
+    )
+
+    def _apply_custom_scaling_mode_defaults(selected_scaling: str, selected_type: str):
+        selected_format = QUANT_TYPE_TO_FORMAT.get(selected_type)
+        selected_scaling = _coerce_optional_scaling_mode_for_quant_type(
+            selected_type,
+            selected_scaling,
+        )
+        if not _uses_block_size(selected_format, selected_scaling):
+            return gr.update(value=None, interactive=False)
+        default_block_size = 128 if selected_type == "int8" else 64
+        return gr.update(value=default_block_size, interactive=True)
+
+    custom_scaling_mode.input(
+        fn=_apply_custom_scaling_mode_defaults,
+        inputs=[custom_scaling_mode, custom_type],
+        outputs=[custom_block_size],
+        show_progress=False,
+    )
+    custom_scaling_mode.change(
+        fn=_apply_custom_scaling_mode_defaults,
+        inputs=[custom_scaling_mode, custom_type],
+        outputs=[custom_block_size],
+        show_progress=False,
+    )
+
+    def _apply_fallback_type_defaults(selected_type: str):
+        selected_format = QUANT_TYPE_TO_FORMAT.get(selected_type)
+        if not selected_type or selected_format in FIXED_SCALING_QUANT_FORMATS:
+            return gr.update(value=None, interactive=False)
+        default_block_size = 128 if selected_type == "int8" else 64
+        return gr.update(value=default_block_size, interactive=True)
+
+    fallback_type.input(
+        fn=_apply_fallback_type_defaults,
+        inputs=[fallback_type],
+        outputs=[fallback_block_size],
+        show_progress=False,
+    )
+    fallback_type.change(
+        fn=_apply_fallback_type_defaults,
+        inputs=[fallback_type],
+        outputs=[fallback_block_size],
         show_progress=False,
     )
 
@@ -3081,6 +3328,21 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         loaded_model_preset_other = flat.get(MODEL_PRESET_OTHER_FIELD)
         if loaded_model_preset_other is None:
             loaded_model_preset_other = flat.get(f"model_quantizer.{MODEL_PRESET_OTHER_FIELD}")
+        loaded_quant_format = flat.get("quant_format")
+        if loaded_quant_format is None:
+            loaded_quant_format = flat.get("model_quantizer.quant_format")
+        loaded_scaling_mode = flat.get("scaling_mode")
+        if loaded_scaling_mode is None:
+            loaded_scaling_mode = flat.get("model_quantizer.scaling_mode")
+        loaded_custom_type = flat.get("custom_type")
+        if loaded_custom_type is None:
+            loaded_custom_type = flat.get("model_quantizer.custom_type")
+        loaded_custom_scaling_mode = flat.get("custom_scaling_mode")
+        if loaded_custom_scaling_mode is None:
+            loaded_custom_scaling_mode = flat.get("model_quantizer.custom_scaling_mode")
+        loaded_fallback_type = flat.get("fallback_type")
+        if loaded_fallback_type is None:
+            loaded_fallback_type = flat.get("model_quantizer.fallback_type")
         values_out = []
         for name, current in zip(settings_names, values):
             if name in (MODEL_PRESET_PRIMARY_FIELD, MODEL_PRESET_OTHER_FIELD):
@@ -3105,9 +3367,82 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 values_out.append(current)
             else:
                 if name == "scaling_mode":
-                    value = _normalize_scaling_mode(value)
+                    selected_format = loaded_quant_format or config.get("model_quantizer.quant_format", QUANT_FORMAT_FP8)
+                    value = _coerce_scaling_mode_for_format(selected_format, value)
+                    values_out.append(
+                        gr.update(
+                            value=value,
+                            choices=_scaling_mode_choices_for_format(selected_format),
+                        )
+                    )
+                    continue
+                elif name == "block_size":
+                    selected_format = loaded_quant_format or config.get("model_quantizer.quant_format", QUANT_FORMAT_FP8)
+                    selected_scaling = _coerce_scaling_mode_for_format(
+                        selected_format,
+                        loaded_scaling_mode or "tensor",
+                    )
+                    value = _coerce_block_size_for_format(selected_format, selected_scaling, value)
+                    values_out.append(
+                        gr.update(
+                            value=value,
+                            interactive=_uses_block_size(selected_format, selected_scaling),
+                        )
+                    )
+                    continue
+                elif name == "custom_block_size":
+                    loaded_custom_scaling = _coerce_optional_scaling_mode_for_quant_type(
+                        loaded_custom_type,
+                        loaded_custom_scaling_mode,
+                    )
+                    value = (
+                        None
+                        if (
+                            not _uses_block_size(QUANT_TYPE_TO_FORMAT.get(loaded_custom_type), loaded_custom_scaling)
+                        )
+                        else _to_optional_positive_int(value, None)
+                    )
+                    values_out.append(
+                        gr.update(
+                            value=value,
+                            interactive=(
+                                bool(loaded_custom_type)
+                                and _uses_block_size(QUANT_TYPE_TO_FORMAT.get(loaded_custom_type), loaded_custom_scaling)
+                            ),
+                        )
+                    )
+                    continue
                 elif name == "custom_scaling_mode":
-                    value = _normalize_optional_scaling_mode(value)
+                    value = _coerce_optional_scaling_mode_for_quant_type(loaded_custom_type, value)
+                    values_out.append(
+                        gr.update(
+                            value=value,
+                            choices=_scaling_mode_choices_for_quant_type(loaded_custom_type),
+                        )
+                    )
+                    continue
+                elif name == "fallback_block_size":
+                    value = (
+                        None
+                        if (
+                            not loaded_fallback_type
+                            or QUANT_TYPE_TO_FORMAT.get(loaded_fallback_type) in FIXED_SCALING_QUANT_FORMATS
+                        )
+                        else (
+                            _to_optional_positive_int(value, None)
+                            or (128 if loaded_fallback_type == "int8" else 64)
+                        )
+                    )
+                    values_out.append(
+                        gr.update(
+                            value=value,
+                            interactive=(
+                                bool(loaded_fallback_type)
+                                and QUANT_TYPE_TO_FORMAT.get(loaded_fallback_type) not in FIXED_SCALING_QUANT_FORMATS
+                            ),
+                        )
+                    )
+                    continue
                 values_out.append(value)
         return [file_path, f"Loaded: {os.path.basename(file_path)}"] + values_out
 
