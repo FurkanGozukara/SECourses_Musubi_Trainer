@@ -168,11 +168,15 @@ def _krea2_layer_config_settings(params: Dict[str, object]) -> Tuple[Dict[str, o
 def _write_krea2_layer_config_for_params(params: Dict[str, object]) -> str:
     base_settings, suffix = _krea2_layer_config_settings(params)
     config: Dict[str, Dict[str, object]] = {}
-    use_fp8_precision_flags = params.get("quant_format") == QUANT_FORMAT_FP8
+    use_precision_flags = params.get("quant_format") in {
+        QUANT_FORMAT_FP8,
+        QUANT_FORMAT_NVFP4,
+        QUANT_FORMAT_MXFP8,
+    }
 
     for pattern, extra_settings in KREA2_LAYER_CONFIG_PATTERNS:
         settings = dict(base_settings)
-        if use_fp8_precision_flags:
+        if use_precision_flags:
             settings.update(extra_settings)
         config[pattern] = settings
 
