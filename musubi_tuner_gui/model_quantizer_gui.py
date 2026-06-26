@@ -46,6 +46,7 @@ PRESET_CUSTOM = "Custom (manual)"
 PRESET_FAST = "Fast (Simple Quantization)"
 PRESET_NORMAL = "Normal (Balanced)"
 PRESET_HIGH = "High Quality (Slow)"
+PRESET_EXTREME = "Extreme Quality (Very Slow)"
 PRESET_INT8_FAST = "INT8 Blockwise (QuantOps / Experimental)"
 PRESET_INT8_TENSOR = "INT8 Tensorwise (QuantOps custom / RTX 30xx+)"
 PRESET_INT8_CONVROT = "INT8 ConvRot Rowwise (QuantOps custom / Best INT8)"
@@ -67,6 +68,30 @@ KREA2_EXCLUDE_LAYERS = (
     r"^(txtfusion|text_fusion)[.]projector([.]|$)"
 )
 KREA2_LAYER_CONFIG_PATH = os.path.join(REPO_ROOT, "model_quantizer_presets", "krea2_fp8_layer_config.json")
+FP8_ONLY_LAYER_CONFIG_PATHS = {
+    os.path.normcase(os.path.abspath(KREA2_LAYER_CONFIG_PATH)),
+}
+NON_FP8_QUANT_FORMATS = {QUANT_FORMAT_INT8, QUANT_FORMAT_NVFP4, QUANT_FORMAT_MXFP8}
+
+
+def _is_fp8_only_layer_config(path: object) -> bool:
+    if not isinstance(path, str) or not path.strip():
+        return False
+    try:
+        normalized = os.path.normcase(os.path.abspath(os.path.expanduser(path.strip())))
+    except (OSError, TypeError, ValueError):
+        return False
+    return normalized in FP8_ONLY_LAYER_CONFIG_PATHS
+
+
+def _clear_incompatible_model_settings(selected_model: str, settings: Dict[str, object]) -> None:
+    if settings.get("quant_format") == QUANT_FORMAT_FP8:
+        return
+    if _is_fp8_only_layer_config(settings.get("layer_config_path")):
+        settings["layer_config_path"] = ""
+        settings["layer_config_fullmatch"] = False
+    if selected_model == "krea2" and settings.get("exclude_layers") == KREA2_EXCLUDE_LAYERS:
+        settings["exclude_layers"] = ""
 
 OUTPUT_MODE_FULL = "Full (all logs)"
 OUTPUT_MODE_COMPACT = "Compact (hide progress bars)"
@@ -256,6 +281,10 @@ PRIMARY_MODEL_PRESET_VALUES = {
     "zimage_refiner",
 }
 MODEL_PRESET_FILTER_ALIASES = {}
+MODEL_PRESET_EXTRA_FILTERS = {
+    # Keep combined filter behavior visible in Gradio instead of relying on CLI-side aliases.
+    "qwen35": {"generic_text"},
+}
 
 FLUX_KLEIN_MODEL_SETTINGS = {
     "preset": PRESET_NORMAL,
@@ -271,7 +300,7 @@ SCALING_MODE_INFO = (
     "with modest scale overhead; for INT8 row this is the ConvRot route and needs matching runtime support. "
     "Block uses one scale per 2D block: usually the best quality of these modes on uneven weights, especially for "
     "INT8 blockwise, but it adds scale metadata and requires dimensions divisible by the block size. Some models "
-    "are layer-sensitive; the Krea 2 preset keeps its main attention and MLP projections on FP8 tensor scaling."
+    "are layer-sensitive; for FP8 runs, the Krea 2 preset keeps its main attention and MLP projections on FP8 tensor scaling."
 )
 
 BLOCK_SIZE_INFO = (
@@ -366,11 +395,11 @@ This is the safest starting point for very large checkpoints or smaller GPUs.
 Use these changes when you can spend more time and memory for better fidelity:
 
 1. Pick the closest Model Preset first so sensitive layers stay high precision.
-2. Change Quality Preset from Fast to FP8 Scaled, FP8 Compatibility, Normal, or High Quality.
+2. Change Quality Preset from Fast to FP8 Scaled, FP8 Compatibility, Normal, High Quality, or Extreme Quality.
 3. Disable Simple quantization to enable learned rounding.
 4. Keep Save Quantization Metadata and Low memory mode enabled unless you have a reason to turn them off.
 5. Raise Calibration Samples gradually, for example 2048, 3072, then 4096.
-6. Use Full SVD only for difficult layers or final high-quality runs, because it is much heavier.
+6. Use Extreme Quality only for difficult layers or final high-quality runs, because Full SVD is much heavier.
 7. For unsupported models, run Dry Run / Create Template and add regex exclusions for remaining 2D BF16-sensitive layers.
 
 Model-specific notes from upstream issues:
@@ -380,7 +409,7 @@ Model-specific notes from upstream issues:
 - Z-Image and Anima (Base/Turbo): avoid NVFP4 as the default route; issue reports showed noisy output. Use FP8 Compatibility first.
 - Boogu-Image: use the Boogu-Image preset, which applies the known exclusion regex for image/reference embedding layers.
 - ERNIE Image: use the ERNIE preset, which applies the tested exclusion regex.
-- Krea 2 Raw/Turbo: the Krea 2 preset starts on Normal (Balanced): learned FP8 tensor scaling, Krea-specific projection/time/final-layer exclusions, metadata, and low-memory. Local SwarmUI tests showed Krea 2 FP8 tensor output stayed good while FP8 blockwise and INT8 blockwise degraded when Q/K/V and MLP gate/up were block-quantized. The bundled layer config now keeps all eight main per-block attention/MLP projections on FP8 tensor scaling, with full-precision matrix multiplication only on gate/output/down projections. Switch Quality Preset to Fast only when you specifically want the simpler official-style FP8 route.
+- Krea 2 Raw/Turbo: the Krea 2 preset starts on Normal (Balanced): learned FP8 tensor scaling, Krea-specific projection/time/final-layer exclusions, metadata, and low-memory. Local SwarmUI tests showed Krea 2 FP8 tensor output stayed good while FP8 blockwise and INT8 blockwise degraded when Q/K/V and MLP gate/up were block-quantized. For FP8 runs, the bundled layer config keeps all eight main per-block attention/MLP projections on FP8 tensor scaling, with full-precision matrix multiplication only on gate/output/down projections. Switch Quality Preset to Fast only when you specifically want the simpler official-style FP8 route.
 - ComfyUI-QuantOps: load these exports with QuantOps quantized loader nodes or a patched QuantOps stock-loader auto integration. Keep metadata enabled so QuantOps can identify tensor, row, block, MXFP8, and NVFP4 layouts instead of guessing from scales.
 - INT8 Blockwise requires QuantOps runtime support. Stock ComfyUI `Load Diffusion Model` and SwarmUI's normal model dropdown need a QuantOps stock-loader auto patch; otherwise use the QuantOps quantized loader nodes.
 - INT8 Tensorwise and ConvRot require the custom comfy-kitchen INT8 build plus `--enable-triton-backend`; without that, expect fallback behavior or load failure.
@@ -420,6 +449,16 @@ def _model_preset_filter(value: str) -> str:
     if value in REGEX_ONLY_MODEL_PRESETS:
         return ""
     return MODEL_PRESET_FILTER_ALIASES.get(value, value)
+
+
+def _model_preset_filters(value: str) -> set:
+    selected_value = _model_preset_value(value)
+    filters = set()
+    primary_filter = _model_preset_filter(selected_value)
+    if primary_filter:
+        filters.add(primary_filter)
+    filters.update(MODEL_PRESET_EXTRA_FILTERS.get(selected_value, set()))
+    return {name for name in filters if name in MODEL_FILTERS}
 
 
 def _model_preset_sort_key(label: str) -> str:
@@ -472,10 +511,15 @@ def _model_preset_component_value(field_name: str, raw_value: str, current_value
         return other_value
     return current_value
 
-MODEL_PRESET_OVERRIDES = {
-    "flux1": {"include_input_scale": True},
-    "t5xxl": {"include_input_scale": True},
-}
+
+def _visible_model_preset_value(primary_value: str, other_value: str) -> str:
+    primary_value = _model_preset_value(primary_value)
+    other_value = _model_preset_value(other_value)
+    if primary_value != MODEL_PRESET_NONE:
+        return primary_value
+    if other_value != MODEL_PRESET_NONE:
+        return other_value
+    return MODEL_PRESET_NONE
 
 MODEL_PRESET_SETTINGS = {
     name: {
@@ -639,6 +683,22 @@ PRESET_OVERRIDES = {
         "top_p": 0.2,
         "min_k": 256,
         "max_k": 1536,
+        "full_matrix": False,
+        "full_precision_matrix_mult": True,
+    },
+    PRESET_EXTREME: {
+        **MANUAL_QUANT_DEFAULTS,
+        "quant_format": QUANT_FORMAT_FP8,
+        "comfy_quant": True,
+        "scaling_mode": "tensor",
+        "block_size": None,
+        "simple": False,
+        "skip_inefficient_layers": False,
+        "num_iter": 6000,
+        "calib_samples": 4096,
+        "top_p": 0.2,
+        "min_k": 256,
+        "max_k": 1536,
         "full_matrix": True,
         "full_precision_matrix_mult": True,
     },
@@ -682,6 +742,8 @@ PRESET_OVERRIDES = {
         "comfy_quant": True,
         "scaling_mode": "block",
         "block_size": 128,
+        "layer_config_path": "",
+        "layer_config_fullmatch": False,
         "simple": True,
         "skip_inefficient_layers": False,
         "num_iter": 200,
@@ -700,6 +762,8 @@ PRESET_OVERRIDES = {
         "comfy_quant": True,
         "scaling_mode": "tensor",
         "block_size": None,
+        "layer_config_path": "",
+        "layer_config_fullmatch": False,
         "simple": True,
         "skip_inefficient_layers": False,
         "num_iter": 120,
@@ -717,9 +781,11 @@ PRESET_OVERRIDES = {
         "quant_format": QUANT_FORMAT_INT8,
         "comfy_quant": True,
         "scaling_mode": "row",
-        "block_size": None,
+        "block_size": 128,
         "convrot": True,
         "convrot_group_size": 256,
+        "layer_config_path": "",
+        "layer_config_fullmatch": False,
         "simple": True,
         "skip_inefficient_layers": False,
         "num_iter": 200,
@@ -739,6 +805,8 @@ PRESET_OVERRIDES = {
         "comfy_quant": True,
         "scaling_mode": "tensor",
         "block_size": None,
+        "layer_config_path": "",
+        "layer_config_fullmatch": False,
         "simple": False,
         "skip_inefficient_layers": False,
         "num_iter": 3000,
@@ -755,6 +823,8 @@ PRESET_OVERRIDES = {
         "comfy_quant": True,
         "scaling_mode": "tensor",
         "block_size": None,
+        "layer_config_path": "",
+        "layer_config_fullmatch": False,
         "simple": False,
         "skip_inefficient_layers": True,
         "num_iter": 4000,
@@ -772,6 +842,8 @@ PRESET_OVERRIDES = {
         "comfy_quant": True,
         "scaling_mode": "tensor",
         "block_size": None,
+        "layer_config_path": "",
+        "layer_config_fullmatch": False,
         "simple": False,
         "skip_inefficient_layers": False,
         "num_iter": 12000,
@@ -787,12 +859,74 @@ PRESET_OVERRIDES = {
     },
 }
 
+PRESET_BASE_SETTINGS = {
+    **MANUAL_QUANT_DEFAULTS,
+    "quant_format": QUANT_FORMAT_FP8,
+    "comfy_quant": SAFE_RUNTIME_DEFAULTS["comfy_quant"],
+    "full_precision_matrix_mult": False,
+    "scaling_mode": "tensor",
+    "block_size": None,
+    "convrot": False,
+    "convrot_group_size": 256,
+    "exclude_layers": "",
+    "custom_type": None,
+    "custom_block_size": None,
+    "custom_scaling_mode": None,
+    "custom_simple": False,
+    "custom_heur": False,
+    "fallback_type": None,
+    "fallback_block_size": None,
+    "fallback_simple": False,
+    "simple": False,
+    "skip_inefficient_layers": False,
+    "full_matrix": False,
+    "scale_optimization": "fixed",
+    "scale_refinement_rounds": 1,
+    "layer_config_path": "",
+    "layer_config_fullmatch": False,
+    "manual_seed": -1,
+    "verbose": "NORMAL",
+    "low_memory": SAFE_RUNTIME_DEFAULTS["low_memory"],
+    "save_quant_metadata": SAFE_RUNTIME_DEFAULTS["save_quant_metadata"],
+}
+
 for _preset_settings in PRESET_OVERRIDES.values():
     _preset_settings.setdefault("low_memory", SAFE_RUNTIME_DEFAULTS["low_memory"])
     _preset_settings.setdefault("save_quant_metadata", SAFE_RUNTIME_DEFAULTS["save_quant_metadata"])
     _preset_settings.setdefault("comfy_quant", SAFE_RUNTIME_DEFAULTS["comfy_quant"])
     _preset_settings.setdefault("convrot", False)
     _preset_settings.setdefault("convrot_group_size", 256)
+
+
+def _combined_preset_settings(
+    model_preset_value: str,
+    preset_name: Optional[str],
+    *,
+    use_model_default_preset: bool = False,
+) -> Tuple[str, Dict[str, object]]:
+    selected_model = _model_preset_value(model_preset_value)
+    model_settings = MODEL_PRESET_SETTINGS.get(selected_model, {})
+    if use_model_default_preset and model_settings.get("preset"):
+        effective_preset = str(model_settings["preset"])
+    else:
+        effective_preset = preset_name or model_settings.get("preset") or PRESET_NORMAL
+
+    if effective_preset == PRESET_CUSTOM and not use_model_default_preset:
+        return effective_preset, {}
+
+    preset_overrides = PRESET_OVERRIDES.get(effective_preset, {})
+    model_overrides = {name: value for name, value in model_settings.items() if name != "preset"}
+
+    combined: Dict[str, object] = dict(PRESET_BASE_SETTINGS)
+    if preset_overrides.get("quant_format") in NON_FP8_QUANT_FORMATS:
+        combined.update(model_overrides)
+        combined.update(preset_overrides)
+    else:
+        combined.update(preset_overrides)
+        combined.update(model_overrides)
+
+    _clear_incompatible_model_settings(selected_model, combined)
+    return effective_preset, combined
 
 
 def _to_int(value, default: Optional[int]) -> Optional[int]:
@@ -1346,6 +1480,8 @@ class ModelQuantizer:
             format_str = "int8"
             if scaling_mode == "tensor":
                 scaling_str = "_tensorwise"
+            elif scaling_mode == "row":
+                scaling_str = "_rowwise"
             else:
                 scaling_str = f"_bs{block_size or 128}"
         else:
@@ -1567,1320 +1703,6 @@ class ModelQuantizer:
         return self._tail_text("\n".join(log_lines))
 
 
-def model_quantizer_tab_legacy(headless: bool, config: GUIConfig) -> None:
-    quantizer = ModelQuantizer(headless=headless, config=config)
-
-    gr.Markdown("# Model Quantizer")
-    gr.Markdown(
-        "Quantize safetensors checkpoints with **convert_to_quant**. Supports FP8, INT8, NVFP4, MXFP8, "
-        "metadata conversions, calibration, and batch processing."
-    )
-
-    dummy_true = gr.Checkbox(value=True, visible=False)
-    dummy_false = gr.Checkbox(value=False, visible=False)
-    dummy_headless = gr.Checkbox(value=headless, visible=False)
-    initial_model_preset_primary, initial_model_preset_other, initial_model_preset_value = _split_model_preset_selection(
-        config.get("model_quantizer.model_preset", "krea2")
-    )
-
-    with gr.Accordion("Configuration file Settings", open=True):
-        configuration = ConfigurationFile(headless=headless, config=config)
-
-    with gr.Accordion("Presets", open=True):
-        with gr.Row():
-            preset_dropdown = gr.Dropdown(
-                label="Quality Preset",
-                choices=[
-                    PRESET_CUSTOM,
-                    PRESET_FAST,
-                    PRESET_NORMAL,
-                    PRESET_HIGH,
-                    PRESET_FP8_SCALED,
-                    PRESET_FP8_MIXED,
-                    PRESET_INT8_FAST,
-                    PRESET_INT8_TENSOR,
-                    PRESET_INT8_CONVROT,
-                    PRESET_MXFP8_BALANCED,
-                    PRESET_NVFP4_BALANCED,
-                    PRESET_NVFP4_Z,
-                ],
-                value=config.get("model_quantizer.preset", PRESET_NORMAL),
-                info="Quickly apply recommended optimization settings.",
-            )
-            model_preset_primary_dropdown = gr.Dropdown(
-                label="Model Preset (Recommended Filters)",
-                choices=MODEL_PRESET_PRIMARY_CHOICES,
-                value=initial_model_preset_primary,
-                info="Select a model to apply its recommended exclusion filters.",
-            )
-            model_preset_other_dropdown = gr.Dropdown(
-                label="Model Preset (Other Filters)",
-                choices=MODEL_PRESET_OTHER_CHOICES,
-                value=initial_model_preset_other,
-                info="Additional presets and upstream filters.",
-            )
-            model_preset_value = gr.Textbox(value=initial_model_preset_value, visible=False)
-        with gr.Accordion("Quality Upgrade Notes", open=False):
-            gr.Markdown(QUALITY_GUIDANCE_MD)
-
-    with gr.Accordion("Workflow", open=True):
-        workflow = gr.Dropdown(
-            label="Workflow",
-            choices=[
-                WORKFLOW_QUANTIZE,
-                WORKFLOW_CONVERT_FP8,
-                WORKFLOW_CONVERT_INT8,
-                WORKFLOW_LEGACY_INPUT,
-                WORKFLOW_CLEANUP_FP8,
-                WORKFLOW_ACTCAL,
-                WORKFLOW_EDIT_QUANT,
-                WORKFLOW_HYBRID_MXFP8,
-                WORKFLOW_DRY_RUN,
-            ],
-            value=config.get("model_quantizer.workflow", WORKFLOW_QUANTIZE),
-        )
-
-    with gr.Accordion("Quantization Format", open=True) as quant_format_group:
-        with gr.Row():
-            quant_format = gr.Dropdown(
-                label="Primary Format",
-                choices=[QUANT_FORMAT_FP8, QUANT_FORMAT_INT8, QUANT_FORMAT_NVFP4, QUANT_FORMAT_MXFP8],
-                value=config.get("model_quantizer.quant_format", QUANT_FORMAT_FP8),
-            )
-            comfy_quant = gr.Checkbox(
-                label="Write ComfyUI Metadata (.comfy_quant)",
-                value=config.get("model_quantizer.comfy_quant", True),
-            )
-            full_precision_matrix_mult = gr.Checkbox(
-                label="comfy_quant: Full precision matrix mult",
-                value=config.get("model_quantizer.full_precision_matrix_mult", False),
-            )
-
-        with gr.Row():
-            scaling_mode = gr.Dropdown(
-                label="Scaling Mode",
-                choices=SCALING_MODE_CHOICES,
-                value=_normalize_scaling_mode(config.get("model_quantizer.scaling_mode", "tensor")),
-                info=SCALING_MODE_INFO,
-            )
-            block_size = gr.Number(
-                label="Block Size",
-                value=config.get("model_quantizer.block_size", 64),
-                step=1,
-                interactive=True,
-                info=BLOCK_SIZE_INFO,
-            )
-            include_input_scale = gr.Checkbox(
-                label="Include input_scale tensors",
-                value=config.get("model_quantizer.include_input_scale", False),
-                info=INPUT_SCALE_INFO,
-            )
-        with gr.Row():
-            convrot = gr.Checkbox(
-                label="ConvRot (INT8 Rowwise)",
-                value=config.get("model_quantizer.convrot", False),
-                info="Applies Hadamard rotation before INT8 row-wise quantization. Useful for Krea2 INT8 quality; ignored unless INT8 + row scaling is used.",
-            )
-            convrot_group_size = gr.Number(
-                label="ConvRot Group Size",
-                value=config.get("model_quantizer.convrot_group_size", 256),
-                step=1,
-                info="Power-of-4 group size for ConvRot. Upstream default is 256.",
-            )
-
-    with gr.Accordion("Model Filters", open=False) as model_filter_group:
-        filter_checkboxes: Dict[str, gr.Checkbox] = {}
-        for category_key, category_label in MODEL_CATEGORY_LABELS.items():
-            filters_in_category = [
-                (name, cfg) for name, cfg in MODEL_FILTERS.items()
-                if cfg.get("category") == category_key
-            ]
-            if not filters_in_category:
-                continue
-            with gr.Group():
-                gr.Markdown(f"### {category_label}")
-                for name, cfg in sorted(filters_in_category, key=lambda item: item[0]):
-                    label = f"{name}: {cfg.get('help', '')}".strip(": ")
-                    filter_checkboxes[name] = gr.Checkbox(
-                        label=label,
-                        value=bool(config.get(f"model_quantizer.filter.{name}", False)),
-                    )
-
-    with gr.Accordion("Layer Mixing & Exclusions", open=False) as layer_mixing_group:
-        with gr.Row():
-            custom_layers = gr.Textbox(
-                label="Custom Layers (Regex)",
-                placeholder="e.g. attn|mlp",
-                value=config.get("model_quantizer.custom_layers", ""),
-            )
-            exclude_layers = gr.Textbox(
-                label="Exclude Layers (Regex)",
-                placeholder="e.g. norm|bias",
-                value=config.get("model_quantizer.exclude_layers", ""),
-            )
-        with gr.Row():
-            custom_type = gr.Dropdown(
-                label="Custom Type",
-                choices=[None, "fp8", "int8", "mxfp8", "nvfp4"],
-                value=config.get("model_quantizer.custom_type", None),
-                allow_custom_value=False,
-            )
-            custom_block_size = gr.Number(
-                label="Custom Block Size",
-                value=config.get("model_quantizer.custom_block_size", None),
-                step=1,
-                info=BLOCK_SIZE_INFO,
-            )
-            custom_scaling_mode = gr.Dropdown(
-                label="Custom Scaling Mode",
-                choices=CUSTOM_SCALING_MODE_CHOICES,
-                value=_normalize_optional_scaling_mode(config.get("model_quantizer.custom_scaling_mode", None)),
-                info=SCALING_MODE_INFO,
-            )
-        with gr.Row():
-            custom_simple = gr.Checkbox(
-                label="Custom: Simple quantization",
-                value=config.get("model_quantizer.custom_simple", False),
-            )
-            custom_heur = gr.Checkbox(
-                label="Custom: Heuristics",
-                value=config.get("model_quantizer.custom_heur", False),
-            )
-
-        with gr.Row():
-            fallback_type = gr.Dropdown(
-                label="Fallback Type",
-                choices=[None, "fp8", "int8", "mxfp8", "nvfp4"],
-                value=config.get("model_quantizer.fallback_type", None),
-            )
-            fallback_block_size = gr.Number(
-                label="Fallback Block Size",
-                value=config.get("model_quantizer.fallback_block_size", None),
-                step=1,
-                info=BLOCK_SIZE_INFO,
-            )
-            fallback_simple = gr.Checkbox(
-                label="Fallback: Simple quantization",
-                value=config.get("model_quantizer.fallback_simple", False),
-            )
-
-    with gr.Accordion("Optimization & Quality", open=False) as optimization_group:
-        with gr.Row():
-            simple = gr.Checkbox(
-                label="Simple quantization (skip SVD)",
-                value=config.get("model_quantizer.simple", True),
-            )
-            skip_inefficient_layers = gr.Checkbox(
-                label="Skip inefficient layers (heuristics)",
-                value=config.get("model_quantizer.skip_inefficient_layers", False),
-            )
-            full_matrix = gr.Checkbox(
-                label="Use full SVD matrix",
-                value=config.get("model_quantizer.full_matrix", False),
-                info=FULL_MATRIX_INFO,
-            )
-        with gr.Row():
-            calib_samples = gr.Number(
-                label="Calibration Samples",
-                value=config.get("model_quantizer.calib_samples", 1024),
-                step=1,
-                info=CALIB_SAMPLES_INFO,
-            )
-            manual_seed = gr.Number(
-                label="Manual Seed (-1=random)",
-                value=config.get("model_quantizer.manual_seed", -1),
-                step=1,
-            )
-            optimizer = gr.Dropdown(
-                label="Optimizer",
-                choices=OPTIMIZER_CHOICES,
-                value=config.get("model_quantizer.optimizer", "original"),
-                info=OPTIMIZER_INFO,
-            )
-        with gr.Row():
-            num_iter = gr.Number(
-                label="Iterations",
-                value=config.get("model_quantizer.num_iter", 200),
-                step=1,
-            )
-            lr = gr.Number(
-                label="Learning Rate",
-                value=config.get("model_quantizer.lr", 8.077300000003e-3),
-            )
-            lr_schedule = gr.Dropdown(
-                label="LR Schedule",
-                choices=["adaptive", "exponential", "plateau"],
-                value=config.get("model_quantizer.lr_schedule", "adaptive"),
-            )
-        with gr.Row():
-            top_p = gr.Number(
-                label="Top P",
-                value=config.get("model_quantizer.top_p", 0.02),
-            )
-            min_k = gr.Number(
-                label="Min K",
-                value=config.get("model_quantizer.min_k", 16),
-                step=1,
-            )
-            max_k = gr.Number(
-                label="Max K",
-                value=config.get("model_quantizer.max_k", 64),
-                step=1,
-            )
-
-    with gr.Accordion("Advanced LR & Early Stopping", open=False) as advanced_lr_group:
-        with gr.Row():
-            lr_gamma = gr.Number(
-                label="LR Gamma",
-                value=config.get("model_quantizer.lr_gamma", MANUAL_QUANT_DEFAULTS["lr_gamma"]),
-            )
-            lr_patience = gr.Number(
-                label="LR Patience",
-                value=config.get("model_quantizer.lr_patience", MANUAL_QUANT_DEFAULTS["lr_patience"]),
-                step=1,
-            )
-            lr_factor = gr.Number(
-                label="LR Factor",
-                value=config.get("model_quantizer.lr_factor", MANUAL_QUANT_DEFAULTS["lr_factor"]),
-            )
-        with gr.Row():
-            lr_min = gr.Number(
-                label="LR Min",
-                value=config.get("model_quantizer.lr_min", MANUAL_QUANT_DEFAULTS["lr_min"]),
-            )
-            lr_cooldown = gr.Number(
-                label="LR Cooldown",
-                value=config.get("model_quantizer.lr_cooldown", MANUAL_QUANT_DEFAULTS["lr_cooldown"]),
-                step=1,
-            )
-            lr_threshold = gr.Number(
-                label="LR Threshold",
-                value=config.get("model_quantizer.lr_threshold", MANUAL_QUANT_DEFAULTS["lr_threshold"]),
-            )
-        with gr.Row():
-            lr_adaptive_mode = gr.Dropdown(
-                label="LR Adaptive Mode",
-                choices=["simple-reset", "no-reset"],
-                value=config.get("model_quantizer.lr_adaptive_mode", MANUAL_QUANT_DEFAULTS["lr_adaptive_mode"]),
-            )
-            lr_shape_influence = gr.Number(
-                label="LR Shape Influence",
-                value=config.get("model_quantizer.lr_shape_influence", MANUAL_QUANT_DEFAULTS["lr_shape_influence"]),
-            )
-            lr_threshold_mode = gr.Dropdown(
-                label="LR Threshold Mode",
-                choices=["rel", "abs"],
-                value=config.get("model_quantizer.lr_threshold_mode", MANUAL_QUANT_DEFAULTS["lr_threshold_mode"]),
-            )
-        with gr.Row():
-            early_stop_loss = gr.Number(
-                label="Early Stop Loss",
-                value=config.get("model_quantizer.early_stop_loss", MANUAL_QUANT_DEFAULTS["early_stop_loss"]),
-            )
-            early_stop_lr = gr.Number(
-                label="Early Stop LR",
-                value=config.get("model_quantizer.early_stop_lr", MANUAL_QUANT_DEFAULTS["early_stop_lr"]),
-            )
-            early_stop_stall = gr.Number(
-                label="Early Stop Stall",
-                value=config.get("model_quantizer.early_stop_stall", MANUAL_QUANT_DEFAULTS["early_stop_stall"]),
-                step=1,
-            )
-
-    with gr.Accordion("NVFP4 / MXFP8 Options", open=False) as nvfp4_group:
-        with gr.Row():
-            scale_optimization = gr.Dropdown(
-                label="Scale Optimization (NVFP4)",
-                choices=["fixed", "iterative", "joint", "dualround"],
-                value=config.get("model_quantizer.scale_optimization", "fixed"),
-            )
-            scale_refinement_rounds = gr.Number(
-                label="Scale Refinement Rounds",
-                value=config.get("model_quantizer.scale_refinement_rounds", 1),
-                step=1,
-            )
-        with gr.Row():
-            input_scales_path = gr.Textbox(
-                label="Input Scales (.json/.safetensors)",
-                value=config.get("model_quantizer.input_scales_path", ""),
-                placeholder="Optional input scales for NVFP4",
-            )
-            input_scales_button = gr.Button("Browse File", size="lg")
-        with gr.Row():
-            tensor_scales_path = gr.Textbox(
-                label="Tensor Scales for Hybrid MXFP8",
-                value=config.get("model_quantizer.tensor_scales_path", ""),
-                placeholder="Optional tensorwise FP8 model for hybrid conversion",
-            )
-            tensor_scales_button = gr.Button("Browse File", size="lg")
-
-    with gr.Accordion("Layer Config & Dry Run", open=False) as layer_config_group:
-        with gr.Row():
-            layer_config_path = gr.Textbox(
-                label="Layer Config JSON",
-                value=config.get("model_quantizer.layer_config_path", ""),
-                placeholder="Path to layer-config JSON",
-            )
-            layer_config_button = gr.Button("Browse File", size="lg")
-        layer_config_fullmatch = gr.Checkbox(
-            label="Layer Config Fullmatch",
-            value=config.get("model_quantizer.layer_config_fullmatch", False),
-        )
-        dry_run = gr.Dropdown(
-            label="Dry Run Mode",
-            choices=[None, "analyze", "create-template"],
-            value=config.get("model_quantizer.dry_run", None),
-        )
-
-    with gr.Accordion("Activation Calibration (actcal)", open=False):
-        with gr.Row():
-            actcal_samples = gr.Number(
-                label="Calibration Samples",
-                value=config.get("model_quantizer.actcal_samples", 64),
-                step=1,
-            )
-            actcal_percentile = gr.Number(
-                label="Percentile",
-                value=config.get("model_quantizer.actcal_percentile", 99.9),
-            )
-            actcal_seed = gr.Number(
-                label="Calibration Seed",
-                value=config.get("model_quantizer.actcal_seed", 42),
-                step=1,
-            )
-        with gr.Row():
-            actcal_lora = gr.Textbox(
-                label="LoRA for Calibration (optional)",
-                value=config.get("model_quantizer.actcal_lora", ""),
-                placeholder="Optional LoRA file for informed calibration",
-            )
-            actcal_lora_button = gr.Button("Browse File", size="lg")
-        actcal_device = gr.Textbox(
-            label="Calibration Device",
-            value=config.get("model_quantizer.actcal_device", ""),
-            placeholder="cpu, cuda, cuda:0",
-        )
-
-    with gr.Accordion("Legacy & Metadata Tools", open=False) as legacy_group:
-        with gr.Row():
-            save_quant_metadata = gr.Checkbox(
-                label="Save Quantization Metadata",
-                value=config.get("model_quantizer.save_quant_metadata", True),
-            )
-            no_normalize_scales = gr.Checkbox(
-                label="Disable Scale Normalization",
-                value=config.get("model_quantizer.no_normalize_scales", False),
-            )
-            scaled_fp8_marker = gr.Dropdown(
-                label="scaled_fp8 Marker Size",
-                choices=[0, 2],
-                value=config.get("model_quantizer.scaled_fp8_marker", 0),
-            )
-        with gr.Row():
-            hp_filter = gr.Textbox(
-                label="HP Filter (convert fp8 scaled)",
-                value=config.get("model_quantizer.hp_filter", ""),
-                placeholder="Regex for high-precision validation",
-            )
-            full_precision_mm = gr.Checkbox(
-                label="Full precision matmul (convert fp8 scaled)",
-                value=config.get("model_quantizer.full_precision_mm", False),
-            )
-        with gr.Row():
-            remove_keys = gr.Textbox(
-                label="Remove Keys (edit comfy_quant)",
-                value=config.get("model_quantizer.remove_keys", ""),
-                placeholder="Comma-separated keys",
-            )
-            add_keys = gr.Textbox(
-                label="Add/Update Keys (edit comfy_quant)",
-                value=config.get("model_quantizer.add_keys", ""),
-                placeholder="'full_precision_matrix_mult': true, 'group_size': 64",
-            )
-        quant_filter = gr.Textbox(
-            label="Quant Filter (edit comfy_quant)",
-            value=config.get("model_quantizer.quant_filter", ""),
-            placeholder="Regex for layers to edit",
-        )
-
-    with gr.Accordion("Runtime & Output", open=True):
-        with gr.Row():
-            verbose = gr.Dropdown(
-                label="Verbosity",
-                choices=["DEBUG", "VERBOSE", "NORMAL", "MINIMAL"],
-                value=config.get("model_quantizer.verbose", "NORMAL"),
-            )
-            verbose_pinned = gr.Checkbox(
-                label="Verbose pinned memory transfers",
-                value=config.get("model_quantizer.verbose_pinned", False),
-            )
-            low_memory = gr.Checkbox(
-                label="Low memory mode",
-                value=config.get("model_quantizer.low_memory", True),
-            )
-    with gr.Accordion("How bias correction works", open=False):
-        gr.Markdown(BIAS_CORRECTION_PANEL_MD)
-
-    with gr.Tabs():
-        with gr.Tab("Single File"):
-            with gr.Row():
-                single_input_file = gr.Textbox(
-                    label="Input Safetensors",
-                    value=config.get("model_quantizer.single_input_file", ""),
-                    placeholder="Path to model .safetensors",
-                )
-                single_input_button = gr.Button("Browse File", size="lg")
-            with gr.Row():
-                single_output_file = gr.Textbox(
-                    label="Output File (optional)",
-                    value=config.get("model_quantizer.single_output_file", ""),
-                    placeholder="Leave empty for auto naming",
-                )
-                single_output_button = gr.Button("Save As", size="lg")
-            with gr.Row():
-                single_delete_original = gr.Checkbox(
-                    label="Delete original after success",
-                    value=config.get("model_quantizer.single_delete_original", False),
-                )
-            single_run_button = gr.Button("Start Conversion", variant="primary")
-            single_cancel_button = gr.Button("Cancel", variant="secondary")
-            single_queue_status = gr.Textbox(
-                label="Single Conversion Queue",
-                value=quantizer.single_queue_text(),
-                lines=6,
-                max_lines=18,
-                interactive=False,
-            )
-            single_status = gr.Textbox(
-                label="Single Conversion Log",
-                lines=16,
-                max_lines=60,
-                interactive=False,
-            )
-
-        with gr.Tab("Batch Folder"):
-            with gr.Row():
-                batch_input_folder = gr.Textbox(
-                    label="Input Folder",
-                    value=config.get("model_quantizer.batch_input_folder", ""),
-                    placeholder="Folder with model files",
-                )
-                batch_input_button = gr.Button("Browse Folder", size="lg")
-            with gr.Row():
-                batch_output_folder = gr.Textbox(
-                    label="Output Folder (optional)",
-                    value=config.get("model_quantizer.batch_output_folder", ""),
-                    placeholder="Leave empty to use input folder",
-                )
-                batch_output_button = gr.Button("Browse Folder", size="lg")
-            with gr.Row():
-                batch_extensions = gr.Textbox(
-                    label="File Extensions",
-                    value=config.get("model_quantizer.batch_extensions", ".safetensors"),
-                    placeholder=".safetensors,.pt",
-                )
-                batch_recursive = gr.Checkbox(
-                    label="Recursive",
-                    value=config.get("model_quantizer.batch_recursive", True),
-                )
-                batch_overwrite = gr.Checkbox(
-                    label="Overwrite Existing Outputs",
-                    value=config.get("model_quantizer.batch_overwrite", False),
-                )
-            with gr.Row():
-                batch_delete_original = gr.Checkbox(
-                    label="Delete originals after success",
-                    value=config.get("model_quantizer.batch_delete_original", False),
-                )
-            batch_run_button = gr.Button("Start Batch Conversion", variant="primary")
-            batch_cancel_button = gr.Button("Cancel Batch", variant="secondary")
-            batch_status = gr.Textbox(
-                label="Batch Conversion Log",
-                lines=18,
-                max_lines=80,
-                interactive=False,
-            )
-
-    def _build_params_dict(
-        workflow_value,
-        quant_format_value,
-        comfy_quant_value,
-        full_precision_matrix_mult_value,
-        scaling_mode_value,
-        block_size_value,
-        include_input_scale_value,
-        convrot_value,
-        convrot_group_size_value,
-        custom_layers_value,
-        exclude_layers_value,
-        custom_type_value,
-        custom_block_size_value,
-        custom_scaling_mode_value,
-        custom_simple_value,
-        custom_heur_value,
-        fallback_type_value,
-        fallback_block_size_value,
-        fallback_simple_value,
-        simple_value,
-        skip_inefficient_layers_value,
-        full_matrix_value,
-        calib_samples_value,
-        manual_seed_value,
-        optimizer_value,
-        num_iter_value,
-        lr_value,
-        lr_schedule_value,
-        top_p_value,
-        min_k_value,
-        max_k_value,
-        lr_gamma_value,
-        lr_patience_value,
-        lr_factor_value,
-        lr_min_value,
-        lr_cooldown_value,
-        lr_threshold_value,
-        lr_adaptive_mode_value,
-        lr_shape_influence_value,
-        lr_threshold_mode_value,
-        early_stop_loss_value,
-        early_stop_lr_value,
-        early_stop_stall_value,
-        scale_optimization_value,
-        scale_refinement_rounds_value,
-        input_scales_path_value,
-        tensor_scales_path_value,
-        layer_config_path_value,
-        layer_config_fullmatch_value,
-        dry_run_value,
-        verbose_value,
-        output_mode_value,
-        verbose_pinned_value,
-        low_memory_value,
-        save_quant_metadata_value,
-        no_normalize_scales_value,
-        scaled_fp8_marker_value,
-        hp_filter_value,
-        full_precision_mm_value,
-        remove_keys_value,
-        add_keys_value,
-        quant_filter_value,
-        actcal_samples_value,
-        actcal_percentile_value,
-        actcal_lora_value,
-        actcal_seed_value,
-        actcal_device_value,
-        filter_values: Dict[str, bool],
-    ) -> Dict[str, object]:
-        return {
-            "workflow": workflow_value,
-            "quant_format": quant_format_value,
-            "comfy_quant": bool(comfy_quant_value),
-            "full_precision_matrix_mult": bool(full_precision_matrix_mult_value),
-            "scaling_mode": _normalize_scaling_mode(scaling_mode_value),
-            "block_size": _to_int(block_size_value, None),
-            "include_input_scale": bool(include_input_scale_value),
-            "convrot": bool(convrot_value),
-            "convrot_group_size": _to_int(convrot_group_size_value, 256),
-            "custom_layers": custom_layers_value.strip() if isinstance(custom_layers_value, str) else custom_layers_value,
-            "exclude_layers": exclude_layers_value.strip() if isinstance(exclude_layers_value, str) else exclude_layers_value,
-            "custom_type": custom_type_value,
-            "custom_block_size": _to_optional_positive_int(custom_block_size_value, None),
-            "custom_scaling_mode": _normalize_optional_scaling_mode(custom_scaling_mode_value),
-            "custom_simple": bool(custom_simple_value),
-            "custom_heur": bool(custom_heur_value),
-            "fallback_type": fallback_type_value,
-            "fallback_block_size": _to_optional_positive_int(fallback_block_size_value, None),
-            "fallback_simple": bool(fallback_simple_value),
-            "simple": bool(simple_value),
-            "skip_inefficient_layers": bool(skip_inefficient_layers_value),
-            "full_matrix": bool(full_matrix_value),
-            "calib_samples": _to_int(calib_samples_value, None),
-            "manual_seed": _to_int(manual_seed_value, None),
-            "optimizer": optimizer_value,
-            "num_iter": _to_int(num_iter_value, None),
-            "lr": _to_float(lr_value, None),
-            "lr_schedule": lr_schedule_value,
-            "top_p": _to_float(top_p_value, None),
-            "min_k": _to_int(min_k_value, None),
-            "max_k": _to_int(max_k_value, None),
-            "lr_gamma": _to_float(lr_gamma_value, None),
-            "lr_patience": _to_int(lr_patience_value, None),
-            "lr_factor": _to_float(lr_factor_value, None),
-            "lr_min": _to_float(lr_min_value, None),
-            "lr_cooldown": _to_int(lr_cooldown_value, None),
-            "lr_threshold": _to_float(lr_threshold_value, None),
-            "lr_adaptive_mode": lr_adaptive_mode_value,
-            "lr_shape_influence": _to_float(lr_shape_influence_value, None),
-            "lr_threshold_mode": lr_threshold_mode_value,
-            "early_stop_loss": _to_float(early_stop_loss_value, None),
-            "early_stop_lr": _to_float(early_stop_lr_value, None),
-            "early_stop_stall": _to_int(early_stop_stall_value, None),
-            "scale_optimization": scale_optimization_value,
-            "scale_refinement_rounds": _to_int(scale_refinement_rounds_value, None),
-            "input_scales_path": input_scales_path_value.strip() if isinstance(input_scales_path_value, str) else input_scales_path_value,
-            "tensor_scales_path": tensor_scales_path_value.strip() if isinstance(tensor_scales_path_value, str) else tensor_scales_path_value,
-            "layer_config_path": layer_config_path_value.strip() if isinstance(layer_config_path_value, str) else layer_config_path_value,
-            "layer_config_fullmatch": bool(layer_config_fullmatch_value),
-            "dry_run": dry_run_value,
-            "verbose": verbose_value,
-            "output_mode": output_mode_value,
-            "verbose_pinned": bool(verbose_pinned_value),
-            "low_memory": bool(low_memory_value),
-            "save_quant_metadata": bool(save_quant_metadata_value),
-            "no_normalize_scales": bool(no_normalize_scales_value),
-            "scaled_fp8_marker": _to_int(scaled_fp8_marker_value, None),
-            "hp_filter": hp_filter_value.strip() if isinstance(hp_filter_value, str) else hp_filter_value,
-            "full_precision_mm": bool(full_precision_mm_value),
-            "remove_keys": remove_keys_value.strip() if isinstance(remove_keys_value, str) else remove_keys_value,
-            "add_keys": add_keys_value.strip() if isinstance(add_keys_value, str) else add_keys_value,
-            "quant_filter": quant_filter_value.strip() if isinstance(quant_filter_value, str) else quant_filter_value,
-            "actcal_samples": _to_int(actcal_samples_value, None),
-            "actcal_percentile": _to_float(actcal_percentile_value, None),
-            "actcal_lora": actcal_lora_value.strip() if isinstance(actcal_lora_value, str) else actcal_lora_value,
-            "actcal_seed": _to_int(actcal_seed_value, None),
-            "actcal_device": actcal_device_value.strip() if isinstance(actcal_device_value, str) else actcal_device_value,
-            "model_filters": filter_values,
-        }
-
-    def _collect_filter_values(*values) -> Dict[str, bool]:
-        return {name: bool(val) for name, val in zip(filter_checkboxes.keys(), values)}
-
-    def _apply_preset(preset_name: str):
-        overrides = PRESET_OVERRIDES.get(preset_name, {})
-        field_names = [
-            "quant_format",
-            "comfy_quant",
-            "full_precision_matrix_mult",
-            "scaling_mode",
-            "block_size",
-            "convrot",
-            "convrot_group_size",
-            "custom_type",
-            "custom_block_size",
-            "custom_scaling_mode",
-            "custom_simple",
-            "custom_heur",
-            "fallback_type",
-            "fallback_block_size",
-            "fallback_simple",
-            "simple",
-            "skip_inefficient_layers",
-            "num_iter",
-            "calib_samples",
-            "optimizer",
-            "lr_schedule",
-            "lr",
-            "top_p",
-            "min_k",
-            "max_k",
-            "full_matrix",
-            "scale_optimization",
-            "scale_refinement_rounds",
-            "manual_seed",
-            "verbose",
-            "low_memory",
-            "save_quant_metadata",
-        ]
-        updates = []
-        for name in field_names:
-            if name in overrides:
-                updates.append(gr.update(value=overrides[name]))
-            else:
-                updates.append(gr.update())
-        return updates
-
-    preset_dropdown.change(
-        fn=_apply_preset,
-        inputs=[preset_dropdown],
-        outputs=[
-            quant_format,
-            comfy_quant,
-            full_precision_matrix_mult,
-            scaling_mode,
-            block_size,
-            convrot,
-            convrot_group_size,
-            custom_type,
-            custom_block_size,
-            custom_scaling_mode,
-            custom_simple,
-            custom_heur,
-            fallback_type,
-            fallback_block_size,
-            fallback_simple,
-            simple,
-            skip_inefficient_layers,
-            num_iter,
-            calib_samples,
-            optimizer,
-            lr_schedule,
-            lr,
-            top_p,
-            min_k,
-            max_k,
-            full_matrix,
-            scale_optimization,
-            scale_refinement_rounds,
-            manual_seed,
-            verbose,
-            low_memory,
-            save_quant_metadata,
-        ],
-        show_progress=False,
-    )
-
-    def _apply_model_preset(selected: str):
-        selected_value = _model_preset_value(selected)
-        selected_filter = _model_preset_filter(selected_value)
-        reset_other_update = (
-            gr.update(value=MODEL_PRESET_NONE)
-            if selected_value != MODEL_PRESET_NONE
-            else gr.update()
-        )
-        effective_update = gr.update(value=selected_value)
-        updates = []
-        overrides = MODEL_PRESET_OVERRIDES.get(selected_value, {})
-        for name in filter_checkboxes.keys():
-            updates.append(gr.update(value=(name == selected_filter)))
-        include_update = overrides.get("include_input_scale")
-        if include_update is None:
-            include_update = gr.update()
-        else:
-            include_update = gr.update(value=include_update)
-        return [reset_other_update, effective_update] + updates + [include_update]
-
-    model_preset_primary_dropdown.change(
-        fn=_apply_model_preset,
-        inputs=[model_preset_primary_dropdown],
-        outputs=[model_preset_other_dropdown, model_preset_value] + list(filter_checkboxes.values()) + [include_input_scale],
-        show_progress=False,
-    )
-
-    model_preset_other_dropdown.change(
-        fn=_apply_model_preset,
-        inputs=[model_preset_other_dropdown],
-        outputs=[model_preset_primary_dropdown, model_preset_value] + list(filter_checkboxes.values()) + [include_input_scale],
-        show_progress=False,
-    )
-
-    def _update_workflow_visibility(selected: str):
-        is_quantize = selected == WORKFLOW_QUANTIZE or selected == WORKFLOW_DRY_RUN
-        return (
-            gr.update(visible=is_quantize),
-            gr.update(visible=is_quantize),
-            gr.update(visible=is_quantize),
-            gr.update(visible=is_quantize),
-            gr.update(visible=is_quantize),
-            gr.update(visible=is_quantize),
-            gr.update(visible=is_quantize),
-        )
-
-    workflow.change(
-        fn=_update_workflow_visibility,
-        inputs=[workflow],
-        outputs=[
-            quant_format_group,
-            model_filter_group,
-            layer_mixing_group,
-            optimization_group,
-            advanced_lr_group,
-            nvfp4_group,
-            layer_config_group,
-        ],
-        show_progress=False,
-    )
-
-    single_input_button.click(
-        fn=lambda current: get_file_path(current, ".safetensors", "Model files"),
-        inputs=[single_input_file],
-        outputs=[single_input_file],
-        show_progress=False,
-    )
-    single_output_button.click(
-        fn=lambda current: get_saveasfilename_path(
-            current, extensions="*.safetensors", extension_name="Safetensors files"
-        ),
-        inputs=[single_output_file],
-        outputs=[single_output_file],
-        show_progress=False,
-    )
-    batch_input_button.click(
-        fn=lambda current: get_folder_path(current),
-        inputs=[batch_input_folder],
-        outputs=[batch_input_folder],
-        show_progress=False,
-    )
-    batch_output_button.click(
-        fn=lambda current: get_folder_path(current),
-        inputs=[batch_output_folder],
-        outputs=[batch_output_folder],
-        show_progress=False,
-    )
-    layer_config_button.click(
-        fn=lambda current: get_file_path(current, ".json", "JSON files"),
-        inputs=[layer_config_path],
-        outputs=[layer_config_path],
-        show_progress=False,
-    )
-    input_scales_button.click(
-        fn=lambda current: get_file_path(current, ".json", "JSON or Safetensors"),
-        inputs=[input_scales_path],
-        outputs=[input_scales_path],
-        show_progress=False,
-    )
-    tensor_scales_button.click(
-        fn=lambda current: get_file_path(current, ".safetensors", "Safetensors files"),
-        inputs=[tensor_scales_path],
-        outputs=[tensor_scales_path],
-        show_progress=False,
-    )
-    actcal_lora_button.click(
-        fn=lambda current: get_file_path(current, ".safetensors", "Safetensors files"),
-        inputs=[actcal_lora],
-        outputs=[actcal_lora],
-        show_progress=False,
-    )
-
-    single_inputs = [
-        workflow,
-        quant_format,
-        comfy_quant,
-        full_precision_matrix_mult,
-        scaling_mode,
-        block_size,
-        include_input_scale,
-        convrot,
-        convrot_group_size,
-        custom_layers,
-        exclude_layers,
-        custom_type,
-        custom_block_size,
-        custom_scaling_mode,
-        custom_simple,
-        custom_heur,
-        fallback_type,
-        fallback_block_size,
-        fallback_simple,
-        simple,
-        skip_inefficient_layers,
-        full_matrix,
-        calib_samples,
-        manual_seed,
-        optimizer,
-        num_iter,
-        lr,
-        lr_schedule,
-        top_p,
-        min_k,
-        max_k,
-        lr_gamma,
-        lr_patience,
-        lr_factor,
-        lr_min,
-        lr_cooldown,
-        lr_threshold,
-        lr_adaptive_mode,
-        lr_shape_influence,
-        lr_threshold_mode,
-        early_stop_loss,
-        early_stop_lr,
-        early_stop_stall,
-        scale_optimization,
-        scale_refinement_rounds,
-        input_scales_path,
-        tensor_scales_path,
-        layer_config_path,
-        layer_config_fullmatch,
-        dry_run,
-        verbose,
-        output_mode,
-        verbose_pinned,
-        low_memory,
-        save_quant_metadata,
-        no_normalize_scales,
-        scaled_fp8_marker,
-        hp_filter,
-        full_precision_mm,
-        remove_keys,
-        add_keys,
-        quant_filter,
-        actcal_samples,
-        actcal_percentile,
-        actcal_lora,
-        actcal_seed,
-        actcal_device,
-    ] + list(filter_checkboxes.values())
-
-    def _run_single(
-        single_input_file_value,
-        single_output_file_value,
-        single_delete_original_value,
-        *values,
-    ):
-        filter_count = len(filter_checkboxes)
-        if filter_count:
-            filter_values = _collect_filter_values(*values[-filter_count:])
-            base_values = values[:-filter_count]
-        else:
-            filter_values = {}
-            base_values = values
-        params = _build_params_dict(
-            *base_values,
-            filter_values=filter_values,
-        )
-        return quantizer.enqueue_single(
-            input_file=single_input_file_value,
-            output_file=single_output_file_value,
-            delete_original=bool(single_delete_original_value),
-            params=params,
-        )
-
-    single_run_button.click(
-        fn=_run_single,
-        inputs=[single_input_file, single_output_file, single_delete_original] + single_inputs,
-        outputs=[single_queue_status, single_status],
-        show_progress=False,
-        queue=False,
-    )
-
-    single_cancel_button.click(
-        fn=quantizer.cancel_single,
-        inputs=[],
-        outputs=[single_queue_status, single_status],
-        show_progress=False,
-        queue=False,
-    )
-
-    single_queue_timer = gr.Timer(2.0)
-    single_queue_timer.tick(
-        fn=quantizer.single_queue_and_status,
-        inputs=[],
-        outputs=[single_queue_status, single_status],
-        show_progress=False,
-        queue=False,
-    )
-
-    def _run_batch(
-        batch_input_folder_value,
-        batch_output_folder_value,
-        batch_extensions_value,
-        batch_recursive_value,
-        batch_overwrite_value,
-        batch_delete_original_value,
-        *values,
-    ):
-        filter_count = len(filter_checkboxes)
-        if filter_count:
-            filter_values = _collect_filter_values(*values[-filter_count:])
-            base_values = values[:-filter_count]
-        else:
-            filter_values = {}
-            base_values = values
-        params = _build_params_dict(
-            *base_values,
-            filter_values=filter_values,
-        )
-        return quantizer.run_batch(
-            input_folder=batch_input_folder_value,
-            output_folder=batch_output_folder_value,
-            extensions=batch_extensions_value,
-            recursive=bool(batch_recursive_value),
-            overwrite_existing=bool(batch_overwrite_value),
-            delete_original=bool(batch_delete_original_value),
-            params=params,
-        )
-
-    batch_run_button.click(
-        fn=_run_batch,
-        inputs=[
-            batch_input_folder,
-            batch_output_folder,
-            batch_extensions,
-            batch_recursive,
-            batch_overwrite,
-            batch_delete_original,
-        ] + single_inputs,
-        outputs=[batch_status],
-        show_progress=True,
-    )
-
-    batch_cancel_button.click(
-        fn=quantizer.cancel_batch,
-        inputs=[],
-        outputs=[batch_status],
-        show_progress=False,
-    )
-
-    settings_names = [
-        "workflow",
-        "quant_format",
-        "comfy_quant",
-        "full_precision_matrix_mult",
-        "scaling_mode",
-        "block_size",
-        "include_input_scale",
-        "convrot",
-        "convrot_group_size",
-        "custom_layers",
-        "exclude_layers",
-        "custom_type",
-        "custom_block_size",
-        "custom_scaling_mode",
-        "custom_simple",
-        "custom_heur",
-        "fallback_type",
-        "fallback_block_size",
-        "fallback_simple",
-        "simple",
-        "skip_inefficient_layers",
-        "full_matrix",
-        "calib_samples",
-        "manual_seed",
-        "optimizer",
-        "num_iter",
-        "lr",
-        "lr_schedule",
-        "top_p",
-        "min_k",
-        "max_k",
-        "lr_gamma",
-        "lr_patience",
-        "lr_factor",
-        "lr_min",
-        "lr_cooldown",
-        "lr_threshold",
-        "lr_adaptive_mode",
-        "lr_shape_influence",
-        "lr_threshold_mode",
-        "early_stop_loss",
-        "early_stop_lr",
-        "early_stop_stall",
-        "scale_optimization",
-        "scale_refinement_rounds",
-        "input_scales_path",
-        "tensor_scales_path",
-        "layer_config_path",
-        "layer_config_fullmatch",
-        "dry_run",
-        "verbose",
-        "output_mode",
-        "verbose_pinned",
-        "low_memory",
-        "save_quant_metadata",
-        "no_normalize_scales",
-        "scaled_fp8_marker",
-        "hp_filter",
-        "full_precision_mm",
-        "remove_keys",
-        "add_keys",
-        "quant_filter",
-        "actcal_samples",
-        "actcal_percentile",
-        "actcal_lora",
-        "actcal_seed",
-        "actcal_device",
-        "single_input_file",
-        "single_output_file",
-        "single_delete_original",
-        "batch_input_folder",
-        "batch_output_folder",
-        "batch_extensions",
-        "batch_recursive",
-        "batch_overwrite",
-        "batch_delete_original",
-        "preset",
-        MODEL_PRESET_FIELD,
-        MODEL_PRESET_PRIMARY_FIELD,
-        MODEL_PRESET_OTHER_FIELD,
-    ] + [f"filter.{name}" for name in filter_checkboxes.keys()]
-
-    settings_components = [
-        workflow,
-        quant_format,
-        comfy_quant,
-        full_precision_matrix_mult,
-        scaling_mode,
-        block_size,
-        include_input_scale,
-        convrot,
-        convrot_group_size,
-        custom_layers,
-        exclude_layers,
-        custom_type,
-        custom_block_size,
-        custom_scaling_mode,
-        custom_simple,
-        custom_heur,
-        fallback_type,
-        fallback_block_size,
-        fallback_simple,
-        simple,
-        skip_inefficient_layers,
-        full_matrix,
-        calib_samples,
-        manual_seed,
-        optimizer,
-        num_iter,
-        lr,
-        lr_schedule,
-        top_p,
-        min_k,
-        max_k,
-        lr_gamma,
-        lr_patience,
-        lr_factor,
-        lr_min,
-        lr_cooldown,
-        lr_threshold,
-        lr_adaptive_mode,
-        lr_shape_influence,
-        lr_threshold_mode,
-        early_stop_loss,
-        early_stop_lr,
-        early_stop_stall,
-        scale_optimization,
-        scale_refinement_rounds,
-        input_scales_path,
-        tensor_scales_path,
-        layer_config_path,
-        layer_config_fullmatch,
-        dry_run,
-        verbose,
-        output_mode,
-        verbose_pinned,
-        low_memory,
-        save_quant_metadata,
-        no_normalize_scales,
-        scaled_fp8_marker,
-        hp_filter,
-        full_precision_mm,
-        remove_keys,
-        add_keys,
-        quant_filter,
-        actcal_samples,
-        actcal_percentile,
-        actcal_lora,
-        actcal_seed,
-        actcal_device,
-        single_input_file,
-        single_output_file,
-        single_delete_original,
-        batch_input_folder,
-        batch_output_folder,
-        batch_extensions,
-        batch_recursive,
-        batch_overwrite,
-        batch_delete_original,
-        preset_dropdown,
-        model_preset_value,
-        model_preset_primary_dropdown,
-        model_preset_other_dropdown,
-    ] + list(filter_checkboxes.values())
-
-    def _save_configuration(action, save_as_bool, file_path, headless_value, print_only, *values):
-        parameters = list(zip(settings_names, values))
-        original_file_path = file_path
-        if save_as_bool or not file_path:
-            file_path = get_saveasfilename_path(
-                file_path, extensions="*.toml", extension_name="TOML files"
-            )
-        if not file_path:
-            return original_file_path, "Save cancelled"
-        destination_directory = os.path.dirname(file_path)
-        if destination_directory:
-            os.makedirs(destination_directory, exist_ok=True)
-        from .common_gui import SaveConfigFile
-        SaveConfigFile(
-            parameters=parameters,
-            file_path=file_path,
-            exclusion=[
-                "file_path",
-                "save_as",
-                "save_as_bool",
-                MODEL_PRESET_PRIMARY_FIELD,
-                MODEL_PRESET_OTHER_FIELD,
-            ],
-        )
-        config_name = os.path.basename(file_path)
-        return file_path, f"Saved: {config_name}"
-
-    def _open_configuration(action, ask_for_file, file_path, headless_value, print_only, *values):
-        original_file_path = file_path
-        if ask_for_file:
-            file_path = get_file_path_or_save_as(
-                file_path, default_extension=".toml", extension_name="TOML files"
-            )
-        if not file_path:
-            return [original_file_path, "Load cancelled"] + [gr.update() for _ in settings_components]
-        if not os.path.isfile(file_path) and ask_for_file:
-            return [file_path, f"New config: {os.path.basename(file_path)}"] + [gr.update() for _ in settings_components]
-        if not os.path.isfile(file_path):
-            return [original_file_path, "Config file not found"] + [gr.update() for _ in settings_components]
-        try:
-            data = toml.load(file_path)
-        except Exception as exc:
-            return [original_file_path, f"Failed to load: {exc}"] + [gr.update() for _ in settings_components]
-        flat = _flatten_dict(data)
-        loaded_model_preset = flat.get(MODEL_PRESET_FIELD)
-        if loaded_model_preset is None:
-            loaded_model_preset = flat.get(f"model_quantizer.{MODEL_PRESET_FIELD}")
-        values_out = []
-        for name, current in zip(settings_names, values):
-            if name in (MODEL_PRESET_FIELD, MODEL_PRESET_PRIMARY_FIELD, MODEL_PRESET_OTHER_FIELD):
-                if loaded_model_preset is None:
-                    values_out.append(current)
-                else:
-                    values_out.append(_model_preset_component_value(name, loaded_model_preset, current))
-                continue
-            value = flat.get(name)
-            if value is None:
-                value = flat.get(f"model_quantizer.{name}")
-            if value is None:
-                values_out.append(current)
-            else:
-                if name == "scaling_mode":
-                    value = _normalize_scaling_mode(value)
-                elif name == "custom_scaling_mode":
-                    value = _normalize_optional_scaling_mode(value)
-                values_out.append(value)
-        return [file_path, f"Loaded: {os.path.basename(file_path)}"] + values_out
-
-    configuration.button_open_config.click(
-        fn=_open_configuration,
-        inputs=[gr.Textbox(value="open_configuration", visible=False), dummy_true, configuration.config_file_name, dummy_headless, dummy_false] + settings_components,
-        outputs=[configuration.config_file_name, configuration.config_status] + settings_components,
-        show_progress=False,
-    )
-
-    configuration.button_load_config.click(
-        fn=_open_configuration,
-        inputs=[gr.Textbox(value="open_configuration", visible=False), dummy_false, configuration.config_file_name, dummy_headless, dummy_false] + settings_components,
-        outputs=[configuration.config_file_name, configuration.config_status] + settings_components,
-        show_progress=False,
-        queue=False,
-    )
-
-    configuration.button_save_config.click(
-        fn=_save_configuration,
-        inputs=[gr.Textbox(value="save_configuration", visible=False), dummy_false, configuration.config_file_name, dummy_headless, dummy_false] + settings_components,
-        outputs=[configuration.config_file_name, configuration.config_status],
-        show_progress=False,
-        queue=False,
-    )
-
-    configuration.config_file_name.change(
-        fn=lambda config_name, *args: (
-            _open_configuration("open_configuration", False, config_name, dummy_headless.value, False, *args)
-            if config_name and config_name.endswith(".toml")
-            else ([config_name, ""] + [gr.update() for _ in settings_components])
-        ),
-        inputs=[configuration.config_file_name] + settings_components,
-        outputs=[configuration.config_file_name, configuration.config_status] + settings_components,
-        show_progress=False,
-        queue=False,
-    )
-
-
 def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
     quantizer = ModelQuantizer(headless=headless, config=config)
 
@@ -2893,7 +1715,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
     dummy_true = gr.Checkbox(value=True, visible=False)
     dummy_false = gr.Checkbox(value=False, visible=False)
     dummy_headless = gr.Checkbox(value=headless, visible=False)
-    initial_model_preset_primary, initial_model_preset_other, initial_model_preset_value = _split_model_preset_selection(
+    initial_model_preset_primary, initial_model_preset_other, _ = _split_model_preset_selection(
         config.get("model_quantizer.model_preset", "krea2")
     )
 
@@ -2911,6 +1733,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                             PRESET_FAST,
                             PRESET_NORMAL,
                             PRESET_HIGH,
+                            PRESET_EXTREME,
                             PRESET_FP8_SCALED,
                             PRESET_FP8_MIXED,
                             PRESET_INT8_FAST,
@@ -2935,7 +1758,6 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         value=initial_model_preset_other,
                         info="Additional presets and upstream filters.",
                     )
-                    model_preset_value = gr.Textbox(value=initial_model_preset_value, visible=False)
             with gr.Accordion("Quality Upgrade Notes", open=False):
                 gr.Markdown(QUALITY_GUIDANCE_MD)
 
@@ -3595,6 +2417,18 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         "top_p",
         "min_k",
         "max_k",
+        "lr_gamma",
+        "lr_patience",
+        "lr_factor",
+        "lr_min",
+        "lr_cooldown",
+        "lr_threshold",
+        "lr_adaptive_mode",
+        "lr_shape_influence",
+        "lr_threshold_mode",
+        "early_stop_loss",
+        "early_stop_lr",
+        "early_stop_stall",
         "full_matrix",
         "scale_optimization",
         "scale_refinement_rounds",
@@ -3633,6 +2467,18 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         top_p,
         min_k,
         max_k,
+        lr_gamma,
+        lr_patience,
+        lr_factor,
+        lr_min,
+        lr_cooldown,
+        lr_threshold,
+        lr_adaptive_mode,
+        lr_shape_influence,
+        lr_threshold_mode,
+        early_stop_loss,
+        early_stop_lr,
+        early_stop_stall,
         full_matrix,
         scale_optimization,
         scale_refinement_rounds,
@@ -3644,8 +2490,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         save_quant_metadata,
     ]
 
-    def _apply_preset(preset_name: str):
-        overrides = PRESET_OVERRIDES.get(preset_name, {})
+    def _preset_field_updates(overrides: Dict[str, object]):
         updates = []
         for name in preset_field_names:
             if name in overrides:
@@ -3654,9 +2499,14 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 updates.append(gr.update())
         return updates
 
+    def _apply_preset(preset_name: str, primary_model_preset: str, other_model_preset: str):
+        selected_model_preset = _visible_model_preset_value(primary_model_preset, other_model_preset)
+        _, overrides = _combined_preset_settings(selected_model_preset, preset_name)
+        return _preset_field_updates(overrides)
+
     preset_dropdown.change(
         fn=_apply_preset,
-        inputs=[preset_dropdown],
+        inputs=[preset_dropdown, model_preset_primary_dropdown, model_preset_other_dropdown],
         outputs=preset_field_components,
         show_progress=False,
     )
@@ -3689,7 +2539,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             for name in format_default_field_names
         ]
 
-    quant_format.change(
+    quant_format.input(
         fn=_apply_quant_format_defaults,
         inputs=[quant_format],
         outputs=format_default_components,
@@ -3702,10 +2552,11 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             block_default = 128 if selected_format == QUANT_FORMAT_INT8 else 64
             return gr.update(value=block_default), gr.update(value=False)
         if selected_scaling == "row":
-            return gr.update(value=None), gr.update(value=False)
+            block_default = 128 if selected_format == QUANT_FORMAT_INT8 else None
+            return gr.update(value=block_default), gr.update(value=False)
         return gr.update(value=None), gr.update(value=False)
 
-    scaling_mode.change(
+    scaling_mode.input(
         fn=_apply_scaling_mode_defaults,
         inputs=[scaling_mode, quant_format],
         outputs=[block_size, convrot],
@@ -3714,60 +2565,57 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
 
     def _apply_model_preset(selected: str, selected_preset: str):
         selected_value = _model_preset_value(selected)
-        selected_filter = _model_preset_filter(selected_value)
+        selected_filters = _model_preset_filters(selected_value)
         reset_other_update = (
             gr.update(value=MODEL_PRESET_NONE)
             if selected_value != MODEL_PRESET_NONE
             else gr.update()
         )
-        effective_update = gr.update(value=selected_value)
 
         if selected_value == MODEL_PRESET_NONE:
             return (
-                [reset_other_update, effective_update]
+                [reset_other_update]
                 + [gr.update() for _ in filter_checkboxes.values()]
+                + [gr.update()]
                 + [gr.update() for _ in preset_field_components]
                 + [gr.update()]
             )
 
-        model_settings = MODEL_PRESET_SETTINGS.get(selected_value, {})
-        preset_name = selected_preset or PRESET_NORMAL
-        combined: Dict[str, object] = {}
-        combined.update(PRESET_OVERRIDES.get(preset_name, {}))
-        combined.update(
-            {name: value for name, value in model_settings.items() if name != "preset"}
+        effective_preset, combined = _combined_preset_settings(
+            selected_value,
+            selected_preset,
+            use_model_default_preset=True,
         )
 
         filter_updates = [
-            gr.update(value=(name == selected_filter))
+            gr.update(value=(name in selected_filters))
             for name in filter_checkboxes.keys()
         ]
-
-        field_updates = []
-        for name in preset_field_names:
-            if name in combined:
-                field_updates.append(gr.update(value=combined[name]))
-            else:
-                field_updates.append(gr.update())
 
         include_update = (
             gr.update(value=combined["include_input_scale"])
             if "include_input_scale" in combined
             else gr.update()
         )
-        return [reset_other_update, effective_update] + filter_updates + field_updates + [include_update]
+        return (
+            [reset_other_update]
+            + filter_updates
+            + [gr.update(value=effective_preset)]
+            + _preset_field_updates(combined)
+            + [include_update]
+        )
 
     model_preset_primary_dropdown.change(
         fn=_apply_model_preset,
         inputs=[model_preset_primary_dropdown, preset_dropdown],
-        outputs=[model_preset_other_dropdown, model_preset_value] + list(filter_checkboxes.values()) + preset_field_components + [include_input_scale],
+        outputs=[model_preset_other_dropdown] + list(filter_checkboxes.values()) + [preset_dropdown] + preset_field_components + [include_input_scale],
         show_progress=False,
     )
 
     model_preset_other_dropdown.change(
         fn=_apply_model_preset,
         inputs=[model_preset_other_dropdown, preset_dropdown],
-        outputs=[model_preset_primary_dropdown, model_preset_value] + list(filter_checkboxes.values()) + preset_field_components + [include_input_scale],
+        outputs=[model_preset_primary_dropdown] + list(filter_checkboxes.values()) + [preset_dropdown] + preset_field_components + [include_input_scale],
         show_progress=False,
     )
 
@@ -3783,7 +2631,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             gr.update(visible=is_quantize),
         )
 
-    workflow.change(
+    workflow.input(
         fn=_update_workflow_visibility,
         inputs=[workflow],
         outputs=[
@@ -4095,7 +2943,6 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         "batch_overwrite",
         "batch_delete_original",
         "preset",
-        MODEL_PRESET_FIELD,
         MODEL_PRESET_PRIMARY_FIELD,
         MODEL_PRESET_OTHER_FIELD,
     ] + [f"filter.{name}" for name in filter_checkboxes.keys()]
@@ -4177,7 +3024,6 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         batch_overwrite,
         batch_delete_original,
         preset_dropdown,
-        model_preset_value,
         model_preset_primary_dropdown,
         model_preset_other_dropdown,
     ] + list(filter_checkboxes.values())
@@ -4194,17 +3040,17 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         destination_directory = os.path.dirname(file_path)
         if destination_directory:
             os.makedirs(destination_directory, exist_ok=True)
+        values_by_name = dict(parameters)
+        visible_model_preset = _visible_model_preset_value(
+            values_by_name.get(MODEL_PRESET_PRIMARY_FIELD, MODEL_PRESET_NONE),
+            values_by_name.get(MODEL_PRESET_OTHER_FIELD, MODEL_PRESET_NONE),
+        )
+        parameters.append((MODEL_PRESET_FIELD, visible_model_preset))
         from .common_gui import SaveConfigFile
         SaveConfigFile(
             parameters=parameters,
             file_path=file_path,
-            exclusion=[
-                "file_path",
-                "save_as",
-                "save_as_bool",
-                MODEL_PRESET_PRIMARY_FIELD,
-                MODEL_PRESET_OTHER_FIELD,
-            ],
+            exclusion=["file_path", "save_as", "save_as_bool"],
         )
         config_name = os.path.basename(file_path)
         return file_path, f"Saved: {config_name}"
@@ -4229,13 +3075,28 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         loaded_model_preset = flat.get(MODEL_PRESET_FIELD)
         if loaded_model_preset is None:
             loaded_model_preset = flat.get(f"model_quantizer.{MODEL_PRESET_FIELD}")
+        loaded_model_preset_primary = flat.get(MODEL_PRESET_PRIMARY_FIELD)
+        if loaded_model_preset_primary is None:
+            loaded_model_preset_primary = flat.get(f"model_quantizer.{MODEL_PRESET_PRIMARY_FIELD}")
+        loaded_model_preset_other = flat.get(MODEL_PRESET_OTHER_FIELD)
+        if loaded_model_preset_other is None:
+            loaded_model_preset_other = flat.get(f"model_quantizer.{MODEL_PRESET_OTHER_FIELD}")
         values_out = []
         for name, current in zip(settings_names, values):
-            if name in (MODEL_PRESET_FIELD, MODEL_PRESET_PRIMARY_FIELD, MODEL_PRESET_OTHER_FIELD):
-                if loaded_model_preset is None:
+            if name in (MODEL_PRESET_PRIMARY_FIELD, MODEL_PRESET_OTHER_FIELD):
+                loaded_visible_model_preset = (
+                    loaded_model_preset_primary
+                    if name == MODEL_PRESET_PRIMARY_FIELD
+                    else loaded_model_preset_other
+                )
+                if loaded_visible_model_preset is None:
+                    loaded_visible_model_preset = loaded_model_preset
+                if loaded_visible_model_preset is None:
                     values_out.append(current)
                 else:
-                    values_out.append(_model_preset_component_value(name, loaded_model_preset, current))
+                    values_out.append(
+                        _model_preset_component_value(name, loaded_visible_model_preset, current)
+                    )
                 continue
             value = flat.get(name)
             if value is None:
