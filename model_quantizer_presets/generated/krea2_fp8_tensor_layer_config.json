@@ -1,0 +1,20 @@
+{
+  "(^|[.])attn[.](gate|wo|to_gate|to_out[.]0)$": {
+    "format": "float8_e4m3fn",
+    "scaling_mode": "tensor",
+    "full_precision_matrix_mult": true
+  },
+  "(^|[.])(mlp|ff)[.]down$": {
+    "format": "float8_e4m3fn",
+    "scaling_mode": "tensor",
+    "full_precision_matrix_mult": true
+  },
+  "(^|[.])attn[.](wq|wk|wv|to_q|to_k|to_v)$": {
+    "format": "float8_e4m3fn",
+    "scaling_mode": "tensor"
+  },
+  "(^|[.])(mlp|ff)[.](gate|up)$": {
+    "format": "float8_e4m3fn",
+    "scaling_mode": "tensor"
+  }
+}

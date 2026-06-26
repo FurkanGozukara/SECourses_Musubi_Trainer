@@ -1,0 +1,14 @@
+{
+  "(^|[.])attn[.](gate|wo|to_gate|to_out[.]0)$": {
+    "format": "nvfp4"
+  },
+  "(^|[.])(mlp|ff)[.]down$": {
+    "format": "nvfp4"
+  },
+  "(^|[.])attn[.](wq|wk|wv|to_q|to_k|to_v)$": {
+    "format": "nvfp4"
+  },
+  "(^|[.])(mlp|ff)[.](gate|up)$": {
+    "format": "nvfp4"
+  }
+}

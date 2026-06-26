@@ -1,0 +1,18 @@
+{
+  "(^|[.])attn[.](gate|wo|to_gate|to_out[.]0)$": {
+    "format": "int8_tensorwise",
+    "scaling_mode": "row"
+  },
+  "(^|[.])(mlp|ff)[.]down$": {
+    "format": "int8_tensorwise",
+    "scaling_mode": "row"
+  },
+  "(^|[.])attn[.](wq|wk|wv|to_q|to_k|to_v)$": {
+    "format": "int8_tensorwise",
+    "scaling_mode": "row"
+  },
+  "(^|[.])(mlp|ff)[.](gate|up)$": {
+    "format": "int8_tensorwise",
+    "scaling_mode": "row"
+  }
+}

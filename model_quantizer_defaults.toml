@@ -38,7 +38,7 @@ model_quantizer.scale_optimization = "fixed"
 model_quantizer.scale_refinement_rounds = 1
 
 model_quantizer.exclude_layers = '^(first|last|tmlp|tproj|txtmlp|img_in|final_layer|time_embed|time_mod_proj)([.]|$)|^(txtfusion|text_fusion)[.]projector([.]|$)'
-model_quantizer.layer_config_path = "model_quantizer_presets/krea2_fp8_layer_config.json"
+model_quantizer.layer_config_path = ""
 model_quantizer.layer_config_fullmatch = false
 
 model_quantizer.save_quant_metadata = true

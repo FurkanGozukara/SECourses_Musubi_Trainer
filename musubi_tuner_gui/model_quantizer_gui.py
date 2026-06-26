@@ -3,6 +3,7 @@ import os
 import sys
 import subprocess
 import re
+import json
 import importlib.util
 import copy
 import threading
@@ -68,6 +69,25 @@ KREA2_EXCLUDE_LAYERS = (
     r"^(txtfusion|text_fusion)[.]projector([.]|$)"
 )
 KREA2_LAYER_CONFIG_PATH = os.path.join(REPO_ROOT, "model_quantizer_presets", "krea2_fp8_layer_config.json")
+KREA2_GENERATED_LAYER_CONFIG_DIR = os.path.join(REPO_ROOT, "model_quantizer_presets", "generated")
+KREA2_LAYER_CONFIG_PATTERNS = (
+    (
+        r"(^|[.])attn[.](gate|wo|to_gate|to_out[.]0)$",
+        {"full_precision_matrix_mult": True},
+    ),
+    (
+        r"(^|[.])(mlp|ff)[.]down$",
+        {"full_precision_matrix_mult": True},
+    ),
+    (
+        r"(^|[.])attn[.](wq|wk|wv|to_q|to_k|to_v)$",
+        {},
+    ),
+    (
+        r"(^|[.])(mlp|ff)[.](gate|up)$",
+        {},
+    ),
+)
 FP8_ONLY_LAYER_CONFIG_PATHS = {
     os.path.normcase(os.path.abspath(KREA2_LAYER_CONFIG_PATH)),
 }
@@ -84,14 +104,100 @@ def _is_fp8_only_layer_config(path: object) -> bool:
     return normalized in FP8_ONLY_LAYER_CONFIG_PATHS
 
 
+def _is_krea2_managed_layer_config(path: object) -> bool:
+    if not isinstance(path, str) or not path.strip():
+        return False
+    try:
+        normalized = os.path.normcase(os.path.abspath(os.path.expanduser(path.strip())))
+        generated_root = os.path.normcase(os.path.abspath(KREA2_GENERATED_LAYER_CONFIG_DIR))
+    except (OSError, TypeError, ValueError):
+        return False
+    return normalized in FP8_ONLY_LAYER_CONFIG_PATHS or normalized.startswith(generated_root + os.sep)
+
+
+def _krea2_fp8_format_for_scaling(scaling_mode: str) -> str:
+    if scaling_mode == "row":
+        return "float8_e4m3fn_rowwise"
+    if scaling_mode in ("block", "block2d"):
+        return "float8_e4m3fn_blockwise"
+    if scaling_mode == "block3d":
+        return "float8_e4m3fn_block3d"
+    return "float8_e4m3fn"
+
+
+def _krea2_int8_format_for_scaling(scaling_mode: str) -> str:
+    if scaling_mode == "block":
+        return "int8_blockwise"
+    return "int8_tensorwise"
+
+
+def _krea2_layer_config_settings(params: Dict[str, object]) -> Tuple[Dict[str, object], str]:
+    quant_format = params.get("quant_format")
+    scaling_mode = _coerce_scaling_mode_for_format(
+        str(quant_format),
+        params.get("scaling_mode", "tensor"),
+    )
+    block_size = _coerce_block_size_for_format(
+        str(quant_format),
+        scaling_mode,
+        params.get("block_size"),
+    )
+
+    if quant_format == QUANT_FORMAT_INT8:
+        fmt = _krea2_int8_format_for_scaling(scaling_mode)
+        suffix = f"int8_{scaling_mode}"
+    elif quant_format == QUANT_FORMAT_MXFP8:
+        fmt = "mxfp8"
+        suffix = "mxfp8"
+    elif quant_format == QUANT_FORMAT_NVFP4:
+        fmt = "nvfp4"
+        suffix = "nvfp4"
+    else:
+        fmt = _krea2_fp8_format_for_scaling(scaling_mode)
+        suffix = f"fp8_{scaling_mode}"
+
+    settings: Dict[str, object] = {"format": fmt}
+    if quant_format in (QUANT_FORMAT_FP8, QUANT_FORMAT_INT8) and scaling_mode:
+        settings["scaling_mode"] = scaling_mode
+    if block_size is not None and fmt in {"float8_e4m3fn_blockwise", "int8_blockwise"}:
+        settings["block_size"] = int(block_size)
+
+    return settings, suffix
+
+
+def _write_krea2_layer_config_for_params(params: Dict[str, object]) -> str:
+    base_settings, suffix = _krea2_layer_config_settings(params)
+    config: Dict[str, Dict[str, object]] = {}
+    use_fp8_precision_flags = params.get("quant_format") == QUANT_FORMAT_FP8
+
+    for pattern, extra_settings in KREA2_LAYER_CONFIG_PATTERNS:
+        settings = dict(base_settings)
+        if use_fp8_precision_flags:
+            settings.update(extra_settings)
+        config[pattern] = settings
+
+    os.makedirs(KREA2_GENERATED_LAYER_CONFIG_DIR, exist_ok=True)
+    path = os.path.join(KREA2_GENERATED_LAYER_CONFIG_DIR, f"krea2_{suffix}_layer_config.json")
+    existing = None
+    if os.path.isfile(path):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                existing = json.load(f)
+        except Exception:
+            existing = None
+    if existing != config:
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=2)
+            f.write("\n")
+    return path
+
+
 def _clear_incompatible_model_settings(selected_model: str, settings: Dict[str, object]) -> None:
     if settings.get("quant_format") == QUANT_FORMAT_FP8:
         return
     if _is_fp8_only_layer_config(settings.get("layer_config_path")):
         settings["layer_config_path"] = ""
         settings["layer_config_fullmatch"] = False
-    if selected_model == "krea2" and settings.get("exclude_layers") == KREA2_EXCLUDE_LAYERS:
-        settings["exclude_layers"] = ""
 
 OUTPUT_MODE_FULL = "Full (all logs)"
 OUTPUT_MODE_COMPACT = "Compact (hide progress bars)"
@@ -461,7 +567,7 @@ Model-specific notes from upstream issues:
 - Z-Image and Anima (Base/Turbo): avoid NVFP4 as the default route; issue reports showed noisy output. Use FP8 Compatibility first.
 - Boogu-Image: use the Boogu-Image preset, which applies the known exclusion regex for image/reference embedding layers.
 - ERNIE Image: use the ERNIE preset, which applies the tested exclusion regex.
-- Krea 2 Raw/Turbo: the Krea 2 preset starts on Normal (Balanced): learned FP8 tensor scaling, Krea-specific projection/time/final-layer exclusions, metadata, and low-memory. Local SwarmUI tests showed Krea 2 FP8 tensor output stayed good while FP8 blockwise and INT8 blockwise degraded when Q/K/V and MLP gate/up were block-quantized. For FP8 runs, the bundled layer config keeps all eight main per-block attention/MLP projections on FP8 tensor scaling, with full-precision matrix multiplication only on gate/output/down projections. Switch Quality Preset to Fast only when you specifically want the simpler official-style FP8 route.
+- Krea 2 Raw/Turbo: the Krea 2 preset starts on Normal (Balanced): learned FP8 tensor scaling, Krea-specific projection/time/final-layer exclusions, metadata, and low-memory. Local SwarmUI tests showed Krea 2 FP8 tensor output stayed good while FP8 blockwise and INT8 blockwise degraded when Q/K/V and MLP gate/up were block-quantized. The GUI applies the same Krea 2 attention/MLP regex scope for FP8, INT8, MXFP8, and NVFP4 by generating a matching layer config at run time; FP8 keeps full-precision matrix multiplication only on gate/output/down projections. Switch Quality Preset to Fast only when you specifically want the simpler official-style FP8 route.
 - ComfyUI-QuantOps: load these exports with QuantOps quantized loader nodes or a patched QuantOps stock-loader auto integration. Keep metadata enabled so QuantOps can identify tensor, row, block, MXFP8, and NVFP4 layouts instead of guessing from scales.
 - INT8 Blockwise requires QuantOps runtime support. Stock ComfyUI `Load Diffusion Model` and SwarmUI's normal model dropdown need a QuantOps stock-loader auto patch; otherwise use the QuantOps quantized loader nodes.
 - INT8 Tensorwise and ConvRot require the custom comfy-kitchen INT8 build plus `--enable-triton-backend`; without that, expect fallback behavior or load failure.
@@ -641,7 +747,7 @@ MODEL_PRESET_SETTINGS.update({
         "simple": False,
         "skip_inefficient_layers": False,
         "exclude_layers": KREA2_EXCLUDE_LAYERS,
-        "layer_config_path": KREA2_LAYER_CONFIG_PATH,
+        "layer_config_path": "",
         "layer_config_fullmatch": False,
         "convrot": False,
         "convrot_group_size": 256,
@@ -1268,6 +1374,8 @@ class ModelQuantizer:
         output_path: Optional[str],
         params: Dict[str, object],
     ) -> List[str]:
+        params = copy.deepcopy(params)
+        self._apply_managed_layer_config(params)
         cmd = self._base_cmd()
         cmd += ["-i", input_path]
         if output_path:
@@ -1474,9 +1582,37 @@ class ModelQuantizer:
 
         return cmd
 
+    def _apply_managed_layer_config(self, params: Dict[str, object]) -> None:
+        if params.get("workflow") != WORKFLOW_QUANTIZE:
+            return
+
+        model_preset = _model_preset_value(str(params.get(MODEL_PRESET_FIELD) or MODEL_PRESET_NONE))
+        layer_config_path = params.get("layer_config_path")
+
+        if model_preset == "krea2":
+            if not layer_config_path or _is_krea2_managed_layer_config(layer_config_path):
+                params["layer_config_path"] = _write_krea2_layer_config_for_params(params)
+                params["layer_config_fullmatch"] = False
+            return
+
+        if params.get("quant_format") != QUANT_FORMAT_FP8 and _is_fp8_only_layer_config(layer_config_path):
+            params["layer_config_path"] = ""
+            params["layer_config_fullmatch"] = False
+
     def _validate_quantization_params(self, params: Dict[str, object]) -> Optional[str]:
         if params.get("workflow") != WORKFLOW_QUANTIZE:
             return None
+        model_preset = _model_preset_value(str(params.get(MODEL_PRESET_FIELD) or MODEL_PRESET_NONE))
+        layer_config_path = params.get("layer_config_path")
+        if (
+            params.get("quant_format") != QUANT_FORMAT_FP8
+            and _is_fp8_only_layer_config(layer_config_path)
+            and model_preset != "krea2"
+        ):
+            return (
+                "The selected layer config is FP8-only, but the selected quantization format is not FP8. "
+                "Clear Layer Config JSON or select the Krea 2 model preset so the GUI can generate a matching config."
+            )
         if params.get("simple"):
             return None
         if params.get("optimizer") != "prodigy":
@@ -2404,6 +2540,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         actcal_lora_value,
         actcal_seed_value,
         actcal_device_value,
+        model_preset_primary_value,
+        model_preset_other_value,
         filter_values: Dict[str, bool],
     ) -> Dict[str, object]:
         normalized_scaling_mode = _coerce_scaling_mode_for_format(
@@ -2502,6 +2640,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             "actcal_lora": actcal_lora_value.strip() if isinstance(actcal_lora_value, str) else actcal_lora_value,
             "actcal_seed": _to_int(actcal_seed_value, None),
             "actcal_device": actcal_device_value.strip() if isinstance(actcal_device_value, str) else actcal_device_value,
+            MODEL_PRESET_FIELD: _visible_model_preset_value(model_preset_primary_value, model_preset_other_value),
             "model_filters": filter_values,
         }
 
@@ -3011,6 +3150,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         actcal_lora,
         actcal_seed,
         actcal_device,
+        model_preset_primary_dropdown,
+        model_preset_other_dropdown,
     ] + list(filter_checkboxes.values())
 
     def _run_single(
