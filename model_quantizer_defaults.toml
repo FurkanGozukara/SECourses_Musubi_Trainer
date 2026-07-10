@@ -7,6 +7,11 @@ model_quantizer.block_size = 64
 model_quantizer.include_input_scale = false
 model_quantizer.convrot = false
 model_quantizer.convrot_group_size = 256
+model_quantizer.dynamic_convrot = false
+
+model_quantizer.custom_full_precision_mm = false
+model_quantizer.custom_convrot = false
+model_quantizer.custom_convrot_group_size = 256
 
 model_quantizer.simple = false
 model_quantizer.skip_inefficient_layers = false

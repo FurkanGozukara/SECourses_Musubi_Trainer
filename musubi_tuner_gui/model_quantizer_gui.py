@@ -223,6 +223,7 @@ FORMAT_DEFAULTS = {
         "block_size": None,
         "convrot": False,
         "convrot_group_size": 256,
+        "dynamic_convrot": False,
         "low_memory": True,
         "save_quant_metadata": True,
     },
@@ -233,6 +234,7 @@ FORMAT_DEFAULTS = {
         "block_size": 128,
         "convrot": False,
         "convrot_group_size": 256,
+        "dynamic_convrot": False,
         "low_memory": True,
         "save_quant_metadata": True,
     },
@@ -243,6 +245,7 @@ FORMAT_DEFAULTS = {
         "block_size": None,
         "convrot": False,
         "convrot_group_size": 256,
+        "dynamic_convrot": False,
         "low_memory": True,
         "save_quant_metadata": True,
     },
@@ -253,6 +256,7 @@ FORMAT_DEFAULTS = {
         "block_size": None,
         "convrot": False,
         "convrot_group_size": 256,
+        "dynamic_convrot": False,
         "low_memory": True,
         "save_quant_metadata": True,
     },
@@ -299,6 +303,7 @@ def _load_model_filters() -> Dict[str, Dict[str, object]]:
 
     log.warning("Could not import convert_to_quant MODEL_FILTERS: %s", " | ".join(import_errors))
     return {
+        "gemma4": {"help": "Gemma 4 text/multimodal model", "category": "text"},
         "qwen35": {"help": "Qwen2.5 text/multimodal model", "category": "text"},
         "t5xxl": {"help": "T5-XXL text encoder", "category": "text"},
         "mistral": {"help": "Mistral text encoder", "category": "text"},
@@ -314,12 +319,15 @@ def _load_model_filters() -> Dict[str, Dict[str, object]]:
         "nerf_large": {"help": "NeRF (large)", "category": "diffusion"},
         "nerf_small": {"help": "NeRF (small)", "category": "diffusion"},
         "radiance": {"help": "Radiance diffusion", "category": "diffusion"},
+        "krea2": {"help": "Krea 2 diffusion model", "category": "diffusion"},
+        "ideogram4": {"help": "Ideogram 4 diffusion model", "category": "diffusion"},
         "wan": {"help": "WAN video model", "category": "video"},
         "hunyuan": {"help": "Hunyuan video model", "category": "video"},
         "ltx2": {"help": "LTX v2 / v2.3 video model", "category": "video"},
         "ltx2_3": {"help": "LTX 2.3 video model", "category": "video"},
         "ltxv2": {"help": "LTXv2 video model", "category": "video"},
         "qwen": {"help": "Qwen Image", "category": "image"},
+        "boogu": {"help": "Boogu-Image", "category": "image"},
         "ernie_image": {"help": "ERNIE Image diffusion transformer", "category": "image"},
         "zimage": {"help": "Z-Image", "category": "image"},
         "zimage_refiner": {"help": "Z-Image Refiner", "category": "image"},
@@ -341,8 +349,10 @@ MODEL_PRESET_DISPLAY_NAMES = {
     "flux1": "FLUX.1",
     "flux2": "FLUX.2",
     "flux_klein": "FLUX 2 Klein Models",
+    "gemma4": "Gemma 4 Text/Multimodal",
     "generic_text": "Generic Text Encoder",
     "hunyuan": "Hunyuan Video 1.5",
+    "ideogram4": "Ideogram 4",
     "krea2": "Krea 2 (Raw/Turbo)",
     "lens": "Microsoft LENS",
     "ltxv2": "LTX (2 / 2.3)",
@@ -373,7 +383,7 @@ MODEL_PRESET_LEGACY_LABELS = {
     "Qwen Image / Edit": "qwen",
     "WAN Video": "wan",
 }
-REGEX_ONLY_MODEL_PRESETS = {"boogu", "ernie_image", "krea2"}
+REGEX_ONLY_MODEL_PRESETS = {"ernie_image"}
 GUI_ONLY_MODEL_PRESETS = {"flux1", "flux_klein"}
 PRIMARY_MODEL_PRESET_VALUES = {
     "anima",
@@ -381,7 +391,9 @@ PRIMARY_MODEL_PRESET_VALUES = {
     "ernie_image",
     "flux1",
     "flux2",
+    "gemma4",
     "hunyuan",
+    "ideogram4",
     "krea2",
     "lens",
     "ltxv2",
@@ -419,6 +431,12 @@ BLOCK_SIZE_INFO = (
     "but more scale overhead and sometimes more memory/runtime cost. Larger blocks reduce scale overhead, but usually "
     "reduce quality. Common starting points: FP8 block-wise 64, INT8 block-wise 128. INT8 block-wise layers must "
     "also be divisible by the chosen block size."
+)
+
+DYNAMIC_CONVROT_INFO = (
+    "Lets convert_to_quant choose the largest compatible power-of-4 ConvRot group for each INT8 row-wise layer. "
+    "The group size is treated as the minimum (upstream default: 256). Dynamic ConvRot also enables ConvRot, and "
+    "is ignored for formats or scaling modes other than INT8 row-wise."
 )
 
 SCALING_MODE_CHOICES = ["tensor", "row", "block"]
@@ -549,8 +567,8 @@ Practical note:
 QUALITY_GUIDANCE_MD = """
 ### Default route
 
-The default preset is tuned to avoid OOM first: simple FP8, low-memory streaming, and quant metadata enabled.
-This is the safest starting point for very large checkpoints or smaller GPUs.
+The default Normal preset uses learned FP8 tensor scaling, low-memory streaming, and quant metadata. Use Fast when
+you need the lowest-memory simple-quantization route for very large checkpoints or smaller GPUs.
 
 ### Higher quality route
 
@@ -569,9 +587,12 @@ Model-specific notes from upstream issues:
 - Qwen Image / Edit (2509, 2511, 2512): use FP8 Scaled or Compatibility, keep full precision matrix multiplication enabled, and do not use Simple for best quality.
 - FLUX.1: use the FLUX.1 preset for the modern equivalent of Comfy's scaled-FP8 reference: FP8 E4M3 tensor scaling, `.comfy_quant`, quant metadata, low-memory, full precision matrix multiplication, and input_scale tensors. The old public Comfy checkpoint uses legacy `scaled_fp8` tensors without metadata; new exports should keep metadata enabled.
 - Z-Image and Anima (Base/Turbo): avoid NVFP4 as the default route; issue reports showed noisy output. Use FP8 Compatibility first.
-- Boogu-Image: use the Boogu-Image preset, which applies the known exclusion regex for image/reference embedding layers.
+- Boogu-Image: use the Boogu-Image preset, which combines upstream high-precision filters with the known exclusion regex for image/reference embedding layers.
 - ERNIE Image: use the ERNIE preset, which applies the tested exclusion regex.
-- Krea 2 Raw/Turbo: the Krea 2 preset starts on Normal (Balanced): learned FP8 tensor scaling, Krea-specific projection/time/final-layer exclusions, metadata, and low-memory. Local SwarmUI tests showed Krea 2 FP8 tensor output stayed good while FP8 blockwise and INT8 blockwise degraded when Q/K/V and MLP gate/up were block-quantized. The GUI applies the same Krea 2 attention/MLP regex scope for FP8, INT8, MXFP8, and NVFP4 by generating a matching layer config at run time; FP8 keeps full-precision matrix multiplication only on gate/output/down projections. Switch Quality Preset to Fast only when you specifically want the simpler official-style FP8 route.
+- Gemma 4 and Ideogram 4: upstream v1.3 adds dedicated model filters; choose their model presets instead of manually reproducing the exclusion lists.
+- Krea 2 Raw/Turbo: the Krea 2 preset starts on Normal (Balanced): learned FP8 tensor scaling, upstream Krea filters, Krea-specific projection/time/final-layer exclusions, metadata, and low-memory. Local SwarmUI tests showed Krea 2 FP8 tensor output stayed good while FP8 blockwise and INT8 blockwise degraded when Q/K/V and MLP gate/up were block-quantized. The GUI applies the same Krea 2 attention/MLP regex scope for FP8, INT8, MXFP8, and NVFP4 by generating a matching layer config at run time; FP8 keeps full-precision matrix multiplication only on gate/output/down projections. Switch Quality Preset to Fast only when you specifically want the simpler official-style FP8 route.
+- INT8 ConvRot: the ConvRot preset enables upstream dynamic group sizing, using 256 as the minimum and selecting the largest compatible group per layer. Disable Dynamic ConvRot only when you need a fixed group size.
+- Mixed-layer recipes: custom layers can independently enable full-precision matrix multiplication metadata and fixed-size ConvRot. Custom ConvRot is meaningful for custom INT8 row-wise layers.
 - ComfyUI-QuantOps: load these exports with QuantOps quantized loader nodes or a patched QuantOps stock-loader auto integration. Keep metadata enabled so QuantOps can identify tensor, row, block, MXFP8, and NVFP4 layouts instead of guessing from scales.
 - INT8 Blockwise requires QuantOps runtime support. Stock ComfyUI `Load Diffusion Model` and SwarmUI's normal model dropdown need a QuantOps stock-loader auto patch; otherwise use the QuantOps quantized loader nodes.
 - INT8 Tensorwise and ConvRot require the custom comfy-kitchen INT8 build plus `--enable-triton-backend`; without that, expect fallback behavior or load failure.
@@ -946,6 +967,7 @@ PRESET_OVERRIDES = {
         "block_size": 128,
         "convrot": True,
         "convrot_group_size": 256,
+        "dynamic_convrot": True,
         "layer_config_path": "",
         "layer_config_fullmatch": False,
         "simple": True,
@@ -1030,12 +1052,16 @@ PRESET_BASE_SETTINGS = {
     "block_size": None,
     "convrot": False,
     "convrot_group_size": 256,
+    "dynamic_convrot": False,
     "exclude_layers": "",
     "custom_type": None,
     "custom_block_size": None,
     "custom_scaling_mode": None,
     "custom_simple": False,
     "custom_heur": False,
+    "custom_full_precision_mm": False,
+    "custom_convrot": False,
+    "custom_convrot_group_size": 256,
     "fallback_type": None,
     "fallback_block_size": None,
     "fallback_simple": False,
@@ -1058,6 +1084,7 @@ for _preset_settings in PRESET_OVERRIDES.values():
     _preset_settings.setdefault("comfy_quant", SAFE_RUNTIME_DEFAULTS["comfy_quant"])
     _preset_settings.setdefault("convrot", False)
     _preset_settings.setdefault("convrot_group_size", 256)
+    _preset_settings.setdefault("dynamic_convrot", False)
 
 
 def _combined_preset_settings(
@@ -1105,6 +1132,13 @@ def _to_optional_positive_int(value, default: Optional[int] = None) -> Optional[
     if parsed is None:
         return default
     return parsed if parsed > 0 else default
+
+
+def _is_power_of_four(value) -> bool:
+    parsed = _to_int(value, None)
+    if parsed is None or parsed < 4 or parsed & (parsed - 1):
+        return False
+    return (parsed.bit_length() - 1) % 2 == 0
 
 
 def _to_float(value, default: Optional[float]) -> Optional[float]:
@@ -1479,8 +1513,10 @@ class ModelQuantizer:
             cmd.append("--input_scale")
         if params.get("convrot"):
             cmd.append("--convrot")
-            if params.get("convrot_group_size") is not None:
-                cmd += ["--convrot-group-size", str(params.get("convrot_group_size"))]
+        if params.get("dynamic_convrot"):
+            cmd.append("--dynamic-convrot")
+        if (params.get("convrot") or params.get("dynamic_convrot")) and params.get("convrot_group_size") is not None:
+            cmd += ["--convrot-group-size", str(params.get("convrot_group_size"))]
 
         if params.get("scaling_mode"):
             cmd += ["--scaling_mode", str(params.get("scaling_mode"))]
@@ -1501,6 +1537,12 @@ class ModelQuantizer:
             cmd.append("--custom-simple")
         if params.get("custom_heur"):
             cmd.append("--custom-heur")
+        if params.get("custom_full_precision_mm"):
+            cmd.append("--custom-full-precision-mm")
+        if params.get("custom_convrot"):
+            cmd.append("--custom-convrot")
+            if params.get("custom_convrot_group_size") is not None:
+                cmd += ["--custom-convrot-group-size", str(params.get("custom_convrot_group_size"))]
 
         if params.get("fallback_type"):
             cmd += ["--fallback", str(params.get("fallback_type"))]
@@ -1606,6 +1648,14 @@ class ModelQuantizer:
     def _validate_quantization_params(self, params: Dict[str, object]) -> Optional[str]:
         if params.get("workflow") != WORKFLOW_QUANTIZE:
             return None
+        if params.get("convrot") or params.get("dynamic_convrot"):
+            group_size = params.get("convrot_group_size")
+            if not _is_power_of_four(group_size):
+                return "ConvRot Group Size must be a power of 4 (for example 4, 16, 64, 256, or 1024)."
+            if params.get("dynamic_convrot") and int(group_size) < 256:
+                return "Dynamic ConvRot Group Size must be at least 256."
+        if params.get("custom_convrot") and not _is_power_of_four(params.get("custom_convrot_group_size")):
+            return "Custom ConvRot Group Size must be a power of 4 (for example 4, 16, 64, 256, or 1024)."
         model_preset = _model_preset_value(str(params.get(MODEL_PRESET_FIELD) or MODEL_PRESET_NONE))
         layer_config_path = params.get("layer_config_path")
         if (
@@ -2044,7 +2094,12 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         label="ConvRot Group Size",
                         value=config.get("model_quantizer.convrot_group_size", 256),
                         step=1,
-                        info="Power-of-4 group size for ConvRot. Upstream default is 256.",
+                        info="Fixed group size, or the minimum group size when Dynamic ConvRot is enabled.",
+                    )
+                    dynamic_convrot = gr.Checkbox(
+                        label="Dynamic ConvRot Group Size",
+                        value=config.get("model_quantizer.dynamic_convrot", False),
+                        info=DYNAMIC_CONVROT_INFO,
                     )
 
             with gr.Accordion("Model Filters", open=False) as model_filter_group:
@@ -2108,6 +2163,25 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     custom_heur = gr.Checkbox(
                         label="Custom: Heuristics",
                         value=config.get("model_quantizer.custom_heur", False),
+                    )
+                    custom_full_precision_mm = gr.Checkbox(
+                        label="Custom: Full precision matrix mult",
+                        value=config.get("model_quantizer.custom_full_precision_mm", False),
+                        info="Writes full_precision_matrix_mult=true only for matching custom layers.",
+                    )
+
+                with gr.Row():
+                    custom_convrot = gr.Checkbox(
+                        label="Custom: ConvRot",
+                        value=config.get("model_quantizer.custom_convrot", False),
+                        info="Applies fixed-size ConvRot to matching custom INT8 row-wise layers.",
+                    )
+                    custom_convrot_group_size = gr.Number(
+                        label="Custom ConvRot Group Size",
+                        value=config.get("model_quantizer.custom_convrot_group_size", 256),
+                        step=1,
+                        interactive=bool(config.get("model_quantizer.custom_convrot", False)),
+                        info="Power-of-4 group size for custom-layer ConvRot. Upstream default is 256.",
                     )
 
                 with gr.Row():
@@ -2487,6 +2561,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         include_input_scale_value,
         convrot_value,
         convrot_group_size_value,
+        dynamic_convrot_value,
         custom_layers_value,
         exclude_layers_value,
         custom_type_value,
@@ -2494,6 +2569,9 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         custom_scaling_mode_value,
         custom_simple_value,
         custom_heur_value,
+        custom_full_precision_mm_value,
+        custom_convrot_value,
+        custom_convrot_group_size_value,
         fallback_type_value,
         fallback_block_size_value,
         fallback_simple_value,
@@ -2587,6 +2665,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             "include_input_scale": bool(include_input_scale_value),
             "convrot": bool(convrot_value),
             "convrot_group_size": _to_int(convrot_group_size_value, 256),
+            "dynamic_convrot": bool(dynamic_convrot_value),
             "custom_layers": custom_layers_value.strip() if isinstance(custom_layers_value, str) else custom_layers_value,
             "exclude_layers": exclude_layers_value.strip() if isinstance(exclude_layers_value, str) else exclude_layers_value,
             "custom_type": custom_type_value,
@@ -2594,6 +2673,9 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             "custom_scaling_mode": custom_scaling_mode_normalized,
             "custom_simple": bool(custom_simple_value),
             "custom_heur": bool(custom_heur_value),
+            "custom_full_precision_mm": bool(custom_full_precision_mm_value),
+            "custom_convrot": bool(custom_convrot_value),
+            "custom_convrot_group_size": _to_int(custom_convrot_group_size_value, 256),
             "fallback_type": fallback_type_value,
             "fallback_block_size": fallback_block_size_normalized,
             "fallback_simple": bool(fallback_simple_value),
@@ -2659,12 +2741,16 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         "block_size",
         "convrot",
         "convrot_group_size",
+        "dynamic_convrot",
         "exclude_layers",
         "custom_type",
         "custom_block_size",
         "custom_scaling_mode",
         "custom_simple",
         "custom_heur",
+        "custom_full_precision_mm",
+        "custom_convrot",
+        "custom_convrot_group_size",
         "fallback_type",
         "fallback_block_size",
         "fallback_simple",
@@ -2709,12 +2795,16 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         block_size,
         convrot,
         convrot_group_size,
+        dynamic_convrot,
         exclude_layers,
         custom_type,
         custom_block_size,
         custom_scaling_mode,
         custom_simple,
         custom_heur,
+        custom_full_precision_mm,
+        custom_convrot,
+        custom_convrot_group_size,
         fallback_type,
         fallback_block_size,
         fallback_simple,
@@ -2792,6 +2882,13 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 updates.append(gr.update(value=None, interactive=False))
             elif name == "custom_block_size" and "custom_type" in overrides:
                 updates.append(gr.update(value=overrides.get(name), interactive=True))
+            elif name == "custom_convrot_group_size" and "custom_convrot" in overrides:
+                updates.append(
+                    gr.update(
+                        value=overrides.get(name, 256),
+                        interactive=bool(overrides.get("custom_convrot")),
+                    )
+                )
             elif name == "fallback_block_size" and (
                 not selected_fallback_type
                 or QUANT_TYPE_TO_FORMAT.get(selected_fallback_type) in FIXED_SCALING_QUANT_FORMATS
@@ -2825,6 +2922,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         "block_size",
         "convrot",
         "convrot_group_size",
+        "dynamic_convrot",
         "low_memory",
         "save_quant_metadata",
     ]
@@ -2835,6 +2933,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         block_size,
         convrot,
         convrot_group_size,
+        dynamic_convrot,
         low_memory,
         save_quant_metadata,
     ]
@@ -2872,18 +2971,18 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
     def _apply_scaling_mode_defaults(selected_scaling: str, selected_format: str):
         selected_scaling = _coerce_scaling_mode_for_format(selected_format, selected_scaling)
         if not _uses_block_size(selected_format, selected_scaling):
-            return gr.update(value=None, interactive=False), gr.update(value=False)
+            return gr.update(value=None, interactive=False), gr.update(value=False), gr.update(value=False)
         if selected_scaling == "block":
             block_default = 128 if selected_format == QUANT_FORMAT_INT8 else 64
-            return gr.update(value=block_default, interactive=True), gr.update(value=False)
+            return gr.update(value=block_default, interactive=True), gr.update(value=False), gr.update(value=False)
         if selected_scaling == "row":
-            return gr.update(value=128, interactive=True), gr.update(value=False)
-        return gr.update(value=None, interactive=False), gr.update(value=False)
+            return gr.update(value=128, interactive=True), gr.update(value=False), gr.update(value=False)
+        return gr.update(value=None, interactive=False), gr.update(value=False), gr.update(value=False)
 
     scaling_mode.input(
         fn=_apply_scaling_mode_defaults,
         inputs=[scaling_mode, quant_format],
-        outputs=[block_size, convrot],
+        outputs=[block_size, convrot, dynamic_convrot],
         show_progress=False,
     )
 
@@ -2930,6 +3029,13 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         fn=_apply_custom_scaling_mode_defaults,
         inputs=[custom_scaling_mode, custom_type],
         outputs=[custom_block_size],
+        show_progress=False,
+    )
+
+    custom_convrot.input(
+        fn=lambda enabled: gr.update(interactive=bool(enabled)),
+        inputs=[custom_convrot],
+        outputs=[custom_convrot_group_size],
         show_progress=False,
     )
 
@@ -3097,6 +3203,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         include_input_scale,
         convrot,
         convrot_group_size,
+        dynamic_convrot,
         custom_layers,
         exclude_layers,
         custom_type,
@@ -3104,6 +3211,9 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         custom_scaling_mode,
         custom_simple,
         custom_heur,
+        custom_full_precision_mm,
+        custom_convrot,
+        custom_convrot_group_size,
         fallback_type,
         fallback_block_size,
         fallback_simple,
@@ -3268,6 +3378,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         "include_input_scale",
         "convrot",
         "convrot_group_size",
+        "dynamic_convrot",
         "custom_layers",
         "exclude_layers",
         "custom_type",
@@ -3275,6 +3386,9 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         "custom_scaling_mode",
         "custom_simple",
         "custom_heur",
+        "custom_full_precision_mm",
+        "custom_convrot",
+        "custom_convrot_group_size",
         "fallback_type",
         "fallback_block_size",
         "fallback_simple",
@@ -3349,6 +3463,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         include_input_scale,
         convrot,
         convrot_group_size,
+        dynamic_convrot,
         custom_layers,
         exclude_layers,
         custom_type,
@@ -3356,6 +3471,9 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         custom_scaling_mode,
         custom_simple,
         custom_heur,
+        custom_full_precision_mm,
+        custom_convrot,
+        custom_convrot_group_size,
         fallback_type,
         fallback_block_size,
         fallback_simple,
@@ -3485,6 +3603,9 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         loaded_custom_scaling_mode = flat.get("custom_scaling_mode")
         if loaded_custom_scaling_mode is None:
             loaded_custom_scaling_mode = flat.get("model_quantizer.custom_scaling_mode")
+        loaded_custom_convrot = flat.get("custom_convrot")
+        if loaded_custom_convrot is None:
+            loaded_custom_convrot = flat.get("model_quantizer.custom_convrot")
         loaded_fallback_type = flat.get("fallback_type")
         if loaded_fallback_type is None:
             loaded_fallback_type = flat.get("model_quantizer.fallback_type")
@@ -3563,6 +3684,14 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         gr.update(
                             value=value,
                             choices=_scaling_mode_choices_for_quant_type(loaded_custom_type),
+                        )
+                    )
+                    continue
+                elif name == "custom_convrot_group_size":
+                    values_out.append(
+                        gr.update(
+                            value=_to_int(value, 256),
+                            interactive=bool(loaded_custom_convrot),
                         )
                     )
                     continue
