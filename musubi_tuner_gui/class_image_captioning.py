@@ -333,6 +333,7 @@ class ImageCaptioning:
         overwrite_existing_captions: bool = False,
         append_existing_captions: bool = False,
         progress: gr.Progress = None,
+        extension: str = ".txt",
         # Generation parameters
         do_sample: bool = True,
         temperature: float = 0.7,
@@ -344,6 +345,12 @@ class ImageCaptioning:
         try:
             # Reset stop flag at the beginning of batch processing
             self.reset_stop_flag()
+
+            caption_extension = str(extension or ".txt").strip()
+            if not caption_extension.startswith("."):
+                caption_extension = "." + caption_extension
+            if caption_extension == "." or any(separator in caption_extension for separator in ("/", "\\")):
+                return False, "Caption extension must be a file suffix such as .txt or .caption.txt"
             
             # Model loading is now handled by the GUI layer
                 
@@ -599,13 +606,13 @@ class ImageCaptioning:
                             rel_dir = os.path.dirname(rel_path)
                             output_subdir = output_dir / rel_dir
                             output_subdir.mkdir(parents=True, exist_ok=True)
-                            text_file_path = output_subdir / f"{image_path_obj.stem}.txt"
+                            text_file_path = output_subdir / f"{image_path_obj.stem}{caption_extension}"
                         else:
                             # No subfolder structure to preserve
-                            text_file_path = output_dir / f"{image_path_obj.stem}.txt"
+                            text_file_path = output_dir / f"{image_path_obj.stem}{caption_extension}"
                     else:
                         # Save alongside image (same directory as image)
-                        text_file_path = image_path_obj.with_suffix(".txt")
+                        text_file_path = image_path_obj.with_suffix(caption_extension)
                     
                     append_to_existing = (
                         text_file_path.exists()

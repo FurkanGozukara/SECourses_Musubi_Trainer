@@ -28,6 +28,7 @@ replace_whole_words_only = true  # Only replace complete words
 # Batch Processing Settings
 batch_image_dir = ""  # Directory containing images for batch processing
 batch_output_folder = ""  # Output folder for caption files (optional, empty = save alongside images)
+extension = ".txt"  # Caption file suffix used in text output mode
 output_format = "text"  # Output format: "text" or "jsonl"
 jsonl_output_file = ""  # Output file path for JSONL format
 scan_subfolders = false  # Include images from all subfolders recursively

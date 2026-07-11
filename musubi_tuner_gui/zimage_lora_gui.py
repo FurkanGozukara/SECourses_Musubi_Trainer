@@ -613,6 +613,9 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
                 "no_metadata",
             ]
         )
+    else:
+        # These options are implemented by zimage_train.py, not the LoRA trainer.
+        exclusion_extra.extend(["mem_eff_save", "fused_backward_pass"])
 
     SaveConfigFileToRun(
         parameters=parameters,
@@ -651,9 +654,18 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
             "zimage_variant",
             "sample_cfg_scale",
             "disable_prompt_enhancement",
+            "sample_output_dir",
+            "sample_width",
+            "sample_height",
+            "sample_steps",
+            "sample_guidance_scale",
+            "sample_seed",
+            "sample_negative_prompt",
             "training_mode",
             "training_adapter_path",
             "training_adapter_multiplier",
+            "additional_parameters",
+            "debug_mode",
             # Cache-only toggle
             "caching_teo_fp8_llm",
         ]
@@ -923,6 +935,8 @@ ZIMAGE_PARAM_KEYS = [
     "metadata_license",
     "metadata_tags",
     "metadata_title",
+    "metadata_reso",
+    "metadata_arch",
     # huggingface
     "huggingface_repo_id",
     "huggingface_token",
@@ -1810,6 +1824,8 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
         metadata.metadata_license,
         metadata.metadata_tags,
         metadata.metadata_title,
+        metadata.metadata_reso,
+        metadata.metadata_arch,
         # huggingface
         huggingface.huggingface_repo_id,
         huggingface.huggingface_token,

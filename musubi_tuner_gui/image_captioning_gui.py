@@ -423,6 +423,7 @@ class ImageCaptioningTab:
                 self.output_format,
                 self.jsonl_output_file,
                 self.batch_output_folder,
+                self.extension,
                 self.scan_subfolders,
                 self.copy_images,
                 self.overwrite_existing_captions,
@@ -510,6 +511,7 @@ class ImageCaptioningTab:
                 self.output_format,
                 self.jsonl_output_file,
                 self.batch_output_folder,
+                self.extension,
                 self.max_new_tokens,
                 self.custom_prompt,
                 self.max_size,
@@ -560,6 +562,7 @@ class ImageCaptioningTab:
                 self.output_format,
                 self.jsonl_output_file,
                 self.batch_output_folder,
+                self.extension,
                 self.scan_subfolders,
                 self.copy_images,
                 self.overwrite_existing_captions,
@@ -593,6 +596,7 @@ class ImageCaptioningTab:
                 self.output_format,
                 self.jsonl_output_file,
                 self.batch_output_folder,
+                self.extension,
                 self.scan_subfolders,
                 self.copy_images,
                 self.overwrite_existing_captions,
@@ -734,8 +738,8 @@ class ImageCaptioningTab:
         
         # If no file was selected, return current state (no changes)
         if not file_path:
-            # Return None for all fields to keep current values (24 fields + status)
-            return (current_path,) + (gr.update(),) * 24 + ("No file selected",)
+            # Return updates for every configurable field plus status.
+            return (current_path,) + (gr.update(),) * 25 + ("No file selected",)
         
         # Check if the selected file exists
         if os.path.isfile(file_path):
@@ -747,8 +751,8 @@ class ImageCaptioningTab:
         else:
             # File doesn't exist - it's a new file path for saving
             log.info(f"New configuration file path selected: {file_path}")
-            # Return the new path but keep all other values unchanged (24 fields + status)
-            return (file_path,) + (gr.update(),) * 24 + (f"Ready to save configuration to: {os.path.basename(file_path)}",)
+            # Return the new path but keep all other values unchanged.
+            return (file_path,) + (gr.update(),) * 25 + (f"Ready to save configuration to: {os.path.basename(file_path)}",)
     
     def batch_caption_wrapper(
         self,
@@ -756,6 +760,7 @@ class ImageCaptioningTab:
         output_format: str,
         jsonl_output_file: str,
         output_folder: str,
+        extension: str,
         max_new_tokens: int,
         custom_prompt: str,
         max_size: int,
@@ -790,7 +795,7 @@ class ImageCaptioningTab:
         
         # Call the actual batch processing method
         result = self.batch_caption_images(
-            image_dir, output_format, jsonl_output_file, output_folder, max_new_tokens,
+            image_dir, output_format, jsonl_output_file, output_folder, extension, max_new_tokens,
             custom_prompt, max_size, fp8_vl, prefix, suffix, replace_words,
             replace_case_insensitive, replace_whole_words_only, scan_subfolders,
             copy_images, overwrite_existing_captions, append_existing_captions, model_path,
@@ -806,6 +811,7 @@ class ImageCaptioningTab:
         output_format: str,
         jsonl_output_file: str,
         output_folder: str,
+        extension: str,
         max_new_tokens: int,
         custom_prompt: str,
         max_size: int,
@@ -867,7 +873,7 @@ class ImageCaptioningTab:
             image_dir, output_format, jsonl_output_file, output_folder, max_new_tokens,
             prompt, max_size, fp8_vl, prefix, suffix, replace_words, replace_case_insensitive,
             replace_whole_words_only, scan_subfolders, copy_images, overwrite_existing_captions,
-            append_existing_captions, progress,
+            append_existing_captions, progress, extension,
             do_sample, temperature, top_k, top_p, repetition_penalty
         )
         
@@ -922,6 +928,7 @@ class ImageCaptioningTab:
         output_format: str,
         jsonl_output_file: str,
         batch_output_folder: str,
+        extension: str,
         scan_subfolders: bool,
         copy_images: bool,
         overwrite_existing_captions: bool,
@@ -960,6 +967,7 @@ class ImageCaptioningTab:
                     "output_format": output_format,
                     "jsonl_output_file": jsonl_output_file,
                     "batch_output_folder": batch_output_folder,
+                    "extension": extension,
                     "scan_subfolders": scan_subfolders,
                     "copy_images": copy_images,
                     "overwrite_existing_captions": overwrite_existing_captions,
@@ -987,13 +995,13 @@ class ImageCaptioningTab:
             # Show success message with timestamp
             config_name = os.path.basename(config_file_path)
             save_time = datetime.now().strftime("%I:%M:%S %p")  # Format: 01:32:23 PM
-            success_msg = f"✅ Configuration saved successfully to: {config_name} - Saved at {save_time}"
+            success_msg = f"Configuration saved successfully to: {config_name} - Saved at {save_time}"
             log.info(success_msg)
             gr.Info(success_msg)
             
             return config_file_path, success_msg
         except Exception as e:
-            error_msg = f"❌ Error saving configuration: {str(e)}"
+            error_msg = f"Error saving configuration: {str(e)}"
             log.error(error_msg)
             gr.Error(error_msg)
             return config_file_path, error_msg
@@ -1001,13 +1009,13 @@ class ImageCaptioningTab:
     def load_configuration(self, config_file_path: str) -> Tuple:
         """Load configuration from file"""
         if not config_file_path:
-            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, False, True, 0.7, 50, 0.95, 1.05, False, "Please provide a configuration file path"
+            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", ".txt", False, False, False, False, True, 0.7, 50, 0.95, 1.05, False, "Please provide a configuration file path"
         
         if not os.path.isfile(config_file_path):
-            error_msg = f"❌ Configuration file does not exist: {config_file_path}"
+            error_msg = f"Configuration file does not exist: {config_file_path}"
             log.error(error_msg)
             gr.Error(error_msg)
-            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, False, True, 0.7, 50, 0.95, 1.05, False, error_msg
+            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", ".txt", False, False, False, False, True, 0.7, 50, 0.95, 1.05, False, error_msg
         
         try:
             import toml
@@ -1019,7 +1027,7 @@ class ImageCaptioningTab:
             
             # Show success message with Gradio Info
             config_name = os.path.basename(config_file_path)
-            success_msg = f"✅ Configuration loaded successfully from: {config_name}"
+            success_msg = f"Configuration loaded successfully from: {config_name}"
             log.info(success_msg)
             gr.Info(success_msg)
             
@@ -1038,6 +1046,7 @@ class ImageCaptioningTab:
                 captioning_config.get("output_format", "text"),
                 captioning_config.get("jsonl_output_file", ""),
                 captioning_config.get("batch_output_folder", ""),
+                captioning_config.get("extension", ".txt"),
                 captioning_config.get("scan_subfolders", False),
                 captioning_config.get("copy_images", False),
                 captioning_config.get("overwrite_existing_captions", False),
@@ -1052,10 +1061,10 @@ class ImageCaptioningTab:
                 success_msg,
             )
         except Exception as e:
-            error_msg = f"❌ Error loading configuration: {str(e)}"
+            error_msg = f"Error loading configuration: {str(e)}"
             log.error(error_msg)
             gr.Error(error_msg)
-            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", False, False, False, False, True, 0.7, 50, 0.95, 1.05, False, error_msg
+            return "", False, 1280, 1024, "", "", "", True, True, "", "", "text", "", "", ".txt", False, False, False, False, True, 0.7, 50, 0.95, 1.05, False, error_msg
 
 
 def image_captioning_tab(headless: bool = False, config: GUIConfig = None) -> None:

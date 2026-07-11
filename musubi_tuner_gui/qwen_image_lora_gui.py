@@ -1324,6 +1324,8 @@ def qwen_image_gui_actions(
     metadata_license,
     metadata_tags,
     metadata_title,
+    metadata_reso,
+    metadata_arch,
 ):
     # Define numeric fields that should never be lists
     # NOTE: Exclude fields that are legitimately lists like optimizer_args, lr_scheduler_args, network_args
@@ -1663,6 +1665,9 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
 
             if key == "network_module" and toml_value is not None:
                 toml_value = normalize_qwen_image_network_module(toml_value)
+
+            if key == "resume_from_huggingface" and not toml_value:
+                toml_value = ""
 
             # Fill model_version from legacy flags if missing
             if key == "model_version" and (toml_value is None or str(toml_value).strip() == ""):
@@ -2514,52 +2519,17 @@ def train_qwen_image_model(headless, print_only, parameters):
         # Upstream musubi-tuner will set the correct custom architecture automatically from model_version
         # when metadata_arch is not provided by the user.
         
-        # Handle use_pinned_memory_for_block_swap checkbox: check if parameter exists in training script
+        # This flag is defined by the shared backend parser used by both Qwen trainers.
+        # Do not source-scan an architecture script: the declaration lives in parser_common.py.
         use_pinned_memory_enabled = param_dict.get("use_pinned_memory_for_block_swap", False)
         log.info(f"use_pinned_memory_for_block_swap checkbox value: {use_pinned_memory_enabled}")
-        
-        # Check if the parameter is supported by the training script
-        # The parameter is defined in hv_train_network.py (base training module used by Qwen Image)
-        # Get project directory (parent of musubi_tuner_gui module)
-        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        
-        # Check both musubi-tuner and musubi-tuner2 directories (in case user is on a branch)
-        possible_paths = [
-            os.path.join(project_dir, "musubi-tuner", "src", "musubi_tuner", "hv_train_network.py"),
-            os.path.join(project_dir, "musubi-tuner2", "src", "musubi_tuner", "hv_train_network.py"),
-        ]
-        
-        parameter_supported = False
-        
-        for training_script_path in possible_paths:
-            try:
-                if os.path.exists(training_script_path):
-                    log.info(f"Checking for parameter support in: {training_script_path}")
-                    with open(training_script_path, "r", encoding="utf-8") as f:
-                        script_content = f.read()
-                        # Check for the parameter (with underscores or dashes)
-                        if "use_pinned_memory_for_block_swap" in script_content or "use-pinned-memory-for-block-swap" in script_content:
-                            parameter_supported = True
-                            log.info(f"Found use_pinned_memory_for_block_swap parameter in {training_script_path}")
-                            break
-                        else:
-                            log.info(f"Parameter not found in {training_script_path}")
-            except Exception as e:
-                log.warning(f"Could not check training script for parameter support: {e}")
-        
-        if not parameter_supported:
-            log.info("use_pinned_memory_for_block_swap parameter not found in any training script")
-        
-        if use_pinned_memory_enabled and parameter_supported:
+
+        if use_pinned_memory_enabled:
             parameters = upsert_parameter(parameters, "use_pinned_memory_for_block_swap", True)
             log.info("Added use_pinned_memory_for_block_swap = True to TOML parameters")
         else:
-            # Remove use_pinned_memory_for_block_swap if it exists (so it won't be saved to TOML)
             parameters = [(k, v) for k, v in parameters if k != "use_pinned_memory_for_block_swap"]
-            if use_pinned_memory_enabled and not parameter_supported:
-                log.info("use_pinned_memory_for_block_swap is not supported by the current training script version. Skipping.")
-            else:
-                log.info("Removed use_pinned_memory_for_block_swap from TOML parameters")
+            log.info("Removed use_pinned_memory_for_block_swap from TOML parameters")
         
         # Verify parameters are in the list before saving
         disable_numpy_memmap_in_params = any(k == "disable_numpy_memmap" for k, v in parameters)
@@ -2571,8 +2541,53 @@ def train_qwen_image_model(headless, print_only, parameters):
         for key, _ in parameters:
             if key.startswith('caching_latent_') or key.startswith('caching_teo_'):
                 pattern_exclusion.append(key)
-        
-        # Also exclude training_mode from the TOML as it's not a training parameter
+
+        # These controls drive GUI preprocessing, command construction, or post-run
+        # conversion. They are not arguments accepted by either Qwen trainer.
+        gui_only_exclusion = [
+            "additional_parameters",
+            "debug_mode",
+            "dataset_config_mode",
+            "parent_folder_path",
+            "dataset_resolution_width",
+            "dataset_resolution_height",
+            "dataset_caption_extension",
+            "create_missing_captions",
+            "caption_strategy",
+            "dataset_batch_size",
+            "dataset_enable_bucket",
+            "dataset_bucket_no_upscale",
+            "dataset_cache_directory",
+            "dataset_control_directory",
+            "dataset_qwen_image_edit_no_resize_control",
+            "dataset_qwen_image_edit_control_resolution_width",
+            "dataset_qwen_image_edit_control_resolution_height",
+            "auto_generate_black_control_images",
+            "generated_toml_path",
+            "sample_output_dir",
+            "disable_prompt_enhancement",
+            "sample_width",
+            "sample_height",
+            "sample_steps",
+            "sample_guidance_scale",
+            "sample_seed",
+            "sample_discrete_flow_shift",
+            "sample_cfg_scale",
+            "sample_negative_prompt",
+            "dit_dtype",
+            "dit_in_channels",
+            "text_encoder_dtype",
+            "flow_shift",
+            "faster_model_loading",
+            "custom_network_module",
+            "convert_to_diffusers",
+            "diffusers_output_dir",
+            "convert_to_safetensors",
+            "safetensors_output_dir",
+        ]
+        if training_mode != "DreamBooth Fine-Tuning":
+            # mem_eff_save belongs to qwen_image_train.py, not the LoRA trainer.
+            gui_only_exclusion.append("mem_eff_save")
 
         SaveConfigFileToRun(
             parameters=parameters,
@@ -2594,7 +2609,7 @@ def train_qwen_image_model(headless, print_only, parameters):
                 "dynamo_use_dynamic",
                 "extra_accelerate_launch_args",
                 "training_mode",  # Exclude training_mode as it's GUI-only
-            ] + pattern_exclusion,
+            ] + pattern_exclusion + gui_only_exclusion,
             mandatory_keys=["dataset_config", "dit", "vae", "text_encoder"],
         )
         
@@ -2641,8 +2656,7 @@ def train_qwen_image_model(headless, print_only, parameters):
         if resolved_model_version != "original":
             args_to_add.append(f"--model_version {resolved_model_version}")
 
-        # Only add use_pinned_memory_for_block_swap if it's supported by the training script
-        if use_pinned_memory_enabled and parameter_supported:
+        if use_pinned_memory_enabled:
             args_to_add.append("--use_pinned_memory_for_block_swap")
         else:
             args_to_remove.append("--use_pinned_memory_for_block_swap")
@@ -3028,16 +3042,6 @@ class QwenImageTrainingSettings:
                 value=self.config.get("ddp_static_graph", False),
             )
 
-        with gr.Row():
-            self.show_timesteps = gr.Dropdown(
-                label="Show Timesteps",
-                info="Debug timestep distribution. 'image' saves visual plots, 'console' prints to terminal. Leave empty for no visualization",
-                choices=["image", "console", ""],
-                allow_custom_value=True,
-                value=self.config.get("show_timesteps", ""),
-                interactive=True,
-            )
-        
         # Add click handler for logging directory folder button
         self.logging_dir_button.click(
             fn=lambda: get_folder_path(),
@@ -4258,6 +4262,8 @@ def qwen_image_lora_tab(
         metadata.metadata_license,
         metadata.metadata_tags,
         metadata.metadata_title,
+        metadata.metadata_reso,
+        metadata.metadata_arch,
     ]
 
     run_state = gr.Textbox(value=train_state_value, visible=False)

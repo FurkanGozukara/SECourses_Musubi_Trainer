@@ -103,7 +103,10 @@ def gui_actions(
     persistent_data_loader_workers,
     seed,
     gradient_checkpointing,
+    gradient_checkpointing_cpu_offload,
     gradient_accumulation_steps,
+    full_bf16,
+    full_fp16,
     logging_dir,
     log_with,
     log_prefix,
@@ -151,6 +154,7 @@ def gui_actions(
     lr_scheduler_args,
     dit,
     dit_dtype,
+    text_encoder_dtype,
     vae,
     vae_dtype,
     vae_tiling,
@@ -188,6 +192,7 @@ def gui_actions(
     output_dir,
     output_name,
     resume,
+    save_precision,
     save_every_n_epochs,
     save_every_n_steps,
     save_last_n_epochs,
@@ -196,6 +201,7 @@ def gui_actions(
     save_last_n_steps_state,
     save_state,
     save_state_on_train_end,
+    mem_eff_save,
     huggingface_repo_id,
     huggingface_token,
     huggingface_repo_type,
@@ -209,6 +215,8 @@ def gui_actions(
     metadata_license,
     metadata_tags,
     metadata_title,
+    metadata_reso,
+    metadata_arch,
 ):
     # Get list of function parameters and values
     parameters = [(k, v) for k, v in locals().items() if k not in ["action_type", "bool_value", "headless", "print_only"]]
@@ -727,7 +735,7 @@ def lora_tab(
             teoCaching = TextEncoderOutputsCaching(headless=headless, config=config)
         
     with gr.Accordion("Save Load Settings", open=True, elem_classes="samples_background"):
-        saveLoadSettings = SaveLoadSettings(headless=headless, config=config)
+        saveLoadSettings = SaveLoadSettings(headless=headless, config=config, show_mem_eff_save=False)
         
     with gr.Accordion("Learning Rate, Optimizer and Scheduler Settings", open=True, elem_classes="flux1_rank_layers_background"):
         OptimizerAndSchedulerSettings = OptimizerAndScheduler(headless=headless, config=config)
@@ -784,7 +792,10 @@ def lora_tab(
         trainingSettings.persistent_data_loader_workers,
         trainingSettings.seed,
         trainingSettings.gradient_checkpointing,
+        trainingSettings.gradient_checkpointing_cpu_offload,
         trainingSettings.gradient_accumulation_steps,
+        trainingSettings.full_bf16,
+        trainingSettings.full_fp16,
         trainingSettings.logging_dir,
         trainingSettings.log_with,
         trainingSettings.log_prefix,
@@ -837,6 +848,7 @@ def lora_tab(
         # model
         model.dit,
         model.dit_dtype,
+        model.text_encoder_dtype,
         model.vae,
         model.vae_dtype,
         model.vae_tiling,
@@ -878,6 +890,7 @@ def lora_tab(
         saveLoadSettings.output_dir,
         saveLoadSettings.output_name,
         saveLoadSettings.resume,
+        saveLoadSettings.save_precision,
         saveLoadSettings.save_every_n_epochs,
         saveLoadSettings.save_every_n_steps,
         saveLoadSettings.save_last_n_epochs,
@@ -886,6 +899,7 @@ def lora_tab(
         saveLoadSettings.save_last_n_steps_state,
         saveLoadSettings.save_state,
         saveLoadSettings.save_state_on_train_end,
+        saveLoadSettings.mem_eff_save,
         
         # huggingface
         huggingface.huggingface_repo_id,
@@ -903,6 +917,8 @@ def lora_tab(
         metadata.metadata_license,
         metadata.metadata_tags,
         metadata.metadata_title,
+        metadata.metadata_reso,
+        metadata.metadata_arch,
     ]
 
     run_state = gr.Textbox(value=train_state_value, visible=False)

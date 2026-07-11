@@ -228,6 +228,8 @@ metadata_description = ""
 metadata_license = ""
 metadata_tags = ""
 metadata_title = ""
+metadata_reso = ""
+metadata_arch = ""
 
 # HuggingFace Settings
 huggingface_repo_id = ""
@@ -236,5 +238,5 @@ huggingface_repo_type = ""
 huggingface_repo_visibility = ""
 huggingface_path_in_repo = ""
 save_state_to_huggingface = false
-resume_from_huggingface = false
+resume_from_huggingface = ""
 async_upload = false

@@ -277,6 +277,8 @@ MODERN_IMAGE_PARAM_KEYS = [
     "metadata_license",
     "metadata_tags",
     "metadata_title",
+    "metadata_reso",
+    "metadata_arch",
     # Hugging Face
     "huggingface_repo_id",
     "huggingface_token",
@@ -450,6 +452,8 @@ def _normalize_modern_parameters(
         ).strip():
             raise ValueError("Official asymmetric sampling requires an unconditional Ideogram 4 DiT.")
     else:
+        param_dict["dit_dtype"] = "bfloat16"
+        parameters = _replace_parameter(parameters, "dit_dtype", "bfloat16")
         fp8_base = bool(param_dict.get("fp8_base"))
         fp8_scaled = bool(param_dict.get("fp8_scaled"))
         if fp8_base != fp8_scaled:
@@ -631,6 +635,7 @@ def _run_config_exclusions(spec: ModernImageArchitecture, parameters: list[tuple
         "sample_seed",
         "sample_negative_prompt",
         "sample_cfg_scale",
+        "mem_eff_save",
     }
     exclusions.update(
         key
@@ -642,6 +647,8 @@ def _run_config_exclusions(spec: ModernImageArchitecture, parameters: list[tuple
     else:
         exclusions.update(
             {
+                # Krea 2 currently fixes DiT compute to bfloat16 in its trainer.
+                "dit_dtype",
                 "unconditional_dit",
                 "use_unconditional_dit_for_lora_sampling",
                 "sampler_preset",
@@ -911,6 +918,8 @@ def save_modern_configuration(
 def _config_value_for_component(key: str, value: object, default: object, spec: ModernImageArchitecture):
     if key == "network_module":
         return spec.network_module
+    if key == "dit_dtype" and spec.is_krea:
+        return "bfloat16"
     if key == "save_precision" and value in (None, ""):
         return "bf16"
     if isinstance(value, list):
@@ -1275,7 +1284,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
     )
     accordions.append(save_accordion)
     with save_accordion:
-        save_load = SaveLoadSettings(headless=headless, config=config)
+        save_load = SaveLoadSettings(headless=headless, config=config, show_mem_eff_save=False)
 
     dataset_accordion = gr.Accordion(
         f"{spec.display_name} Training Dataset",
@@ -1457,8 +1466,10 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         with gr.Row():
             dit_dtype = gr.Dropdown(
                 label="DiT Compute Dtype",
-                choices=["bfloat16", "float16"],
-                value=config.get("dit_dtype", "bfloat16"),
+                choices=["bfloat16"] if spec.is_krea else ["bfloat16", "float16"],
+                value="bfloat16" if spec.is_krea else config.get("dit_dtype", "bfloat16"),
+                interactive=not spec.is_krea,
+                info="Krea 2 fixes DiT compute to bfloat16 in the backend. Ideogram 4 supports both listed dtypes.",
             )
             vae_dtype = gr.Dropdown(
                 label="VAE Compute Dtype",
@@ -2081,6 +2092,8 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         metadata.metadata_license,
         metadata.metadata_tags,
         metadata.metadata_title,
+        metadata.metadata_reso,
+        metadata.metadata_arch,
         # Hugging Face
         huggingface.huggingface_repo_id,
         huggingface.huggingface_token,

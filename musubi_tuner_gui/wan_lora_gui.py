@@ -1134,9 +1134,9 @@ class WanModelSettings:
         with gr.Row():
             self.training_mode = gr.Radio(
                 label="Training Mode",
-                choices=["LoRA Training", "DreamBooth Fine-Tuning"],
-                value=self.config.get("training_mode", "LoRA Training"),
-                info="LoRA Training: Parameter-efficient, memory friendly | DreamBooth: Full fine-tuning, more memory intensive"
+                choices=["LoRA Training"],
+                value="LoRA Training",
+                info="The installed Wan backend supports network/LoRA training."
             )
 
         # Torch Compile Settings - for faster training with torch.compile
@@ -2092,7 +2092,7 @@ def generate_enhanced_prompt_file(
 class WanSaveLoadSettings(SaveLoadSettings):
     """Wan-specific save/load settings that extend the base SaveLoadSettings"""
     def __init__(self, headless: bool, config: GUIConfig) -> None:
-        super().__init__(headless, config)
+        super().__init__(headless, config, show_mem_eff_save=False)
         # Override default output name for Wan models
         if hasattr(self, 'output_name'):
             self.output_name.value = self.config.get("output_name", "my-wan-lora")
@@ -2434,6 +2434,12 @@ def train_wan_model(headless, print_only, parameters):
             run_cmd = [python_cmd, "-m", "accelerate.commands.launch"]
 
     param_dict = dict(parameters)
+    training_mode = str(param_dict.get("training_mode") or "LoRA Training")
+    if training_mode != "LoRA Training":
+        gr.Warning("Wan full fine-tuning is not available in the installed backend. Continuing with LoRA Training.")
+        training_mode = "LoRA Training"
+        param_dict["training_mode"] = training_mode
+        parameters = upsert_parameter(parameters, "training_mode", training_mode)
     validate_wan_block_swap_options(param_dict)
     
     # Debug: Log critical caching parameters to diagnose misalignment issues
@@ -2621,16 +2627,8 @@ def train_wan_model(headless, print_only, parameters):
         extra_accelerate_launch_args=param_dict.get("extra_accelerate_launch_args"),
     )
 
-    # Select the appropriate WAN training script based on training mode
-    training_mode = param_dict.get("training_mode", "LoRA Training")
-    if training_mode == "DreamBooth Fine-Tuning":
-        # Use full fine-tuning script for DreamBooth mode
-        run_cmd.append(f"{scriptdir}/musubi-tuner/src/musubi_tuner/wan_train.py")
-        log.info("Using wan_train.py for full DreamBooth fine-tuning")
-    else:
-        # Use network training script for LoRA mode
-        run_cmd.append(f"{scriptdir}/musubi-tuner/src/musubi_tuner/wan_train_network.py")
-        log.info("Using wan_train_network.py for LoRA training")
+    run_cmd.append(f"{scriptdir}/musubi-tuner/src/musubi_tuner/wan_train_network.py")
+    log.info("Using wan_train_network.py for LoRA training")
 
     if print_only:
         print_command_and_toml(run_cmd, "")
@@ -2801,57 +2799,16 @@ def train_wan_model(headless, print_only, parameters):
         # Ensure dataset_config entry survives all transformations
         parameters = upsert_parameter(parameters, "dataset_config", effective_dataset_config)
 
-        # Handle use_pinned_memory_for_block_swap checkbox: check if parameter exists in training script
+        # The flag is declared by the shared parser used by wan_train_network.py.
         use_pinned_memory_enabled = param_dict.get("use_pinned_memory_for_block_swap", False)
         log.info(f"use_pinned_memory_for_block_swap checkbox value: {use_pinned_memory_enabled}")
-        
-        # Check if the parameter is supported by the training script
-        # Get project directory (parent of musubi_tuner_gui module)
-        project_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        
-        # Check both wan_train.py and wan_train_network.py (used for DreamBooth and LoRA respectively)
-        # Also check hv_train_network.py which is imported by wan_train_network.py
-        # Also check musubi-tuner and musubi-tuner2 directories (in case user is on a branch)
-        possible_paths = [
-            os.path.join(project_dir, "musubi-tuner", "src", "musubi_tuner", "wan_train.py"),
-            os.path.join(project_dir, "musubi-tuner", "src", "musubi_tuner", "wan_train_network.py"),
-            os.path.join(project_dir, "musubi-tuner", "src", "musubi_tuner", "hv_train_network.py"),
-            os.path.join(project_dir, "musubi-tuner2", "src", "musubi_tuner", "wan_train.py"),
-            os.path.join(project_dir, "musubi-tuner2", "src", "musubi_tuner", "wan_train_network.py"),
-            os.path.join(project_dir, "musubi-tuner2", "src", "musubi_tuner", "hv_train_network.py"),
-        ]
-        
-        parameter_supported = False
-        
-        for training_script_path in possible_paths:
-            try:
-                if os.path.exists(training_script_path):
-                    log.info(f"Checking for parameter support in: {training_script_path}")
-                    with open(training_script_path, "r", encoding="utf-8") as f:
-                        script_content = f.read()
-                        # Check for the parameter (with underscores or dashes)
-                        if "use_pinned_memory_for_block_swap" in script_content or "use-pinned-memory-for-block-swap" in script_content:
-                            parameter_supported = True
-                            log.info(f"Found use_pinned_memory_for_block_swap parameter in {training_script_path}")
-                            break
-                        else:
-                            log.info(f"Parameter not found in {training_script_path}")
-            except Exception as e:
-                log.warning(f"Could not check training script for parameter support: {e}")
-        
-        if not parameter_supported:
-            log.info("use_pinned_memory_for_block_swap parameter not found in any training script")
-        
-        if use_pinned_memory_enabled and parameter_supported:
+
+        if use_pinned_memory_enabled:
             parameters = upsert_parameter(parameters, "use_pinned_memory_for_block_swap", True)
             log.info("Added use_pinned_memory_for_block_swap = True to TOML parameters")
         else:
-            # Remove use_pinned_memory_for_block_swap if it exists (so it won't be saved to TOML)
             parameters = [(k, v) for k, v in parameters if k != "use_pinned_memory_for_block_swap"]
-            if use_pinned_memory_enabled and not parameter_supported:
-                log.info("use_pinned_memory_for_block_swap is not supported by the current training script version. Skipping.")
-            else:
-                log.info("Removed use_pinned_memory_for_block_swap from TOML parameters")
+            log.info("Removed use_pinned_memory_for_block_swap from TOML parameters")
         
         # Verify parameters are in the list before saving
         use_pinned_memory_in_params = any(k == "use_pinned_memory_for_block_swap" for k, v in parameters)
@@ -2885,6 +2842,40 @@ def train_wan_model(headless, print_only, parameters):
                 "extra_accelerate_launch_args",
                 "training_mode",  # Exclude training_mode as it's GUI-only
                 "num_frames",  # Not used in Wan training, only for sample generation
+                "additional_parameters",
+                "debug_mode",
+                "dataset_config_mode",
+                "parent_folder_path",
+                "dataset_resolution_width",
+                "dataset_resolution_height",
+                "dataset_caption_extension",
+                "create_missing_captions",
+                "caption_strategy",
+                "dataset_batch_size",
+                "dataset_enable_bucket",
+                "dataset_bucket_no_upscale",
+                "dataset_cache_directory",
+                "generated_toml_path",
+                "frame_extraction",
+                "frame_stride",
+                "frame_sample",
+                "target_frames",
+                "auto_normalize_target_frames",
+                "max_frames",
+                "source_fps",
+                "sample_output_dir",
+                "disable_prompt_enhancement",
+                "sample_width",
+                "sample_height",
+                "sample_num_frames",
+                "sample_steps",
+                "sample_guidance_scale",
+                "sample_seed",
+                "sample_negative_prompt",
+                "dit_dtype",
+                "text_encoder_dtype",
+                "clip_vision_dtype",
+                "mem_eff_save",
             ] + pattern_exclusion,
             mandatory_keys=["dataset_config", "dit", "vae", "t5", "clip"],
         )
@@ -2916,8 +2907,7 @@ def train_wan_model(headless, print_only, parameters):
         args_to_add = []
         args_to_remove = []
         
-        # Only add use_pinned_memory_for_block_swap if it's supported by the training script
-        if use_pinned_memory_enabled and parameter_supported:
+        if use_pinned_memory_enabled:
             args_to_add.append("--use_pinned_memory_for_block_swap")
         else:
             args_to_remove.append("--use_pinned_memory_for_block_swap")
@@ -3115,7 +3105,7 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
                     num_frames_val = my_data['num_frames']
                     
                     # Check if one_frame is numeric (should be boolean)
-                    if isinstance(one_frame_val, (int, float)):
+                    if isinstance(one_frame_val, (int, float)) and not isinstance(one_frame_val, bool):
                         log.warning(f"Detected corrupted one_frame value ({one_frame_val}). Auto-correcting...")
                         # If num_frames is boolean, they got swapped
                         if isinstance(num_frames_val, bool):
@@ -3170,7 +3160,6 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
         "max_train_epochs",  # 0 means use max_train_steps instead
         "dit_in_channels", "sample_num_frames", "num_timestep_buckets",  # WAN-specific optional params
         "blocks_to_swap", "vae_chunk_size", "vae_spatial_tile_sample_min_size",  # Memory optimization params
-        "compile_cache_size_limit"  # Torch compile cache limit
         # Removed: "ddp_timeout" (0 = use default 30min timeout - VALID)
         # Removed: "save_every_n_*", "sample_every_n_*", "save_last_n_*" (0 is a valid value to display and use)
     }
@@ -3205,6 +3194,10 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
         if not key in ["ask_for_file", "apply_preset", "file_path"]:
             included_params.append(key)  # Track this parameter
             toml_value = my_data.get(key)
+            if key == "training_mode":
+                toml_value = "LoRA Training"
+            if key == "resume_from_huggingface" and not toml_value:
+                toml_value = ""
             if toml_value is not None:
                 # Handle list values that should be single values
                 if isinstance(toml_value, list) and key in numeric_fields:

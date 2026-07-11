@@ -8,9 +8,11 @@ class SaveLoadSettings:
         self,
         headless: bool,
         config: GUIConfig,
+        show_mem_eff_save: bool = True,
     ) -> None:
         self.config = config
         self.headless = headless
+        self.show_mem_eff_save = show_mem_eff_save
 
         # Initialize the UI components
         self.initialize_ui_components()
@@ -128,9 +130,10 @@ class SaveLoadSettings:
         with gr.Row():
             self.mem_eff_save = gr.Checkbox(
                 label="Memory Efficient Save",
-                info="Reduces RAM usage during checkpoint saving. More beneficial for fine-tuning (~40GB savings) but can also help with LoRA. NOTE: When saving optimizer state with save_state=true, normal saving method is still used.",
+                info="Reduces RAM usage when the selected full fine-tuning backend supports memory-efficient checkpoint saving. Optimizer state saves still use the normal method.",
                 value=self.config.get("mem_eff_save", False),
                 interactive=True,
+                visible=self.show_mem_eff_save,
             )
         
         # Add click handler for folder button

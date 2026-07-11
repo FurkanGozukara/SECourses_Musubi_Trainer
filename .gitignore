@@ -23,6 +23,10 @@ tests/*
 !tests/test_training_gui_integrations.py
 lib64/
 tests/
+tests
+!tests/test_model_quantizer_presets.py
+!tests/test_training_gui_integrations.py
+!tests/test_ui_backend_contracts.py
 Z_Image_BF16.safetensors
 convert_nvfp4_learned.bat
 convert_to_quant2/

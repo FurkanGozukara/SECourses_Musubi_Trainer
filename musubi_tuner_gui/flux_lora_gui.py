@@ -737,7 +737,17 @@ def train_flux_model(headless: bool, print_only: bool, parameters):
             "caching_teo_fp8_text_encoder",
             "model_family",  # GUI-only selector
             "training_mode",  # GUI-only selector
+            "additional_parameters",
+            "debug_mode",
             "disable_prompt_enhancement",
+            "sample_output_dir",
+            "sample_width",
+            "sample_height",
+            "sample_steps",
+            "sample_guidance_scale",
+            "sample_seed",
+            "sample_negative_prompt",
+            "mem_eff_save",
         ]
         + pattern_exclusion,
         mandatory_keys=["dataset_config", "dit", "vae", "text_encoder", "model_version", "network_module"],
@@ -1017,6 +1027,8 @@ FLUX_PARAM_KEYS = [
     "metadata_license",
     "metadata_tags",
     "metadata_title",
+    "metadata_reso",
+    "metadata_arch",
     # huggingface
     "huggingface_repo_id",
     "huggingface_token",
@@ -1147,7 +1159,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
     save_load_accordion = gr.Accordion("Save Models and Resume Training Settings", open=False, elem_classes="samples_background")
     accordions.append(save_load_accordion)
     with save_load_accordion:
-        save_load = SaveLoadSettings(headless=headless, config=config)
+        save_load = SaveLoadSettings(headless=headless, config=config, show_mem_eff_save=False)
 
     dataset_accordion = gr.Accordion("FLUX Training Dataset", open=False, elem_classes="samples_background")
     accordions.append(dataset_accordion)
@@ -1340,9 +1352,9 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
         with gr.Row():
             training_mode = gr.Radio(
                 label="Training Mode",
-                choices=["LoRA Training", "DreamBooth Fine-Tuning"],
-                value=config.get("training_mode", "LoRA Training"),
-                info="LoRA is supported. DreamBooth fine-tuning is not supported for FLUX yet.",
+                choices=["LoRA Training"],
+                value="LoRA Training",
+                info="The current FLUX backend supports network/LoRA training.",
             )
         with gr.Row():
             model_version = gr.Dropdown(
@@ -2015,6 +2027,8 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
         metadata.metadata_license,
         metadata.metadata_tags,
         metadata.metadata_title,
+        metadata.metadata_reso,
+        metadata.metadata_arch,
         # huggingface
         huggingface.huggingface_repo_id,
         huggingface.huggingface_token,
