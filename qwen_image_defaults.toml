@@ -61,6 +61,8 @@ model_version = "original"  # Options: "original", "edit-2509", "edit-2511"
 
 faster_model_loading = false  # Faster Model Loading: Disables numpy memmap for faster model loading. Uses more RAM but speeds up loading, especially useful for RunPod and similar environments
 use_pinned_memory_for_block_swap = false  # Use Pinned Memory for Block Swapping: Uses more system RAM but speeds up training. The speed up maybe significant depending on system settings. To work, go to Advanced Graphics settings in System > Display > Graphics as in tutorial video and disable Hardware-Accelerated GPU Scheduling and restart your PC. Only effective when blocks_to_swap > 0
+block_swap_h2d_only = false  # LoRA only; requires blocks_to_swap > 0 and gradient_checkpointing
+block_swap_ring_size = 2  # 2 overlaps transfer/compute; 1 minimizes VRAM
 
 # Flow Matching Settings
 timestep_sampling = "qwen_shift"  # Use Qwen-specific resolution-aware sampling
@@ -97,7 +99,7 @@ persistent_data_loader_workers = true
 seed = 99
 gradient_checkpointing = true
 gradient_accumulation_steps = 1
-full_bf16 = false  # [EXPERIMENTAL] Store gradients in BF16. Saves ~30% VRAM but may be unstable. Monitor loss. Incompatible with mixed_precision='bf16'
+full_bf16 = false  # [EXPERIMENTAL] Store gradients in BF16. Requires mixed_precision='bf16'; monitor loss for instability.
 full_fp16 = false  # [EXPERIMENTAL] Store gradients in FP16. Saves ~30% VRAM but risk of underflow. Use full_bf16 instead if possible
 
 # Optimizer Settings
@@ -140,6 +142,7 @@ base_weights_multiplier = 1.0  # Strength multiplier for base weights (1.0 = ful
 output_dir = ""
 output_name = "my-qwen-lora"  # Base filename without .safetensors extension - musubi auto-adds it
 resume = ""
+save_precision = "bf16"  # LoRA output dtype; BF16 keeps files about half the size of FP32
 save_every_n_epochs = 10
 save_every_n_steps = 0        # 0 = disabled. Positive integer = save every N steps
 save_last_n_epochs = 0       # 0 = keep all. Positive integer = keep only last N epoch checkpoints

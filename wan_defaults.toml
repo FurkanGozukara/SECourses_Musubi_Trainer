@@ -22,6 +22,8 @@ dit_high_noise = ""  # [WAN 2.2 ONLY] Path to high noise DiT model for Wan 2.2 A
 timestep_boundary = 0.0  # [WAN 2.2 ONLY] Timestep boundary for dual model system. Auto-detected from model config if not set
 offload_inactive_dit = false  # [WAN 2.2 ONLY] Offload inactive DiT to CPU to save VRAM during dual model training
 use_pinned_memory_for_block_swap = false  # Use Pinned Memory for Block Swapping: Uses more system RAM but speeds up training. The speed up maybe significant depending on system settings. To work, go to Advanced Graphics settings in System > Display > Graphics as in tutorial video and disable Hardware-Accelerated GPU Scheduling and restart your PC. Only effective when blocks_to_swap > 0
+block_swap_h2d_only = false  # LoRA only; requires blocks_to_swap > 0 and gradient_checkpointing; use standard swap for Wan 2.2 dual-DiT
+block_swap_ring_size = 2  # 2 overlaps transfer/compute; 1 minimizes VRAM
 
 # Folder Structure Settings (used when dataset_config_mode = "Generate from Folder Structure")
 parent_folder_path = ""  # REQUIRED when using folder structure mode: Path to parent folder containing training images/videos
@@ -137,6 +139,7 @@ base_weights_multiplier = 1.0  # Multiplier for base weights
 output_dir = ""  # Output directory for saved models
 output_name = "my-wan-lora"  # Base filename for saved models
 resume = ""  # Path to checkpoint to resume training from
+save_precision = "bf16"  # LoRA output dtype; BF16 keeps files about half the size of FP32
 save_every_n_epochs = 10  # Save checkpoint every N epochs
 save_every_n_steps = 0  # Save checkpoint every N steps (0=disabled)
 save_last_n_epochs = 0  # Keep only last N epoch checkpoints (0=keep all)

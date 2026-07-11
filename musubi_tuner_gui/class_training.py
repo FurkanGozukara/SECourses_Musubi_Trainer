@@ -7,9 +7,11 @@ class TrainingSettings:
         self,
         headless: bool,
         config: GUIConfig,
+        supported_attention: set[str] | None = None,
     ) -> None:
         self.config = config
         self.headless = headless
+        self.supported_attention = supported_attention
 
         # Initialize the UI components
         self.initialize_ui_components()
@@ -19,6 +21,7 @@ class TrainingSettings:
             self.sdpa = gr.Checkbox(
                 label="Use SDPA for CrossAttention",
                 value=self.config.get("sdpa", False),
+                visible=self.supported_attention is None or "sdpa" in self.supported_attention,
                 info="Use PyTorch SDPA attention (torch>=2.0).",
             )
 
@@ -26,18 +29,21 @@ class TrainingSettings:
                 label="FlashAttention",
                 info="Use FlashAttention for CrossAttention",
                 value=self.config.get("flash_attn", False),
+                visible=self.supported_attention is None or "flash_attn" in self.supported_attention,
             )
 
             self.sage_attn = gr.Checkbox(
                 label="SageAttention",
                 info="Use SageAttention for CrossAttention",
                 value=self.config.get("sage_attn", False),
+                visible=self.supported_attention is None or "sage_attn" in self.supported_attention,
             )
 
             self.xformers = gr.Checkbox(
                 label="xformers",
                 info="Use xformers for CrossAttention",
                 value=self.config.get("xformers", False),
+                visible=self.supported_attention is None or "xformers" in self.supported_attention,
             )
 
             self.split_attn = gr.Checkbox(
@@ -104,13 +110,13 @@ class TrainingSettings:
         with gr.Row():
             self.full_bf16 = gr.Checkbox(
                 label="Full BF16 Training",
-                info="[EXPERIMENTAL] Stores gradients in BF16 instead of FP32. Saves ~30% VRAM but may cause training instability. Good for large batch sizes. Monitor loss carefully. Incompatible with mixed_precision='bf16'.",
+                info="[EXPERIMENTAL] Stores gradients in BF16 instead of FP32. Saves ~30% VRAM but may cause training instability. Requires mixed_precision='bf16'. Monitor loss carefully.",
                 value=self.config.get("full_bf16", False),
             )
             
             self.full_fp16 = gr.Checkbox(
                 label="Full FP16 Training", 
-                info="[EXPERIMENTAL] Stores gradients in FP16 instead of FP32. Saves ~30% VRAM but higher risk of gradient underflow. Use only if full_bf16 isn't available. Requires careful learning rate tuning. Incompatible with mixed_precision='fp16'.",
+                info="[EXPERIMENTAL] Stores gradients in FP16 instead of FP32. Saves ~30% VRAM but has a higher risk of gradient underflow. Requires mixed_precision='fp16' and careful learning-rate tuning.",
                 value=self.config.get("full_fp16", False),
             )
 

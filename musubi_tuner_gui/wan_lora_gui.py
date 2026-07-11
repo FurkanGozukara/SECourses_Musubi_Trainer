@@ -37,6 +37,7 @@ from .common_gui import (
     manage_additional_parameters,
     save_executed_script,
     generate_script_content,
+    validate_block_swap_options,
 )
 from .class_huggingface import HuggingFace
 from .class_metadata import MetaData
@@ -52,6 +53,30 @@ log = setup_logging()
 executor = None
 huggingface = None
 train_state_value = time.time()
+
+
+def is_wan_image_conditioned_task(task: object) -> bool:
+    """Match the trainer's image-conditioned task detection for cache creation."""
+    normalized = str(task or "").lower()
+    return "i2v" in normalized or "flf2v" in normalized
+
+
+def add_wan_image_conditioning_cache_flag(command: list[str], task: object) -> list[str]:
+    if is_wan_image_conditioned_task(task) and "--i2v" not in command:
+        command.append("--i2v")
+    return command
+
+
+def validate_wan_block_swap_options(param_dict: dict) -> None:
+    validate_block_swap_options(
+        param_dict,
+        lora_training=(param_dict.get("training_mode", "LoRA Training") == "LoRA Training"),
+    )
+    if param_dict.get("block_swap_h2d_only") and str(param_dict.get("dit_high_noise") or "").strip():
+        raise ValueError(
+            "H2D-only block swap is not compatible with Wan 2.2 dual-DiT training. "
+            "Disable H2D-only mode when both low- and high-noise checkpoints are configured."
+        )
 
 
 def get_debug_parameters_for_mode(debug_mode: str) -> str:
@@ -1195,6 +1220,21 @@ class WanModelSettings:
                 info="Uses more system RAM but speeds up training. The speed up maybe significant depending on system settings. To work, go to Advanced Graphics settings in System > Display > Graphics as in tutorial video and disable Hardware-Accelerated GPU Scheduling and restart your PC. Only effective when blocks_to_swap > 0",
                 value=self.config.get("use_pinned_memory_for_block_swap", False),
             )
+
+        with gr.Row():
+            self.block_swap_h2d_only = gr.Checkbox(
+                label="H2D-Only Block Swap (LoRA)",
+                value=self.config.get("block_swap_h2d_only", False),
+                info="Streams frozen blocks host-to-device without copying them back. Requires Blocks to Swap > 0 and Gradient Checkpointing. Use standard block swap for Wan 2.2 dual-DiT training.",
+            )
+            self.block_swap_ring_size = gr.Number(
+                label="H2D Block Swap Ring Size",
+                value=self.config.get("block_swap_ring_size", 2),
+                minimum=1,
+                step=1,
+                interactive=True,
+                info="2 overlaps transfer and compute; 1 uses the least VRAM without overlap.",
+            )
         
         # Model Information Panel
         with gr.Row():
@@ -2086,7 +2126,7 @@ def wan_gui_actions(
                 "training_mode", "task", "dit", "vae", "t5", "clip",
                 "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
                 "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
-                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap",
+                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap", "block_swap_h2d_only", "block_swap_ring_size",
                 # Torch Compile settings
                 "compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit",
                 "vae_tiling", "vae_chunk_size", "vae_spatial_tile_sample_min_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
@@ -2126,7 +2166,7 @@ def wan_gui_actions(
                 "network_dropout", "network_args", "training_comment", "dim_from_weights", "scale_weight_norms",
                 "base_weights", "base_weights_multiplier",
                 # Save/Load Settings
-                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
+                "output_dir", "output_name", "resume", "save_precision", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
                 "save_last_n_epochs_state", "save_last_n_steps", "save_last_n_steps_state", "save_state",
                 "save_state_on_train_end", "mem_eff_save",
                 # HuggingFace Settings
@@ -2156,7 +2196,7 @@ def wan_gui_actions(
                 "training_mode", "task", "dit", "vae", "t5", "clip",
                 "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
                 "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
-                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap",
+                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap", "block_swap_h2d_only", "block_swap_ring_size",
                 # Torch Compile settings
                 "compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit",
                 "vae_tiling", "vae_chunk_size", "vae_spatial_tile_sample_min_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
@@ -2196,7 +2236,7 @@ def wan_gui_actions(
                 "network_dropout", "network_args", "training_comment", "dim_from_weights", "scale_weight_norms",
                 "base_weights", "base_weights_multiplier",
                 # Save/Load Settings
-                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
+                "output_dir", "output_name", "resume", "save_precision", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
                 "save_last_n_epochs_state", "save_last_n_steps", "save_last_n_steps_state", "save_state",
                 "save_state_on_train_end", "mem_eff_save",
                 # HuggingFace Settings
@@ -2226,7 +2266,7 @@ def wan_gui_actions(
                 "training_mode", "task", "dit", "vae", "t5", "clip",
                 "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
                 "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
-                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap",
+                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap", "block_swap_h2d_only", "block_swap_ring_size",
                 # Torch Compile settings
                 "compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit",
                 "vae_tiling", "vae_chunk_size", "vae_spatial_tile_sample_min_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
@@ -2266,7 +2306,7 @@ def wan_gui_actions(
                 "network_dropout", "network_args", "training_comment", "dim_from_weights", "scale_weight_norms",
                 "base_weights", "base_weights_multiplier",
                 # Save/Load Settings
-                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
+                "output_dir", "output_name", "resume", "save_precision", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
                 "save_last_n_epochs_state", "save_last_n_steps", "save_last_n_steps_state", "save_state",
                 "save_state_on_train_end", "mem_eff_save",
                 # HuggingFace Settings
@@ -2298,7 +2338,7 @@ def wan_gui_actions(
                 "training_mode", "task", "dit", "vae", "t5", "clip",
                 "dit_high_noise", "timestep_boundary", "offload_inactive_dit", "dit_dtype",
                 "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
-                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap",
+                "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap", "block_swap_h2d_only", "block_swap_ring_size",
                 # Torch Compile settings
                 "compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit",
                 "vae_tiling", "vae_chunk_size", "vae_spatial_tile_sample_min_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
@@ -2338,7 +2378,7 @@ def wan_gui_actions(
                 "network_dropout", "network_args", "training_comment", "dim_from_weights", "scale_weight_norms",
                 "base_weights", "base_weights_multiplier",
                 # Save/Load Settings
-                "output_dir", "output_name", "resume", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
+                "output_dir", "output_name", "resume", "save_precision", "save_every_n_epochs", "save_every_n_steps", "save_last_n_epochs",
                 "save_last_n_epochs_state", "save_last_n_steps", "save_last_n_steps_state", "save_state",
                 "save_state_on_train_end", "mem_eff_save",
                 # HuggingFace Settings
@@ -2368,8 +2408,10 @@ def train_wan_model(headless, print_only, parameters):
     # Use Python directly instead of uv for better compatibility
     python_cmd = sys.executable
 
-    # Find accelerate using shutil.which (like Kohya does)
-    accelerate_path = shutil.which("accelerate")
+    # Prefer the launcher beside this Python so training cannot escape the app venv.
+    python_dir = os.path.dirname(python_cmd)
+    venv_accelerate = os.path.join(python_dir, "accelerate.exe" if sys.platform == "win32" else "accelerate")
+    accelerate_path = venv_accelerate if os.path.isfile(venv_accelerate) else shutil.which("accelerate")
 
     if accelerate_path:
         # Found accelerate in PATH
@@ -2392,6 +2434,7 @@ def train_wan_model(headless, print_only, parameters):
             run_cmd = [python_cmd, "-m", "accelerate.commands.launch"]
 
     param_dict = dict(parameters)
+    validate_wan_block_swap_options(param_dict)
     
     # Debug: Log critical caching parameters to diagnose misalignment issues
     log.debug(f"[DEBUG] Critical caching parameters:")
@@ -2485,10 +2528,9 @@ def train_wan_model(headless, print_only, parameters):
             else:
                 log.warning(f"Invalid caching_latent_debug_mode value: {debug_mode_val}. Must be one of: image, console, video")
 
-        # Determine if this is I2V training
+        # I2V and FLF2V both require image latents and CLIP caches.
         task = param_dict.get("task", "t2v-14B")
-        if "i2v" in task.lower():
-            run_cache_latent_cmd.append("--i2v")
+        add_wan_image_conditioning_cache_flag(run_cache_latent_cmd, task)
 
         # Check for one_frame training (only enable if it's explicitly True, not just truthy)
         if param_dict.get("one_frame", False) is True:
@@ -3778,6 +3820,8 @@ def wan_lora_tab(
         wan_model_settings.fp8_t5,
         wan_model_settings.blocks_to_swap,
         wan_model_settings.use_pinned_memory_for_block_swap,
+        wan_model_settings.block_swap_h2d_only,
+        wan_model_settings.block_swap_ring_size,
         
         # Torch Compile settings
         wan_model_settings.compile,
@@ -3917,6 +3961,7 @@ def wan_lora_tab(
         saveLoadSettings.output_dir,
         saveLoadSettings.output_name,
         saveLoadSettings.resume,
+        saveLoadSettings.save_precision,
         saveLoadSettings.save_every_n_epochs,
         saveLoadSettings.save_every_n_steps,
         saveLoadSettings.save_last_n_epochs,

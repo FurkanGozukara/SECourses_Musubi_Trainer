@@ -32,6 +32,7 @@ from .common_gui import (
     setup_environment,
     save_executed_script,
     generate_script_content,
+    validate_block_swap_options,
 )
 from .class_huggingface import HuggingFace
 from .class_metadata import MetaData
@@ -47,6 +48,19 @@ log = setup_logging()
 executor = None
 huggingface = None
 train_state_value = time.time()
+
+QWEN_IMAGE_NETWORK_MODULE = "networks.lora_qwen_image"
+REMOVED_QWEN_NETWORK_MODULES = frozenset({"networks.dylora", "networks.lora_fa"})
+
+
+def normalize_qwen_image_network_module(value) -> str:
+    """Migrate removed module choices without changing valid custom modules."""
+    module = str(value or "").strip()
+    if not module or module in REMOVED_QWEN_NETWORK_MODULES:
+        if module:
+            log.warning("Migrating unavailable Qwen network module '%s' to '%s'.", module, QWEN_IMAGE_NETWORK_MODULE)
+        return QWEN_IMAGE_NETWORK_MODULE
+    return module
 
 
 def get_debug_parameters_for_mode(debug_mode: str) -> str:
@@ -685,6 +699,21 @@ class QwenImageModel:
                 info="Uses more system RAM but speeds up training. The speed up maybe significant depending on system settings. To work, go to Advanced Graphics settings in System > Display > Graphics as in tutorial video and disable Hardware-Accelerated GPU Scheduling and restart your PC.",
                 value=self.config.get("use_pinned_memory_for_block_swap", False),
             )
+
+        with gr.Row():
+            self.block_swap_h2d_only = gr.Checkbox(
+                label="H2D-Only Block Swap (LoRA)",
+                value=self.config.get("block_swap_h2d_only", False),
+                info="Streams frozen blocks host-to-device without copying them back. Requires Blocks to Swap > 0 and Gradient Checkpointing.",
+            )
+            self.block_swap_ring_size = gr.Number(
+                label="H2D Block Swap Ring Size",
+                value=self.config.get("block_swap_ring_size", 2),
+                minimum=1,
+                step=1,
+                interactive=True,
+                info="2 overlaps transfer and compute; 1 uses the least VRAM without overlap.",
+            )
         
         # Torch Compile Settings - for faster training with torch.compile
         self.torch_compile_accordion = gr.Accordion("Torch Compile Settings", open=True)
@@ -1230,6 +1259,8 @@ def qwen_image_gui_actions(
     model_version,
     faster_model_loading,
     use_pinned_memory_for_block_swap,
+    block_swap_h2d_only,
+    block_swap_ring_size,
     # Torch Compile settings
     compile,
     compile_backend,
@@ -1266,6 +1297,7 @@ def qwen_image_gui_actions(
     output_dir,
     output_name,
     resume,
+    save_precision,
     save_every_n_epochs,
     save_every_n_steps,
     save_last_n_epochs,
@@ -1299,7 +1331,7 @@ def qwen_image_gui_actions(
         'learning_rate', 'max_grad_norm', 'guidance_scale', 'logit_mean', 'logit_std',
         'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
         'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',  # base_weights_multiplier is a Number in Qwen Image GUI
-        'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap',
+        'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap', 'block_swap_ring_size',
         'min_timestep', 'max_timestep', 'discrete_flow_shift', 'flow_shift', 'dit_in_channels', 'num_layers', 'network_dropout',
         'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
         'dataset_qwen_image_edit_control_resolution_width', 'dataset_qwen_image_edit_control_resolution_height',
@@ -1441,10 +1473,8 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
                 modified_params.append((key, value))
         else:
             # LoRA Training mode - keep all parameters as is
-            if key == "network_module" and (not value or value == ""):
-                # Ensure network_module is set for LoRA
-                modified_params.append((key, "networks.lora_qwen_image"))
-                log.info("LoRA mode: Setting network_module to networks.lora_qwen_image")
+            if key == "network_module":
+                modified_params.append((key, normalize_qwen_image_network_module(value)))
             elif key == "fused_backward_pass":
                 # For LoRA mode, always disable (not effective) regardless of user setting
                 modified_params.append((key, False))
@@ -1462,7 +1492,7 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
         'learning_rate', 'max_grad_norm', 'guidance_scale', 'logit_mean', 'logit_std',
         'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
         'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',  # base_weights_multiplier is a Number in Qwen Image GUI
-        'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap',
+        'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap', 'block_swap_ring_size',
         'min_timestep', 'max_timestep', 'discrete_flow_shift', 'flow_shift', 'dit_in_channels', 'num_layers', 'network_dropout',
         'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
         'dataset_qwen_image_edit_control_resolution_width', 'dataset_qwen_image_edit_control_resolution_height',
@@ -1605,7 +1635,7 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
         'learning_rate', 'max_grad_norm', 'guidance_scale', 'logit_mean', 'logit_std',
         'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
         'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',  # base_weights_multiplier is a Number in Qwen Image GUI
-        'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap',
+        'vae_chunk_size', 'vae_spatial_tile_sample_min_size', 'blocks_to_swap', 'block_swap_ring_size',
         'min_timestep', 'max_timestep', 'discrete_flow_shift', 'flow_shift', 'dit_in_channels', 'num_layers', 'network_dropout',
         'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
         'dataset_qwen_image_edit_control_resolution_width', 'dataset_qwen_image_edit_control_resolution_height',
@@ -1630,6 +1660,9 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
         if not key in ["ask_for_file", "apply_preset", "file_path"]:
             included_params.append(key)  # Track this parameter
             toml_value = my_data.get(key)
+
+            if key == "network_module" and toml_value is not None:
+                toml_value = normalize_qwen_image_network_module(toml_value)
 
             # Fill model_version from legacy flags if missing
             if key == "model_version" and (toml_value is None or str(toml_value).strip() == ""):
@@ -1889,8 +1922,10 @@ def train_qwen_image_model(headless, print_only, parameters):
     # Use Python directly instead of uv for better compatibility
     python_cmd = sys.executable
     
-    # Find accelerate using shutil.which (like Kohya does)
-    accelerate_path = shutil.which("accelerate")
+    # Prefer the launcher beside this Python so training cannot escape the app venv.
+    python_dir = os.path.dirname(python_cmd)
+    venv_accelerate = os.path.join(python_dir, "accelerate.exe" if sys.platform == "win32" else "accelerate")
+    accelerate_path = venv_accelerate if os.path.isfile(venv_accelerate) else shutil.which("accelerate")
     
     if accelerate_path:
         # Found accelerate in PATH
@@ -1913,6 +1948,10 @@ def train_qwen_image_model(headless, print_only, parameters):
             run_cmd = [python_cmd, "-m", "accelerate.commands.launch"]
 
     param_dict = dict(parameters)
+    validate_block_swap_options(
+        param_dict,
+        lora_training=(param_dict.get("training_mode", "LoRA Training") == "LoRA Training"),
+    )
 
     # Resolve model version (supports new --model_version flow and migrates legacy edit/edit_plus flags)
     resolved_model_version = normalize_qwen_image_model_version(
@@ -2371,14 +2410,10 @@ def train_qwen_image_model(headless, print_only, parameters):
                             # Fallback to default if custom module not specified
                             modified_params.append((key, "networks.lora_qwen_image"))
                             log.warning("LoRA mode: Custom module selected but not specified, using default networks.lora_qwen_image")
-                    elif not value or value == "":
-                        # Ensure network_module is set for LoRA
-                        modified_params.append((key, "networks.lora_qwen_image"))
-                        log.info("LoRA mode: Setting network_module to networks.lora_qwen_image")
                     else:
-                        # Use the selected module directly
-                        modified_params.append((key, value))
-                        log.info(f"LoRA mode: Using network module: {value}")
+                        module = normalize_qwen_image_network_module(value)
+                        modified_params.append((key, module))
+                        log.info(f"LoRA mode: Using network module: {module}")
                 elif key == "custom_network_module":
                     # Skip this parameter as it's handled above
                     continue
@@ -2857,13 +2892,13 @@ class QwenImageTrainingSettings:
         with gr.Row():
             self.full_bf16 = gr.Checkbox(
                 label="Full BF16 Training",
-                info="[EXPERIMENTAL] Stores gradients in BF16 instead of FP32. Saves ~30% VRAM but may cause training instability. Good for large batch sizes. Monitor loss carefully. Incompatible with mixed_precision='bf16'.",
+                info="[EXPERIMENTAL] Stores gradients in BF16 instead of FP32. Saves ~30% VRAM but may cause training instability. Requires mixed_precision='bf16'. Monitor loss carefully.",
                 value=self.config.get("full_bf16", False),
             )
             
             self.full_fp16 = gr.Checkbox(
                 label="Full FP16 Training",
-                info="[EXPERIMENTAL] Stores gradients in FP16 instead of FP32. Saves ~30% VRAM but higher risk of gradient underflow. Use only if full_bf16 isn't available. Requires careful learning rate tuning. Incompatible with mixed_precision='fp16'.",
+                info="[EXPERIMENTAL] Stores gradients in FP16 instead of FP32. Saves ~30% VRAM but has a higher risk of gradient underflow. Requires mixed_precision='fp16' and careful learning-rate tuning.",
                 value=self.config.get("full_fp16", False),
             )
 
@@ -3363,14 +3398,12 @@ class QwenImageNetworkSettings:
         with gr.Row():
             self.network_module = gr.Dropdown(
                 label="Network Module (LoRA Architecture Type)",
-                info="[ADVANCED] LoRA implementation module. 'networks.lora_qwen_image' is the standard Qwen Image LoRA. 'networks.dylora' enables Dynamic LoRA (trains multiple ranks). 'networks.lora_fa' uses LoRA-FA (Frozen-A) for better stability. Custom modules can be specified via text input below",
+                info="The bundled Qwen Image LoRA module is the supported default. Select custom only when you have installed and verified another importable module.",
                 choices=[
-                    "networks.lora_qwen_image",
-                    "networks.dylora",
-                    "networks.lora_fa",
+                    QWEN_IMAGE_NETWORK_MODULE,
                     "custom"
                 ],
-                value=self.config.get("network_module", "") or "networks.lora_qwen_image",
+                value=normalize_qwen_image_network_module(self.config.get("network_module", "")),
                 allow_custom_value=True,
                 interactive=True,
             )
@@ -3386,7 +3419,7 @@ class QwenImageNetworkSettings:
 
             self.network_dim = gr.Number(
                 label="Network Dimension (LoRA Rank)",
-                info="[CRITICAL] LoRA rank/dimension. QwenImage: 4-8 (low detail), 16-32 (balanced quality/size), 64-128 (high quality). DyLoRA: set to max rank you want to train. Higher = more VRAM + larger file size. 0 = auto-detection.",
+                info="LoRA rank/dimension. Qwen Image: 4-8 (low detail), 16-32 (balanced quality/size), 64-128 (high quality). Higher values use more VRAM and create larger files. 0 enables auto-detection when supported.",
                 value=self.config.get("network_dim", 16),
                 # minimum=0,  # Removed: Let backend handle validation  
                 # maximum=512,
@@ -3418,8 +3451,8 @@ class QwenImageNetworkSettings:
         with gr.Row():
             self.network_args = gr.Textbox(
                 label="Network Arguments (Advanced LoRA Parameters)",
-                info="[EXPERT] Space-separated key=value pairs. DyLoRA: 'unit=8' (rank increments). LoRA-FA: 'use_tucker=True tucker_rank=8'. LyCORIS: 'algo=locon conv_dim=4 conv_alpha=1'. Block-wise: 'block_dims=2,4,4,8,8,8,8,12,12,12,12,16,16,16,16' 'block_alphas=2,2,2,4,4,4,4,6,6,6,6,8,8,8,8'",
-                placeholder='e.g. "conv_dim=4 conv_alpha=1 algo=locon" or "unit=8" for DyLoRA',
+                info="[EXPERT] Space-separated key=value pairs accepted by the selected module. The bundled Qwen LoRA supports options such as rank_dropout, module_dropout, loraplus_lr_ratio, include_patterns, and exclude_patterns. Custom modules may define different options.",
+                placeholder='e.g. "rank_dropout=0.05 module_dropout=0.05 loraplus_lr_ratio=4"',
                 value=" ".join(self.config.get("network_args", []) or []) if isinstance(self.config.get("network_args", []), list) else self.config.get("network_args", ""),
             )
 
@@ -3508,6 +3541,18 @@ class QwenImageSaveLoadSettings:
                 info="Path to .safetensors state file to resume interrupted training. Includes optimizer state, step count, etc.",
                 placeholder="e.g., /path/to/training_state.safetensors",
                 value=self.config.get("resume", ""),
+            )
+
+            self.save_precision = gr.Dropdown(
+                label="LoRA Save Precision",
+                choices=[
+                    ("BF16 (recommended, smaller files)", "bf16"),
+                    ("FP16 (smaller files)", "fp16"),
+                    ("FP32 / Float (largest files)", "fp32"),
+                ],
+                value=self.config.get("save_precision", "bf16") or "bf16",
+                interactive=True,
+                info="Precision used for saved LoRA weights. BF16 is the default and keeps files about half the size of FP32.",
             )
 
         with gr.Row():
@@ -4138,6 +4183,8 @@ def qwen_image_lora_tab(
         qwen_model.model_version,
         qwen_model.faster_model_loading,
         qwen_model.use_pinned_memory_for_block_swap,
+        qwen_model.block_swap_h2d_only,
+        qwen_model.block_swap_ring_size,
         
         # Torch Compile settings
         qwen_model.compile,
@@ -4180,6 +4227,7 @@ def qwen_image_lora_tab(
         saveLoadSettings.output_dir,
         saveLoadSettings.output_name,
         saveLoadSettings.resume,
+        saveLoadSettings.save_precision,
         saveLoadSettings.save_every_n_epochs,
         saveLoadSettings.save_every_n_steps,
         saveLoadSettings.save_last_n_epochs,

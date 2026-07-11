@@ -48,6 +48,18 @@ class SaveLoadSettings:
                 info="Optional. Path to a saved state to resume training from.",
             )
 
+            self.save_precision = gr.Dropdown(
+                label="LoRA Save Precision",
+                choices=[
+                    ("BF16 (recommended, smaller files)", "bf16"),
+                    ("FP16 (smaller files)", "fp16"),
+                    ("FP32 / Float (largest files)", "fp32"),
+                ],
+                value=self.config.get("save_precision", "bf16") or "bf16",
+                interactive=True,
+                info="Precision used for saved LoRA weights. BF16 is the default and keeps files about half the size of FP32 without reducing LoRA rank.",
+            )
+
         with gr.Row():
             self.save_every_n_epochs = gr.Number(
                 label="Save Every N Epochs",

@@ -18,8 +18,11 @@ eggs/
 musubi-tuner2
 lib/
 cli_executed_commands
-tests
+!tests/
+tests/*
+!tests/test_training_gui_integrations.py
 lib64/
+tests/
 Z_Image_BF16.safetensors
 convert_nvfp4_learned.bat
 convert_to_quant2/

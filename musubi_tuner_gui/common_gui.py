@@ -2203,6 +2203,9 @@ def SaveConfigFileToRun(
             # Model loading parameters
             "disable_numpy_memmap",  # Store-true parameter - don't save when False
             "use_pinned_memory_for_block_swap",  # Store-true parameter - don't save when False
+            "block_swap_h2d_only",  # Store-true parameter - don't save when False
+            "use_unconditional_dit_for_lora_sampling", "turbo_dit_cache",
+            "validate_caption_structure", "warn_on_caption_issues", "log_loss_stats",
             # Torch compile parameters - store_true flags
             "compile", "compile_fullgraph",
             # Additional Wan parameters that should not be passed when False
@@ -2467,6 +2470,35 @@ def validate_args_setting(input_string):
             "A valid settings string must consist of one or more key/value pairs formatted as key=value, with no spaces around the equals sign or within the value. Multiple pairs should be separated by a space."
         )
         return False
+
+
+def validate_block_swap_options(param_dict: dict, *, lora_training: bool = True) -> None:
+    """Fail early for combinations the backend H2D offloader cannot run safely."""
+    raw_ring_size = param_dict.get("block_swap_ring_size", 2)
+    if raw_ring_size in (None, ""):
+        raw_ring_size = 2
+    try:
+        ring_size = int(raw_ring_size)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("block_swap_ring_size must be an integer of at least 1.") from exc
+
+    if ring_size < 1:
+        raise ValueError("block_swap_ring_size must be at least 1.")
+
+    if not bool(param_dict.get("block_swap_h2d_only", False)):
+        return
+
+    try:
+        blocks_to_swap = int(param_dict.get("blocks_to_swap", 0) or 0)
+    except (TypeError, ValueError) as exc:
+        raise ValueError("blocks_to_swap must be a positive integer when H2D-only block swap is enabled.") from exc
+
+    if not lora_training:
+        raise ValueError("H2D-only block swap is supported only for frozen-base LoRA training.")
+    if blocks_to_swap < 1:
+        raise ValueError("H2D-only block swap requires blocks_to_swap to be greater than 0.")
+    if not bool(param_dict.get("gradient_checkpointing", False)):
+        raise ValueError("H2D-only block swap requires gradient checkpointing during training.")
 
 
 def setup_environment(allow_distributed: Optional[bool] = None):

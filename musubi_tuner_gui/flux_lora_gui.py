@@ -34,6 +34,7 @@ from .common_gui import (
     save_executed_script,
     scriptdir,
     setup_environment,
+    validate_block_swap_options,
 )
 from .custom_logging import setup_logging
 from .dataset_config_generator import generate_dataset_config_from_folders, save_dataset_config, validate_dataset_config
@@ -66,14 +67,14 @@ def _get_debug_parameters_for_mode(debug_mode: str) -> str:
 
 
 def _find_accelerate_launch(python_cmd: str) -> list[str]:
-    accelerate_path = shutil.which("accelerate")
-    if accelerate_path:
-        return [rf"{accelerate_path}", "launch"]
-
     python_dir = os.path.dirname(python_cmd)
     accelerate_fallback = os.path.join(python_dir, "accelerate.exe" if sys.platform == "win32" else "accelerate")
     if os.path.exists(accelerate_fallback) and os.access(accelerate_fallback, os.X_OK):
         return [rf"{accelerate_fallback}", "launch"]
+
+    accelerate_path = shutil.which("accelerate")
+    if accelerate_path:
+        return [rf"{accelerate_path}", "launch"]
 
     log.warning("Accelerate binary not found, using Python module fallback")
     return [python_cmd, "-m", "accelerate.commands.launch"]
@@ -498,6 +499,8 @@ def train_flux_model(headless: bool, print_only: bool, parameters):
         param_dict["training_mode"] = training_mode
         parameters = [(k, (training_mode if k == "training_mode" else v)) for k, v in parameters]
 
+    validate_block_swap_options(param_dict, lora_training=True)
+
     # Prefer generated dataset config when using folder mode.
     dataset_config_mode = (param_dict.get("dataset_config_mode") or "").strip()
     if dataset_config_mode == "Generate from Folder Structure":
@@ -898,6 +901,8 @@ FLUX_PARAM_KEYS = [
     "disable_numpy_memmap",
     "blocks_to_swap",
     "use_pinned_memory_for_block_swap",
+    "block_swap_h2d_only",
+    "block_swap_ring_size",
     "img_in_txt_in_offloading",
     # torch compile
     "compile",
@@ -996,6 +1001,7 @@ FLUX_PARAM_KEYS = [
     "output_dir",
     "output_name",
     "resume",
+    "save_precision",
     "save_every_n_epochs",
     "save_last_n_epochs",
     "save_every_n_steps",
@@ -1428,6 +1434,19 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                 label="use_pinned_memory_for_block_swap",
                 value=bool(config.get("use_pinned_memory_for_block_swap", False)),
                 info="Use pinned memory for faster CPU<->GPU transfers (uses more shared memory on Windows).",
+            )
+            block_swap_h2d_only = gr.Checkbox(
+                label="block_swap_h2d_only",
+                value=bool(config.get("block_swap_h2d_only", False)),
+                info="LoRA only. Stream frozen blocks host-to-device without copying them back. Requires blocks_to_swap > 0 and gradient checkpointing.",
+            )
+            block_swap_ring_size = gr.Number(
+                label="block_swap_ring_size",
+                value=config.get("block_swap_ring_size", 2),
+                minimum=1,
+                step=1,
+                interactive=True,
+                info="GPU buffers used by H2D-only block swap. 2 overlaps transfer and compute; 1 minimizes VRAM.",
             )
             img_in_txt_in_offloading = gr.Checkbox(
                 label="img_in_txt_in_offloading",
@@ -1880,6 +1899,8 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
         disable_numpy_memmap,
         blocks_to_swap,
         use_pinned_memory_for_block_swap,
+        block_swap_h2d_only,
+        block_swap_ring_size,
         img_in_txt_in_offloading,
         # torch compile
         compile,
@@ -1978,6 +1999,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
         save_load.output_dir,
         save_load.output_name,
         save_load.resume,
+        save_load.save_precision,
         save_load.save_every_n_epochs,
         save_load.save_last_n_epochs,
         save_load.save_every_n_steps,
