@@ -55,6 +55,14 @@ gradient_checkpointing = true
 gradient_checkpointing_cpu_offload = false
 gradient_accumulation_steps = 1
 
+# Torch compile (optional)
+compile = false
+compile_backend = "inductor"
+compile_mode = "default"
+compile_dynamic = "auto"
+compile_fullgraph = false
+compile_cache_size_limit = 0
+
 # Flow matching / timestep sampling
 timestep_sampling = "flux2_shift"
 weighting_scheme = "none"

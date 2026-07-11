@@ -26,6 +26,7 @@ from .common_gui import (
     SaveConfigFile,
     SaveConfigFileToRun,
     scriptdir,
+    requires_native_compile_toolchain,
     setup_environment,
     save_executed_script,
     generate_script_content,
@@ -687,7 +688,7 @@ def train_model(
         run_cmd = run_cmd_advanced_training(run_cmd=run_cmd, **run_cmd_params)
 
         # log.info(run_cmd)
-        env = setup_environment()
+        env = setup_environment(compile_requested=requires_native_compile_toolchain(param_dict))
 
         # Save the executed command to cli_executed_commands folder
         training_script = generate_script_content(run_cmd, "LoRA training")

@@ -37,6 +37,31 @@
    -   Currently it fully supports Qwen Image Models training, Wan 2.2 models training and Wan 2.1 models training        
         -   Also has automatic Qwen VL captioning
 
+## Torch Compile Toolchain
+
+When the Inductor backend is selected through `Enable torch.compile` or Accelerate Dynamo, the trainer prepares and validates the native compiler environment before loading the model. Non-codegen backends such as `eager` remain available without a host compiler.
+
+- Windows discovery covers existing developer shells, Visual Studio and Build Tools installations, `vswhere`, registry and custom-drive installs, legacy layouts, and every installed x64 MSVC toolset. A real C++17/OpenMP build and an `nvcc` host-compiler probe must pass.
+- Linux discovery covers configured, versioned, Conda, GCC, Clang, NVIDIA HPC, Intel, and ARM C++ compilers. Candidates must compile and link C++17/OpenMP code and, when available, pass an `nvcc -ccbin` probe.
+- The RunPod and Massed Compute installers add `build-essential` and `ninja-build` when the host does not already provide them.
+- CUDA selection follows `torch.version.cuda`, Ninja is discovered automatically, and stable Inductor/Triton caches are created under `.cache/torch_compile`.
+- Direct GUI runs, worker subprocesses, direct training CLI runs, and Accelerate Dynamo all use the same backend setup.
+- If the first real compiled block fails for a graph-specific reason, training transparently retries in eager mode while preserving compiled state-dict compatibility. Set `MUSUBI_TORCH_COMPILE_FALLBACK=0` to make that failure strict.
+
+Advanced validation switches are `MUSUBI_TORCH_COMPILE_REQUIRE_CUDA`, `MUSUBI_TORCH_COMPILE_REQUIRE_NINJA`, and `MUSUBI_TORCH_COMPILE_REQUIRE_OPENMP` (enabled by default). Set a switch to `0` only when intentionally relaxing that check.
+
+Run the full local diagnostic on Windows:
+
+```powershell
+.\venv\Scripts\python.exe -m musubi_tuner.torch_compile_toolchain --require-openmp --smoke-test
+```
+
+On Linux:
+
+```bash
+./venv/bin/python -m musubi_tuner.torch_compile_toolchain --require-openmp --smoke-test
+```
+
 
 ## Updates
 **- Click images to see their full sizes**

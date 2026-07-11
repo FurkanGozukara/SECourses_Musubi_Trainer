@@ -33,6 +33,7 @@ from .common_gui import (
     SaveConfigFile,
     SaveConfigFileToRun,
     scriptdir,
+    requires_native_compile_toolchain,
     setup_environment,
     manage_additional_parameters,
     save_executed_script,
@@ -2926,7 +2927,7 @@ def train_wan_model(headless, print_only, parameters):
 
         run_cmd = run_cmd_advanced_training(run_cmd=run_cmd, **run_cmd_params)
 
-        env = setup_environment()
+        env = setup_environment(compile_requested=requires_native_compile_toolchain(param_dict))
 
         # Run latent caching first (if needed)
         if latent_cache_cmd:

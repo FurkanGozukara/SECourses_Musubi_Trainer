@@ -31,6 +31,7 @@ from .common_gui import (
     run_cmd_advanced_training,
     save_executed_script,
     scriptdir,
+    requires_native_compile_toolchain,
     setup_environment,
 )
 from .custom_logging import setup_logging
@@ -550,7 +551,7 @@ def train_flux2_model(headless: bool, print_only: bool, parameters):
 
     run_cmd = run_cmd_advanced_training(run_cmd=run_cmd, additional_parameters=additional_params)
 
-    env = setup_environment()
+    env = setup_environment(compile_requested=requires_native_compile_toolchain(param_dict))
 
     # If caching is enabled, run caching + training in one wrapper script so Stop cancels everything.
     if latent_cache_cmd or teo_cache_cmd:

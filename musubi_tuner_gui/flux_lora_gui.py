@@ -33,6 +33,7 @@ from .common_gui import (
     run_cmd_advanced_training,
     save_executed_script,
     scriptdir,
+    requires_native_compile_toolchain,
     setup_environment,
     validate_block_swap_options,
 )
@@ -769,7 +770,7 @@ def train_flux_model(headless: bool, print_only: bool, parameters):
     # Match Qwen/WAN launch strategy:
     # 1) run latent caching synchronously (so failures surface before training),
     # 2) then run (optional) text-encoder caching + training via a wrapper script so Stop cancels both.
-    env = setup_environment()
+    env = setup_environment(compile_requested=requires_native_compile_toolchain(param_dict))
 
     script_type = "flux2" if model_family == "FLUX.2" else "flux_klein"
 

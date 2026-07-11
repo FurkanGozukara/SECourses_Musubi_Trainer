@@ -165,6 +165,14 @@ caching_teo_num_workers = 8  # Number of workers for text encoder caching
 caching_teo_skip_existing = true  # Skip existing cached outputs
 caching_teo_keep_cache = true  # Keep cache after training
 
+# Torch compile (optional)
+compile = false
+compile_backend = "inductor"
+compile_mode = "default"
+compile_dynamic = "auto"  # "auto" | "true" | "false"
+compile_fullgraph = false
+compile_cache_size_limit = 0  # 0 = use PyTorch default
+
 # Accelerate Launch Settings
 mixed_precision = "bf16"  # Mixed precision training (bf16 recommended for Wan)
 multi_gpu = false  # Enable multi-GPU training

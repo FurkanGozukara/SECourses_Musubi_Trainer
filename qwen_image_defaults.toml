@@ -173,6 +173,14 @@ caching_teo_num_workers = 8
 caching_teo_skip_existing = true
 caching_teo_keep_cache = true
 
+# Torch compile (optional)
+compile = false
+compile_backend = "inductor"
+compile_mode = "default"
+compile_dynamic = "auto"         # "auto" | "true" | "false"
+compile_fullgraph = false
+compile_cache_size_limit = 0     # 0 = use PyTorch default
+
 # Accelerate Launch Settings
 mixed_precision = "bf16"    # RECOMMENDED for Qwen Image. fp16 may cause instability, fp8 not supported
 multi_gpu = false           # Enable distributed multi-GPU training

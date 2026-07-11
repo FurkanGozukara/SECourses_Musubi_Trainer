@@ -29,6 +29,7 @@ from .common_gui import (
     SaveConfigFile,
     SaveConfigFileToRun,
     scriptdir,
+    requires_native_compile_toolchain,
     setup_environment,
     save_executed_script,
     generate_script_content,
@@ -2076,6 +2077,10 @@ def train_qwen_image_model(headless, print_only, parameters):
         raise ValueError("[ERROR] Output directory is required. Please specify where to save your trained LoRA model.")
     if not param_dict.get("output_name"):
         raise ValueError("[ERROR] Output name is required. Please specify a name for your trained LoRA model.")
+
+    training_env = None
+    if not print_only:
+        training_env = setup_environment(compile_requested=requires_native_compile_toolchain(param_dict))
     
     # Only do file operations and caching if not in print_only mode
     if not print_only:
@@ -2696,7 +2701,9 @@ def train_qwen_image_model(headless, print_only, parameters):
 
         run_cmd = run_cmd_advanced_training(run_cmd=run_cmd, **run_cmd_params)
 
-        env = setup_environment()
+        env = training_env or setup_environment(
+            compile_requested=requires_native_compile_toolchain(param_dict)
+        )
 
         # Create a wrapper script that runs both text encoder caching and training
         if teo_cache_cmd:

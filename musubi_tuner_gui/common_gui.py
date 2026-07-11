@@ -32,8 +32,14 @@ scriptdir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 if os.name == "nt":
     scriptdir = scriptdir.replace("\\", "/")
 
-# insert sd-scripts path into PYTHONPATH
-sys.path.insert(0, os.path.join(scriptdir, "musubi-tuner"))
+# Make the backend's src-layout package importable when the GUI is launched
+# directly instead of through an editable installation.
+musubi_tuner_dir = os.path.join(scriptdir, "musubi-tuner")
+musubi_src_dir = os.path.join(musubi_tuner_dir, "src")
+sys.path.insert(0, musubi_src_dir)
+sys.path.insert(0, musubi_tuner_dir)
+
+from musubi_tuner.torch_compile_toolchain import ensure_compile_environment  # noqa: E402
 
 # define a list of substrings to search for v2 base models
 V2_BASE_MODELS = [
@@ -2501,19 +2507,91 @@ def validate_block_swap_options(param_dict: dict, *, lora_training: bool = True)
         raise ValueError("H2D-only block swap requires gradient checkpointing during training.")
 
 
-def setup_environment(allow_distributed: Optional[bool] = None):
+_DISABLED_COMPILE_BACKENDS = {"", "0", "false", "no", "none", "off"}
+_NATIVE_CODEGEN_BACKENDS = {"inductor"}
+
+
+def is_torch_compile_requested(parameters) -> bool:
+    """Return whether direct torch.compile or Accelerate Dynamo is enabled."""
+    if parameters is None:
+        return False
+    values = dict(parameters) if not isinstance(parameters, dict) else parameters
+    compile_value = values.get("compile", False)
+    if isinstance(compile_value, str):
+        direct_compile = compile_value.strip().casefold() not in _DISABLED_COMPILE_BACKENDS
+    else:
+        direct_compile = bool(compile_value)
+    dynamo_backend = str(values.get("dynamo_backend") or "no").strip().casefold()
+    return direct_compile or dynamo_backend not in _DISABLED_COMPILE_BACKENDS
+
+
+def requires_native_compile_toolchain(parameters) -> bool:
+    """Return whether the selected compile backend emits native host code."""
+    if parameters is None:
+        return False
+    values = dict(parameters) if not isinstance(parameters, dict) else parameters
+    compile_value = values.get("compile", False)
+    if isinstance(compile_value, str):
+        direct_compile = compile_value.strip().casefold() not in _DISABLED_COMPILE_BACKENDS
+    else:
+        direct_compile = bool(compile_value)
+    compile_backend = str(values.get("compile_backend") or "inductor").strip().casefold()
+    dynamo_backend = str(values.get("dynamo_backend") or "no").strip().casefold()
+    return (direct_compile and compile_backend in _NATIVE_CODEGEN_BACKENDS) or (
+        dynamo_backend in _NATIVE_CODEGEN_BACKENDS
+    )
+
+
+def _compile_env_flag(env: dict, name: str, default: bool) -> bool:
+    value = env.get(name)
+    if value is None:
+        return default
+    return str(value).strip().casefold() not in _DISABLED_COMPILE_BACKENDS
+
+
+def setup_environment(
+    allow_distributed: Optional[bool] = None,
+    *,
+    compile_requested: bool = False,
+):
     env = os.environ.copy()
     env["PYTHONPATH"] = (
-        rf"{scriptdir}{os.pathsep}{scriptdir}/sd-scripts{os.pathsep}{env.get('PYTHONPATH', '')}"
+        rf"{scriptdir}{os.pathsep}{musubi_src_dir}{os.pathsep}{scriptdir}/sd-scripts{os.pathsep}{env.get('PYTHONPATH', '')}"
     )
     env["TF_ENABLE_ONEDNN_OPTS"] = "0"
+    env.setdefault("PYTHONIOENCODING", "utf-8")
+    env.setdefault("PYTHONUTF8", "1")
 
     if allow_distributed is False:
         env = _sanitize_distributed_env(env)
 
     if os.name == "nt":
         env["XFORMERS_FORCE_DISABLE_TRITON"] = "1"
-        env = _ensure_visual_studio_compiler_env(env)
+
+    if compile_requested:
+        status = ensure_compile_environment(
+            env,
+            project_root=scriptdir,
+            cache_dir=os.path.join(scriptdir, ".cache", "torch_compile"),
+            require_cuda_toolkit=_compile_env_flag(
+                env, "MUSUBI_TORCH_COMPILE_REQUIRE_CUDA", False
+            ),
+            require_ninja=_compile_env_flag(
+                env, "MUSUBI_TORCH_COMPILE_REQUIRE_NINJA", False
+            ),
+            require_openmp=_compile_env_flag(
+                env, "MUSUBI_TORCH_COMPILE_REQUIRE_OPENMP", True
+            ),
+        )
+        env["MUSUBI_TORCH_COMPILE_REQUESTED"] = "1"
+        env["MUSUBI_TORCH_COMPILE_READY"] = "1" if status.ok else "0"
+        env["MUSUBI_TORCH_COMPILE_DETAIL"] = status.detail
+        if status.ok:
+            log.info(f"torch.compile toolchain ready: {status.detail}")
+        else:
+            message = f"torch.compile toolchain unavailable: {status.detail}"
+            log.error(message)
+            raise RuntimeError(message)
 
     return env
 
@@ -2550,46 +2628,12 @@ def _sanitize_distributed_env(env: dict) -> dict:
 
 
 def _ensure_visual_studio_compiler_env(env):
+    """Backward-compatible wrapper around the shared compile toolchain."""
     if os.name != "nt":
         return env
-
-    try:
-        cl_available = shutil.which("cl.exe", path=env.get("PATH", "")) is not None
-        omp_header_available = _has_openmp_header(env)
-
-        if cl_available and omp_header_available:
-            log.debug("cl.exe and OpenMP headers detected; Visual Studio environment already configured.")
-            return env
-
-        if not cl_available:
-            log.info("cl.exe not detected in PATH; attempting to initialize Visual Studio environment.")
-        elif not omp_header_available:
-            log.info(
-                "cl.exe detected but omp.h not found in INCLUDE path; attempting to initialize Visual Studio environment."
-            )
-
-        delta = _get_visual_studio_env_delta(env)
-        if delta:
-            env.update(delta)
-            cl_path = shutil.which("cl.exe", path=env.get("PATH", ""))
-            if cl_path:
-                log.info(f"Loaded Visual Studio developer environment (cl.exe found at {cl_path}).")
-            else:
-                log.warning(
-                    "Visual Studio environment initialized but cl.exe is still not resolvable. "
-                    "Training may still fail when compiling extensions."
-                )
-        else:
-            log.warning(
-                "Unable to automatically locate a Visual Studio developer environment. "
-                "If CUDA extensions require compilation, ensure cl.exe is accessible."
-            )
-    except Exception as exc:
-        log.warning(
-            f"Unexpected error while initializing Visual Studio environment: {exc}. "
-            "Continuing without VS developer environment - this may cause issues if CUDA extensions need compilation."
-        )
-
+    status = ensure_compile_environment(env, require_openmp=True)
+    if not status.ok:
+        log.warning(f"Visual Studio compiler environment is unavailable: {status.detail}")
     return env
 
 
