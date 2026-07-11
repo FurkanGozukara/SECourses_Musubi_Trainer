@@ -1,11 +1,11 @@
 model_quantizer.workflow = "Quantize (FP8/INT8/NVFP4/MXFP8)"
-model_quantizer.quant_format = "FP8 (E4M3)"
+model_quantizer.quant_format = "INT8"
 model_quantizer.comfy_quant = true
 model_quantizer.full_precision_matrix_mult = false
-model_quantizer.scaling_mode = "tensor"
-model_quantizer.block_size = 64
+model_quantizer.scaling_mode = "row"
+model_quantizer.block_size = 128
 model_quantizer.include_input_scale = false
-model_quantizer.convrot = false
+model_quantizer.convrot = true
 model_quantizer.convrot_group_size = 256
 model_quantizer.dynamic_convrot = false
 
@@ -13,18 +13,18 @@ model_quantizer.custom_full_precision_mm = false
 model_quantizer.custom_convrot = false
 model_quantizer.custom_convrot_group_size = 256
 
-model_quantizer.simple = false
+model_quantizer.simple = true
 model_quantizer.skip_inefficient_layers = false
 model_quantizer.full_matrix = false
-model_quantizer.calib_samples = 2048
+model_quantizer.calib_samples = 1024
 model_quantizer.manual_seed = -1
-model_quantizer.optimizer = "prodigy"
-model_quantizer.num_iter = 2000
-model_quantizer.lr = 1.0
-model_quantizer.lr_schedule = "plateau"
-model_quantizer.top_p = 0.12
-model_quantizer.min_k = 128
-model_quantizer.max_k = 896
+model_quantizer.optimizer = "original"
+model_quantizer.num_iter = 200
+model_quantizer.lr = 8.077300000003e-3
+model_quantizer.lr_schedule = "adaptive"
+model_quantizer.top_p = 0.02
+model_quantizer.min_k = 16
+model_quantizer.max_k = 64
 
 model_quantizer.lr_gamma = 0.99
 model_quantizer.lr_patience = 1
@@ -53,9 +53,11 @@ model_quantizer.verbose = "NORMAL"
 model_quantizer.output_mode = "Compact (hide progress bars)"
 model_quantizer.verbose_pinned = false
 model_quantizer.low_memory = true
+model_quantizer.allow_requantize = false
 
-model_quantizer.preset = "Normal (Balanced)"
+model_quantizer.preset = "INT8 ConvRot (Balanced / Native / Recommended)"
 model_quantizer.model_preset = "krea2"
+model_quantizer.filter.krea2 = true
 
 model_quantizer.single_input_file = ""
 model_quantizer.single_output_file = ""

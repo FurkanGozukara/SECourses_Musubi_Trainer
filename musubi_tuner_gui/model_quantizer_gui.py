@@ -44,18 +44,64 @@ QUANT_FORMAT_NVFP4 = "NVFP4 (FP4 E2M1)"
 QUANT_FORMAT_MXFP8 = "MXFP8 (Microscaling)"
 
 PRESET_CUSTOM = "Custom (manual)"
-PRESET_FAST = "Fast (Simple Quantization)"
-PRESET_NORMAL = "Normal (Balanced)"
-PRESET_HIGH = "High Quality (Slow)"
-PRESET_EXTREME = "Extreme Quality (Very Slow)"
-PRESET_INT8_FAST = "INT8 Blockwise (QuantOps / Experimental)"
-PRESET_INT8_TENSOR = "INT8 Tensorwise (QuantOps custom / RTX 30xx+)"
-PRESET_INT8_CONVROT = "INT8 ConvRot Rowwise (QuantOps custom / Best INT8)"
-PRESET_MXFP8_BALANCED = "MXFP8 Balanced (QuantOps / Blackwell)"
-PRESET_NVFP4_BALANCED = "NVFP4 Balanced (QuantOps / Blackwell)"
-PRESET_NVFP4_Z = "NVFP4 Z-Image (Aggressive / Expert)"
-PRESET_FP8_SCALED = "FP8 Scaled (Tensorwise)"
-PRESET_FP8_MIXED = "FP8 Compatibility (Tensorwise)"
+PRESET_FAST = "FP8 Simple (Fast / Native)"
+PRESET_NORMAL = "FP8 Learned (Balanced / Native)"
+PRESET_HIGH = "FP8 Learned (High Quality / Native)"
+PRESET_EXTREME = "FP8 Full SVD (OOM Risk)"
+PRESET_INT8_FAST = "INT8 Blockwise (QuantOps Only / Experimental)"
+PRESET_INT8_TENSOR = "INT8 Tensorwise (Native / Turing+)"
+PRESET_INT8_CONVROT = "INT8 ConvRot (Balanced / Native / Recommended)"
+PRESET_INT8_CONVROT_HQ = "INT8 ConvRot Learned (Best Quality / Slow)"
+PRESET_MXFP8_BALANCED = "MXFP8 (Native / Blackwell)"
+PRESET_NVFP4_BALANCED = "NVFP4 (Native / Blackwell / Experimental)"
+PRESET_FP8_SCALED = "FP8 Learned (Reference / Native Compute)"
+PRESET_FP8_MIXED = "FP8 Compatibility (Full Precision Matmul)"
+
+QUALITY_PRESET_CHOICES = [
+    PRESET_CUSTOM,
+    PRESET_INT8_CONVROT,
+    PRESET_INT8_CONVROT_HQ,
+    PRESET_INT8_TENSOR,
+    PRESET_FAST,
+    PRESET_NORMAL,
+    PRESET_HIGH,
+    PRESET_EXTREME,
+    PRESET_FP8_SCALED,
+    PRESET_FP8_MIXED,
+    PRESET_INT8_FAST,
+    PRESET_MXFP8_BALANCED,
+    PRESET_NVFP4_BALANCED,
+]
+
+REMOVED_QUALITY_PRESET_ALIASES = {
+    "NVFP4 Z-Image (Aggressive / Expert)": PRESET_FP8_MIXED,
+}
+
+QUALITY_PRESET_LEGACY_ALIASES = {
+    "Fast (Simple Quantization)": PRESET_FAST,
+    "Normal (Balanced)": PRESET_NORMAL,
+    "High Quality (Slow)": PRESET_HIGH,
+    "Extreme Quality (Very Slow)": PRESET_EXTREME,
+    "INT8 Blockwise (QuantOps / Experimental)": PRESET_INT8_FAST,
+    "INT8 Tensorwise (QuantOps custom / RTX 30xx+)": PRESET_INT8_TENSOR,
+    "INT8 ConvRot Rowwise (QuantOps custom / Best INT8)": PRESET_INT8_CONVROT,
+    "MXFP8 Balanced (QuantOps / Blackwell)": PRESET_MXFP8_BALANCED,
+    "NVFP4 Balanced (QuantOps / Blackwell)": PRESET_NVFP4_BALANCED,
+    "FP8 Scaled (Tensorwise)": PRESET_FP8_SCALED,
+    "FP8 Compatibility (Tensorwise)": PRESET_FP8_MIXED,
+    # This aggressive recipe caused visible failures on Z-Image and is no longer offered.
+    **REMOVED_QUALITY_PRESET_ALIASES,
+}
+
+
+def _quality_preset_value(value: object) -> str:
+    text = str(value) if value is not None else ""
+    return QUALITY_PRESET_LEGACY_ALIASES.get(text, text)
+
+
+def _quality_preset_choice(value: object) -> str:
+    normalized = _quality_preset_value(value)
+    return normalized if normalized in QUALITY_PRESET_CHOICES else PRESET_INT8_CONVROT
 
 MODEL_PRESET_NONE = "None (manual)"
 ERNIE_IMAGE_EXCLUDE_LAYERS = (
@@ -63,7 +109,7 @@ ERNIE_IMAGE_EXCLUDE_LAYERS = (
     r"layers[.]0[.]self_attention|layers[.]0[.]mlp.gate_proj|"
     r"layers[.]0[.]mlp[.]up_proj|text_proj)"
 )
-BOOGU_EXCLUDE_LAYERS = r"(image_index_embedding|ref_image_patch_embedder)"
+BOOGU_EXCLUDE_LAYERS = r"(image_index_embedding|ref_image_patch_embedder|norm1[.]linear|norm_out)"
 KREA2_EXCLUDE_LAYERS = (
     r"^(first|last|tmlp|tproj|txtmlp|img_in|final_layer|time_embed|time_mod_proj)([.]|$)|"
     r"^(txtfusion|text_fusion)[.]projector([.]|$)"
@@ -91,7 +137,6 @@ KREA2_LAYER_CONFIG_PATTERNS = (
 FP8_ONLY_LAYER_CONFIG_PATHS = {
     os.path.normcase(os.path.abspath(KREA2_LAYER_CONFIG_PATH)),
 }
-NON_FP8_QUANT_FORMATS = {QUANT_FORMAT_INT8, QUANT_FORMAT_NVFP4, QUANT_FORMAT_MXFP8}
 
 
 def _is_fp8_only_layer_config(path: object) -> bool:
@@ -230,9 +275,9 @@ FORMAT_DEFAULTS = {
     QUANT_FORMAT_INT8: {
         "comfy_quant": True,
         "full_precision_matrix_mult": False,
-        "scaling_mode": "block",
+        "scaling_mode": "row",
         "block_size": 128,
-        "convrot": False,
+        "convrot": True,
         "convrot_group_size": 256,
         "dynamic_convrot": False,
         "low_memory": True,
@@ -304,7 +349,7 @@ def _load_model_filters() -> Dict[str, Dict[str, object]]:
     log.warning("Could not import convert_to_quant MODEL_FILTERS: %s", " | ".join(import_errors))
     return {
         "gemma4": {"help": "Gemma 4 text/multimodal model", "category": "text"},
-        "qwen35": {"help": "Qwen2.5 text/multimodal model", "category": "text"},
+        "qwen35": {"help": "Qwen3.5 text/multimodal model", "category": "text"},
         "t5xxl": {"help": "T5-XXL text encoder", "category": "text"},
         "mistral": {"help": "Mistral text encoder", "category": "text"},
         "visual": {"help": "Visual encoder", "category": "text"},
@@ -350,7 +395,7 @@ MODEL_PRESET_DISPLAY_NAMES = {
     "flux2": "FLUX.2",
     "flux_klein": "FLUX 2 Klein Models",
     "gemma4": "Gemma 4 Text/Multimodal",
-    "generic_text": "Generic Text Encoder",
+    "generic_text": "Generic Text Encoder (Input Scales Only)",
     "hunyuan": "Hunyuan Video 1.5",
     "ideogram4": "Ideogram 4",
     "krea2": "Krea 2 (Raw/Turbo)",
@@ -359,7 +404,7 @@ MODEL_PRESET_DISPLAY_NAMES = {
     "ltx2": "LTX (2 / 2.3)",
     "ltx2_3": "LTX (2 / 2.3)",
     "qwen": "Qwen Image / Edit (2509, 2511, 2512)",
-    "qwen35": "Qwen2.5 Text/Multimodal",
+    "qwen35": "Qwen3.5 Text/Multimodal",
     "t5xxl": "T5-XXL",
     "wan": "WAN (2.1 / 2.2)",
     "zimage": "Z-Image",
@@ -383,8 +428,8 @@ MODEL_PRESET_LEGACY_LABELS = {
     "Qwen Image / Edit": "qwen",
     "WAN Video": "wan",
 }
-REGEX_ONLY_MODEL_PRESETS = {"ernie_image"}
-GUI_ONLY_MODEL_PRESETS = {"flux1", "flux_klein"}
+REGEX_ONLY_MODEL_PRESETS = set()
+GUI_ONLY_MODEL_PRESETS = set()
 PRIMARY_MODEL_PRESET_VALUES = {
     "anima",
     "boogu",
@@ -409,19 +454,23 @@ MODEL_PRESET_EXTRA_FILTERS = {
 }
 
 FLUX_KLEIN_MODEL_SETTINGS = {
-    "preset": PRESET_NORMAL,
-    "quant_format": QUANT_FORMAT_FP8,
+    "preset": PRESET_INT8_CONVROT,
+    "quant_format": QUANT_FORMAT_INT8,
     "comfy_quant": True,
-    "scaling_mode": "tensor",
+    "scaling_mode": "row",
+    "convrot": True,
+    "convrot_group_size": 256,
+    "dynamic_convrot": False,
+    "full_precision_matrix_mult": False,
 }
 
 SCALING_MODE_INFO = (
     "Quality/compatibility tradeoff. Tensor uses one scale for the whole weight tensor: lowest scale overhead and "
     "usually the simplest, fastest, most compatible path, but least adaptive when channels or regions have very "
     "different ranges. Row uses one scale per output row: usually better than tensor for uneven per-channel ranges, "
-    "with modest scale overhead; for INT8 row this is the ConvRot route and needs matching runtime support. "
+    "with modest scale overhead; for INT8 row this is the native ComfyUI ConvRot route. "
     "Block uses one scale per 2D block: usually the best quality of these modes on uneven weights, especially for "
-    "INT8 blockwise, but it adds scale metadata and requires dimensions divisible by the block size. Some models "
+    "INT8 blockwise, but it adds scale metadata, requires QuantOps, and needs dimensions divisible by the block size. Some models "
     "are layer-sensitive; for FP8 runs, the Krea 2 preset keeps its main attention and MLP projections on FP8 tensor scaling. "
     "NVFP4 and MXFP8 use fixed internal block microscaling, so their generic Scaling Mode control is locked to tensor."
 )
@@ -435,8 +484,8 @@ BLOCK_SIZE_INFO = (
 
 DYNAMIC_CONVROT_INFO = (
     "Lets convert_to_quant choose the largest compatible power-of-4 ConvRot group for each INT8 row-wise layer. "
-    "The group size is treated as the minimum (upstream default: 256). Dynamic ConvRot also enables ConvRot, and "
-    "is ignored for formats or scaling modes other than INT8 row-wise."
+    "The group size is treated as the minimum. Fixed 256 is the recommended stable default; dynamic sizing is an "
+    "experimental option that can select a different layout per layer. It is ignored outside INT8 row-wise."
 )
 
 SCALING_MODE_CHOICES = ["tensor", "row", "block"]
@@ -507,6 +556,31 @@ def _normalize_optional_scaling_mode(value):
         return None
     return _normalize_scaling_mode(value, None)
 
+
+def _quantized_checkpoint_markers(path: str) -> List[str]:
+    """Return definitive quantization markers found in a safetensors header."""
+    if not path or os.path.splitext(path)[1].lower() != ".safetensors":
+        return []
+
+    try:
+        from safetensors import safe_open
+
+        with safe_open(path, framework="pt", device="cpu") as handle:
+            metadata = handle.metadata() or {}
+            keys = list(handle.keys())
+    except Exception as exc:
+        log.debug("Could not inspect safetensors quantization markers for %s: %s", path, exc)
+        return []
+
+    markers: List[str] = []
+    if "_quantization_metadata" in metadata:
+        markers.append("_quantization_metadata header")
+    if any(key.endswith(".comfy_quant") for key in keys):
+        markers.append(".comfy_quant tensors")
+    if any(key.endswith((".weight_scale", ".scale_weight")) for key in keys):
+        markers.append("quantization scale tensors")
+    return markers
+
 CALIB_SAMPLES_INFO = (
     "Used here for bias-correction calibration, not dataset calibration. The tool generates random inputs and uses "
     "them to estimate output bias shift after quantization. More samples usually make the correction more stable, "
@@ -567,42 +641,42 @@ Practical note:
 QUALITY_GUIDANCE_MD = """
 ### Default route
 
-The default Normal preset uses learned FP8 tensor scaling, low-memory streaming, and quant metadata. Use Fast when
-you need the lowest-memory simple-quantization route for very large checkpoints or smaller GPUs.
+The default is **INT8 ConvRot (Balanced)**: native ComfyUI row-wise INT8, fixed group size 256, simple rounding,
+low-memory streaming, and quant metadata. It is the best current balance of size, speed, conversion time, and
+reconstruction quality for models with a validated ConvRot recipe. **INT8 ConvRot Learned** uses the upstream
+Prodigy/2,000-iteration recipe when conversion quality matters more than conversion time.
 
-### Higher quality route
+Selecting a model preset is important. Models with validated ConvRot-compatible dimensions use it automatically;
+known or uncertain exceptions stay on their safer FP8 or tensor-wise INT8 route.
 
-Use these changes when you can spend more time and memory for better fidelity:
+### Runtime support
 
-1. Pick the closest Model Preset first so sensitive layers stay high precision.
-2. Change Quality Preset from Fast to FP8 Scaled, FP8 Compatibility, Normal, High Quality, or Extreme Quality.
-3. Disable Simple quantization to enable learned rounding.
-4. Keep Save Quantization Metadata and Low memory mode enabled unless you have a reason to turn them off.
-5. Raise Calibration Samples gradually, for example 2048, 3072, then 4096.
-6. Use Extreme Quality only for difficult layers or final high-quality runs, because Full SVD is much heavier.
-7. For unsupported models, run Dry Run / Create Template and add regex exclusions for remaining 2D BF16-sensitive layers.
+- Current ComfyUI natively loads FP8, tensor/row INT8 (including ConvRot), MXFP8, and NVFP4 metadata layouts.
+- INT8 blockwise remains a QuantOps-only experimental layout. It is not the general default.
+- Native tensor/row INT8 targets Turing-class GPUs and newer. FP8 acceleration is strongest on Ada/RTX 40 series and newer.
+- MXFP8 and NVFP4 are Blackwell-only expert routes. Keep `comfy-kitchen` current when creating them.
+- Native compute presets keep `full_precision_matrix_mult=false`; Compatibility deliberately sets it to true.
+- ComfyUI has a newer W4A4 ConvRot runtime layout, but convert_to_quant cannot export it yet, so the GUI does not offer a broken preset.
 
-Model-specific notes from upstream issues:
+### Model decisions
 
-- Qwen Image / Edit (2509, 2511, 2512): use FP8 Scaled or Compatibility, keep full precision matrix multiplication enabled, and do not use Simple for best quality.
-- FLUX.1: use the FLUX.1 preset for the modern equivalent of Comfy's scaled-FP8 reference: FP8 E4M3 tensor scaling, `.comfy_quant`, quant metadata, low-memory, full precision matrix multiplication, and input_scale tensors. The old public Comfy checkpoint uses legacy `scaled_fp8` tensors without metadata; new exports should keep metadata enabled.
-- Z-Image and Anima (Base/Turbo): avoid NVFP4 as the default route; issue reports showed noisy output. Use FP8 Compatibility first.
-- Boogu-Image: use the Boogu-Image preset, which combines upstream high-precision filters with the known exclusion regex for image/reference embedding layers.
-- ERNIE Image: use the ERNIE preset, which applies the tested exclusion regex.
-- Gemma 4 and Ideogram 4: upstream v1.3 adds dedicated model filters; choose their model presets instead of manually reproducing the exclusion lists.
-- Krea 2 Raw/Turbo: the Krea 2 preset starts on Normal (Balanced): learned FP8 tensor scaling, upstream Krea filters, Krea-specific projection/time/final-layer exclusions, metadata, and low-memory. Local SwarmUI tests showed Krea 2 FP8 tensor output stayed good while FP8 blockwise and INT8 blockwise degraded when Q/K/V and MLP gate/up were block-quantized. The GUI applies the same Krea 2 attention/MLP regex scope for FP8, INT8, MXFP8, and NVFP4 by generating a matching layer config at run time; FP8 keeps full-precision matrix multiplication only on gate/output/down projections. Switch Quality Preset to Fast only when you specifically want the simpler official-style FP8 route.
-- INT8 ConvRot: the ConvRot preset enables upstream dynamic group sizing, using 256 as the minimum and selecting the largest compatible group per layer. Disable Dynamic ConvRot only when you need a fixed group size.
-- Mixed-layer recipes: custom layers can independently enable full-precision matrix multiplication metadata and fixed-size ConvRot. Custom ConvRot is meaningful for custom INT8 row-wise layers.
-- ComfyUI-QuantOps: load these exports with QuantOps quantized loader nodes or a patched QuantOps stock-loader auto integration. Keep metadata enabled so QuantOps can identify tensor, row, block, MXFP8, and NVFP4 layouts instead of guessing from scales.
-- INT8 Blockwise requires QuantOps runtime support. Stock ComfyUI `Load Diffusion Model` and SwarmUI's normal model dropdown need a QuantOps stock-loader auto patch; otherwise use the QuantOps quantized loader nodes.
-- INT8 Tensorwise and ConvRot require the custom comfy-kitchen INT8 build plus `--enable-triton-backend`; without that, expect fallback behavior or load failure.
-- QuantOps loader nodes have their own `low_memory` and `disable_dynamic` toggles. For quantized text encoders, upstream issue comments recommend enabling both when the pipeline clogs or memory spikes.
-- INT8 text encoders, especially T5, have reported Triton NaNs on short prompts. If that happens, use the QuantOps loader with the PyTorch backend or stay with FP8 for text encoders.
-- RTX 30xx and 40xx should prefer FP8/INT8 routes. MXFP8 and NVFP4 are Blackwell-oriented expert presets; treat them as compatibility/quality experiments unless your ComfyUI runtime has the required comfy-kitchen layouts.
-- On older cards, enabling Triton for FP8 may trip unsupported FP8 dtype compilation errors in unrelated non-QuantOps workflows. Disable the Triton backend for those workflows if that happens.
-- Hybrid MXFP8 needs `HybridMXFP8Layout` from comfy-kitchen. If that layout is not registered in ComfyUI, use MXFP8 Balanced or FP8 instead.
-- Blockwise FP8/INT8 require layer dimensions compatible with their block size. Tensor/row scaling is safer for broad model coverage and lower risk of unsupported layers.
-- Published third-party Krea 2 quantized checkpoints exist, but their visual quality is not independently validated here.
+- ConvRot defaults: FLUX.2, FLUX Klein, Gemma 4, Ideogram 4, Krea 2, LTX 2/2.3, Qwen3.5, T5-XXL, WAN, Radiance, distilled/Chroma, and NeRF presets.
+- Krea 2: ConvRot replaces the degraded blockwise route. Sensitive input/time/final/fusion layers remain high precision, and the GUI no longer generates a layer config that silently disables ConvRot.
+- Qwen Image / Edit: learned FP8 tensor scaling with full-precision matmul remains the quality-first exception. Do not use Simple for the best result.
+- Boogu-Image: native INT8 tensor-wise is used because important widths are not compatible with fixed ConvRot/block groups; norm and embedding layers remain high precision.
+- Z-Image and Anima: FP8 Compatibility remains the default because public NVFP4 results showed severe noise.
+- FLUX.1, ERNIE Image, Hunyuan, LENS, and filters without public ConvRot validation stay on native learned FP8 rather than receiving an optimistic INT8 default.
+- Qwen3.5 protects the first and size-specific last layers (23/31/63), embeddings, and the entire visual stack.
+- Gemma 4 protects embeddings, K/V projections, audio/vision paths, and multimodal projectors.
+- Generic Text Encoder is input-scale-only; it does not pretend to provide architecture-specific layer exclusions.
+
+### Quality controls
+
+- Fixed ConvRot group 256 is the stable default. Dynamic groups are still available for experiments, but can change the layout layer by layer.
+- Keep Save Quantization Metadata and Low memory mode enabled.
+- Full SVD is labeled as an OOM risk, not a guaranteed quality upgrade. Use it only for targeted experiments.
+- For an unlisted architecture, use Dry Run / Create Template before quantizing and protect sensitive 2D layers explicitly.
+- Re-quantizing an already quantized checkpoint is blocked by default because it compounds error; the expert override is available when intentional.
 """
 
 MODEL_PRESET_VALUE_BY_LABEL = {
@@ -704,11 +778,30 @@ def _visible_model_preset_value(primary_value: str, other_value: str) -> str:
         return other_value
     return MODEL_PRESET_NONE
 
+CONVROT_DEFAULT_MODEL_PRESETS = {
+    "distillation_large",
+    "distillation_small",
+    "flux2",
+    "flux_klein",
+    "gemma4",
+    "ideogram4",
+    "krea2",
+    "ltx2",
+    "ltx2_3",
+    "ltxv2",
+    "nerf_large",
+    "nerf_small",
+    "qwen35",
+    "radiance",
+    "t5xxl",
+    "wan",
+}
+
 MODEL_PRESET_SETTINGS = {
     name: {
-        "preset": PRESET_NORMAL,
-        "quant_format": QUANT_FORMAT_FP8,
-        "scaling_mode": "tensor",
+        "preset": PRESET_INT8_CONVROT if name in CONVROT_DEFAULT_MODEL_PRESETS else PRESET_NORMAL,
+        "quant_format": QUANT_FORMAT_INT8 if name in CONVROT_DEFAULT_MODEL_PRESETS else QUANT_FORMAT_FP8,
+        "scaling_mode": "row" if name in CONVROT_DEFAULT_MODEL_PRESETS else "tensor",
         "exclude_layers": "",
     }
     for name in MODEL_FILTERS.keys()
@@ -722,22 +815,30 @@ MODEL_PRESET_SETTINGS.update({
         "block_size": None,
         "simple": False,
         "skip_inefficient_layers": False,
-        "full_precision_matrix_mult": True,
+        "full_precision_matrix_mult": False,
         "include_input_scale": True,
         "low_memory": True,
         "save_quant_metadata": True,
     },
     "flux_klein": FLUX_KLEIN_MODEL_SETTINGS.copy(),
     "t5xxl": {
-        "preset": PRESET_NORMAL,
-        "quant_format": QUANT_FORMAT_FP8,
-        "scaling_mode": "tensor",
+        "preset": PRESET_INT8_CONVROT,
+        "quant_format": QUANT_FORMAT_INT8,
+        "scaling_mode": "row",
+        "convrot": True,
+        "convrot_group_size": 256,
+        "dynamic_convrot": False,
+        "full_precision_matrix_mult": False,
         "include_input_scale": True,
     },
     "wan": {
-        "preset": PRESET_FP8_SCALED,
-        "quant_format": QUANT_FORMAT_FP8,
-        "scaling_mode": "tensor",
+        "preset": PRESET_INT8_CONVROT,
+        "quant_format": QUANT_FORMAT_INT8,
+        "scaling_mode": "row",
+        "convrot": True,
+        "convrot_group_size": 256,
+        "dynamic_convrot": False,
+        "full_precision_matrix_mult": False,
     },
     "qwen": {
         "preset": PRESET_FP8_SCALED,
@@ -747,11 +848,11 @@ MODEL_PRESET_SETTINGS.update({
         "full_precision_matrix_mult": True,
     },
     "boogu": {
-        "preset": PRESET_INT8_FAST,
+        "preset": PRESET_INT8_TENSOR,
         "quant_format": QUANT_FORMAT_INT8,
         "comfy_quant": True,
-        "scaling_mode": "block",
-        "block_size": 128,
+        "scaling_mode": "tensor",
+        "block_size": None,
         "exclude_layers": BOOGU_EXCLUDE_LAYERS,
         "custom_type": None,
         "custom_block_size": None,
@@ -763,19 +864,20 @@ MODEL_PRESET_SETTINGS.update({
         "fallback_simple": False,
     },
     "krea2": {
-        "preset": PRESET_NORMAL,
-        "quant_format": QUANT_FORMAT_FP8,
+        "preset": PRESET_INT8_CONVROT,
+        "quant_format": QUANT_FORMAT_INT8,
         "comfy_quant": True,
         "full_precision_matrix_mult": False,
-        "scaling_mode": "tensor",
-        "block_size": None,
-        "simple": False,
+        "scaling_mode": "row",
+        "block_size": 128,
+        "simple": True,
         "skip_inefficient_layers": False,
         "exclude_layers": KREA2_EXCLUDE_LAYERS,
         "layer_config_path": "",
         "layer_config_fullmatch": False,
-        "convrot": False,
+        "convrot": True,
         "convrot_group_size": 256,
+        "dynamic_convrot": False,
         "low_memory": True,
         "save_quant_metadata": True,
     },
@@ -784,6 +886,7 @@ MODEL_PRESET_SETTINGS.update({
         "quant_format": QUANT_FORMAT_FP8,
         "comfy_quant": True,
         "scaling_mode": "tensor",
+        "full_precision_matrix_mult": False,
         "exclude_layers": ERNIE_IMAGE_EXCLUDE_LAYERS,
     },
     "anima": {
@@ -802,19 +905,25 @@ MODEL_PRESET_SETTINGS.update({
         "scaling_mode": "tensor",
     },
     "ltxv2": {
-        "preset": PRESET_FP8_MIXED,
-        "quant_format": QUANT_FORMAT_FP8,
-        "scaling_mode": "tensor",
+        "preset": PRESET_INT8_CONVROT,
+        "quant_format": QUANT_FORMAT_INT8,
+        "scaling_mode": "row",
+        "convrot": True,
+        "dynamic_convrot": False,
     },
     "ltx2": {
-        "preset": PRESET_FP8_MIXED,
-        "quant_format": QUANT_FORMAT_FP8,
-        "scaling_mode": "tensor",
+        "preset": PRESET_INT8_CONVROT,
+        "quant_format": QUANT_FORMAT_INT8,
+        "scaling_mode": "row",
+        "convrot": True,
+        "dynamic_convrot": False,
     },
     "ltx2_3": {
-        "preset": PRESET_FP8_MIXED,
-        "quant_format": QUANT_FORMAT_FP8,
-        "scaling_mode": "tensor",
+        "preset": PRESET_INT8_CONVROT,
+        "quant_format": QUANT_FORMAT_INT8,
+        "scaling_mode": "row",
+        "convrot": True,
+        "dynamic_convrot": False,
     },
 })
 
@@ -851,7 +960,7 @@ PRESET_OVERRIDES = {
         "min_k": 128,
         "max_k": 896,
         "full_matrix": False,
-        "full_precision_matrix_mult": True,
+        "full_precision_matrix_mult": False,
     },
     PRESET_HIGH: {
         **MANUAL_QUANT_DEFAULTS,
@@ -867,7 +976,7 @@ PRESET_OVERRIDES = {
         "min_k": 256,
         "max_k": 1536,
         "full_matrix": False,
-        "full_precision_matrix_mult": True,
+        "full_precision_matrix_mult": False,
     },
     PRESET_EXTREME: {
         **MANUAL_QUANT_DEFAULTS,
@@ -883,7 +992,7 @@ PRESET_OVERRIDES = {
         "min_k": 256,
         "max_k": 1536,
         "full_matrix": True,
-        "full_precision_matrix_mult": True,
+        "full_precision_matrix_mult": False,
     },
     PRESET_FP8_SCALED: {
         **MANUAL_QUANT_DEFAULTS,
@@ -899,7 +1008,7 @@ PRESET_OVERRIDES = {
         "min_k": 128,
         "max_k": 1024,
         "full_matrix": False,
-        "full_precision_matrix_mult": True,
+        "full_precision_matrix_mult": False,
     },
     PRESET_FP8_MIXED: {
         **MANUAL_QUANT_DEFAULTS,
@@ -950,7 +1059,7 @@ PRESET_OVERRIDES = {
         "simple": True,
         "skip_inefficient_layers": False,
         "num_iter": 120,
-        "calib_samples": 512,
+        "calib_samples": 1024,
         "optimizer": "original",
         "lr_schedule": "adaptive",
         "lr": 8.077300000003e-3,
@@ -967,7 +1076,7 @@ PRESET_OVERRIDES = {
         "block_size": 128,
         "convrot": True,
         "convrot_group_size": 256,
-        "dynamic_convrot": True,
+        "dynamic_convrot": False,
         "layer_config_path": "",
         "layer_config_fullmatch": False,
         "simple": True,
@@ -980,6 +1089,32 @@ PRESET_OVERRIDES = {
         "top_p": 0.02,
         "min_k": 16,
         "max_k": 64,
+        "full_matrix": False,
+        "full_precision_matrix_mult": False,
+    },
+    PRESET_INT8_CONVROT_HQ: {
+        **MANUAL_QUANT_DEFAULTS,
+        "quant_format": QUANT_FORMAT_INT8,
+        "comfy_quant": True,
+        "scaling_mode": "row",
+        "block_size": 128,
+        "convrot": True,
+        "convrot_group_size": 256,
+        "dynamic_convrot": False,
+        "layer_config_path": "",
+        "layer_config_fullmatch": False,
+        "simple": False,
+        "skip_inefficient_layers": False,
+        "num_iter": 2000,
+        "calib_samples": 2048,
+        "optimizer": "prodigy",
+        "lr_schedule": "adaptive",
+        "lr": 1.0,
+        "lr_factor": 0.965,
+        "lr_cooldown": 1,
+        "top_p": 0.2,
+        "min_k": 128,
+        "max_k": 1280,
         "full_matrix": False,
         "full_precision_matrix_mult": False,
     },
@@ -999,7 +1134,7 @@ PRESET_OVERRIDES = {
         "min_k": 128,
         "max_k": 1280,
         "full_matrix": False,
-        "full_precision_matrix_mult": True,
+        "full_precision_matrix_mult": False,
     },
     PRESET_NVFP4_BALANCED: {
         **MANUAL_QUANT_DEFAULTS,
@@ -1018,28 +1153,7 @@ PRESET_OVERRIDES = {
         "max_k": 1280,
         "scale_optimization": "iterative",
         "scale_refinement_rounds": 1,
-        "full_precision_matrix_mult": True,
-    },
-    PRESET_NVFP4_Z: {
-        **MANUAL_QUANT_DEFAULTS,
-        "quant_format": QUANT_FORMAT_NVFP4,
-        "comfy_quant": True,
-        "scaling_mode": "tensor",
-        "block_size": None,
-        "layer_config_path": "",
-        "layer_config_fullmatch": False,
-        "simple": False,
-        "skip_inefficient_layers": False,
-        "num_iter": 12000,
-        "calib_samples": 8192,
-        "top_p": 0.2,
-        "min_k": 256,
-        "max_k": 2048,
-        "scale_optimization": "iterative",
-        "scale_refinement_rounds": 1,
-        "manual_seed": 42,
-        "verbose": "NORMAL",
-        "full_precision_matrix_mult": True,
+        "full_precision_matrix_mult": False,
     },
 }
 
@@ -1078,6 +1192,11 @@ PRESET_BASE_SETTINGS = {
     "save_quant_metadata": SAFE_RUNTIME_DEFAULTS["save_quant_metadata"],
 }
 
+MODEL_ARCHITECTURE_OVERRIDE_KEYS = {
+    "exclude_layers",
+    "include_input_scale",
+}
+
 for _preset_settings in PRESET_OVERRIDES.values():
     _preset_settings.setdefault("low_memory", SAFE_RUNTIME_DEFAULTS["low_memory"])
     _preset_settings.setdefault("save_quant_metadata", SAFE_RUNTIME_DEFAULTS["save_quant_metadata"])
@@ -1096,9 +1215,14 @@ def _combined_preset_settings(
     selected_model = _model_preset_value(model_preset_value)
     model_settings = MODEL_PRESET_SETTINGS.get(selected_model, {})
     if use_model_default_preset and model_settings.get("preset"):
-        effective_preset = str(model_settings["preset"])
+        effective_preset = _quality_preset_value(model_settings["preset"])
     else:
-        effective_preset = preset_name or model_settings.get("preset") or PRESET_NORMAL
+        effective_preset = _quality_preset_value(
+            preset_name or model_settings.get("preset") or PRESET_INT8_CONVROT
+        )
+
+    if effective_preset not in PRESET_OVERRIDES and effective_preset != PRESET_CUSTOM:
+        effective_preset = PRESET_INT8_CONVROT
 
     if effective_preset == PRESET_CUSTOM and not use_model_default_preset:
         return effective_preset, {}
@@ -1107,15 +1231,45 @@ def _combined_preset_settings(
     model_overrides = {name: value for name, value in model_settings.items() if name != "preset"}
 
     combined: Dict[str, object] = dict(PRESET_BASE_SETTINGS)
-    if preset_overrides.get("quant_format") in NON_FP8_QUANT_FORMATS:
+    explicit_quality_preset = bool(preset_name) and not use_model_default_preset
+    if explicit_quality_preset:
         combined.update(model_overrides)
         combined.update(preset_overrides)
+        for name in MODEL_ARCHITECTURE_OVERRIDE_KEYS:
+            if name in model_overrides:
+                combined[name] = model_overrides[name]
     else:
         combined.update(preset_overrides)
         combined.update(model_overrides)
 
     _clear_incompatible_model_settings(selected_model, combined)
     return effective_preset, combined
+
+
+def _removed_quality_preset_settings(raw_preset: object, model_preset: object):
+    target_preset = REMOVED_QUALITY_PRESET_ALIASES.get(str(raw_preset))
+    if not target_preset:
+        return None
+    _, settings = _combined_preset_settings(str(model_preset), target_preset)
+    return target_preset, settings
+
+
+def _migrate_removed_quality_preset_config(config: Optional[GUIConfig]) -> None:
+    if config is None or not isinstance(getattr(config, "config", None), dict):
+        return
+    section = config.config.get("model_quantizer")
+    if not isinstance(section, dict):
+        return
+    migration = _removed_quality_preset_settings(
+        section.get("preset"),
+        section.get(MODEL_PRESET_FIELD, MODEL_PRESET_NONE),
+    )
+    if migration is None:
+        return
+    target_preset, settings = migration
+    section.update(settings)
+    section["preset"] = target_preset
+    log.warning("Migrated removed quality preset to %s", target_preset)
 
 
 def _to_int(value, default: Optional[int]) -> Optional[int]:
@@ -1636,6 +1790,19 @@ class ModelQuantizer:
         layer_config_path = params.get("layer_config_path")
 
         if model_preset == "krea2":
+            uses_primary_convrot = (
+                params.get("quant_format") == QUANT_FORMAT_INT8
+                and params.get("scaling_mode") == "row"
+                and bool(params.get("convrot") or params.get("dynamic_convrot"))
+            )
+            if uses_primary_convrot and (
+                not layer_config_path or _is_krea2_managed_layer_config(layer_config_path)
+            ):
+                # A layer-config converter does not inherit primary ConvRot settings.
+                # Let the primary converter handle Krea's quantized projection layers.
+                params["layer_config_path"] = ""
+                params["layer_config_fullmatch"] = False
+                return
             if not layer_config_path or _is_krea2_managed_layer_config(layer_config_path):
                 params["layer_config_path"] = _write_krea2_layer_config_for_params(params)
                 params["layer_config_fullmatch"] = False
@@ -1676,6 +1843,19 @@ class ModelQuantizer:
         return (
             "Optimizer 'prodigy' requires the optional package 'prodigy-plus-schedule-free'. "
             "Install it in the active environment, or switch the optimizer to 'original', 'adamw', or 'radam'."
+        )
+
+    def _validate_quantization_input(self, input_path: str, params: Dict[str, object]) -> Optional[str]:
+        if params.get("workflow") != WORKFLOW_QUANTIZE or params.get("allow_requantize"):
+            return None
+        markers = _quantized_checkpoint_markers(input_path)
+        if not markers:
+            return None
+        marker_text = ", ".join(markers)
+        return (
+            f"Input already appears quantized ({marker_text}): {input_path}\n"
+            "Re-quantizing quantized weights compounds quality loss. Use the original full-precision checkpoint, "
+            "choose a conversion/metadata workflow, or enable 'Allow detected quantized inputs' as an expert override."
         )
 
     def _default_output_name(self, input_path: str, params: Dict[str, object]) -> str:
@@ -1723,7 +1903,12 @@ class ModelQuantizer:
             if scaling_mode == "tensor":
                 scaling_str = "_tensorwise"
             elif scaling_mode == "row":
-                scaling_str = "_rowwise"
+                if params.get("convrot") or params.get("dynamic_convrot"):
+                    group_size = _to_int(params.get("convrot_group_size"), 256)
+                    dynamic = "dynamic_" if params.get("dynamic_convrot") else ""
+                    scaling_str = f"_convrot_{dynamic}g{group_size}"
+                else:
+                    scaling_str = "_rowwise"
             else:
                 scaling_str = f"_bs{block_size or 128}"
         else:
@@ -1754,6 +1939,10 @@ class ModelQuantizer:
             return self.single_queue_and_status()
         if not os.path.isfile(input_file):
             self._set_single_status(f"Input file not found: {input_file}")
+            return self.single_queue_and_status()
+        input_error = self._validate_quantization_input(input_file, params)
+        if input_error:
+            self._set_single_status(input_error)
             return self.single_queue_and_status()
         validation_error = self._validate_quantization_params(params)
         if validation_error:
@@ -1816,6 +2005,9 @@ class ModelQuantizer:
             return "Input file is required."
         if not os.path.isfile(input_file):
             return f"Input file not found: {input_file}"
+        input_error = self._validate_quantization_input(input_file, params)
+        if input_error:
+            return input_error
         validation_error = self._validate_quantization_params(params)
         if validation_error:
             return validation_error
@@ -1902,6 +2094,11 @@ class ModelQuantizer:
                 log_lines.append("Batch conversion cancelled by user.")
                 break
 
+            input_error = self._validate_quantization_input(file_path, params)
+            if input_error:
+                log_lines.append(f"[{idx}/{len(files)}] Skipped already-quantized input: {file_path}")
+                continue
+
             output_path = self._default_output_name(file_path, params)
             if output_folder:
                 output_path = os.path.join(output_folder, os.path.basename(output_path))
@@ -1946,6 +2143,7 @@ class ModelQuantizer:
 
 
 def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
+    _migrate_removed_quality_preset_config(config)
     quantizer = ModelQuantizer(headless=headless, config=config)
 
     gr.Markdown("# Model Quantizer")
@@ -1957,18 +2155,19 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
     dummy_true = gr.Checkbox(value=True, visible=False)
     dummy_false = gr.Checkbox(value=False, visible=False)
     dummy_headless = gr.Checkbox(value=headless, visible=False)
-    initial_model_preset_primary, initial_model_preset_other, _ = _split_model_preset_selection(
+    initial_model_preset_primary, initial_model_preset_other, initial_model_preset = _split_model_preset_selection(
         config.get("model_quantizer.model_preset", "krea2")
     )
-    initial_quant_format = config.get("model_quantizer.quant_format", QUANT_FORMAT_FP8)
+    initial_model_filters = _model_preset_filters(initial_model_preset)
+    initial_quant_format = config.get("model_quantizer.quant_format", QUANT_FORMAT_INT8)
     initial_scaling_mode = _coerce_scaling_mode_for_format(
         initial_quant_format,
-        config.get("model_quantizer.scaling_mode", "tensor"),
+        config.get("model_quantizer.scaling_mode", "row"),
     )
     initial_block_size = _coerce_block_size_for_format(
         initial_quant_format,
         initial_scaling_mode,
-        config.get("model_quantizer.block_size", 64),
+        config.get("model_quantizer.block_size", 128),
     )
     initial_custom_type = config.get("model_quantizer.custom_type", None)
     initial_custom_scaling_mode = _coerce_optional_scaling_mode_for_quant_type(
@@ -1999,22 +2198,10 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 with gr.Row():
                     preset_dropdown = gr.Dropdown(
                         label="Quality Preset",
-                        choices=[
-                            PRESET_CUSTOM,
-                            PRESET_FAST,
-                            PRESET_NORMAL,
-                            PRESET_HIGH,
-                            PRESET_EXTREME,
-                            PRESET_FP8_SCALED,
-                            PRESET_FP8_MIXED,
-                            PRESET_INT8_FAST,
-                            PRESET_INT8_TENSOR,
-                            PRESET_INT8_CONVROT,
-                            PRESET_MXFP8_BALANCED,
-                            PRESET_NVFP4_BALANCED,
-                            PRESET_NVFP4_Z,
-                        ],
-                        value=config.get("model_quantizer.preset", PRESET_NORMAL),
+                        choices=QUALITY_PRESET_CHOICES,
+                        value=_quality_preset_choice(
+                            config.get("model_quantizer.preset", PRESET_INT8_CONVROT)
+                        ),
                         info="Quickly apply recommended optimization settings.",
                     )
                     model_preset_primary_dropdown = gr.Dropdown(
@@ -2087,8 +2274,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 with gr.Row():
                     convrot = gr.Checkbox(
                         label="ConvRot (INT8 Rowwise)",
-                        value=config.get("model_quantizer.convrot", False),
-                        info="Applies Hadamard rotation before INT8 row-wise quantization. Useful for Krea2 INT8 quality; ignored unless INT8 + row scaling is used.",
+                        value=config.get("model_quantizer.convrot", True),
+                        info="Applies Hadamard rotation before native INT8 row-wise quantization. Fixed group 256 is the recommended default; ignored outside INT8 + row scaling.",
                     )
                     convrot_group_size = gr.Number(
                         label="ConvRot Group Size",
@@ -2117,7 +2304,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                             label = f"{name}: {cfg.get('help', '')}".strip(": ")
                             filter_checkboxes[name] = gr.Checkbox(
                                 label=label,
-                                value=bool(config.get(f"model_quantizer.filter.{name}", False)),
+                                value=bool(config.get(f"model_quantizer.filter.{name}", name in initial_model_filters)),
                             )
 
             with gr.Accordion("Layer Mixing & Exclusions", open=False) as layer_mixing_group:
@@ -2404,7 +2591,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     placeholder="cpu, cuda, cuda:0",
                 )
 
-            with gr.Accordion("Legacy & Metadata Tools", open=False) as legacy_group:
+            with gr.Accordion("Legacy & Metadata Tools", open=False):
                 with gr.Row():
                     save_quant_metadata = gr.Checkbox(
                         label="Save Quantization Metadata",
@@ -2461,6 +2648,11 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         label="Low memory mode",
                         value=config.get("model_quantizer.low_memory", True),
                     )
+                allow_requantize = gr.Checkbox(
+                    label="Allow detected quantized inputs",
+                    value=config.get("model_quantizer.allow_requantize", False),
+                    info="Expert override. Re-quantizing quantized weights normally compounds quality loss and is blocked.",
+                )
             with gr.Accordion("How bias correction works", open=False):
                 gr.Markdown(BIAS_CORRECTION_PANEL_MD)
                 with gr.Row():
@@ -2609,6 +2801,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         verbose_value,
         verbose_pinned_value,
         low_memory_value,
+        allow_requantize_value,
+        output_mode_value,
         save_quant_metadata_value,
         no_normalize_scales_value,
         scaled_fp8_marker_value,
@@ -2713,6 +2907,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             "verbose": verbose_value,
             "verbose_pinned": bool(verbose_pinned_value),
             "low_memory": bool(low_memory_value),
+            "allow_requantize": bool(allow_requantize_value),
+            "output_mode": output_mode_value or OUTPUT_MODE_COMPACT,
             "save_quant_metadata": bool(save_quant_metadata_value),
             "no_normalize_scales": bool(no_normalize_scales_value),
             "scaled_fp8_marker": _to_int(scaled_fp8_marker_value, None),
@@ -2976,7 +3172,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             block_default = 128 if selected_format == QUANT_FORMAT_INT8 else 64
             return gr.update(value=block_default, interactive=True), gr.update(value=False), gr.update(value=False)
         if selected_scaling == "row":
-            return gr.update(value=128, interactive=True), gr.update(value=False), gr.update(value=False)
+            use_convrot = selected_format == QUANT_FORMAT_INT8
+            return gr.update(value=128, interactive=True), gr.update(value=use_convrot), gr.update(value=False)
         return gr.update(value=None, interactive=False), gr.update(value=False), gr.update(value=False)
 
     scaling_mode.input(
@@ -3251,6 +3448,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         verbose,
         verbose_pinned,
         low_memory,
+        allow_requantize,
+        output_mode,
         save_quant_metadata,
         no_normalize_scales,
         scaled_fp8_marker,
@@ -3426,6 +3625,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         "verbose",
         "verbose_pinned",
         "low_memory",
+        "allow_requantize",
+        "output_mode",
         "save_quant_metadata",
         "no_normalize_scales",
         "scaled_fp8_marker",
@@ -3511,6 +3712,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         verbose,
         verbose_pinned,
         low_memory,
+        allow_requantize,
+        output_mode,
         save_quant_metadata,
         no_normalize_scales,
         scaled_fp8_marker,
@@ -3582,6 +3785,16 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         except Exception as exc:
             return [original_file_path, f"Failed to load: {exc}"] + [gr.update() for _ in settings_components]
         flat = _flatten_dict(data)
+        raw_loaded_preset = flat.get("preset", flat.get("model_quantizer.preset"))
+        raw_loaded_model = flat.get(MODEL_PRESET_FIELD, flat.get(f"model_quantizer.{MODEL_PRESET_FIELD}", MODEL_PRESET_NONE))
+        migration = _removed_quality_preset_settings(raw_loaded_preset, raw_loaded_model)
+        if migration is not None:
+            target_preset, migrated_settings = migration
+            migrated_settings = dict(migrated_settings)
+            migrated_settings["preset"] = target_preset
+            for setting_name, setting_value in migrated_settings.items():
+                flat[setting_name] = setting_value
+                flat[f"model_quantizer.{setting_name}"] = setting_value
         loaded_model_preset = flat.get(MODEL_PRESET_FIELD)
         if loaded_model_preset is None:
             loaded_model_preset = flat.get(f"model_quantizer.{MODEL_PRESET_FIELD}")
@@ -3632,8 +3845,12 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             if value is None:
                 values_out.append(current)
             else:
-                if name == "scaling_mode":
-                    selected_format = loaded_quant_format or config.get("model_quantizer.quant_format", QUANT_FORMAT_FP8)
+                if name == "preset":
+                    value = _quality_preset_value(value)
+                    if value not in QUALITY_PRESET_CHOICES:
+                        value = PRESET_INT8_CONVROT
+                elif name == "scaling_mode":
+                    selected_format = loaded_quant_format or config.get("model_quantizer.quant_format", QUANT_FORMAT_INT8)
                     value = _coerce_scaling_mode_for_format(selected_format, value)
                     values_out.append(
                         gr.update(
@@ -3643,10 +3860,10 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     )
                     continue
                 elif name == "block_size":
-                    selected_format = loaded_quant_format or config.get("model_quantizer.quant_format", QUANT_FORMAT_FP8)
+                    selected_format = loaded_quant_format or config.get("model_quantizer.quant_format", QUANT_FORMAT_INT8)
                     selected_scaling = _coerce_scaling_mode_for_format(
                         selected_format,
-                        loaded_scaling_mode or "tensor",
+                        loaded_scaling_mode or "row",
                     )
                     value = _coerce_block_size_for_format(selected_format, selected_scaling, value)
                     values_out.append(

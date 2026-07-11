@@ -41,6 +41,14 @@
 ## Updates
 **- Click images to see their full sizes**
 
+### 11 July 2026 Quantizer Preset Review
+
+- INT8 ConvRot with fixed group size 256 is now the balanced default for validated model families.
+- Current ComfyUI native FP8, tensor/row INT8, ConvRot, MXFP8, and NVFP4 paths are distinguished from QuantOps-only INT8 blockwise.
+- Qwen Image, Z-Image, Anima, Boogu, and models without public ConvRot validation keep safer model-specific defaults.
+- Model filters, Qwen3.5/Gemma 4 protections, FLUX.1/Klein, ERNIE Image, LTX aliases, and re-quantization safety were updated.
+- See the [model-by-model preset reference](model_quantizer_presets/README.md) for the current decisions.
+
 ### 25 June 2026 V28.6 Update
 
 - Quantize model backend code fully updated

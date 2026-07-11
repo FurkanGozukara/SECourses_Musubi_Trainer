@@ -18,6 +18,7 @@ eggs/
 musubi-tuner2
 lib/
 cli_executed_commands
+tests
 lib64/
 Z_Image_BF16.safetensors
 convert_nvfp4_learned.bat
