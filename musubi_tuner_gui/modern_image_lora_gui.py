@@ -1099,7 +1099,19 @@ def modern_image_gui_actions(
     if action == "save_configuration":
         return save_modern_configuration(spec_key, ask_for_file, config_file_name, parameters)
     if action == "train_model":
-        return train_modern_image_model(spec_key, headless, print_only, parameters)
+        try:
+            return train_modern_image_model(spec_key, headless, print_only, parameters)
+        except gr.Error:
+            raise
+        except Exception as exc:
+            spec = get_architecture(spec_key)
+            log.exception("Failed to start %s training", spec.display_name)
+            raise gr.Error(
+                f"{type(exc).__name__}: {exc}",
+                title=f"{spec.display_name} training could not start",
+                duration=None,
+                print_exception=False,
+            ) from exc
     raise ValueError(f"Unknown GUI action: {action}")
 
 
@@ -1321,7 +1333,9 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 value=config.get("dataset_config", ""),
                 info="Dataset TOML used by both cache stages and training.",
             )
-            dataset_config_button = gr.Button("Browse", visible=not headless)
+            dataset_config_button = gr.Button(
+                "📁", size="lg", scale=0, min_width=60, visible=not headless
+            )
             dataset_config_button.click(
                 fn=lambda: get_file_path(
                     file_path="",
@@ -1340,7 +1354,9 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                     value=config.get("parent_folder_path", ""),
                     info="Parent folder containing repeat-prefixed training folders.",
                 )
-                parent_folder_button = gr.Button("Browse", visible=not headless)
+                parent_folder_button = gr.Button(
+                    "📂", size="lg", scale=0, min_width=60, visible=not headless
+                )
                 parent_folder_button.click(
                     fn=lambda: get_folder_path(folder_path=""),
                     outputs=[parent_folder_path],
@@ -1396,7 +1412,11 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 value=config.get("generated_toml_path", ""),
                 interactive=False,
             )
-            dataset_status = gr.Textbox(label="Dataset Status", interactive=False)
+            dataset_status = gr.Textbox(
+                label="Dataset Status",
+                lines=5,
+                interactive=False,
+            )
             generate_dataset_button = gr.Button("Generate Dataset TOML", variant="primary")
             generate_dataset_button.click(
                 fn=partial(generate_modern_dataset_toml, spec_key),
@@ -1435,7 +1455,9 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 value=config.get("dit", ""),
                 info="Required training transformer checkpoint.",
             )
-            dit_button = gr.Button("Browse", visible=not headless)
+            dit_button = gr.Button(
+                "📁", size="lg", scale=0, min_width=60, visible=not headless
+            )
             dit_button.click(
                 fn=lambda: get_file_path(
                     file_path="",
@@ -1450,7 +1472,9 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 value=config.get("vae", ""),
                 info="Flux2 VAE for Ideogram 4; Qwen-Image VAE for Krea 2.",
             )
-            vae_button = gr.Button("Browse", visible=not headless)
+            vae_button = gr.Button(
+                "📁", size="lg", scale=0, min_width=60, visible=not headless
+            )
             vae_button.click(
                 fn=lambda: get_file_path(
                     file_path="",
@@ -1464,7 +1488,9 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 value=config.get("text_encoder", ""),
                 info="Required for text caching and training-time samples.",
             )
-            text_encoder_button = gr.Button("Browse", visible=not headless)
+            text_encoder_button = gr.Button(
+                "📁", size="lg", scale=0, min_width=60, visible=not headless
+            )
             text_encoder_button.click(
                 fn=lambda: get_file_path(
                     file_path="",
@@ -1498,7 +1524,13 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 value=config.get("unconditional_dit", ""),
                 info="Optional. Needed only for official asymmetric CFG samples.",
             )
-            unconditional_button = gr.Button("Browse", visible=not headless and spec.is_ideogram)
+            unconditional_button = gr.Button(
+                "📁",
+                size="lg",
+                scale=0,
+                min_width=60,
+                visible=not headless and spec.is_ideogram,
+            )
             unconditional_button.click(
                 fn=lambda: get_file_path(
                     file_path="",
@@ -1522,7 +1554,13 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 value=config.get("turbo_dit", ""),
                 info="Optional distilled checkpoint for training-time samples. Cannot be used with block swap.",
             )
-            turbo_button = gr.Button("Browse", visible=not headless and spec.is_krea)
+            turbo_button = gr.Button(
+                "📁",
+                size="lg",
+                scale=0,
+                min_width=60,
+                visible=not headless and spec.is_krea,
+            )
             turbo_button.click(
                 fn=lambda: get_file_path(
                     file_path="",
@@ -1743,7 +1781,9 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 label="Sample Prompts File",
                 value=config.get("sample_prompts", ""),
             )
-            sample_prompts_button = gr.Button("Browse", visible=not headless)
+            sample_prompts_button = gr.Button(
+                "📁", size="lg", scale=0, min_width=60, visible=not headless
+            )
             sample_prompts_button.click(
                 fn=lambda: get_file_path(
                     file_path="",
@@ -1761,7 +1801,9 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 label="Sample Output Directory",
                 value=config.get("sample_output_dir", ""),
             )
-            sample_output_button = gr.Button("Browse", visible=not headless)
+            sample_output_button = gr.Button(
+                "📂", size="lg", scale=0, min_width=60, visible=not headless
+            )
             sample_output_button.click(
                 fn=lambda: get_folder_path(folder_path=""),
                 outputs=[sample_output_dir],
