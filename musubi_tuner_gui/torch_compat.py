@@ -1,4 +1,4 @@
-"""Compatibility helpers for the PyTorch stack used by the GUI."""
+"""Compatibility helpers for the PyTorch stack used by the GUI and workers."""
 
 import enum
 import functools
@@ -12,20 +12,17 @@ def apply_torchao_enum_pytree_compatibility() -> None:
     except (AttributeError, ImportError):
         return
 
-    original_register_constant = pytree.register_constant
+    original_register_constant = getattr(pytree, "register_constant", None)
+    if original_register_constant is None:
+        return
     if getattr(original_register_constant, "_musubi_torchao_enum_compat", False):
         return
 
     @functools.wraps(original_register_constant)
-    def register_constant(cls):
-        is_torchao_enum = (
-            isinstance(cls, type)
-            and issubclass(cls, enum.Enum)
-            and cls.__module__.startswith("torchao.")
-        )
-        if is_torchao_enum and is_opaque_type(cls):
+    def register_constant(cls, *args, **kwargs):
+        if isinstance(cls, type) and issubclass(cls, enum.Enum) and is_opaque_type(cls):
             return None
-        return original_register_constant(cls)
+        return original_register_constant(cls, *args, **kwargs)
 
     register_constant._musubi_torchao_enum_compat = True
     pytree.register_constant = register_constant
