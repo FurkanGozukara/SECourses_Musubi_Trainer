@@ -1,5 +1,6 @@
 import os
-import toml
+from copy import deepcopy
+
 from .custom_logging import setup_logging
 from .class_gui_config import GUIConfig
 
@@ -47,8 +48,7 @@ class TabConfigManager:
         if tab_name == "image_captioning":
             # Check if the base config has image_captioning section
             if self.user_loaded_config and "image_captioning" in self.base_config.config:
-                # User has image_captioning config, use it
-                return self.base_config
+                return self._get_isolated_user_config(tab_name)
             else:
                 # No image_captioning config, load defaults
                 if self.configs[tab_name] is None:
@@ -66,13 +66,21 @@ class TabConfigManager:
             "musubi_tuner_defaults.toml",
             "model_quantizer_defaults.toml",
         )):
-            # User loaded a truly custom config, use it for all tabs
-            return self.base_config
+            # Each tab may merge architecture defaults into its config. Keep
+            # those merges isolated so an earlier tab cannot alter later tabs.
+            return self._get_isolated_user_config(tab_name)
             
         # If no user config or using default configs, load tab-specific defaults
         if self.configs[tab_name] is None:
             self.configs[tab_name] = self._load_tab_defaults(tab_name)
             
+        return self.configs[tab_name]
+
+    def _get_isolated_user_config(self, tab_name: str) -> GUIConfig:
+        if self.configs[tab_name] is None:
+            config = GUIConfig()
+            config.config = deepcopy(self.base_config.config)
+            self.configs[tab_name] = config
         return self.configs[tab_name]
     
     def _load_tab_defaults(self, tab_name: str) -> GUIConfig:

@@ -46,6 +46,14 @@ from .dataset_config_generator import (
     save_dataset_config,
     validate_dataset_config,
 )
+from .full_finetune_gui import (
+    LORA_TRAINING_MODE,
+    TRAINING_MODE_CHOICES,
+    is_full_fine_tuning,
+    normalize_image_training_parameters,
+    normalize_training_mode,
+    training_mode_runtime_exclusions,
+)
 
 log = setup_logging()
 
@@ -57,6 +65,7 @@ class ModernImageArchitecture:
     slug: str
     network_module: str
     train_script: str
+    full_train_script: str
     latent_cache_script: str
     text_cache_script: str
     max_blocks_to_swap: int
@@ -79,6 +88,7 @@ ARCHITECTURES = {
         slug="ideogram4",
         network_module="networks.lora_ideogram4",
         train_script="ideogram4_train_network.py",
+        full_train_script="ideogram4_train.py",
         latent_cache_script="ideogram4_cache_latents.py",
         text_cache_script="ideogram4_cache_text_encoder_outputs.py",
         max_blocks_to_swap=33,
@@ -96,6 +106,7 @@ ARCHITECTURES = {
         slug="krea2",
         network_module="networks.lora_krea2",
         train_script="krea2_train_network.py",
+        full_train_script="krea2_train.py",
         latent_cache_script="krea2_cache_latents.py",
         text_cache_script="krea2_cache_text_encoder_outputs.py",
         max_blocks_to_swap=26,
@@ -127,6 +138,7 @@ MODERN_IMAGE_PARAM_KEYS = [
     # Advanced
     "additional_parameters",
     "debug_mode",
+    "training_mode",
     # Dataset
     "dataset_config_mode",
     "dataset_config",
@@ -151,6 +163,7 @@ MODERN_IMAGE_PARAM_KEYS = [
     "use_unconditional_dit_for_lora_sampling",
     "turbo_dit",
     "turbo_dit_cache",
+    "dit_variant",
     "fp8_base",
     "fp8_scaled",
     "disable_numpy_memmap",
@@ -193,6 +206,8 @@ MODERN_IMAGE_PARAM_KEYS = [
     "gradient_accumulation_steps",
     "full_bf16",
     "full_fp16",
+    "fused_backward_pass",
+    "block_swap_optimizer_patch_params",
     "logging_dir",
     "log_with",
     "log_prefix",
@@ -391,9 +406,10 @@ def _normalize_modern_parameters(
     *,
     validate_paths: bool = True,
 ) -> tuple[dict, list[tuple[str, object]]]:
-    param_dict = dict(parameters)
-    param_dict["network_module"] = spec.network_module
-    parameters = _replace_parameter(parameters, "network_module", spec.network_module)
+    param_dict, parameters, full_finetune = normalize_image_training_parameters(parameters)
+    if not full_finetune:
+        param_dict["network_module"] = spec.network_module
+        parameters = _replace_parameter(parameters, "network_module", spec.network_module)
 
     save_precision = str(param_dict.get("save_precision") or "bf16").lower()
     if save_precision == "float":
@@ -424,11 +440,12 @@ def _normalize_modern_parameters(
         blocks_to_swap = int(param_dict.get("blocks_to_swap", 0) or 0)
     except (TypeError, ValueError) as exc:
         raise ValueError("blocks_to_swap must be an integer.") from exc
-    if not 0 <= blocks_to_swap <= spec.max_blocks_to_swap:
-        raise ValueError(f"blocks_to_swap for {spec.display_name} must be between 0 and {spec.max_blocks_to_swap}.")
+    max_blocks_to_swap = spec.max_blocks_to_swap - 1 if full_finetune and spec.is_ideogram else spec.max_blocks_to_swap
+    if not 0 <= blocks_to_swap <= max_blocks_to_swap:
+        raise ValueError(f"blocks_to_swap for {spec.display_name} must be between 0 and {max_blocks_to_swap}.")
     param_dict["blocks_to_swap"] = blocks_to_swap
     parameters = _replace_parameter(parameters, "blocks_to_swap", blocks_to_swap)
-    validate_block_swap_options(param_dict, lora_training=True)
+    validate_block_swap_options(param_dict, lora_training=not full_finetune)
 
     for key in (
         "caching_latent_batch_size",
@@ -449,19 +466,33 @@ def _normalize_modern_parameters(
         if param_dict.get("warn_on_caption_issues") and not param_dict.get("validate_caption_structure"):
             param_dict["warn_on_caption_issues"] = False
             parameters = _replace_parameter(parameters, "warn_on_caption_issues", False)
-        if param_dict.get("use_unconditional_dit_for_lora_sampling") and not str(
+        if full_finetune:
+            param_dict["use_unconditional_dit_for_lora_sampling"] = False
+            parameters = _replace_parameter(parameters, "use_unconditional_dit_for_lora_sampling", False)
+        elif param_dict.get("use_unconditional_dit_for_lora_sampling") and not str(
             param_dict.get("unconditional_dit") or ""
         ).strip():
             raise ValueError("Official asymmetric sampling requires an unconditional Ideogram 4 DiT.")
     else:
-        param_dict["dit_dtype"] = "bfloat16"
-        parameters = _replace_parameter(parameters, "dit_dtype", "bfloat16")
+        if not full_finetune:
+            param_dict["dit_dtype"] = "bfloat16"
+            parameters = _replace_parameter(parameters, "dit_dtype", "bfloat16")
         fp8_base = bool(param_dict.get("fp8_base"))
         fp8_scaled = bool(param_dict.get("fp8_scaled"))
         if fp8_base != fp8_scaled:
             raise ValueError("Krea 2 requires fp8_base and fp8_scaled to be enabled together.")
         turbo_dit = str(param_dict.get("turbo_dit") or "").strip()
-        if param_dict.get("turbo_dit_cache") and not turbo_dit:
+        if full_finetune:
+            dit_variant = str(param_dict.get("dit_variant") or "raw").strip().lower()
+            if dit_variant not in {"raw", "turbo"}:
+                raise ValueError("Krea 2 full fine-tuning dit_variant must be 'raw' or 'turbo'.")
+            param_dict["dit_variant"] = dit_variant
+            parameters = _replace_parameter(parameters, "dit_variant", dit_variant)
+            param_dict["turbo_dit"] = ""
+            param_dict["turbo_dit_cache"] = False
+            parameters = _replace_parameter(_replace_parameter(parameters, "turbo_dit", ""), "turbo_dit_cache", False)
+            turbo_dit = ""
+        elif param_dict.get("turbo_dit_cache") and not turbo_dit:
             raise ValueError("turbo_dit_cache requires a Krea 2 Turbo DiT path.")
         if turbo_dit and blocks_to_swap:
             raise ValueError("Krea 2 Turbo sample generation cannot be combined with blocks_to_swap.")
@@ -603,6 +634,8 @@ def build_modern_cache_commands(
 
 
 def _run_config_exclusions(spec: ModernImageArchitecture, parameters: list[tuple[str, object]]) -> list[str]:
+    param_dict = dict(parameters)
+    full_finetune = is_full_fine_tuning(param_dict.get("training_mode"))
     exclusions = {
         "additional_parameters",
         "debug_mode",
@@ -637,15 +670,15 @@ def _run_config_exclusions(spec: ModernImageArchitecture, parameters: list[tuple
         "sample_seed",
         "sample_negative_prompt",
         "sample_cfg_scale",
-        "mem_eff_save",
     }
+    exclusions.update(training_mode_runtime_exclusions(param_dict.get("training_mode")))
     exclusions.update(
         key
         for key, _ in parameters
         if key.startswith("caching_") or key in {"cache_latents", "cache_text_encoder_outputs"}
     )
     if spec.is_ideogram:
-        exclusions.update({"turbo_dit", "turbo_dit_cache", "fp8_base", "fp8_scaled"})
+        exclusions.update({"turbo_dit", "turbo_dit_cache", "dit_variant", "fp8_base", "fp8_scaled"})
     else:
         exclusions.update(
             {
@@ -660,6 +693,8 @@ def _run_config_exclusions(spec: ModernImageArchitecture, parameters: list[tuple
                 "log_loss_stats",
             }
         )
+        if full_finetune:
+            exclusions.update({"turbo_dit", "turbo_dit_cache", "fp8_base", "fp8_scaled"})
     return sorted(exclusions)
 
 
@@ -689,11 +724,16 @@ def prepare_modern_image_workflow(
     if validate_paths:
         os.makedirs(str(param_dict["output_dir"]), exist_ok=True)
 
+    full_finetune = is_full_fine_tuning(param_dict.get("training_mode"))
+    mandatory_keys = ["dataset_config", "dit", "vae", "output_dir", "output_name"]
+    if not full_finetune:
+        mandatory_keys.append("network_module")
+
     SaveConfigFileToRun(
         parameters=parameters,
         file_path=config_path,
         exclusion=_run_config_exclusions(spec, parameters),
-        mandatory_keys=["dataset_config", "dit", "vae", "network_module", "output_dir", "output_name"],
+        mandatory_keys=mandatory_keys,
     )
 
     latent_command, text_command = build_modern_cache_commands(spec, param_dict, python_cmd=python_cmd)
@@ -714,7 +754,8 @@ def prepare_modern_image_workflow(
         mixed_precision=param_dict.get("mixed_precision"),
         extra_accelerate_launch_args=param_dict.get("extra_accelerate_launch_args"),
     )
-    train_command.extend([_trainer_script_path(spec.train_script), "--config_file", config_path])
+    train_script = spec.full_train_script if full_finetune else spec.train_script
+    train_command.extend([_trainer_script_path(train_script), "--config_file", config_path])
 
     additional = str(param_dict.get("additional_parameters") or "").strip()
     debug = _debug_parameters(param_dict.get("debug_mode"))
@@ -918,10 +959,10 @@ def save_modern_configuration(
 
 
 def _config_value_for_component(key: str, value: object, default: object, spec: ModernImageArchitecture):
+    if key == "training_mode":
+        return normalize_training_mode(value)
     if key == "network_module":
         return spec.network_module
-    if key == "dit_dtype" and spec.is_krea:
-        return "bfloat16"
     if key == "save_precision" and value in (None, ""):
         return "bf16"
     if isinstance(value, list):
@@ -1138,6 +1179,7 @@ def _architecture_defaults(spec: ModernImageArchitecture) -> dict[str, object]:
         "dynamo_use_fullgraph": False,
         "dynamo_use_dynamic": False,
         "extra_accelerate_launch_args": "",
+        "training_mode": LORA_TRAINING_MODE,
         "dataset_config_mode": "Generate from Folder Structure",
         "dataset_resolution_width": 1024,
         "dataset_resolution_height": 1024,
@@ -1154,6 +1196,7 @@ def _architecture_defaults(spec: ModernImageArchitecture) -> dict[str, object]:
         "use_pinned_memory_for_block_swap": False,
         "block_swap_h2d_only": True,
         "block_swap_ring_size": 1,
+        "dit_variant": "raw",
         "compile": False,
         "compile_backend": "inductor",
         "compile_mode": "default",
@@ -1176,6 +1219,8 @@ def _architecture_defaults(spec: ModernImageArchitecture) -> dict[str, object]:
         "seed": 42,
         "gradient_checkpointing": True,
         "gradient_accumulation_steps": 1,
+        "fused_backward_pass": False,
+        "block_swap_optimizer_patch_params": False,
         "optimizer_type": "AdaFactor",
         "optimizer_args": [
             "scale_parameter=False",
@@ -1252,9 +1297,6 @@ def _prepare_config(spec: ModernImageArchitecture, config) -> GUIConfig:
         for key, value in defaults.items():
             if key not in data:
                 data[key] = value
-        for key in ("dit", "vae", "text_encoder", "unconditional_dit", "turbo_dit", "output_dir"):
-            if not data.get(key) and defaults.get(key):
-                data[key] = defaults[key]
         return type("GUIConfigAdapter", (), {"config": data, "get": data.get})()
 
     if not hasattr(config, "config"):
@@ -1265,15 +1307,14 @@ def _prepare_config(spec: ModernImageArchitecture, config) -> GUIConfig:
         for key, value in defaults.items():
             if key not in config.config:
                 config.config[key] = value
-        for key in ("dit", "vae", "text_encoder", "unconditional_dit", "turbo_dit", "output_dir"):
-            if not config.config.get(key) and defaults.get(key):
-                config.config[key] = defaults[key]
     return config
 
 
 def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConfig | dict = {}):
     spec = get_architecture(spec_key)
     config = _prepare_config(spec, config)
+    initial_training_mode = normalize_training_mode(config.get("training_mode", LORA_TRAINING_MODE))
+    initial_full_finetune = is_full_fine_tuning(initial_training_mode)
 
     dummy_true = gr.Checkbox(value=True, visible=False)
     dummy_false = gr.Checkbox(value=False, visible=False)
@@ -1281,6 +1322,13 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
 
     with gr.Accordion("Configuration file Settings", open=True):
         configuration = ConfigurationFile(headless=headless, config=config)
+
+    training_mode = gr.Radio(
+        label="Training Mode",
+        choices=TRAINING_MODE_CHOICES,
+        value=initial_training_mode,
+        info="LoRA trains adapters; Full Fine-Tuning updates the complete DiT and needs substantially more memory.",
+    )
 
     with gr.Row():
         search_input = gr.Textbox(
@@ -1502,10 +1550,10 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         with gr.Row():
             dit_dtype = gr.Dropdown(
                 label="DiT Compute Dtype",
-                choices=["bfloat16"] if spec.is_krea else ["bfloat16", "float16"],
+                choices=["float32", "bfloat16"] if spec.is_krea else ["float32", "bfloat16", "float16"],
                 value="bfloat16" if spec.is_krea else config.get("dit_dtype", "bfloat16"),
-                interactive=not spec.is_krea,
-                info="Krea 2 fixes DiT compute to bfloat16 in the backend. Ideogram 4 supports both listed dtypes.",
+                interactive=True,
+                info="Runtime precision is synchronized with Full BF16 for full-DiT fine-tuning.",
             )
             vae_dtype = gr.Dropdown(
                 label="VAE Compute Dtype",
@@ -1591,13 +1639,16 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 visible=spec.is_krea,
                 info="Krea 2 only. Must be enabled together with FP8 Base.",
             )
+            initial_max_blocks_to_swap = (
+                spec.max_blocks_to_swap - 1 if initial_full_finetune and spec.is_ideogram else spec.max_blocks_to_swap
+            )
             blocks_to_swap = gr.Number(
                 label="Blocks to Swap",
-                value=config.get("blocks_to_swap", 0),
+                value=min(int(config.get("blocks_to_swap", 0) or 0), initial_max_blocks_to_swap),
                 minimum=0,
-                maximum=spec.max_blocks_to_swap,
+                maximum=initial_max_blocks_to_swap,
                 step=1,
-                info=f"Maximum for {spec.display_name}: {spec.max_blocks_to_swap}.",
+                info=f"Maximum for this training mode: {initial_max_blocks_to_swap}.",
             )
             use_pinned_memory_for_block_swap = gr.Checkbox(
                 label="Pinned Memory for Block Swap",
@@ -1937,7 +1988,39 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
     with optimizer_accordion:
         optimizer = OptimizerAndScheduler(headless=headless, config=config)
 
-    network_accordion = gr.Accordion("LoRA Settings", open=False, elem_classes="flux1_background")
+    full_finetune_accordion = gr.Accordion(
+        "Full Fine-Tuning Settings",
+        open=False,
+        visible=initial_full_finetune,
+        elem_classes="preset_background",
+    )
+    accordions.append(full_finetune_accordion)
+    with full_finetune_accordion:
+        with gr.Row():
+            fused_backward_pass = gr.Checkbox(
+                label="Fused Backward Pass",
+                value=bool(config.get("fused_backward_pass", False)),
+                info="Adafactor only. Reduces backward-pass memory and requires accumulation steps = 1.",
+            )
+            block_swap_optimizer_patch_params = gr.Checkbox(
+                label="Patch Optimizer for Block Swap",
+                value=bool(config.get("block_swap_optimizer_patch_params", False)),
+                info="Use with block swap and Adafactor or AdamW. Do not combine with fused backward.",
+            )
+            dit_variant = gr.Dropdown(
+                label="Krea 2 DiT Variant",
+                choices=["raw", "turbo"],
+                value=config.get("dit_variant", "raw"),
+                visible=spec.is_krea,
+                info="Must match the primary Krea 2 checkpoint selected above.",
+            )
+
+    network_accordion = gr.Accordion(
+        "LoRA Settings",
+        open=False,
+        visible=not initial_full_finetune,
+        elem_classes="flux1_background",
+    )
     accordions.append(network_accordion)
     with network_accordion:
         network = Network(headless=headless, config=config)
@@ -1992,6 +2075,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         # Advanced
         advanced.additional_parameters,
         advanced.debug_mode,
+        training_mode,
         # Dataset
         dataset_config_mode,
         dataset_config,
@@ -2016,6 +2100,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         use_unconditional_dit_for_lora_sampling,
         turbo_dit,
         turbo_dit_cache,
+        dit_variant,
         fp8_base,
         fp8_scaled,
         disable_numpy_memmap,
@@ -2058,6 +2143,8 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         training.gradient_accumulation_steps,
         training.full_bf16,
         training.full_fp16,
+        fused_backward_pass,
+        block_swap_optimizer_patch_params,
         training.logging_dir,
         training.log_with,
         training.log_prefix,
@@ -2172,10 +2259,11 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         7: "sample prompts cfg seed",
         8: "cache latent text encoder device dtype",
         9: "optimizer learning rate scheduler",
-        10: "lora network rank alpha dropout base weights",
-        11: "advanced parameters debug",
-        12: "metadata author license tags",
-        13: "huggingface upload repository token",
+        10: "full fine tuning fused backward block swap optimizer dit variant",
+        11: "lora network rank alpha dropout base weights",
+        12: "advanced parameters debug",
+        13: "metadata author license tags",
+        14: "huggingface upload repository token",
     }
     panel_names = [
         "Accelerate launch Settings",
@@ -2188,6 +2276,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         "Sample Generation Settings",
         "Caching Settings",
         "Learning Rate, Optimizer and Scheduler Settings",
+        "Full Fine-Tuning Settings",
         "LoRA Settings",
         "Advanced Settings",
         "Metadata Settings",
@@ -2230,6 +2319,23 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
             outputs=[panels_state, toggle_all_button, toggle_all_button_bottom] + accordions,
             show_progress=False,
         )
+
+    def toggle_training_mode(mode, current_blocks_to_swap):
+        full_finetune = is_full_fine_tuning(mode)
+        maximum = spec.max_blocks_to_swap - 1 if full_finetune and spec.is_ideogram else spec.max_blocks_to_swap
+        value = min(int(current_blocks_to_swap or 0), maximum)
+        return (
+            gr.Accordion(visible=not full_finetune),
+            gr.Accordion(visible=full_finetune),
+            gr.update(value=value, maximum=maximum),
+        )
+
+    training_mode.change(
+        fn=toggle_training_mode,
+        inputs=[training_mode, blocks_to_swap],
+        outputs=[network_accordion, full_finetune_accordion, blocks_to_swap],
+        show_progress=False,
+    )
 
     action = partial(modern_image_gui_actions, spec_key)
     configuration.button_open_config.click(

@@ -2,6 +2,7 @@
 # Based on musubi-tuner/docs/flux_2.md training example.
 
 # Model selection (klein family)
+training_mode = "LoRA Training"
 model_version = "klein-base-9b"  # klein-4b / klein-base-4b / klein-9b / klein-base-9b
 
 # Required model paths (set these)
@@ -140,6 +141,9 @@ save_last_n_steps_state = 0
 save_state = false
 save_state_on_train_end = false
 mem_eff_save = false
+save_precision = "bf16"
+fused_backward_pass = false
+block_swap_optimizer_patch_params = false
 
 # Advanced
 additional_parameters = ""

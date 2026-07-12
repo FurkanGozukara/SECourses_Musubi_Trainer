@@ -163,7 +163,7 @@ class AccelerateLaunch:
 
         if (
             "extra_accelerate_launch_args" in kwargs
-            and kwargs["extra_accelerate_launch_args"] != ""
+            and kwargs["extra_accelerate_launch_args"]
         ):
             extra_accelerate_launch_args = kwargs[
                 "extra_accelerate_launch_args"
@@ -172,13 +172,15 @@ class AccelerateLaunch:
                 run_cmd.append(shlex.quote(arg))
 
         # Only pass gpu_ids if it's actually specified (not empty)
-        if "gpu_ids" in kwargs and kwargs.get("gpu_ids", "").strip() != "":
+        gpu_ids = str(kwargs.get("gpu_ids") or "").strip()
+        if gpu_ids:
             run_cmd.append("--gpu_ids")
-            run_cmd.append(shlex.quote(kwargs["gpu_ids"]))
+            run_cmd.append(shlex.quote(gpu_ids))
 
-        if "main_process_port" in kwargs and kwargs.get("main_process_port", 0) > 0:
+        main_process_port = int(kwargs.get("main_process_port") or 0)
+        if main_process_port > 0:
             run_cmd.append("--main_process_port")
-            run_cmd.append(str(int(kwargs["main_process_port"])))
+            run_cmd.append(str(main_process_port))
 
         if "mixed_precision" in kwargs and kwargs.get("mixed_precision"):
             run_cmd.append("--mixed_precision")
@@ -187,17 +189,16 @@ class AccelerateLaunch:
         if "multi_gpu" in kwargs and kwargs.get("multi_gpu"):
             run_cmd.append("--multi_gpu")
 
-        if "num_processes" in kwargs and int(kwargs.get("num_processes", 0)) > 0:
+        if int(kwargs.get("num_processes") or 0) > 0:
             run_cmd.append("--num_processes")
             run_cmd.append(str(int(kwargs["num_processes"])))
 
-        if "num_machines" in kwargs and int(kwargs.get("num_machines", 0)) > 0:
+        if int(kwargs.get("num_machines") or 0) > 0:
             run_cmd.append("--num_machines")
             run_cmd.append(str(int(kwargs["num_machines"])))
 
         if (
-            "num_cpu_threads_per_process" in kwargs
-            and int(kwargs.get("num_cpu_threads_per_process", 0)) > 0
+            int(kwargs.get("num_cpu_threads_per_process") or 0) > 0
         ):
             run_cmd.append("--num_cpu_threads_per_process")
             run_cmd.append(str(int(kwargs["num_cpu_threads_per_process"])))

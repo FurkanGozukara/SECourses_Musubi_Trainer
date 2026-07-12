@@ -30,6 +30,14 @@ from .common_gui import (
     setup_environment,
 )
 from .custom_logging import setup_logging
+from .full_finetune_gui import (
+    LORA_TRAINING_MODE,
+    TRAINING_MODE_CHOICES,
+    is_full_fine_tuning,
+    normalize_image_training_parameters,
+    normalize_training_mode,
+    training_mode_runtime_exclusions,
+)
 from .flux2_lora_gui import (
     FLUX2_PARAM_KEYS as FLUX_KLEIN_PARAM_KEYS,
     _find_accelerate_launch,
@@ -59,7 +67,7 @@ def train_flux_klein_model(headless: bool, print_only: bool, parameters):
     python_cmd = sys.executable
     run_cmd = _find_accelerate_launch(python_cmd)
 
-    param_dict = dict(parameters)
+    param_dict, parameters, full_finetune = normalize_image_training_parameters(parameters)
 
     # Prefer generated dataset config when using folder mode.
     dataset_config_mode = (param_dict.get("dataset_config_mode") or "").strip()
@@ -98,9 +106,9 @@ def train_flux_klein_model(headless: bool, print_only: bool, parameters):
     if not output_name:
         raise ValueError("[ERROR] Output name is required.")
 
-    # Enforce correct LoRA module.
+    # Enforce the network module only when the LoRA trainer is selected.
     required_network_module = "networks.lora_flux_2"
-    if (param_dict.get("network_module") or "").strip() != required_network_module:
+    if not full_finetune and (param_dict.get("network_module") or "").strip() != required_network_module:
         param_dict["network_module"] = required_network_module
         parameters = [(k, (required_network_module if k == "network_module" else v)) for k, v in parameters]
 
@@ -190,7 +198,8 @@ def train_flux_klein_model(headless: bool, print_only: bool, parameters):
         extra_accelerate_launch_args=param_dict.get("extra_accelerate_launch_args"),
     )
 
-    run_cmd.append(f"{scriptdir}/musubi-tuner/src/musubi_tuner/flux_2_train_network.py")
+    trainer_name = "flux_2_train.py" if full_finetune else "flux_2_train_network.py"
+    run_cmd.append(f"{scriptdir}/musubi-tuner/src/musubi_tuner/{trainer_name}")
 
     if print_only:
         if latent_cache_cmd:
@@ -208,6 +217,11 @@ def train_flux_klein_model(headless: bool, print_only: bool, parameters):
     param_dict, parameters = _maybe_create_enhanced_sample_prompts(param_dict, parameters)
 
     pattern_exclusion = [k for k, _ in parameters if k.startswith("caching_latent_") or k.startswith("caching_teo_")]
+
+    mode_exclusions = training_mode_runtime_exclusions(param_dict.get("training_mode"))
+    mandatory_keys = ["dataset_config", "dit", "vae", "text_encoder", "model_version"]
+    if not full_finetune:
+        mandatory_keys.append("network_module")
 
     SaveConfigFileToRun(
         parameters=parameters,
@@ -249,8 +263,9 @@ def train_flux_klein_model(headless: bool, print_only: bool, parameters):
             # Cache-only toggle
             "caching_teo_fp8_text_encoder",
         ]
+        + sorted(mode_exclusions)
         + pattern_exclusion,
-        mandatory_keys=["dataset_config", "dit", "vae", "text_encoder", "model_version", "network_module"],
+        mandatory_keys=mandatory_keys,
     )
 
     run_cmd.append("--config_file")
@@ -342,6 +357,7 @@ def flux_klein_lora_tab(headless=False, config: GUIConfig = {}):
     dummy_headless = gr.Checkbox(value=headless, visible=False)
 
     defaults = {
+        "training_mode": LORA_TRAINING_MODE,
         # musubi-tuner/docs/flux_2.md recommends klein-base-* for training (dev/klein are distilled, mainly inference).
         "model_version": "klein-base-9b",
         "network_module": "networks.lora_flux_2",
@@ -352,6 +368,9 @@ def flux_klein_lora_tab(headless=False, config: GUIConfig = {}):
         "optimizer_type": "adamw8bit",
         "learning_rate": 1e-4,
         "gradient_checkpointing": True,
+        "fused_backward_pass": False,
+        "block_swap_optimizer_patch_params": False,
+        "save_precision": "bf16",
         "timestep_sampling": "flux2_shift",
         "weighting_scheme": "none",
         "dataset_config_mode": "Generate from Folder Structure",
@@ -389,6 +408,15 @@ def flux_klein_lora_tab(headless=False, config: GUIConfig = {}):
 
     with gr.Accordion("Configuration file Settings", open=True):
         configuration = ConfigurationFile(headless=headless, config=config)
+
+    initial_training_mode = normalize_training_mode(config.get("training_mode", LORA_TRAINING_MODE))
+    initial_full_finetune = is_full_fine_tuning(initial_training_mode)
+    training_mode = gr.Radio(
+        label="Training Mode",
+        choices=TRAINING_MODE_CHOICES,
+        value=initial_training_mode,
+        info="LoRA trains adapters; Full Fine-Tuning updates the complete FLUX.2 Klein DiT.",
+    )
 
     with gr.Accordion("Accelerate Launch", open=False):
         accelerate_launch = AccelerateLaunch(config=config)
@@ -585,8 +613,38 @@ def flux_klein_lora_tab(headless=False, config: GUIConfig = {}):
     with gr.Accordion("Optimizer / Scheduler", open=False):
         optim = OptimizerAndScheduler(headless=headless, config=config)
 
-    with gr.Accordion("Network (LoRA)", open=False):
+    full_finetune_accordion = gr.Accordion(
+        "Full Fine-Tuning Settings",
+        open=False,
+        visible=initial_full_finetune,
+    )
+    with full_finetune_accordion:
+        with gr.Row():
+            fused_backward_pass = gr.Checkbox(
+                label="Fused Backward Pass",
+                value=bool(config.get("fused_backward_pass", False)),
+                info="Adafactor only. Requires gradient accumulation steps = 1.",
+            )
+            block_swap_optimizer_patch_params = gr.Checkbox(
+                label="Patch Optimizer for Block Swap",
+                value=bool(config.get("block_swap_optimizer_patch_params", False)),
+                info="Use with block swap and Adafactor or AdamW. Do not combine with fused backward.",
+            )
+
+    network_accordion = gr.Accordion("Network (LoRA)", open=False, visible=not initial_full_finetune)
+    with network_accordion:
         network = Network(headless=headless, config=config)
+
+    def toggle_training_mode(mode):
+        full_finetune = is_full_fine_tuning(mode)
+        return gr.Accordion(visible=not full_finetune), gr.Accordion(visible=full_finetune)
+
+    training_mode.change(
+        fn=toggle_training_mode,
+        inputs=[training_mode],
+        outputs=[network_accordion, full_finetune_accordion],
+        show_progress=False,
+    )
 
     with gr.Accordion("Metadata", open=False):
         metadata = MetaData(config=config)
@@ -615,6 +673,7 @@ def flux_klein_lora_tab(headless=False, config: GUIConfig = {}):
         # advanced_training
         advanced.additional_parameters,
         advanced.debug_mode,
+        training_mode,
         # dataset
         dataset_config_mode,
         dataset_config,
@@ -669,6 +728,8 @@ def flux_klein_lora_tab(headless=False, config: GUIConfig = {}):
         training.gradient_accumulation_steps,
         training.full_bf16,
         training.full_fp16,
+        fused_backward_pass,
+        block_swap_optimizer_patch_params,
         training.logging_dir,
         training.log_with,
         training.log_prefix,
@@ -735,6 +796,7 @@ def flux_klein_lora_tab(headless=False, config: GUIConfig = {}):
         save_load.output_dir,
         save_load.output_name,
         save_load.resume,
+        save_load.save_precision,
         save_load.save_every_n_epochs,
         save_load.save_last_n_epochs,
         save_load.save_every_n_steps,

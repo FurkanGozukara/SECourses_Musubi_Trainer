@@ -66,6 +66,14 @@ On Linux:
 ## Updates
 **- Click images to see their full sizes**
 
+### 13 July 2026 Image Full-DiT Fine-Tuning
+
+- Integrated upstream musubi-tuner pull request #997 on top of the maintained performance and torch.compile changes.
+- Added GUI training-mode selection for FLUX.2 dev, FLUX.2 Klein 4B/9B, Ideogram 4, and Krea 2.
+- Full-DiT runtime configs automatically remove LoRA-only and FP8-base options and enforce supported precision, optimizer, distributed, and block-swap combinations.
+- Added ready demo presets for FLUX.2, FLUX.2 Klein, Krea 2, Ideogram 4, Z-Image, and supported Wan 2.1 LoRA fine-tuning in `Demo_Training_Configs_FLUX-2_Z-Image_FLUX-Klein_WAN-21_Krea2_Ideogram4`.
+- Ideogram 4 full fine-tuning requires a plain FP32/FP16/BF16 conditional DiT; the official FP8/NVFP4 model remains LoRA-only.
+
 ### 11 July 2026 Quantizer Preset Review
 
 - INT8 ConvRot with fixed group size 256 is now the balanced default for validated model families.

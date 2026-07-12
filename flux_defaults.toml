@@ -6,7 +6,7 @@
 model_family = "FLUX.2"  # "FLUX.2" | "FLUX Klein"
 
 # Training mode (GUI only)
-training_mode = "LoRA Training"  # "LoRA Training" | "DreamBooth Fine-Tuning" (not supported for FLUX yet)
+training_mode = "LoRA Training"  # "LoRA Training" | "Full Fine-Tuning"
 
 # Model selection
 model_version = "dev"  # FLUX.2: "dev" | FLUX Klein: "klein-4b", "klein-base-4b", "klein-9b", "klein-base-9b"
@@ -63,6 +63,12 @@ seed = 42
 gradient_checkpointing = true
 gradient_checkpointing_cpu_offload = false
 gradient_accumulation_steps = 1
+full_bf16 = false
+full_fp16 = false
+
+# Full fine-tuning only
+fused_backward_pass = false
+block_swap_optimizer_patch_params = false
 
 # Torch compile (optional)
 compile = false

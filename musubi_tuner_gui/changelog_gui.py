@@ -8,6 +8,13 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 13 July 2026 - Image Full-DiT Fine-Tuning
+
+- Integrated musubi-tuner pull request #997.
+- Added Full Fine-Tuning modes for FLUX.2, FLUX.2 Klein, Ideogram 4, and Krea 2.
+- Added mode-aware runtime validation for precision, FP8, block swap, fused backward, optimizer patching, and distributed training.
+- Added full-fine-tuning demo presets and retained supported LoRA workflows without changing their runtime commands.
+
 ### 21 October 2025 - V18
 
 **🎨 Revolutionary Qwen Image Edit Plus (2509) Support - Train AI models with multiple control images for advanced image editing!**
