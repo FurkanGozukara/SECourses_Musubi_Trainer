@@ -28,8 +28,10 @@ from .common_gui import (
     get_file_path_or_save_as,
     get_folder_path,
     print_command_and_toml,
+    resolve_portable_model_value,
     run_cmd_advanced_training,
     save_executed_script,
+    save_training_preview_config,
     scriptdir,
     requires_native_compile_toolchain,
     setup_environment,
@@ -254,7 +256,7 @@ def open_zimage_configuration(ask_for_file, file_path, parameters):
     loaded_values = []
     for key, default_value in parameters:
         if key in data:
-            v = data[key]
+            v = resolve_portable_model_value(key, data[key])
             if isinstance(v, list) and key in numeric_fields:
                 v = v[0] if v else None
             elif isinstance(v, list) and key in list_to_str_fields:
@@ -264,7 +266,7 @@ def open_zimage_configuration(ask_for_file, file_path, parameters):
                     v = " ".join(str(x) for x in v)
             loaded_values.append(v)
         else:
-            loaded_values.append(default_value)
+            loaded_values.append(resolve_portable_model_value(key, default_value))
 
     msg = f"Loaded configuration: {os.path.basename(file_path)}"
     gr.Info(msg)
@@ -578,15 +580,8 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
     else:
         run_cmd.append(f"{scriptdir}/musubi-tuner/src/musubi_tuner/zimage_train_network.py")
 
-    if print_only:
-        if latent_cache_cmd:
-            print_command_and_toml(latent_cache_cmd, "")
-        if teo_cache_cmd:
-            print_command_and_toml(teo_cache_cmd, "")
-        print_command_and_toml(run_cmd, "")
-        return
-
-    os.makedirs(output_dir, exist_ok=True)
+    if not print_only:
+        os.makedirs(output_dir, exist_ok=True)
     formatted_datetime = datetime.now().strftime("%Y%m%d-%H%M%S")
     cfg_path = os.path.join(output_dir, f"{output_name}_{formatted_datetime}.toml")
 
@@ -618,10 +613,7 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
         # These options are implemented by zimage_train.py, not the LoRA trainer.
         exclusion_extra.extend(["mem_eff_save", "fused_backward_pass"])
 
-    SaveConfigFileToRun(
-        parameters=parameters,
-        file_path=cfg_path,
-        exclusion=[
+    run_config_exclusion = [
             "file_path",
             "save_as",
             "save_as_bool",
@@ -669,12 +661,24 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
             "debug_mode",
             # Cache-only toggle
             "caching_teo_fp8_llm",
-        ]
-        + pattern_exclusion
-        + exclusion_extra,
-        mandatory_keys=["dataset_config", "dit", "vae", "text_encoder"]
-        + ([] if dreambooth_mode else ["network_module"]),
+        ] + pattern_exclusion + exclusion_extra
+    mandatory_keys = ["dataset_config", "dit", "vae", "text_encoder"] + (
+        [] if dreambooth_mode else ["network_module"]
     )
+    if print_only:
+        cfg_path = save_training_preview_config(
+            parameters,
+            f"zimage_{output_name}",
+            run_config_exclusion,
+            mandatory_keys,
+        )
+    else:
+        SaveConfigFileToRun(
+            parameters=parameters,
+            file_path=cfg_path,
+            exclusion=run_config_exclusion,
+            mandatory_keys=mandatory_keys,
+        )
 
     run_cmd.append("--config_file")
     run_cmd.append(cfg_path)
@@ -687,6 +691,14 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
             additional_params = (additional_params + " " + debug_params).strip() if additional_params else debug_params
 
     run_cmd = run_cmd_advanced_training(run_cmd=run_cmd, additional_parameters=additional_params)
+
+    if print_only:
+        if latent_cache_cmd:
+            print_command_and_toml(latent_cache_cmd, "")
+        if teo_cache_cmd:
+            print_command_and_toml(teo_cache_cmd, "")
+        print_command_and_toml(run_cmd, cfg_path)
+        return
 
     # Match Qwen/WAN launch strategy:
     # 1) run latent caching synchronously (so failures surface before training),

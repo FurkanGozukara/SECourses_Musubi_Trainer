@@ -25,6 +25,7 @@ from .common_gui import (
     get_folder_path,
     get_saveasfile_path,
     print_command_and_toml,
+    resolve_portable_model_value,
     run_cmd_advanced_training,
     SaveConfigFile,
     SaveConfigFileToRun,
@@ -32,6 +33,7 @@ from .common_gui import (
     requires_native_compile_toolchain,
     setup_environment,
     save_executed_script,
+    save_training_preview_config,
     generate_script_content,
     validate_block_swap_options,
 )
@@ -264,7 +266,8 @@ class QwenImageDataset:
                 self.parent_folder_button = gr.Button(
                     "📂", 
                     elem_id="parent_folder_button", 
-                    size="lg"
+                    size="lg",
+                    visible=not self.headless,
                 )
             
             with gr.Row():
@@ -784,7 +787,8 @@ class QwenImageModel:
             self.dit_button = gr.Button(
                 "📁",
                 size="lg",
-                elem_id="dit_button"
+                elem_id="dit_button",
+                visible=not self.headless,
             )
             with gr.Column(scale=1):
                 self.dit_dtype = gr.Dropdown(
@@ -828,7 +832,8 @@ class QwenImageModel:
             self.vae_button = gr.Button(
                 "📁",
                 size="lg",
-                elem_id="vae_button"
+                elem_id="vae_button",
+                visible=not self.headless,
             )
             with gr.Column(scale=1):
                 self.vae_dtype = gr.Dropdown(
@@ -851,7 +856,8 @@ class QwenImageModel:
             self.text_encoder_button = gr.Button(
                 "📁",
                 size="lg",
-                elem_id="text_encoder_button"
+                elem_id="text_encoder_button",
+                visible=not self.headless,
             )
             with gr.Column(scale=1):
                 self.text_encoder_dtype = gr.Dropdown(
@@ -1663,6 +1669,7 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
         if not key in ["ask_for_file", "apply_preset", "file_path"]:
             included_params.append(key)  # Track this parameter
             toml_value = my_data.get(key)
+            toml_value = resolve_portable_model_value(key, toml_value)
 
             if key == "network_module" and toml_value is not None:
                 toml_value = normalize_qwen_image_network_module(toml_value)
@@ -1712,6 +1719,7 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
                 values.append(toml_value)
             else:
                 # Use original default value if not found in config
+                value = resolve_portable_model_value(key, value)
                 # Check if the default value is a list and should be a single value
                 if isinstance(value, list) and key in numeric_fields:
                     log.info(f"[DEFAULT] Converting list to single value for numeric field '{key}': {value} -> {value[0] if value else None}")
@@ -2300,7 +2308,61 @@ def train_qwen_image_model(headless, print_only, parameters):
         log.info("Using qwen_image_train_network.py for LoRA training")
 
     if print_only:
-        print_command_and_toml(run_cmd, "")
+        preview_parameters = list(parameters)
+        if training_mode == "LoRA Training":
+            selected_module = param_dict.get("network_module")
+            if selected_module == "custom":
+                selected_module = (param_dict.get("custom_network_module") or "").strip()
+            selected_module = normalize_qwen_image_network_module(selected_module)
+            preview_parameters = upsert_parameter(
+                preview_parameters,
+                "network_module",
+                selected_module or QWEN_IMAGE_NETWORK_MODULE,
+            )
+        if param_dict.get("faster_model_loading"):
+            preview_parameters = upsert_parameter(preview_parameters, "disable_numpy_memmap", True)
+        else:
+            preview_parameters = [(k, v) for k, v in preview_parameters if k != "disable_numpy_memmap"]
+
+        pattern_exclusion = [
+            key
+            for key, _ in preview_parameters
+            if key.startswith("caching_latent_") or key.startswith("caching_teo_")
+        ]
+        gui_only_exclusion = [
+            "additional_parameters", "debug_mode", "dataset_config_mode", "parent_folder_path",
+            "dataset_resolution_width", "dataset_resolution_height", "dataset_caption_extension",
+            "create_missing_captions", "caption_strategy", "dataset_batch_size",
+            "dataset_enable_bucket", "dataset_bucket_no_upscale", "dataset_cache_directory",
+            "dataset_control_directory", "dataset_qwen_image_edit_no_resize_control",
+            "dataset_qwen_image_edit_control_resolution_width",
+            "dataset_qwen_image_edit_control_resolution_height", "auto_generate_black_control_images",
+            "generated_toml_path", "sample_output_dir", "disable_prompt_enhancement",
+            "sample_width", "sample_height", "sample_steps", "sample_guidance_scale", "sample_seed",
+            "sample_discrete_flow_shift", "sample_cfg_scale", "sample_negative_prompt", "dit_dtype",
+            "dit_in_channels", "text_encoder_dtype", "flow_shift", "faster_model_loading",
+            "custom_network_module", "convert_to_diffusers", "diffusers_output_dir",
+            "convert_to_safetensors", "safetensors_output_dir", "training_mode",
+        ]
+        if training_mode != "DreamBooth Fine-Tuning":
+            gui_only_exclusion.append("mem_eff_save")
+        preview_path = save_training_preview_config(
+            preview_parameters,
+            f"qwen_{param_dict.get('output_name') or 'training'}",
+            [
+                "file_path", "save_as", "save_as_bool", "headless", "num_cpu_threads_per_process",
+                "num_processes", "num_machines", "multi_gpu", "gpu_ids", "main_process_port",
+                "dynamo_backend", "dynamo_mode", "dynamo_use_fullgraph", "dynamo_use_dynamic",
+                "extra_accelerate_launch_args",
+            ] + pattern_exclusion + gui_only_exclusion,
+            ["dataset_config", "dit", "vae", "text_encoder"],
+        )
+        run_cmd.extend(["--config_file", preview_path])
+        run_cmd = run_cmd_advanced_training(
+            run_cmd=run_cmd,
+            additional_parameters=(param_dict.get("additional_parameters") or "").strip(),
+        )
+        print_command_and_toml(run_cmd, preview_path)
     else:
         # Save config file for model
         current_datetime = datetime.now()
@@ -2964,7 +3026,8 @@ class QwenImageTrainingSettings:
             self.logging_dir_button = gr.Button(
                 "📂",
                 size="lg",
-                elem_id="logging_dir_button"
+                elem_id="logging_dir_button",
+                visible=not self.headless,
             )
 
             with gr.Column(scale=4):
@@ -3117,7 +3180,8 @@ class QwenImageSampleSettings:
             self.sample_prompts_button = gr.Button(
                 "📂",
                 size="lg",
-                elem_id="sample_prompts_button"
+                elem_id="sample_prompts_button",
+                visible=not self.headless,
             )
         
         # Custom output path for samples
@@ -3132,7 +3196,8 @@ class QwenImageSampleSettings:
             self.sample_output_dir_button = gr.Button(
                 "📂",
                 size="lg",
-                elem_id="sample_output_dir_button"
+                elem_id="sample_output_dir_button",
+                visible=not self.headless,
             )
         
         # Prompt enhancement control
@@ -3535,7 +3600,8 @@ class QwenImageSaveLoadSettings:
             self.output_dir_button = gr.Button(
                 "📂",
                 size="sm",
-                elem_id="output_dir_button"
+                elem_id="output_dir_button",
+                visible=not self.headless,
             )
 
             with gr.Column(scale=4):

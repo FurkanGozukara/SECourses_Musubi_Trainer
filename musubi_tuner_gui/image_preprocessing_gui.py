@@ -195,6 +195,7 @@ def image_preprocessing_tab(headless: bool, config: GUIConfig):
                 folder_symbol,
                 elem_id="open_folder",
                 elem_classes=["tool"],
+                visible=not headless,
             )
             
             output_folder = gr.Textbox(
@@ -206,6 +207,7 @@ def image_preprocessing_tab(headless: bool, config: GUIConfig):
                 folder_symbol,
                 elem_id="open_folder_save",
                 elem_classes=["tool"],
+                visible=not headless,
             )
         
         with gr.Row():

@@ -1883,6 +1883,10 @@ class ModelQuantizer:
             return f"{base}_edited.safetensors"
         if workflow == WORKFLOW_HYBRID_MXFP8:
             return f"{base}_hybrid.safetensors"
+        if workflow == WORKFLOW_DRY_RUN:
+            if params.get("dry_run") == "create-template":
+                return f"{base}_layer_config_template.json"
+            return ""
 
         prefix = "simple_" if simple else "learned_"
 
@@ -2016,7 +2020,7 @@ class ModelQuantizer:
         if output_path and os.path.abspath(output_path) == os.path.abspath(input_file):
             return "Output file cannot be the same as input file."
 
-        output_dir = os.path.dirname(output_path)
+        output_dir = os.path.dirname(output_path) if output_path else ""
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
 
@@ -2036,6 +2040,18 @@ class ModelQuantizer:
             return "Conversion cancelled."
         if return_code != 0:
             return self._tail_text(f"Conversion failed (exit code {return_code}).\n\n{output_text}")
+
+        if params.get("workflow") == WORKFLOW_DRY_RUN:
+            if params.get("dry_run") == "create-template":
+                if not output_path or not os.path.isfile(output_path):
+                    return self._tail_text(
+                        "Template generation finished without creating the expected output.\n\n"
+                        f"{output_text}"
+                    )
+                return self._tail_text(
+                    f"Layer-config template created successfully.\nOutput: {output_path}\n\n{output_text}"
+                )
+            return self._tail_text(f"Dry-run analysis completed successfully.\n\n{output_text}")
 
         if delete_original and os.path.isfile(output_path):
             try:
@@ -2065,7 +2081,12 @@ class ModelQuantizer:
         if validation_error:
             return validation_error
 
-        ext_list = [ext.strip().lower() for ext in (extensions or ".safetensors").split(",") if ext.strip()]
+        ext_list = []
+        for extension in (extensions or ".safetensors").split(","):
+            extension = extension.strip().lower()
+            if not extension:
+                continue
+            ext_list.append(extension if extension.startswith(".") else f".{extension}")
         if not ext_list:
             ext_list = [".safetensors"]
 
@@ -2101,7 +2122,14 @@ class ModelQuantizer:
 
             output_path = self._default_output_name(file_path, params)
             if output_folder:
-                output_path = os.path.join(output_folder, os.path.basename(output_path))
+                relative_parent = (
+                    os.path.dirname(os.path.relpath(file_path, input_folder))
+                    if recursive
+                    else ""
+                )
+                output_path = os.path.join(
+                    output_folder, relative_parent, os.path.basename(output_path)
+                )
 
             if os.path.isfile(output_path) and not overwrite_existing:
                 log_lines.append(f"[{idx}/{len(files)}] Skipped (output exists): {output_path}")
@@ -2132,12 +2160,21 @@ class ModelQuantizer:
                 log_lines.append(self._tail_text(output_text))
                 continue
 
-            if delete_original and os.path.isfile(output_path):
+            is_dry_run = params.get("workflow") == WORKFLOW_DRY_RUN
+            if delete_original and not is_dry_run and os.path.isfile(output_path):
                 try:
                     os.remove(file_path)
                 except Exception as exc:
                     log_lines.append(f"[{idx}/{len(files)}] Converted but could not delete input: {exc}")
-            log_lines.append(f"[{idx}/{len(files)}] Done: {output_path}")
+            if is_dry_run and params.get("dry_run") != "create-template":
+                log_lines.append(f"[{idx}/{len(files)}] Analyzed: {file_path}")
+            elif is_dry_run:
+                if os.path.isfile(output_path):
+                    log_lines.append(f"[{idx}/{len(files)}] Template: {output_path}")
+                else:
+                    log_lines.append(f"[{idx}/{len(files)}] Failed (template was not created): {output_path}")
+            else:
+                log_lines.append(f"[{idx}/{len(files)}] Done: {output_path}")
 
         return self._tail_text("\n".join(log_lines))
 
@@ -2534,14 +2571,14 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         value=config.get("model_quantizer.input_scales_path", ""),
                         placeholder="Optional input scales for NVFP4",
                     )
-                    input_scales_button = gr.Button("Browse File", size="lg")
+                    input_scales_button = gr.Button("Browse File", size="lg", visible=not headless)
                 with gr.Row():
                     tensor_scales_path = gr.Textbox(
                         label="Tensor Scales for Hybrid MXFP8",
                         value=config.get("model_quantizer.tensor_scales_path", ""),
                         placeholder="Optional tensorwise FP8 model for hybrid conversion",
                     )
-                    tensor_scales_button = gr.Button("Browse File", size="lg")
+                    tensor_scales_button = gr.Button("Browse File", size="lg", visible=not headless)
 
             with gr.Accordion("Layer Config & Dry Run", open=False) as layer_config_group:
                 with gr.Row():
@@ -2550,7 +2587,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         value=config.get("model_quantizer.layer_config_path", ""),
                         placeholder="Path to layer-config JSON",
                     )
-                    layer_config_button = gr.Button("Browse File", size="lg")
+                    layer_config_button = gr.Button("Browse File", size="lg", visible=not headless)
                 layer_config_fullmatch = gr.Checkbox(
                     label="Layer Config Fullmatch",
                     value=config.get("model_quantizer.layer_config_fullmatch", False),
@@ -2584,7 +2621,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         value=config.get("model_quantizer.actcal_lora", ""),
                         placeholder="Optional LoRA file for informed calibration",
                     )
-                    actcal_lora_button = gr.Button("Browse File", size="lg")
+                    actcal_lora_button = gr.Button("Browse File", size="lg", visible=not headless)
                 actcal_device = gr.Textbox(
                     label="Calibration Device",
                     value=config.get("model_quantizer.actcal_device", ""),
@@ -2671,14 +2708,14 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     value=config.get("model_quantizer.single_input_file", ""),
                     placeholder="Path to model .safetensors",
                 )
-                single_input_button = gr.Button("Browse File", size="lg")
+                single_input_button = gr.Button("Browse File", size="lg", visible=not headless)
             with gr.Row():
                 single_output_file = gr.Textbox(
                     label="Output File (optional)",
                     value=config.get("model_quantizer.single_output_file", ""),
                     placeholder="Leave empty for auto naming",
                 )
-                single_output_button = gr.Button("Save As", size="lg")
+                single_output_button = gr.Button("Save As", size="lg", visible=not headless)
             with gr.Row():
                 single_delete_original = gr.Checkbox(
                     label="Delete original after success",
@@ -2707,14 +2744,14 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     value=config.get("model_quantizer.batch_input_folder", ""),
                     placeholder="Folder with model files",
                 )
-                batch_input_button = gr.Button("Browse Folder", size="lg")
+                batch_input_button = gr.Button("Browse Folder", size="lg", visible=not headless)
             with gr.Row():
                 batch_output_folder = gr.Textbox(
                     label="Output Folder (optional)",
                     value=config.get("model_quantizer.batch_output_folder", ""),
                     placeholder="Leave empty to use input folder",
                 )
-                batch_output_button = gr.Button("Browse Folder", size="lg")
+                batch_output_button = gr.Button("Browse Folder", size="lg", visible=not headless)
             with gr.Row():
                 batch_extensions = gr.Textbox(
                     label="File Extensions",
@@ -3104,7 +3141,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         _, overrides = _combined_preset_settings(selected_model_preset, preset_name)
         return _preset_field_updates(overrides)
 
-    preset_dropdown.change(
+    preset_dropdown.input(
         fn=_apply_preset,
         inputs=[preset_dropdown, model_preset_primary_dropdown, model_preset_other_dropdown],
         outputs=preset_field_components,
@@ -3222,13 +3259,6 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         outputs=[custom_block_size],
         show_progress=False,
     )
-    custom_scaling_mode.change(
-        fn=_apply_custom_scaling_mode_defaults,
-        inputs=[custom_scaling_mode, custom_type],
-        outputs=[custom_block_size],
-        show_progress=False,
-    )
-
     custom_convrot.input(
         fn=lambda enabled: gr.update(interactive=bool(enabled)),
         inputs=[custom_convrot],
@@ -3249,13 +3279,6 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         outputs=[fallback_block_size],
         show_progress=False,
     )
-    fallback_type.change(
-        fn=_apply_fallback_type_defaults,
-        inputs=[fallback_type],
-        outputs=[fallback_block_size],
-        show_progress=False,
-    )
-
     def _apply_model_preset(selected: str, selected_preset: str):
         selected_value = _model_preset_value(selected)
         selected_filters = _model_preset_filters(selected_value)
@@ -3298,14 +3321,14 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             + [include_update]
         )
 
-    model_preset_primary_dropdown.change(
+    model_preset_primary_dropdown.input(
         fn=_apply_model_preset,
         inputs=[model_preset_primary_dropdown, preset_dropdown],
         outputs=[model_preset_other_dropdown] + list(filter_checkboxes.values()) + [preset_dropdown] + preset_field_components + [include_input_scale],
         show_progress=False,
     )
 
-    model_preset_other_dropdown.change(
+    model_preset_other_dropdown.input(
         fn=_apply_model_preset,
         inputs=[model_preset_other_dropdown, preset_dropdown],
         outputs=[model_preset_primary_dropdown] + list(filter_checkboxes.values()) + [preset_dropdown] + preset_field_components + [include_input_scale],
@@ -3324,7 +3347,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             gr.update(visible=is_quantize),
         )
 
-    workflow.input(
+    workflow.change(
         fn=_update_workflow_visibility,
         inputs=[workflow],
         outputs=[
@@ -3822,6 +3845,26 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         loaded_fallback_type = flat.get("fallback_type")
         if loaded_fallback_type is None:
             loaded_fallback_type = flat.get("model_quantizer.fallback_type")
+        if loaded_model_preset_primary is not None or loaded_model_preset_other is not None:
+            loaded_model_for_defaults = _visible_model_preset_value(
+                loaded_model_preset_primary or MODEL_PRESET_NONE,
+                loaded_model_preset_other or MODEL_PRESET_NONE,
+            )
+        else:
+            loaded_model_for_defaults = loaded_model_preset or raw_loaded_model
+        preset_defaults: Dict[str, object] = {}
+        has_preset_defaults = raw_loaded_preset is not None or loaded_model_for_defaults not in (
+            None,
+            MODEL_PRESET_NONE,
+        )
+        if has_preset_defaults:
+            _, preset_defaults = _combined_preset_settings(
+                str(loaded_model_for_defaults or MODEL_PRESET_NONE),
+                raw_loaded_preset,
+            )
+        model_filter_defaults = _model_preset_filters(
+            str(loaded_model_for_defaults or MODEL_PRESET_NONE)
+        )
         values_out = []
         for name, current in zip(settings_names, values):
             if name in (MODEL_PRESET_PRIMARY_FIELD, MODEL_PRESET_OTHER_FIELD):
@@ -3842,6 +3885,10 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             value = flat.get(name)
             if value is None:
                 value = flat.get(f"model_quantizer.{name}")
+            if value is None and name.startswith("filter.") and loaded_model_for_defaults is not None:
+                value = name.split(".", 1)[1] in model_filter_defaults
+            if value is None and name in preset_defaults:
+                value = preset_defaults[name]
             if value is None:
                 values_out.append(current)
             else:

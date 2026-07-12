@@ -32,6 +32,116 @@ scriptdir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 if os.name == "nt":
     scriptdir = scriptdir.replace("\\", "/")
 
+
+PORTABLE_MODEL_PATH_KEYS = frozenset(
+    {
+        "base_weights",
+        "clip",
+        "clip_vision",
+        "dit",
+        "dit_high_noise",
+        "network_weights",
+        "t5",
+        "text_encoder",
+        "training_adapter_path",
+        "turbo_dit",
+        "unconditional_dit",
+        "vae",
+    }
+)
+
+
+def _training_model_directories() -> list[Path]:
+    """Return explicitly configured and distribution-local model folders."""
+    candidates: list[Path] = []
+    configured_root = os.environ.get("MUSUBI_TRAINING_MODELS_DIR", "").strip()
+    if configured_root:
+        candidates.append(Path(os.path.expandvars(os.path.expanduser(configured_root))))
+    else:
+        install_root = Path(scriptdir).resolve()
+        candidates.extend((install_root, install_root.parent))
+
+    model_directories: list[Path] = []
+    seen: set[str] = set()
+    for candidate in candidates:
+        try:
+            expanded = (
+                [candidate]
+                if candidate.name.startswith("Training_Models")
+                else list(candidate.glob("Training_Models*"))
+            )
+        except OSError:
+            continue
+        for directory in expanded:
+            try:
+                resolved = directory.resolve()
+            except OSError:
+                resolved = directory
+            identity = os.path.normcase(str(resolved))
+            if identity not in seen and resolved.is_dir():
+                seen.add(identity)
+                model_directories.append(resolved)
+    return model_directories
+
+
+def resolve_portable_model_path(value):
+    """Relocate a missing preset model path by its unique local filename.
+
+    Shipped presets are often created on a different Windows/Linux machine.
+    Existing paths are never changed, and an ambiguous filename is never
+    guessed. The resolved value is returned to the GUI, so the backend cannot
+    silently use a path different from the one displayed to the user.
+    """
+    if not isinstance(value, str):
+        return value
+
+    original = value
+    expanded = os.path.expandvars(os.path.expanduser(value.strip().strip('"\'')))
+    if not expanded:
+        return original
+    try:
+        if Path(expanded).is_file():
+            return original
+    except (OSError, ValueError):
+        pass
+
+    filename = expanded.replace("\\", "/").rsplit("/", 1)[-1]
+    if not filename:
+        return original
+
+    matches: list[Path] = []
+    filename_folded = filename.casefold()
+    for directory in _training_model_directories():
+        try:
+            matches.extend(
+                path
+                for path in directory.rglob("*")
+                if path.is_file() and path.name.casefold() == filename_folded
+            )
+        except OSError:
+            continue
+
+    unique_matches = {
+        os.path.normcase(str(path.resolve())): path.resolve() for path in matches
+    }
+    if len(unique_matches) != 1:
+        if len(unique_matches) > 1:
+            log.warning("Cannot relocate ambiguous model filename '%s'.", filename)
+        return original
+
+    relocated = str(next(iter(unique_matches.values()))).replace("\\", "/")
+    log.info("Relocated missing preset model path '%s' to '%s'.", original, relocated)
+    return relocated
+
+
+def resolve_portable_model_value(key: str, value):
+    """Apply portable model relocation to scalar or list-valued model fields."""
+    if key not in PORTABLE_MODEL_PATH_KEYS:
+        return value
+    if isinstance(value, list):
+        return [resolve_portable_model_path(item) for item in value]
+    return resolve_portable_model_path(value)
+
 # Make the backend's src-layout package importable when the GUI is launched
 # directly instead of through an editable installation.
 musubi_tuner_dir = os.path.join(scriptdir, "musubi-tuner")
@@ -113,6 +223,8 @@ def _normalize_resume_parameters(parameters):
 
     normalized_parameters = list(parameters)
     param_dict = dict(normalized_parameters)
+    if "resume" not in param_dict and "resume_from_huggingface" not in param_dict:
+        return normalized_parameters
 
     resume_value = param_dict.get("resume")
     hf_resume_value = param_dict.get("resume_from_huggingface")
@@ -1614,7 +1726,7 @@ def verify_image_folder_pattern(folder_path: str) -> bool:
         # Log an error message if the folder does not exist
         log.error(
             f"...the provided path '{folder_path}' is not a valid folder. "
-            "Please follow the folder structure documentation found at docs\image_folder_structure.md ..."
+            "Please follow the folder structure documentation found at docs/image_folder_structure.md ..."
         )
         # Return False to indicate that the folder pattern is not valid
         return False
@@ -1648,7 +1760,7 @@ def verify_image_folder_pattern(folder_path: str) -> bool:
         )
         # Log an error message suggesting to follow the folder structure documentation
         log.error(
-            f"...please follow the folder structure documentation found at docs\image_folder_structure.md ..."
+            "...please follow the folder structure documentation found at docs/image_folder_structure.md ..."
         )
         # Return False to indicate that the folder pattern is not valid
         return False
@@ -1658,7 +1770,7 @@ def verify_image_folder_pattern(folder_path: str) -> bool:
         # Log an error message if no image folders are found
         log.error(
             f"...no image folders found in {folder_path}. "
-            "Please follow the folder structure documentation found at docs\image_folder_structure.md ..."
+            "Please follow the folder structure documentation found at docs/image_folder_structure.md ..."
         )
         # Return False to indicate that the folder pattern is not valid
         return False
@@ -1687,60 +1799,9 @@ def SaveConfigFile(
     """
     parameters = _normalize_resume_parameters(parameters)
 
-    # File path parameters that should be excluded if empty (same as SaveConfigFileToRun)
-    FILE_PATH_PARAMETERS = [
-        # Model and weight paths
-        "network_weights", "base_weights", "dit", "vae", "text_encoder",
-        "weights", "pretrained_model_name_or_path", "state_dict",
-        "checkpoint", "ckpt", "safetensors", "model_path",
-        
-        # Text encoder paths
-        "text_encoder1", "text_encoder2", 
-        "caching_teo_text_encoder", "caching_teo_text_encoder1", "caching_teo_text_encoder2",
-        
-        # Resume and state paths  
-        "resume", "resume_from_huggingface",
-        
-        # Sample and prompt paths
-        "sample_prompts", "prompt_file", "from_file",
-        
-        # Config and tracker paths
-        "log_tracker_config", "dataset_config",
-        
-        # Output paths for specific file formats (only when used as input)
-        "jsonl_output_file", "image_jsonl_file", "video_jsonl_file",
-        
-        # Latent paths
-        "latent_path",
-        
-        # Generated paths that should not be saved when empty
-        "generated_toml_path",
-    ]
-    
     variables = {}
     for name, value in sorted(parameters, key=lambda x: x[0]):
         if name not in exclusion and value is not None:
-            # Skip empty strings for file path parameters (prevents FileNotFoundError)
-            if isinstance(value, str) and value == "":
-                # Check if this is a known file path parameter
-                if name in FILE_PATH_PARAMETERS:
-                    continue
-                # Check if parameter name suggests it's a file path
-                if any(keyword in name.lower() for keyword in ["path", "file", "weights", "model", "checkpoint", "ckpt"]):
-                    # But allow some specific parameters that can be empty
-                    if name not in ["output_dir", "output_name", "comment", "metadata_author", 
-                                   "metadata_description", "metadata_license", "metadata_tags", 
-                                   "metadata_title", "extra_accelerate_launch_args",
-                                   "additional_parameters", "wandb_api_key", "tracker_name",
-                                   "tracker_run_name", "log_tracker_name", "log_tracker_config"]:
-                        continue
-            
-            # Skip HuggingFace parameters if they are empty strings (prevent upload attempts)
-            if name in ["huggingface_repo_id", "huggingface_token", "huggingface_path_in_repo", 
-                       "huggingface_repo_type", "huggingface_repo_visibility"]:
-                if isinstance(value, str) and value == "":
-                    continue
-            
             # Convert string representations of lists back to actual lists for specific parameters
             if name in ["network_args", "optimizer_args", "lr_scheduler_args"]:
                 if isinstance(value, str):
@@ -1797,33 +1858,6 @@ def SaveConfigFile(
                     if name == "optimizer_args" and cleaned_list != value:
                         log.info(f"[SaveConfigFile] Cleaned commas from {name} list: {cleaned_list}")
             
-            # Convert 0 to None for parameters that musubi tuner expects as None when disabled
-            # This prevents ZeroDivisionError and other issues
-            # NOTE: save_every_n_* and sample_every_n_* should be saved as 0, not converted to None
-            # The conversion to None happens later when generating training commands
-            zero_to_none_params = [
-                "blocks_to_swap", "min_timestep", "num_timestep_buckets",
-                "vae_chunk_size", "vae_spatial_tile_sample_min_size",
-                "network_dim", "num_layers",  # NEW: 0 means auto-detection = None
-                "max_train_epochs",  # NEW: 0 means use max_train_steps instead = None
-                "timestep_boundary",  # NEW: 0.0 means auto-detect = None
-                # Checkpoint cleanup parameters: 0 = keep all (None), N = keep only last N
-                "save_last_n_epochs", "save_last_n_steps",
-                "save_last_n_epochs_state", "save_last_n_steps_state"
-            ]
-            if name in zero_to_none_params:
-                if value == 0:
-                    value = None
-            
-            # Convert empty strings to None for parameters that musubi tuner expects as None
-            empty_to_none_params = [
-                "base_weights", "dit", "vae", "network_weights",
-                "log_tracker_config", "metadata_title", "wandb_api_key"
-            ]
-            if name in empty_to_none_params:
-                if isinstance(value, str) and value == "":
-                    value = None
-
             # Ensure numeric fields are properly typed
             # Define numeric fields that should be converted from strings to numbers
             numeric_fields = [
@@ -1877,6 +1911,26 @@ def SaveConfigFile(
 
     with open(file_path, "w", encoding="utf-8") as file:
         toml.dump(variables, file)
+
+
+def save_training_preview_config(
+    parameters,
+    preview_name: str,
+    exclusion: list,
+    mandatory_keys: list | None = None,
+) -> str:
+    """Write a non-executing run config so Print Command previews the real payload."""
+    safe_name = re.sub(r"[^A-Za-z0-9_.-]+", "_", preview_name or "training")
+    preview_dir = os.path.join(tempfile.gettempdir(), "musubi_gui_training_previews")
+    os.makedirs(preview_dir, exist_ok=True)
+    file_path = os.path.join(preview_dir, f"{safe_name}_preview.toml")
+    SaveConfigFileToRun(
+        parameters=parameters,
+        file_path=file_path,
+        exclusion=exclusion,
+        mandatory_keys=mandatory_keys,
+    )
+    return file_path
         
 def manage_additional_parameters(additional_params: str, args_to_add: list = None, args_to_remove: list = None) -> str:
     """

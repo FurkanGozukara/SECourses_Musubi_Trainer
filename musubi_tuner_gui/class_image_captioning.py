@@ -1,3 +1,4 @@
+import gc
 import os
 import json
 import math
@@ -100,19 +101,23 @@ class ImageCaptioning:
             
             log.info("Unloading model from VRAM...")
             
-            # Delete model and processor
-            if self.model is not None:
-                del self.model
-                self.model = None
-            
-            if self.processor is not None:
-                del self.processor
-                self.processor = None
-            
-            # Clear CUDA cache to free VRAM
+            # FP8 preparation installs module-bound forward closures, creating
+            # reference cycles. Break the public references and collect those
+            # cycles before clearing CUDA's allocator cache.
+            model = self.model
+            processor = self.processor
+            self.model = None
+            self.processor = None
+            del model
+            del processor
+            gc.collect()
+
+            # Clear CUDA cache only after all model tensor references are gone.
             if torch.cuda.is_available():
-                torch.cuda.empty_cache()
                 torch.cuda.synchronize()
+                torch.cuda.empty_cache()
+                if hasattr(torch.cuda, "ipc_collect"):
+                    torch.cuda.ipc_collect()
             
             self.model_loaded = False
             self.device = None
@@ -414,7 +419,7 @@ class ImageCaptioning:
                     for i, image_path in enumerate(image_files):
                         # Check if stop was requested
                         if self.stop_processing:
-                            print(f"\n⏹️ Processing stopped by user at image {i+1}/{len(image_files)}")
+                            print(f"\nProcessing stopped by user at image {i+1}/{len(image_files)}")
                             log.info(f"Batch processing stopped by user at image {i+1}/{len(image_files)}")
                             break
                         
@@ -536,8 +541,12 @@ class ImageCaptioning:
                     if scan_subfolders:
                         result_msg += " (preserving folder structure)"
                 
-                # Also print summary to console
-                print(f"\n{result_msg}")
+                # Keep console output ASCII-safe on Windows code pages. The
+                # richer Unicode summary is returned to Gradio below.
+                print(
+                    f"\nBatch captioning finished: processed={processed_count}, "
+                    f"errors={error_count}, output={output_file}"
+                )
                 
             else:
                 # Text file output format
@@ -553,7 +562,7 @@ class ImageCaptioning:
                 for i, image_path in enumerate(image_files):
                     # Check if stop was requested
                     if self.stop_processing:
-                        print(f"\n⏹️ Processing stopped by user at image {i+1}/{len(image_files)}")
+                        print(f"\nProcessing stopped by user at image {i+1}/{len(image_files)}")
                         log.info(f"Batch processing stopped by user at image {i+1}/{len(image_files)}")
                         break
                     
@@ -719,8 +728,12 @@ class ImageCaptioning:
                 else:
                     result_msg += "\n📁 Output: Text files saved alongside each image"
                 
-                # Also print summary to console
-                print(f"\n{result_msg}")
+                # Keep console output ASCII-safe on Windows code pages. The
+                # richer Unicode summary is returned to Gradio below.
+                print(
+                    f"\nBatch captioning finished: processed={processed_count}, "
+                    f"skipped={skipped_count}, errors={error_count}"
+                )
             
             return True, result_msg
             

@@ -30,7 +30,8 @@ class SaveLoadSettings:
             self.output_dir_button = gr.Button(
                 "📂",
                 size="lg",
-                elem_id="output_dir_button"
+                elem_id="output_dir_button",
+                visible=not self.headless,
             )
             with gr.Column(scale=4):
                 self.output_name = gr.Textbox(

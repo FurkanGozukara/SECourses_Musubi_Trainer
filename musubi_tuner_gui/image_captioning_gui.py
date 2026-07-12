@@ -98,7 +98,8 @@ class ImageCaptioningTab:
                             self.config_file_button = gr.Button(
                                 "📁",
                                 size="sm",
-                                scale=0
+                                scale=0,
+                                visible=not self.headless,
                             )
                         
                         with gr.Row():
@@ -124,7 +125,8 @@ class ImageCaptioningTab:
                             self.model_path_button = gr.Button(
                                 "📁",
                                 size="sm",
-                                scale=0
+                                scale=0,
+                                visible=not self.headless,
                             )
                         
                         with gr.Row():
@@ -278,7 +280,8 @@ class ImageCaptioningTab:
                             self.batch_image_dir_button = gr.Button(
                                 "📁",
                                 size="sm",
-                                scale=0
+                                scale=0,
+                                visible=not self.headless,
                             )
                         
                         with gr.Row():
@@ -293,7 +296,8 @@ class ImageCaptioningTab:
                             self.batch_output_folder_button = gr.Button(
                                 "📁",
                                 size="sm",
-                                scale=0
+                                scale=0,
+                                visible=not self.headless,
                             )
                         
                         with gr.Row():
@@ -322,7 +326,8 @@ class ImageCaptioningTab:
                             self.jsonl_output_button = gr.Button(
                                 "📁",
                                 size="sm",
-                                scale=0
+                                scale=0,
+                                visible=not self.headless,
                             )
                         
                         with gr.Row():
@@ -485,9 +490,21 @@ class ImageCaptioningTab:
         
         # Caption utilities
         self.copy_caption_button.click(
-            fn=self.copy_caption_to_clipboard,
+            fn=lambda status: status,
             inputs=self.single_caption_output,
             outputs=self.config_status,
+            js="""async (caption) => {
+                if (!caption) {
+                    return "No caption to copy";
+                }
+                try {
+                    await navigator.clipboard.writeText(caption);
+                    return "Caption copied to clipboard";
+                } catch (error) {
+                    const detail = error?.message || String(error);
+                    return `Unable to copy caption: ${detail}`;
+                }
+            }""",
         )
         
         self.save_caption_button.click(
@@ -695,13 +712,6 @@ class ImageCaptioningTab:
                 return caption, "Model loaded and ready"
         else:
             return f"Error: {caption}", "Model loaded but caption generation failed"
-    
-    def copy_caption_to_clipboard(self, caption: str) -> str:
-        """Copy caption to clipboard (placeholder functionality)"""
-        if caption:
-            # Note: Actual clipboard functionality would require additional libraries
-            return "Caption copied to clipboard (simulated)"
-        return "No caption to copy"
     
     def save_caption_as_file(self, caption: str, image_path: Optional[str]) -> str:
         """Save caption as a text file"""

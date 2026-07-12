@@ -32,6 +32,7 @@ from .common_gui import (
     get_file_path_or_save_as,
     get_folder_path,
     print_command_and_toml,
+    resolve_portable_model_value,
     run_cmd_advanced_training,
     save_executed_script,
     scriptdir,
@@ -962,7 +963,7 @@ def open_modern_configuration(
             data = toml.load(handle)
         values = []
         for key, default in parameters:
-            value = data.get(key, default)
+            value = resolve_portable_model_value(key, data.get(key, default))
             values.append(_config_value_for_component(key, value, default, spec))
         message = f"Configuration loaded: {os.path.basename(file_path)}"
         gr.Info(message)

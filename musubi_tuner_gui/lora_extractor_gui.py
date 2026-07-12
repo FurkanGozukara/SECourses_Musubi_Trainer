@@ -459,11 +459,7 @@ class LoRAExtractor:
             if self._terminate_process(self.batch_process):
                 return "⛔ Cancellation requested. The current extraction will stop soon."
             return "⚠️ Unable to cancel the running extraction. It may have already finished."
-
-        # If no process is currently running, flag future iterations to stop.
-        if not self.batch_cancel_requested:
-            self.batch_cancel_requested = True
-            return "⛔ Cancellation requested. Batch extraction will stop after the current file."
+        self.batch_cancel_requested = False
         return "⚠️ Batch extraction is not running."
 
 
@@ -485,21 +481,21 @@ def lora_extractor_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             label="Base Model (Original)",
                             placeholder="Path to original checkpoint (e.g., ./models/base/qwen_image.safetensors)",
                         )
-                        base_model_button = gr.Button("Browse File", size="lg")
+                        base_model_button = gr.Button("Browse File", size="lg", visible=not headless)
 
                     with gr.Row():
                         tuned_model_path = gr.Textbox(
                             label="Tuned Model (Fine-Tuned)",
                             placeholder="Path to fine-tuned checkpoint (e.g., ./models/tuned/qwen_image_person.safetensors)",
                         )
-                        tuned_model_button = gr.Button("Browse File", size="lg")
+                        tuned_model_button = gr.Button("Browse File", size="lg", visible=not headless)
 
                     with gr.Row():
                         output_lora_path = gr.Textbox(
                             label="Output LoRA Path",
                             placeholder="Where to save the LoRA (e.g., ./loras/qwen_person_LoRA.safetensors)",
                         )
-                        output_path_button = gr.Button("Save As", size="lg")
+                        output_path_button = gr.Button("Save As", size="lg", visible=not headless)
 
                     single_status = gr.Textbox(
                         label="Extraction Log",
@@ -524,14 +520,14 @@ def lora_extractor_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             placeholder="Path to the original/base checkpoint used for fine-tuning",
                             info="This model will be compared against every tuned checkpoint in the folder.",
                         )
-                        batch_base_model_button = gr.Button("Browse File", size="lg")
+                        batch_base_model_button = gr.Button("Browse File", size="lg", visible=not headless)
 
                     with gr.Row():
                         tuned_folder_input = gr.Textbox(
                             label="Tuned Models Folder",
                             placeholder="Folder containing fine-tuned checkpoints",
                         )
-                        tuned_folder_button = gr.Button("Browse Folder", size="lg")
+                        tuned_folder_button = gr.Button("Browse Folder", size="lg", visible=not headless)
 
                     with gr.Row():
                         output_folder_input = gr.Textbox(
@@ -539,7 +535,7 @@ def lora_extractor_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             info="Leave empty to write LoRAs next to tuned models.",
                             placeholder="Folder to save extracted LoRAs",
                         )
-                        output_folder_button = gr.Button("Browse Folder", size="lg")
+                        output_folder_button = gr.Button("Browse Folder", size="lg", visible=not headless)
 
                     with gr.Row():
                         tuned_suffix_input = gr.Textbox(

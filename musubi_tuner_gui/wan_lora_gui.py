@@ -29,6 +29,7 @@ from .common_gui import (
     get_text_encoder_path,
     get_clip_vision_path,
     print_command_and_toml,
+    resolve_portable_model_value,
     run_cmd_advanced_training,
     SaveConfigFile,
     SaveConfigFileToRun,
@@ -37,6 +38,7 @@ from .common_gui import (
     setup_environment,
     manage_additional_parameters,
     save_executed_script,
+    save_training_preview_config,
     generate_script_content,
     validate_block_swap_options,
 )
@@ -343,7 +345,8 @@ class WanDataset:
                 self.parent_folder_button = gr.Button(
                     "📂", 
                     elem_id="parent_folder_button", 
-                    size="lg"
+                    size="lg",
+                    visible=not self.headless,
                 )
             
             with gr.Row():
@@ -1294,7 +1297,7 @@ class WanModelSettings:
                             value=str(self.config.get("dit", "")), lines=3
                         )
                     with gr.Column(min_width=60):
-                        self.dit_button = gr.Button("Browse Folder", size="lg", elem_id="dit_button")
+                        self.dit_button = gr.Button("Browse Folder", size="lg", elem_id="dit_button", visible=not self.headless)
             with gr.Column():
                 with gr.Row():
                     with gr.Column(scale=2):
@@ -1305,7 +1308,7 @@ class WanModelSettings:
                             value=str(self.config.get("vae", "")), lines=3
                         )
                     with gr.Column(min_width=60):
-                        self.vae_button = gr.Button("Browse Folder", size="lg", elem_id="vae_button")
+                        self.vae_button = gr.Button("Browse Folder", size="lg", elem_id="vae_button", visible=not self.headless)
 
         with gr.Row():
             with gr.Column():
@@ -1318,7 +1321,7 @@ class WanModelSettings:
                             value=str(self.config.get("t5", "")), lines=3
                         )
                     with gr.Column(min_width=60):
-                        self.t5_button = gr.Button("Browse Folder", size="lg", elem_id="t5_button")
+                        self.t5_button = gr.Button("Browse Folder", size="lg", elem_id="t5_button", visible=not self.headless)
             with gr.Column():
                 with gr.Row():
                     with gr.Column(scale=2):
@@ -1329,7 +1332,7 @@ class WanModelSettings:
                             value=str(self.config.get("clip", "")), lines=3
                         )
                     with gr.Column(min_width=60):
-                        self.clip_button = gr.Button("Browse Folder", size="lg", elem_id="clip_button")
+                        self.clip_button = gr.Button("Browse Folder", size="lg", elem_id="clip_button", visible=not self.headless)
 
         # Wan 2.2 Advanced Models Settings
         with gr.Row():
@@ -1371,7 +1374,7 @@ class WanModelSettings:
                     value=str(self.config.get("dit_high_noise", ""))
                 )
             with gr.Column(scale=1):
-                self.dit_high_noise_button = gr.Button("Browse Folder", size="lg", elem_id="dit_high_noise_button")
+                self.dit_high_noise_button = gr.Button("Browse Folder", size="lg", elem_id="dit_high_noise_button", visible=not self.headless)
 
         with gr.Row():
             self.timestep_boundary = gr.Number(
@@ -1839,7 +1842,8 @@ class WanSampleSettings:
             self.sample_prompts_button = gr.Button(
                 "📂",
                 size="lg",
-                elem_id="sample_prompts_button"
+                elem_id="sample_prompts_button",
+                visible=not self.headless,
             )
         
         # Custom output path for samples
@@ -1854,7 +1858,8 @@ class WanSampleSettings:
             self.sample_output_dir_button = gr.Button(
                 "📂",
                 size="lg",
-                elem_id="sample_output_dir_button"
+                elem_id="sample_output_dir_button",
+                visible=not self.headless,
             )
         
         # Prompt enhancement control
@@ -2632,7 +2637,61 @@ def train_wan_model(headless, print_only, parameters):
     log.info("Using wan_train_network.py for LoRA training")
 
     if print_only:
-        print_command_and_toml(run_cmd, "")
+        preview_parameters = upsert_parameter(list(parameters), "dataset_config", effective_dataset_config)
+        if param_dict.get("training_mode", "LoRA Training") == "LoRA Training":
+            selected_module = param_dict.get("network_module")
+            if selected_module == "custom":
+                selected_module = (param_dict.get("custom_network_module") or "").strip()
+            preview_parameters = upsert_parameter(
+                preview_parameters,
+                "network_module",
+                selected_module or "networks.lora_wan",
+            )
+        if param_dict.get("use_pinned_memory_for_block_swap"):
+            preview_parameters = upsert_parameter(preview_parameters, "use_pinned_memory_for_block_swap", True)
+        else:
+            preview_parameters = [(k, v) for k, v in preview_parameters if k != "use_pinned_memory_for_block_swap"]
+        pattern_exclusion = [
+            key
+            for key, _ in preview_parameters
+            if key.startswith("caching_latent_") or key.startswith("caching_teo_")
+        ]
+        preview_path = save_training_preview_config(
+            preview_parameters,
+            f"wan_{param_dict.get('output_name') or 'training'}",
+            [
+                "file_path", "save_as", "save_as_bool", "headless", "print_only",
+                "num_cpu_threads_per_process", "num_processes", "num_machines", "multi_gpu",
+                "gpu_ids", "main_process_port", "dynamo_backend", "dynamo_mode",
+                "dynamo_use_fullgraph", "dynamo_use_dynamic", "extra_accelerate_launch_args",
+                "training_mode", "num_frames", "additional_parameters", "debug_mode",
+                "dataset_config_mode", "parent_folder_path", "dataset_resolution_width",
+                "dataset_resolution_height", "dataset_caption_extension", "create_missing_captions",
+                "caption_strategy", "dataset_batch_size", "dataset_enable_bucket",
+                "dataset_bucket_no_upscale", "dataset_cache_directory", "generated_toml_path",
+                "frame_extraction", "frame_stride", "frame_sample", "target_frames",
+                "auto_normalize_target_frames", "max_frames", "source_fps", "sample_output_dir",
+                "disable_prompt_enhancement", "sample_width", "sample_height", "sample_num_frames",
+                "sample_steps", "sample_guidance_scale", "sample_seed", "sample_negative_prompt",
+                "dit_dtype", "text_encoder_dtype", "clip_vision_dtype", "mem_eff_save",
+                "custom_network_module",
+            ] + pattern_exclusion,
+            ["dataset_config", "dit", "vae", "t5", "clip"],
+        )
+        run_cmd.extend(["--config_file", preview_path])
+        additional_params = (param_dict.get("additional_parameters") or "").strip()
+        if param_dict.get("use_pinned_memory_for_block_swap"):
+            additional_params = manage_additional_parameters(
+                additional_params,
+                args_to_add=["--use_pinned_memory_for_block_swap"],
+                args_to_remove=[],
+            )
+        run_cmd = run_cmd_advanced_training(run_cmd=run_cmd, additional_parameters=additional_params)
+        if latent_cache_cmd:
+            print_command_and_toml(latent_cache_cmd, "")
+        if teo_cache_cmd:
+            print_command_and_toml(teo_cache_cmd, "")
+        print_command_and_toml(run_cmd, preview_path)
     else:
         # Save config file for model
         current_datetime = datetime.now()
@@ -3195,6 +3254,7 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
         if not key in ["ask_for_file", "apply_preset", "file_path"]:
             included_params.append(key)  # Track this parameter
             toml_value = my_data.get(key)
+            toml_value = resolve_portable_model_value(key, toml_value)
             if key == "training_mode":
                 toml_value = "LoRA Training"
             if key == "resume_from_huggingface" and not toml_value:
@@ -3233,6 +3293,7 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
                 values.append(toml_value)
             else:
                 # Use original default value if not found in config
+                value = resolve_portable_model_value(key, value)
                 # Special handling for debug_mode - use "None" as default if missing
                 if key == "debug_mode" and toml_value is None:
                     value = "None"
@@ -3985,6 +4046,58 @@ def wan_lora_tab(
         metadata.metadata_reso,
         metadata.metadata_arch,
     ]
+
+    search_panel_specs = [
+        ("Accelerate launch Settings", "accelerate gpu precision distributed multi gpu dynamo cpu threads port"),
+        ("Save Models and Resume Training Settings", "save output checkpoint resume precision state memory efficient"),
+        ("Wan Training Dataset", "dataset config folder resolution caption batch bucket cache frames video image"),
+        ("Dataset Preparation Details", "dataset preparation frame extraction stride sample target frames fps normalize"),
+        ("Wan Model Settings", "wan model dit vae t5 clip fp8 dtype block swap offload task"),
+        ("Torch Compile Settings", "torch compile inductor backend dynamic fullgraph cache"),
+        ("Timestep Sampling Settings", "timestep sampling shift min max buckets sigmoid preserve distribution"),
+        ("Loss Weighting Settings", "loss weighting logit mean std mode scale"),
+        ("Training Settings", "training attention steps epochs workers seed gradient logging ddp bf16 fp16"),
+        ("Network Settings", "network lora rank dim alpha dropout weights module metadata"),
+        ("Optimizer and Scheduler Settings", "optimizer learning rate scheduler warmup decay cycles gradient norm"),
+        ("Latent Caching Settings", "latent cache caching device batch workers skip existing debug console"),
+        ("Text Encoder Outputs Caching Settings", "text encoder t5 cache caching device dtype fp8 workers"),
+        ("Sample Generation Settings", "sample generation prompts output width height frames steps guidance seed negative"),
+        ("Advanced Settings", "advanced additional parameters debug timesteps logging rcm"),
+        ("Metadata Settings", "metadata author description license tags title resolution architecture"),
+        ("HuggingFace Settings", "huggingface repository repo token upload visibility async resume state"),
+    ]
+    assert len(search_panel_specs) == len(accordions)
+
+    def search_and_open_panels(query):
+        query = str(query or "").strip().lower()
+        if not query:
+            return [gr.Row(visible=False), gr.HTML(value="", visible=False)] + [
+                gr.Accordion(open=False) for _ in accordions
+            ]
+
+        matches = [
+            query in name.lower() or query in keywords
+            for name, keywords in search_panel_specs
+        ]
+        matched_names = [
+            name for (name, _), matched in zip(search_panel_specs, matches) if matched
+        ]
+        if matched_names:
+            items = "".join(f"<li>{name}</li>" for name in matched_names)
+            result = f"<strong>Matching panels</strong><ul>{items}</ul>"
+        else:
+            result = "<strong>No settings found.</strong>"
+
+        return [gr.Row(visible=True), gr.HTML(value=result, visible=True)] + [
+            gr.Accordion(open=matched) for matched in matches
+        ]
+
+    search_input.change(
+        search_and_open_panels,
+        inputs=[search_input],
+        outputs=[search_results_row, search_results] + accordions,
+        show_progress=False,
+    )
 
     # Set up toggle all panels functionality
     def toggle_all_panels(current_state):

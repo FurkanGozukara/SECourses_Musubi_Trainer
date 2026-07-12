@@ -342,10 +342,10 @@ def batch_merge(payload: Dict[str, object]) -> Tuple[str, str]:
     lora_extensions = payload.get("lora_extensions", ".safetensors")
 
     if not dit_path or not os.path.isfile(dit_path):
-        return "error", f"❌ Base DiT checkpoint not found: {dit_path}"
+        return "error", f"Base DiT checkpoint not found: {dit_path}"
 
     if not lora_folder or not os.path.isdir(lora_folder):
-        return "error", f"❌ LoRA folder not found: {lora_folder}"
+        return "error", f"LoRA folder not found: {lora_folder}"
 
     output_extension = output_extension.strip() or ".safetensors"
     if not output_extension.startswith("."):

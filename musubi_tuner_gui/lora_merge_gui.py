@@ -32,6 +32,26 @@ MERGE_MODE_LABELS = {
 LABEL_TO_MODE = {label: key for key, label in MERGE_MODE_LABELS.items()}
 DEFAULT_MERGE_MODE_LABEL = MERGE_MODE_LABELS["lora_to_lora"]
 
+MODEL_PROFILES: List[Dict[str, object]] = [
+    {"label": "Qwen Image (16 channels)", "type": "qwen", "channels": 16},
+    {"label": "Skyreels / DiT-I2V (32 channels)", "type": "hunyuan", "channels": 32},
+    {"label": "Wan / VideoXL (48 channels)", "type": "hunyuan", "channels": 48},
+    {"label": "Custom (manual channels)", "type": "custom", "channels": 16},
+]
+MODEL_PROFILE_MAP = {profile["label"]: profile for profile in MODEL_PROFILES}
+DEFAULT_MODEL_PROFILE = "Qwen Image (16 channels)"
+
+
+def _update_model_profile(selection: str, current_custom: float):
+    profile = MODEL_PROFILE_MAP.get(selection, MODEL_PROFILE_MAP[DEFAULT_MODEL_PROFILE])
+    profile_type = str(profile["type"])
+    is_custom = profile_type == "custom"
+    new_value = current_custom if is_custom else profile["channels"]
+    return (
+        gr.update(value=new_value, visible=is_custom, interactive=is_custom),
+        profile_type,
+    )
+
 
 class LoRAMerger:
     def __init__(self, headless: bool, config: Optional[GUIConfig]) -> None:
@@ -257,6 +277,11 @@ class LoRAMerger:
         if self._is_running(self.batch_process):
             return "⚠️ Batch merge is already running. Please cancel it before starting another."
 
+        if not dit_path or not os.path.isfile(dit_path):
+            return f"❌ Base DiT checkpoint not found: {dit_path}"
+        if not lora_folder or not os.path.isdir(lora_folder):
+            return f"❌ LoRA folder not found: {lora_folder}"
+
         payload = {
             "dit_path": dit_path,
             "lora_folder": lora_folder,
@@ -309,15 +334,7 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
         "Supports single-shot merges with up to three LoRAs or batch merging an entire folder."
     )
 
-    model_profiles: List[Dict[str, object]] = [
-        {"label": "Qwen Image (16 channels)", "type": "qwen", "channels": 16},
-        {"label": "Skyreels / DiT-I2V (32 channels)", "type": "hunyuan", "channels": 32},
-        {"label": "Wan / VideoXL (48 channels)", "type": "hunyuan", "channels": 48},
-        {"label": "Custom (manual channels)", "type": "custom", "channels": 16},
-    ]
-    profile_labels = [profile["label"] for profile in model_profiles]
-    profile_map = {profile["label"]: profile for profile in model_profiles}
-    default_profile = "Qwen Image (16 channels)"
+    profile_labels = [profile["label"] for profile in MODEL_PROFILES]
 
     with gr.Row():
         with gr.Column(scale=3):
@@ -348,14 +365,14 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             placeholder="Path to DiT .safetensors/.pt model",
                             info="Required only for LoRA ➜ DiT merges.",
                         )
-                        dit_path_button = gr.Button("Browse File", size="lg")
+                        dit_path_button = gr.Button("Browse File", size="lg", visible=not headless)
 
                     with gr.Row():
                         lora1_input = gr.Textbox(
                             label="LoRA #1",
                             placeholder="First LoRA weights file",
                         )
-                        lora1_button = gr.Button("Browse File", size="lg")
+                        lora1_button = gr.Button("Browse File", size="lg", visible=not headless)
                         lora1_multiplier = gr.Number(
                             label="Multiplier #1",
                             value=1.0,
@@ -367,7 +384,7 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             label="LoRA #2 (optional)",
                             placeholder="Second LoRA weights file",
                         )
-                        lora2_button = gr.Button("Browse File", size="lg")
+                        lora2_button = gr.Button("Browse File", size="lg", visible=not headless)
                         lora2_multiplier = gr.Number(
                             label="Multiplier #2",
                             value=1.0,
@@ -379,7 +396,7 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             label="LoRA #3 (optional)",
                             placeholder="Third LoRA weights file",
                         )
-                        lora3_button = gr.Button("Browse File", size="lg")
+                        lora3_button = gr.Button("Browse File", size="lg", visible=not headless)
                         lora3_multiplier = gr.Number(
                             label="Multiplier #3",
                             value=1.0,
@@ -391,7 +408,7 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             label="Merged Output Path",
                             placeholder="Where to save merged checkpoint",
                         )
-                        output_path_button = gr.Button("Save As", size="lg")
+                        output_path_button = gr.Button("Save As", size="lg", visible=not headless)
 
                     overwrite_single_checkbox = gr.Checkbox(
                         label="Overwrite Existing Output",
@@ -420,14 +437,14 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             label="Base DiT Checkpoint",
                             placeholder="Path to DiT .safetensors/.pt model",
                         )
-                        batch_dit_button = gr.Button("Browse File", size="lg")
+                        batch_dit_button = gr.Button("Browse File", size="lg", visible=not headless)
 
                     with gr.Row():
                         lora_folder_input = gr.Textbox(
                             label="LoRA Folder",
                             placeholder="Folder containing LoRA weights",
                         )
-                        lora_folder_button = gr.Button("Browse Folder", size="lg")
+                        lora_folder_button = gr.Button("Browse Folder", size="lg", visible=not headless)
 
                     with gr.Row():
                         output_folder_input = gr.Textbox(
@@ -435,7 +452,7 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             info="Leave empty to write merged outputs next to LoRA files.",
                             placeholder="Folder to save merged checkpoints",
                         )
-                        output_folder_button = gr.Button("Browse Folder", size="lg")
+                        output_folder_button = gr.Button("Browse Folder", size="lg", visible=not headless)
 
                     with gr.Row():
                         output_suffix_input = gr.Textbox(
@@ -492,18 +509,18 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                 model_profile_dropdown = gr.Dropdown(
                     label="Model Type",
                     choices=profile_labels,
-                    value=default_profile,
+                    value=DEFAULT_MODEL_PROFILE,
                     info="Select the base DiT architecture so we can set the correct input channels automatically. This is NOT the LoRA rank.",
                 )
                 dit_in_channels_value = gr.Number(
                     label="Custom DiT Input Channels",
-                    value=profile_map[default_profile]["channels"],
+                    value=MODEL_PROFILE_MAP[DEFAULT_MODEL_PROFILE]["channels"],
                     precision=0,
                     interactive=True,
                     visible=False,
                     info="Only used when Model Type is set to Custom. This must match the in_channels value the DiT model was trained with.",
                 )
-                model_type_state = gr.State(value=profile_map[default_profile]["type"])
+                model_type_state = gr.State(value=MODEL_PROFILE_MAP[DEFAULT_MODEL_PROFILE]["type"])
                 device_radio = gr.Radio(
                     label="Merge Device",
                     choices=["Auto (Prefer CUDA)", "CUDA", "CPU"],
@@ -615,22 +632,8 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
         show_progress=False,
     )
 
-    def update_dit_channels(selection, current_custom):
-        profile = profile_map.get(selection, profile_map[default_profile])
-        profile_type = profile["type"]
-        is_custom = profile_type == "custom"
-        new_value = current_custom if is_custom else profile["channels"]
-        return (
-            gr.Number(
-                value=new_value,
-                visible=is_custom,
-                interactive=is_custom,
-            ),
-            gr.State(value=profile_type),
-        )
-
     model_profile_dropdown.change(
-        fn=update_dit_channels,
+        fn=_update_model_profile,
         inputs=[model_profile_dropdown, dit_in_channels_value],
         outputs=[dit_in_channels_value, model_type_state],
         show_progress=False,
