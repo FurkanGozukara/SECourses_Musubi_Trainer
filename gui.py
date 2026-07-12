@@ -3,6 +3,9 @@ import sys
 import argparse
 import subprocess
 import contextlib
+
+# Apply PyTorch compatibility before Transformers imports TorchAO.
+import musubi_tuner_gui.torch_compat  # noqa: F401
 import gradio as gr
 
 from musubi_tuner_gui.lora_gui import lora_tab
