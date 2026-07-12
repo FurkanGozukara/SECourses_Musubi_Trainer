@@ -2,6 +2,33 @@
 
 import enum
 import functools
+import os
+import warnings
+
+
+_DEPENDENCY_INVALID_ESCAPE_WARNINGS = (
+    (
+        r"invalid escape sequence '\\\.'",
+        r"ignore:invalid escape sequence '\.':SyntaxWarning",
+    ),
+    (
+        r"invalid escape sequence '\\s'",
+        r"ignore:invalid escape sequence '\s':SyntaxWarning",
+    ),
+)
+
+
+def suppress_dependency_invalid_escape_warnings() -> None:
+    """Hide known dependency docstring warnings in this process and workers."""
+    for message, _ in _DEPENDENCY_INVALID_ESCAPE_WARNINGS:
+        warnings.filterwarnings("ignore", message=message, category=SyntaxWarning)
+
+    warning_options = os.environ.get("PYTHONWARNINGS", "")
+    configured_options = [option.strip() for option in warning_options.split(",") if option.strip()]
+    for _, option in _DEPENDENCY_INVALID_ESCAPE_WARNINGS:
+        if option not in configured_options:
+            configured_options.append(option)
+    os.environ["PYTHONWARNINGS"] = ",".join(configured_options)
 
 
 def apply_torchao_enum_pytree_compatibility() -> None:
@@ -28,4 +55,5 @@ def apply_torchao_enum_pytree_compatibility() -> None:
     pytree.register_constant = register_constant
 
 
+suppress_dependency_invalid_escape_warnings()
 apply_torchao_enum_pytree_compatibility()
