@@ -16,6 +16,7 @@ from .class_gui_config import GUIConfig
 from .class_latent_caching import LatentCaching
 from .class_network import Network
 from .class_optimizer_and_scheduler import OptimizerAndScheduler
+from .optimizer_catalog import add_automagic_optimizer_choices, optimizer_guidance
 from .class_save_load import SaveLoadSettings
 from .class_text_encoder_outputs_caching import TextEncoderOutputsCaching
 from .class_training import create_legacy_sdpa_checkbox
@@ -3319,7 +3320,7 @@ class QwenImageOptimizerSettings:
             self.optimizer_type = gr.Dropdown(
                 label="Optimizer Type",
                 info="[RECOMMENDED] Use what preset has unless you are an expert.",
-                choices=[
+                choices=add_automagic_optimizer_choices([
                     "adamw8bit", 
                     "AdamW", 
                     "AdaFactor", 
@@ -3327,7 +3328,7 @@ class QwenImageOptimizerSettings:
                     "bitsandbytes.optim.PagedAdEMAMix8bit",
                     "torch.optim.Adam",
                     "torch.optim.SGD"
-                ],
+                ]),
                 allow_custom_value=True,
                 value=self.config.get("optimizer_type", "adamw8bit"),
             )
@@ -3341,6 +3342,13 @@ class QwenImageOptimizerSettings:
                 step=1e-6,
                 interactive=True,
             )
+
+        self.optimizer_guidance = gr.Markdown(optimizer_guidance(self.optimizer_type.value))
+        self.optimizer_type.change(
+            fn=optimizer_guidance,
+            inputs=[self.optimizer_type],
+            outputs=[self.optimizer_guidance],
+        )
 
         with gr.Row():
             self.optimizer_args = gr.Textbox(

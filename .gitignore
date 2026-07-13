@@ -14,6 +14,7 @@ dist/
 downloads/
 eggs/
 .claude/
+ai-toolkit
 .eggs/
 musubi-tuner2
 lib/
@@ -24,6 +25,7 @@ tests/*
 !tests/test_training_gui_integrations.py
 !tests/test_ui_backend_contracts.py
 !tests/test_full_finetune_gui.py
+!tests/test_automagic_gui.py
 !tests/test_sdpa_gui.py
 lib64/
 Z_Image_BF16.safetensors
@@ -204,3 +206,4 @@ tests/*
 !tests/test_training_gui_integrations.py
 !tests/test_ui_backend_contracts.py
 !tests/test_full_finetune_gui.py
+!tests/test_automagic_gui.py

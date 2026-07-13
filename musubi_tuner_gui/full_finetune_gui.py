@@ -115,8 +115,8 @@ def normalize_image_training_parameters(
     if patch_optimizer:
         if blocks_to_swap < 1:
             raise ValueError("Optimizer parameter patching requires blocks_to_swap to be greater than 0.")
-        if optimizer_type not in {"adafactor", "adamw"}:
-            raise ValueError("Optimizer parameter patching supports Adafactor and AdamW only.")
+        if optimizer_type not in {"adafactor", "adamw", "automagic", "automagic3"}:
+            raise ValueError("Optimizer parameter patching supports Adafactor, AdamW, Automagic, and non-fused Automagic3.")
     if fused_backward and patch_optimizer:
         raise ValueError("Select either fused backward pass or optimizer parameter patching, not both.")
 

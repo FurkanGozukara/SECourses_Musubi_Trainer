@@ -2007,7 +2007,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
             block_swap_optimizer_patch_params = gr.Checkbox(
                 label="Patch Optimizer for Block Swap",
                 value=bool(config.get("block_swap_optimizer_patch_params", False)),
-                info="Use with block swap and Adafactor or AdamW. Do not combine with fused backward.",
+                info="Full fine-tuning only. Use with block swap and Adafactor, AdamW, Automagic, or non-fused Automagic3. Automagic handles this automatically when needed. Do not combine with fused backward.",
             )
             dit_variant = gr.Dropdown(
                 label="Krea 2 DiT Variant",

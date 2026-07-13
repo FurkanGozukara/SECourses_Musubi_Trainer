@@ -129,6 +129,10 @@ def test_shared_full_finetune_rules_remove_quantized_base_and_align_precision():
         ({"optimizer_type": "AdamW", "fused_backward_pass": True}, "Adafactor"),
         ({"gradient_accumulation_steps": 2, "fused_backward_pass": True}, "accumulation"),
         ({"blocks_to_swap": 0, "block_swap_optimizer_patch_params": True}, "blocks_to_swap"),
+        (
+            {"blocks_to_swap": 1, "optimizer_type": "Automagic2", "block_swap_optimizer_patch_params": True},
+            "Automagic3",
+        ),
     ],
 )
 def test_shared_full_finetune_rules_reject_unsupported_combinations(overrides, message):
@@ -148,6 +152,28 @@ def test_shared_full_finetune_rules_reject_unsupported_combinations(overrides, m
 
     with pytest.raises(ValueError, match=message):
         normalize_image_training_parameters(list(values.items()))
+
+
+@pytest.mark.parametrize("optimizer_type", ["Automagic", "Automagic3"])
+def test_full_finetune_block_swap_patch_accepts_non_fused_automagic(optimizer_type):
+    values = {
+        "training_mode": FULL_FINE_TUNING_MODE,
+        "mixed_precision": "bf16",
+        "full_bf16": True,
+        "full_fp16": False,
+        "blocks_to_swap": 1,
+        "num_processes": 1,
+        "gradient_accumulation_steps": 1,
+        "optimizer_type": optimizer_type,
+        "fused_backward_pass": False,
+        "block_swap_optimizer_patch_params": True,
+    }
+
+    normalized_values, normalized, full_finetune = normalize_image_training_parameters(list(values.items()))
+
+    assert full_finetune is True
+    assert normalized_values["block_swap_optimizer_patch_params"] is True
+    assert dict(normalized)["block_swap_optimizer_patch_params"] is True
 
 
 def test_training_mode_exclusions_keep_runtime_configs_mode_correct():

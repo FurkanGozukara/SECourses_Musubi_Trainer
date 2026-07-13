@@ -1,13 +1,6 @@
 import gradio as gr
-from typing import Tuple
-from .common_gui import (
-    get_folder_path,
-    get_any_file_path,
-    list_files,
-    list_dirs,
-    create_refresh_button,
-    document_symbol,
-)
+
+from .optimizer_catalog import add_automagic_optimizer_choices, optimizer_guidance
 
 
 class OptimizerAndScheduler:
@@ -53,7 +46,7 @@ class OptimizerAndScheduler:
             self.optimizer_type = gr.Dropdown(
                 label="Optimizer Type",
                 info="Select the optimizer to use",
-                choices=["AdamW", "AdamW8bit", "AdaFactor"],
+                choices=add_automagic_optimizer_choices(["AdamW", "AdamW8bit", "AdaFactor"]),
                 allow_custom_value=True,
                 value=self.config.get("optimizer_type", "AdamW"),
                 interactive=True,
@@ -73,6 +66,13 @@ class OptimizerAndScheduler:
                 interactive=True,
                 step=0.0001,
             )
+
+        self.optimizer_guidance = gr.Markdown(optimizer_guidance(self.optimizer_type.value))
+        self.optimizer_type.change(
+            fn=optimizer_guidance,
+            inputs=[self.optimizer_type],
+            outputs=[self.optimizer_guidance],
+        )
 
         with gr.Row():
             self.lr_scheduler = gr.Dropdown(
