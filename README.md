@@ -64,11 +64,11 @@ On Linux:
 
 ## Windows Attention Performance
 
-Krea 2 keeps the `SDPA` setting portable across operating systems. If PyTorch reports that its native fused FlashAttention SDPA backend is unavailable, the trainer automatically uses the installed external FlashAttention implementation on supported CUDA GPUs. If the package or GPU support is unavailable, it retains PyTorch's normal SDPA fallback.
+Every supported trainer keeps the `SDPA` setting portable across operating systems. PyTorch's native fused FlashAttention SDPA remains the first choice. When that backend is unavailable, the trainer can use the installed external FlashAttention implementation only after a CUDA forward/backward training probe succeeds. Import, GPU capability, probe, or runtime tensor incompatibilities retain the working PyTorch SDPA path.
 
-Set `MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA=1` before launching the trainer to disable this compatibility path for debugging or strict backend comparisons. The capability probe is shared so other model trainers can adopt the same guarded behavior after model-specific validation.
+The **Training Settings** panel in every training tab provides **Use Legacy PyTorch SDPA** beside **Split Attention**. It is off by default, so the guarded automatic strategy is used. Enable it to force PyTorch's older, usually slower SDPA path for compatibility testing. The selection is saved with GUI presets and emitted as `--use_legacy_sdpa` in runtime configs and generated workflow scripts.
 
-The Krea 2 **Training Settings** panel also provides **Use Legacy PyTorch SDPA** beside **Split Attention**. It is off by default, so the faster automatic strategy is used. Enable it to force PyTorch's older SDPA path for compatibility testing. The selection is saved with GUI presets and exported into generated workflow scripts; when automatic mode is selected, an unavailable or incompatible external FlashAttention installation safely falls back to PyTorch SDPA.
+Set `MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA=1` before launching a trainer to disable the compatibility path for debugging or strict backend comparisons. This environment switch and the GUI checkbox never affect explicit FlashAttention, SageAttention, or xFormers selections.
 
 
 ## Updates
@@ -77,7 +77,7 @@ The Krea 2 **Training Settings** panel also provides **Use Legacy PyTorch SDPA**
 ### 13 July 2026 Image Full-DiT Fine-Tuning
 
 - Integrated upstream musubi-tuner pull request #997 on top of the maintained performance and torch.compile changes.
-- Restored Krea 2 Windows/Linux SDPA performance parity by using external FlashAttention when the Windows PyTorch build lacks native fused FlashAttention.
+- Extended the guarded Windows SDPA acceleration and legacy compatibility control to every supported model trainer and GUI training tab.
 - Added GUI training-mode selection for FLUX.2 dev, FLUX.2 Klein 4B/9B, Ideogram 4, and Krea 2.
 - Full-DiT runtime configs automatically remove LoRA-only and FP8-base options and enforce supported precision, optimizer, distributed, and block-swap combinations.
 - Added ready demo presets for FLUX.2, FLUX.2 Klein, Krea 2, Ideogram 4, Z-Image, and supported Wan 2.1 LoRA fine-tuning in `Demo_Training_Configs_FLUX-2_Z-Image_FLUX-Klein_WAN-21_Krea2_Ideogram4`.

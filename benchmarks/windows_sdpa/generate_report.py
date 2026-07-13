@@ -1,0 +1,479 @@
+"""Generate the standalone Windows SDPA benchmark report."""
+
+from __future__ import annotations
+
+import argparse
+import html
+import json
+from pathlib import Path
+from string import Template
+
+
+ROOT = Path(__file__).resolve().parent
+RESULTS_ROOT = ROOT / "results"
+
+MODEL_METADATA = {
+    "krea2": ("Krea 2", "1024", "gain"),
+    "qwen_image": ("Qwen Image", "512", "gain"),
+    "flux_klein_4b": ("FLUX Klein 4B", "512", "gain"),
+    "flux_klein_9b": ("FLUX Klein 9B", "512", "gain"),
+    "wan_2_1": ("Wan 2.1 14B", "512", "gain"),
+    "z_image": ("Z-Image", "512", "gain"),
+    "ideogram4": ("Ideogram 4", "512", "fallback"),
+}
+
+COVERAGE = (
+    (
+        "Qwen Image, Edit, Edit Plus",
+        "LoRA and full DiT",
+        "Shared network trainer; Qwen full trainer",
+        "Qwen Image real pair",
+    ),
+    (
+        "Wan 2.1 and 2.2, T2V and I2V",
+        "LoRA",
+        "Shared network trainer; Wan attention adapter",
+        "Wan 2.1 real pair",
+    ),
+    (
+        "FLUX.2 dev",
+        "LoRA and full DiT",
+        "Shared network/full trainers",
+        "Code and tests; zero-swap run exceeds 32 GB",
+    ),
+    (
+        "FLUX Klein 4B and 9B",
+        "LoRA and full DiT",
+        "Shared network/full trainers",
+        "Both sizes real-paired",
+    ),
+    (
+        "Z-Image Base and Turbo",
+        "LoRA and full DiT",
+        "Shared network trainer; Z full trainer",
+        "Base real pair",
+    ),
+    (
+        "Ideogram 4",
+        "LoRA and full DiT",
+        "Shared network/full trainers",
+        "Real pair; tensor fallback exercised",
+    ),
+    (
+        "Krea 2",
+        "LoRA and full DiT",
+        "Shared network/full trainers",
+        "Real 1024 pair on requested dataset",
+    ),
+    (
+        "HunyuanVideo (deprecated tab)",
+        "Full training",
+        "Legacy Hunyuan trainer and attention adapter",
+        "Parser/backend tests; no local checkpoint",
+    ),
+)
+
+
+def load_results() -> list[dict]:
+    records = []
+    for key, (label, resolution, category) in MODEL_METADATA.items():
+        result_path = RESULTS_ROOT / key / "result.json"
+        data = json.loads(result_path.read_text(encoding="utf-8"))
+        by_mode = {entry["mode"]: entry for entry in data["results"]}
+        legacy = by_mode["legacy"]
+        automatic = by_mode["automatic"]
+        if legacy["status"] != "passed" or automatic["status"] != "passed":
+            raise RuntimeError(f"Incomplete benchmark pair: {key}")
+        if data["blocks_to_swap"] != 0:
+            raise RuntimeError(f"Block swapping was enabled for {key}")
+        speedup = (1 - automatic["seconds_per_step"] / legacy["seconds_per_step"]) * 100
+        records.append(
+            {
+                "key": key,
+                "label": label,
+                "resolution": resolution,
+                "category": category,
+                "legacy": legacy,
+                "automatic": automatic,
+                "speedup": speedup,
+                "steps": data["steps"],
+                "gpu": data["gpu"],
+                "probe": data.get("attention_probe"),
+            }
+        )
+    return records
+
+
+def result_rows(records: list[dict]) -> str:
+    rows = []
+    for record in records:
+        legacy = record["legacy"]
+        automatic = record["automatic"]
+        fallback = record["category"] == "fallback"
+        outcome = (
+            '<span class="status fallback">Safe fallback</span>'
+            if fallback
+            else '<span class="status passed">Passed</span>'
+        )
+        gain = "Within noise" if fallback else f"+{record['speedup']:.2f}%"
+        rows.append(
+            f"""
+            <tr data-category="{record["category"]}">
+              <th scope="row">{html.escape(record["label"])}<small>{record["resolution"]} px</small></th>
+              <td class="number">{legacy["seconds_per_step"]:.2f}</td>
+              <td class="number strong">{automatic["seconds_per_step"]:.2f}</td>
+              <td class="number">{gain}</td>
+              <td class="number">{legacy["peak_memory_mib"] / 1024:.2f} / {automatic["peak_memory_mib"] / 1024:.2f}</td>
+              <td>{outcome}</td>
+            </tr>"""
+        )
+    return "".join(rows)
+
+
+def chart_rows(records: list[dict]) -> str:
+    max_seconds = max(
+        record[mode]["seconds_per_step"]
+        for record in records
+        for mode in ("legacy", "automatic")
+    )
+    rows = []
+    for record in records:
+        legacy = record["legacy"]["seconds_per_step"]
+        automatic = record["automatic"]["seconds_per_step"]
+        annotation = (
+            "runtime fallback"
+            if record["category"] == "fallback"
+            else f"{record['speedup']:.2f}% faster"
+        )
+        rows.append(
+            f"""
+            <article class="chart-row" data-category="{record["category"]}">
+              <div class="chart-label"><strong>{html.escape(record["label"])}</strong><span>{annotation}</span></div>
+              <div class="bar-pair">
+                <div class="bar-line"><span>Legacy</span><div class="bar-track"><i class="bar legacy" style="width:{legacy / max_seconds * 100:.2f}%"></i></div><b>{legacy:.2f}</b></div>
+                <div class="bar-line"><span>Auto</span><div class="bar-track"><i class="bar automatic" style="width:{automatic / max_seconds * 100:.2f}%"></i></div><b>{automatic:.2f}</b></div>
+              </div>
+            </article>"""
+        )
+    return "".join(rows)
+
+
+def coverage_rows() -> str:
+    return "".join(
+        f"<tr><th scope='row'>{html.escape(models)}</th><td>{html.escape(modes)}</td>"
+        f"<td>{html.escape(path)}</td><td>{html.escape(validation)}</td></tr>"
+        for models, modes, path, validation in COVERAGE
+    )
+
+
+def evidence_rows(records: list[dict]) -> str:
+    rows = []
+    for record in records:
+        root = f"results/{record['key']}"
+        rows.append(
+            f"""
+            <tr>
+              <th scope="row">{html.escape(record["label"])}</th>
+              <td><a href="{root}/result.json">result.json</a></td>
+              <td><a href="{root}/legacy/training.toml">config</a> <a href="{root}/legacy/training.log">log</a></td>
+              <td><a href="{root}/automatic/training.toml">config</a> <a href="{root}/automatic/training.log">log</a></td>
+            </tr>"""
+        )
+    return "".join(rows)
+
+
+STYLES = """
+:root {
+  color-scheme: light;
+  --ink: #20252b;
+  --muted: #5b646c;
+  --paper: #ffffff;
+  --band: #eef4f2;
+  --line: #cbd5d1;
+  --teal: #087f77;
+  --teal-dark: #075d58;
+  --coral: #c45042;
+  --amber: #9c6800;
+  --green: #24733e;
+  --header: #252a2d;
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body { margin: 0; color: var(--ink); background: var(--paper); font: 15px/1.55 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; letter-spacing: 0; }
+a { color: var(--teal-dark); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { color: var(--coral); }
+header { min-height: 520px; display: grid; align-items: center; background: var(--header); color: #fff; border-bottom: 8px solid var(--teal); }
+.wrap { width: min(1160px, calc(100% - 40px)); margin: 0 auto; }
+.eyebrow { color: #75d3c7; font-size: 13px; font-weight: 750; text-transform: uppercase; }
+h1 { max-width: 900px; margin: 12px 0 18px; font-size: 54px; line-height: 1.05; letter-spacing: 0; }
+.lede { max-width: 790px; margin: 0; color: #d8e0dd; font-size: 20px; }
+.headline-proof { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; margin-top: 48px; border: 1px solid #51595c; background: #51595c; }
+.headline-proof div { min-height: 112px; padding: 20px; background: #303638; }
+.headline-proof strong { display: block; color: #fff; font-size: 28px; }
+.headline-proof span { color: #bec9c5; font-size: 13px; }
+main > section { padding: 72px 0; }
+main > section:nth-child(even) { background: var(--band); }
+.section-head { display: grid; grid-template-columns: 0.8fr 1.2fr; gap: 64px; margin-bottom: 34px; align-items: start; }
+h2 { margin: 0; font-size: 34px; line-height: 1.15; letter-spacing: 0; }
+h3 { margin: 0 0 12px; font-size: 21px; letter-spacing: 0; }
+.section-head p { margin: 0; color: var(--muted); font-size: 17px; }
+.note { border-left: 5px solid var(--amber); padding: 4px 0 4px 18px; color: var(--muted); }
+.method-grid, .policy-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 18px; }
+.method-grid article, .policy-grid article { padding: 22px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
+.method-grid p, .policy-grid p { margin: 0; color: var(--muted); }
+.step { display: inline-grid; width: 30px; height: 30px; margin-bottom: 14px; place-items: center; border-radius: 50%; background: var(--teal); color: #fff; font-weight: 800; }
+.segment { display: inline-flex; margin-bottom: 26px; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; background: #fff; }
+.segment button { min-height: 42px; padding: 0 16px; border: 0; border-right: 1px solid var(--line); color: var(--ink); background: transparent; font: inherit; font-weight: 700; cursor: pointer; }
+.segment button:last-child { border-right: 0; }
+.segment button[aria-pressed="true"] { color: #fff; background: var(--teal-dark); }
+.chart { border-top: 1px solid var(--line); }
+.chart-row { display: grid; grid-template-columns: 220px 1fr; gap: 24px; padding: 20px 0; border-bottom: 1px solid var(--line); }
+.chart-label strong, .chart-label span { display: block; }
+.chart-label span { color: var(--muted); font-size: 13px; }
+.bar-line { display: grid; grid-template-columns: 58px 1fr 48px; gap: 10px; align-items: center; min-height: 28px; font-size: 12px; }
+.bar-line b { text-align: right; font-variant-numeric: tabular-nums; }
+.bar-track { height: 13px; background: #dfe6e3; }
+.bar { display: block; height: 100%; min-width: 3px; }
+.bar.legacy { background: var(--coral); }
+.bar.automatic { background: var(--teal); }
+.legend { display: flex; gap: 22px; margin: 18px 0 0; color: var(--muted); font-size: 13px; }
+.legend i { display: inline-block; width: 14px; height: 10px; margin-right: 6px; }
+.table-shell { overflow-x: auto; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+table { width: 100%; border-collapse: collapse; }
+th, td { padding: 14px 16px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+thead th { color: #fff; background: var(--header); font-size: 12px; }
+tbody tr:last-child > * { border-bottom: 0; }
+tbody th { font-weight: 750; }
+tbody th small { display: block; color: var(--muted); font-weight: 500; }
+.number { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.strong { color: var(--teal-dark); font-weight: 800; }
+.status { white-space: nowrap; font-size: 12px; font-weight: 800; }
+.status::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 6px; border-radius: 50%; background: currentColor; }
+.passed { color: var(--green); }
+.fallback { color: var(--amber); }
+.comparison { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+.comparison > article { padding: 28px; border: 1px solid var(--line); border-radius: 6px; background: #fff; }
+.big-number { display: block; margin: 12px 0 8px; color: var(--teal-dark); font-size: 40px; font-weight: 850; line-height: 1; }
+.comparison p { color: var(--muted); }
+code { overflow-wrap: anywhere; padding: 2px 5px; border: 1px solid #d9e0dd; border-radius: 3px; background: #f7f9f8; font: 13px/1.4 ui-monospace, SFMono-Regular, Consolas, monospace; }
+.decision { border-left: 4px solid var(--teal); }
+.fallback-panel { margin-top: 24px; padding: 24px; border: 1px solid #d9bd7f; border-left: 6px solid var(--amber); background: #fffaf0; }
+.fallback-panel p { margin-bottom: 0; }
+.hidden { display: none !important; }
+.fineprint { color: var(--muted); font-size: 13px; }
+footer { padding: 38px 0; color: #d2dad7; background: var(--header); }
+footer p { margin: 0; }
+@media (max-width: 820px) {
+  header { min-height: 620px; }
+  h1 { font-size: 42px; }
+  .headline-proof { grid-template-columns: 1fr 1fr; }
+  .section-head { grid-template-columns: 1fr; gap: 14px; }
+  .method-grid, .policy-grid { grid-template-columns: 1fr; }
+  .comparison { grid-template-columns: 1fr; }
+  .chart-row { grid-template-columns: 1fr; gap: 8px; }
+}
+@media (max-width: 520px) {
+  .wrap { width: min(100% - 24px, 1160px); }
+  h1 { font-size: 36px; }
+  .lede { font-size: 17px; }
+  main > section { padding: 52px 0; }
+  .headline-proof { grid-template-columns: 1fr; }
+  .segment { display: grid; grid-template-columns: 1fr; width: 100%; }
+  .segment button { border-right: 0; border-bottom: 1px solid var(--line); }
+  .segment button:last-child { border-bottom: 0; }
+  .bar-line { grid-template-columns: 48px 1fr 40px; }
+}
+"""
+
+
+REPORT = Template("""<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="Controlled Windows SDPA training benchmarks across every Musubi Trainer model family.">
+  <title>Windows SDPA Training Performance</title>
+  <style>$styles</style>
+</head>
+<body>
+  <header>
+    <div class="wrap">
+      <div class="eyebrow">Musubi Trainer / controlled RTX 5090 validation / 13 July 2026</div>
+      <h1>Windows SDPA Training Performance</h1>
+      <p class="lede">A single guarded attention policy now covers every GUI training family. Real before-and-after pairs show where external FlashAttention closes the Windows gap, while incompatible tensors fall back to PyTorch without stopping training.</p>
+      <div class="headline-proof" aria-label="Benchmark headline results">
+        <div><strong>19.71%</strong><span>Krea 2 faster at 1024 px</span></div>
+        <div><strong>8.20%</strong><span>Qwen Image faster at 512 px</span></div>
+        <div><strong>7 / 7</strong><span>controlled pairs completed</span></div>
+        <div><strong>0</strong><span>blocks swapped in every run</span></div>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>What changed</h2>
+          <p>SDPA remains the user-facing choice. Internally, one resolver keeps PyTorch's native fused backend first, validates external FlashAttention only when needed, and preserves the original PyTorch route as the universal fallback. The same parser flag and GUI checkbox reach LoRA and full-DiT entry points without model-specific environment plumbing.</p>
+        </div>
+        <div class="method-grid">
+          <article><h3>Automatic by default</h3><p>Unchecked <strong>Use Legacy PyTorch SDPA</strong> selects the fastest verified compatible route. Explicit FlashAttention, SageAttention, and xFormers choices are untouched.</p></article>
+          <article><h3>Legacy on demand</h3><p>The checkbox sits beside <strong>Split Attention</strong> in all seven training tabs, defaults off, persists in presets, and emits <code>--use_legacy_sdpa</code>.</p></article>
+          <article><h3>Failure stays recoverable</h3><p>Import, CUDA capability, fixed/variable-length forward-backward probe, dtype, head dimension, and GQA checks all fail closed to PyTorch SDPA.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section id="results">
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Measured speed</h2>
+          <p>Seconds per training iteration, lower is better. These are per-model legacy/automatic pairs, not a cross-model race: Krea 2 used the requested 1024 px dataset; the remaining models used controlled 512 px cached inputs so each could run with block swapping disabled.</p>
+        </div>
+        <div class="segment" role="group" aria-label="Filter benchmark results">
+          <button type="button" data-filter="all" aria-pressed="true">All results</button>
+          <button type="button" data-filter="gain" aria-pressed="false">Accelerated</button>
+          <button type="button" data-filter="fallback" aria-pressed="false">Fallback case</button>
+        </div>
+        <div class="chart" aria-label="Legacy and automatic seconds per iteration">$chart_rows</div>
+        <div class="legend"><span><i style="background:#c45042"></i>Legacy PyTorch SDPA</span><span><i style="background:#087f77"></i>Automatic strategy</span></div>
+        <div class="table-shell" style="margin-top:32px">
+          <table>
+            <thead><tr><th>Model</th><th>Legacy s/it</th><th>Automatic s/it</th><th>Change</th><th>Peak VRAM GiB<br>legacy / auto</th><th>Validation</th></tr></thead>
+            <tbody>$result_rows</tbody>
+          </table>
+        </div>
+        <p class="fineprint">All values come from the linked training logs. Small 1-3% changes are within the uncertainty of short 20-step runs and should not be generalized as guaranteed gains. Krea 2 and Qwen Image show the material improvements.</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Windows and Linux</h2>
+          <p>The original Linux Krea 2 log provides a useful parity reference. It is not treated as a strict paired benchmark because the Linux dataset enumerated 48 images while the controlled Windows run used the requested local dataset.</p>
+        </div>
+        <div class="comparison">
+          <article>
+            <h3>Legacy Windows</h3>
+            <span class="big-number">3.50 s/it</span>
+            <p>About 28% slower than the Linux no-compile reference. This is the behavior available through the compatibility checkbox.</p>
+          </article>
+          <article>
+            <h3>Automatic Windows</h3>
+            <span class="big-number">2.81 s/it</span>
+            <p>Within roughly 3% of the Linux 2.73-2.74 s/it reference while keeping the same 1024 px, batch-one, no-compile, zero-block-swap geometry.</p>
+          </article>
+        </div>
+        <p class="note" style="margin-top:24px">Linux source: <code>C:/Users/Furkan/Downloads/logs (1)/linux_logs_no_torch_compile.txt</code> and its matching TOML. The compiled Linux log is intentionally excluded from this eager comparison.</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Guarded selection</h2>
+          <p>The policy is centralized in <code>musubi_tuner.modules.attention</code>. Model trainers ask for a resolved mode; model attention adapters only handle the internal automatic marker where their layouts differ.</p>
+        </div>
+        <div class="policy-grid">
+          <article class="decision"><span class="step">1</span><h3>Honor user intent</h3><p>Legacy checked returns PyTorch immediately. Automatic continues only when SDPA was selected.</p></article>
+          <article class="decision"><span class="step">2</span><h3>Prefer native</h3><p>If PyTorch reports fused FlashAttention support, normal PyTorch SDPA remains in control.</p></article>
+          <article class="decision"><span class="step">3</span><h3>Probe external</h3><p>Only CUDA compute capability 8.0+ proceeds to BF16 fixed and variable-length GQA forward/backward probes.</p></article>
+          <article class="decision"><span class="step">4</span><h3>Check real tensors</h3><p>Each call validates CUDA placement, common FP16/BF16 dtype, supported head dimension, and valid grouped-query heads.</p></article>
+          <article class="decision"><span class="step">5</span><h3>Preserve masks</h3><p>Automatic fallback converts deferred padding masks into the layout expected by PyTorch SDPA.</p></article>
+          <article class="decision"><span class="step">6</span><h3>Keep an escape hatch</h3><p><code>MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA=1</code> disables only the automatic compatibility route for diagnostics.</p></article>
+        </div>
+        <div class="fallback-panel">
+          <h3>Fallback exercised by a real model</h3>
+          <p>Ideogram 4 produced FP32 QKV tensors, which external FlashAttention does not accept. The first experiment exposed that incompatibility; the final automatic run detected it at the tensor boundary, retained PyTorch SDPA, and completed all 20 steps at 5.73 s/it versus 5.79 s/it legacy. That 1.04% difference is measurement noise, not an acceleration claim. It is evidence that automatic mode remains usable when the fast path is inappropriate.</p>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Test method</h2>
+          <p>The runner creates two configs from one base preset, changes only the legacy SDPA flag between pair members, captures command/config hashes and logs, samples peak GPU memory, and deletes only its generated benchmark weights.</p>
+        </div>
+        <div class="method-grid">
+          <article><h3>Fixed controls</h3><p>RTX 5090 GPU 0, driver 596.21, Torch 2.13.0+cu130, CUDA 13.0, batch size 1, rank 128 LoRA, gradient checkpointing, 20 steps, and torch.compile disabled.</p></article>
+          <article><h3>No hidden swapping</h3><p><code>blocks_to_swap = 0</code> is asserted in every result. Alternative attention backends and model compilation are disabled to isolate SDPA selection.</p></article>
+          <article><h3>Comparable pairs</h3><p>Each model pair uses identical cached latent/text inputs, seed, precision, optimizer, and base checkpoint. Absolute rates across different models and resolutions are intentionally not averaged.</p></article>
+        </div>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Training coverage</h2>
+          <p>One shared network path covers every LoRA family. Full-DiT mixins and the three custom full trainers call the same resolver. HunyuanVideo and Wan retain small layout adapters rather than duplicating policy.</p>
+        </div>
+        <div class="table-shell">
+          <table>
+            <thead><tr><th>GUI models</th><th>Modes</th><th>Implementation path</th><th>Validation</th></tr></thead>
+            <tbody>$coverage_rows</tbody>
+          </table>
+        </div>
+        <p class="note" style="margin-top:24px">FLUX.2 dev's 64.4 GB checkpoint cannot satisfy the explicit zero-block-swap requirement on this 32 GB card. It shares the exact selector used by both successfully paired Klein sizes. Full-DiT modes share the selector too, but were not presented as performance pairs because their memory requirements would violate the controlled setup.</p>
+      </div>
+    </section>
+
+    <section>
+      <div class="wrap">
+        <div class="section-head">
+          <h2>Evidence</h2>
+          <p>Every row links the machine-readable summary and both raw pair members. Config hashes, commands, return codes, elapsed time, parsed iteration speed, peak VRAM, and removed benchmark weights are recorded in each JSON file.</p>
+        </div>
+        <div class="table-shell">
+          <table>
+            <thead><tr><th>Model</th><th>Summary</th><th>Legacy</th><th>Automatic</th></tr></thead>
+            <tbody>$evidence_rows</tbody>
+          </table>
+        </div>
+        <p class="fineprint">Benchmark runner: <a href="run_training_pair.py">run_training_pair.py</a>. Report generator: <a href="generate_report.py">generate_report.py</a>. Dataset manifest: <a href="datasets/single_image_512.toml">single_image_512.toml</a>.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer><div class="wrap"><p>Musubi Trainer Windows SDPA validation. Controlled evidence for a minimal upstream pull request.</p></div></footer>
+  <script>
+    const buttons = document.querySelectorAll('[data-filter]');
+    const filterable = document.querySelectorAll('[data-category]');
+    buttons.forEach((button) => button.addEventListener('click', () => {
+      const selected = button.dataset.filter;
+      buttons.forEach((item) => item.setAttribute('aria-pressed', String(item === button)));
+      filterable.forEach((item) => item.classList.toggle('hidden', selected !== 'all' && item.dataset.category !== selected));
+    }));
+  </script>
+</body>
+</html>
+""")
+
+
+def generate(output: Path) -> None:
+    records = load_results()
+    document = REPORT.substitute(
+        styles=STYLES,
+        chart_rows=chart_rows(records),
+        result_rows=result_rows(records),
+        coverage_rows=coverage_rows(),
+        evidence_rows=evidence_rows(records),
+    )
+    output.write_text(document, encoding="utf-8", newline="\n")
+
+
+def main() -> None:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--output", type=Path, default=ROOT / "sdpa_performance_report.html"
+    )
+    args = parser.parse_args()
+    generate(args.output.resolve())
+    print(args.output.resolve())
+
+
+if __name__ == "__main__":
+    main()

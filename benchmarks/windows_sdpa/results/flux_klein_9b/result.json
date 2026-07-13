@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "created_at_unix": 1783942872.2375052,
+  "gpu": {
+    "index": 0,
+    "name": "NVIDIA GeForce RTX 5090",
+    "uuid": "GPU-21350b86-3099-1af0-58ef-f6432e60d9d0",
+    "driver_version": "596.21",
+    "memory_total_mib": 32607.0
+  },
+  "base_config": "G:\\SECourses_Musubi_Trainer_v29\\Demo_Training_Configs_FLUX-2_Z-Image_FLUX-Klein_WAN-21_Krea2_Ideogram4\\FLUX_Klein_9B_LoRA_Demo.toml",
+  "train_script": "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\musubi-tuner\\src\\musubi_tuner\\flux_2_train_network.py",
+  "steps": 20,
+  "blocks_to_swap": 0,
+  "results": [
+    {
+      "name": "flux_klein_9b",
+      "mode": "legacy",
+      "status": "passed",
+      "return_code": 0,
+      "duration_seconds": 49.263,
+      "seconds_per_step": 5.79,
+      "completed_steps": 20,
+      "peak_memory_mib": 14276.0,
+      "baseline_memory_mib": 0.0,
+      "config": "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\flux_klein_9b\\legacy\\training.toml",
+      "config_sha256": "39253c4c680c65fdd30396692d38709f54267bb260edff1536819846de8986e4",
+      "log": "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\flux_klein_9b\\legacy\\training.log",
+      "command": [
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\venv\\Scripts\\accelerate.exe",
+        "launch",
+        "--num_processes",
+        "1",
+        "--num_machines",
+        "1",
+        "--num_cpu_threads_per_process",
+        "1",
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\musubi-tuner\\src\\musubi_tuner\\flux_2_train_network.py",
+        "--config_file",
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\flux_klein_9b\\legacy\\training.toml"
+      ],
+      "removed_weight_files": [
+        "benchmark_flux_klein_9b_legacy.safetensors"
+      ]
+    },
+    {
+      "name": "flux_klein_9b",
+      "mode": "automatic",
+      "status": "passed",
+      "return_code": 0,
+      "duration_seconds": 43.654,
+      "seconds_per_step": 5.64,
+      "completed_steps": 20,
+      "peak_memory_mib": 14180.0,
+      "baseline_memory_mib": 0.0,
+      "config": "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\flux_klein_9b\\automatic\\training.toml",
+      "config_sha256": "d2729701c43cd3353e318a94cf6fb686aadd0eb5d6715a782e67b70a586149e1",
+      "log": "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\flux_klein_9b\\automatic\\training.log",
+      "command": [
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\venv\\Scripts\\accelerate.exe",
+        "launch",
+        "--num_processes",
+        "1",
+        "--num_machines",
+        "1",
+        "--num_cpu_threads_per_process",
+        "1",
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\musubi-tuner\\src\\musubi_tuner\\flux_2_train_network.py",
+        "--config_file",
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\flux_klein_9b\\automatic\\training.toml"
+      ],
+      "removed_weight_files": [
+        "benchmark_flux_klein_9b_automatic.safetensors"
+      ]
+    }
+  ]
+}

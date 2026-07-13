@@ -109,6 +109,7 @@ sdpa = true
 seed = 42
 sigmoid_scale = 1
 split_attn = false
+use_legacy_sdpa = false
 timestep_sampling = "shift"
 training_comment = ""
 vae = "C:\\Users\\berna\\Downloads\\pytorch_model.pt"

@@ -2248,7 +2248,7 @@ def SaveConfigFileToRun(
         # argparse will correctly default them to False when absent from config
         store_true_params = [
             # Common parameters
-            "sdpa", "flash_attn", "sage_attn", "xformers", "flash3", "split_attn",
+            "sdpa", "use_legacy_sdpa", "flash_attn", "sage_attn", "xformers", "flash3", "split_attn",
             "persistent_data_loader_workers", "gradient_checkpointing", "gradient_checkpointing_cpu_offload",
             "ddp_gradient_as_bucket_view", "ddp_static_graph", "sample_at_first",
             "img_in_txt_in_offloading", "preserve_distribution_shape", "no_metadata",

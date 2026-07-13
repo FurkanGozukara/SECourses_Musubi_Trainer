@@ -3,18 +3,33 @@ import gradio as gr
 from .class_gui_config import GUIConfig
 
 
+LEGACY_SDPA_INFO = (
+    "Leave off (recommended) to let SDPA use PyTorch's fused kernel or a verified external FlashAttention backend "
+    "when the native kernel is unavailable. Enable to force the older, usually slower PyTorch SDPA path. This only "
+    "applies when Use SDPA is enabled. Automatic mode falls back to PyTorch SDPA if FlashAttention cannot import, is "
+    "unsupported by the GPU, or fails a CUDA forward/backward training probe."
+)
+
+
+def create_legacy_sdpa_checkbox(config: GUIConfig, *, visible: bool = True) -> gr.Checkbox:
+    return gr.Checkbox(
+        label="Use Legacy PyTorch SDPA",
+        info=LEGACY_SDPA_INFO,
+        value=bool(config.get("use_legacy_sdpa", False)),
+        visible=visible,
+    )
+
+
 class TrainingSettings:
     def __init__(
         self,
         headless: bool,
         config: GUIConfig,
         supported_attention: set[str] | None = None,
-        show_legacy_sdpa: bool = False,
     ) -> None:
         self.config = config
         self.headless = headless
         self.supported_attention = supported_attention
-        self.show_legacy_sdpa = show_legacy_sdpa
 
         # Initialize the UI components
         self.initialize_ui_components()
@@ -55,16 +70,9 @@ class TrainingSettings:
                 value=self.config.get("split_attn", False),
             )
 
-            self.use_legacy_sdpa = gr.Checkbox(
-                label="Use Legacy PyTorch SDPA",
-                info=(
-                    "Krea 2 compatibility option. Leave this off (recommended) to let SDPA automatically use external "
-                    "FlashAttention when PyTorch's fused backend is unavailable. Turn it on to force PyTorch's older, "
-                    "usually slower built-in SDPA path. If the faster backend is missing or fails its GPU training probe, "
-                    "the trainer automatically falls back to working PyTorch SDPA even when this is off."
-                ),
-                value=bool(self.config.get("use_legacy_sdpa", False)),
-                visible=self.show_legacy_sdpa,
+            self.use_legacy_sdpa = create_legacy_sdpa_checkbox(
+                self.config,
+                visible=self.supported_attention is None or "sdpa" in self.supported_attention,
             )
 
         with gr.Row():

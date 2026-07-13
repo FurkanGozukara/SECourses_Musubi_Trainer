@@ -718,6 +718,7 @@ def flux_klein_lora_tab(headless=False, config: GUIConfig = {}):
         training.sage_attn,
         training.xformers,
         training.split_attn,
+        training.use_legacy_sdpa,
         training.max_train_steps,
         training.max_train_epochs,
         training.max_data_loader_n_workers,

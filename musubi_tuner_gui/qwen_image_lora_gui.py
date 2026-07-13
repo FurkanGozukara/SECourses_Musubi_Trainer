@@ -18,7 +18,7 @@ from .class_network import Network
 from .class_optimizer_and_scheduler import OptimizerAndScheduler
 from .class_save_load import SaveLoadSettings
 from .class_text_encoder_outputs_caching import TextEncoderOutputsCaching
-from .class_training import TrainingSettings
+from .class_training import create_legacy_sdpa_checkbox
 from .common_gui import (
     get_file_path,
     get_file_path_or_save_as,
@@ -1177,6 +1177,7 @@ def qwen_image_gui_actions(
     xformers,
     flash3,
     split_attn,
+    use_legacy_sdpa,
     max_train_steps,
     max_train_epochs,
     max_data_loader_n_workers,
@@ -2903,6 +2904,8 @@ class QwenImageTrainingSettings:
                 value=self.config.get("split_attn", False),
             )
 
+            self.use_legacy_sdpa = create_legacy_sdpa_checkbox(self.config)
+
         with gr.Row():
             self.max_train_steps = gr.Number(
                 label="Max Training Steps",
@@ -4166,6 +4169,7 @@ def qwen_image_lora_tab(
         trainingSettings.xformers,
         trainingSettings.flash3,
         trainingSettings.split_attn,
+        trainingSettings.use_legacy_sdpa,
         trainingSettings.max_train_steps,
         trainingSettings.max_train_epochs,
         trainingSettings.max_data_loader_n_workers,
@@ -4443,6 +4447,7 @@ def qwen_image_lora_tab(
             "xformers": ("Training Settings", "Use xformers"),
             "flash3": ("Training Settings", "Use FlashAttention 3"),
             "split_attn": ("Training Settings", "Split Attention"),
+            "use_legacy_sdpa": ("Training Settings", "Use Legacy PyTorch SDPA"),
             "max_train_steps": ("Training Settings", "Max Training Steps"),
             "max_train_epochs": ("Training Settings", "Max Training Epochs"),
             "max_data_loader_n_workers": ("Training Settings", "Max DataLoader Workers"),

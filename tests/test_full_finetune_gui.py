@@ -16,7 +16,6 @@ from musubi_tuner_gui.modern_image_lora_gui import (
     ModernImageWorkflow,
     _architecture_defaults,
     _build_workflow_script,
-    _configure_krea2_attention_environment,
     get_architecture,
     prepare_modern_image_workflow,
 )
@@ -63,6 +62,7 @@ def _base_full_values(tmp_path: Path, keys: list[str], *, model_version: str) ->
             "fp8_scaled": False,
             "blocks_to_swap": 0,
             "sdpa": True,
+            "use_legacy_sdpa": True,
             "gradient_checkpointing": True,
             "gradient_accumulation_steps": 1,
             "full_bf16": True,
@@ -214,6 +214,7 @@ def test_modern_full_finetune_workflow_selects_full_trainer_and_strips_lora(
             "fp8_base": True,
             "fp8_scaled": True,
             "block_swap_h2d_only": True,
+            "use_legacy_sdpa": True,
             "dataset_config": _touch(tmp_path / "dataset.toml"),
             "dit": _touch(tmp_path / "dit.safetensors"),
             "vae": _touch(tmp_path / "vae.safetensors"),
@@ -241,6 +242,7 @@ def test_modern_full_finetune_workflow_selects_full_trainer_and_strips_lora(
     assert workflow.train_command[-2:] == ["--config_file", str(config_path)]
     assert runtime["full_bf16"] is True
     assert runtime["fused_backward_pass"] is True
+    assert runtime["use_legacy_sdpa"] is True
     assert runtime["save_precision"] == "bf16"
     assert "network_module" not in runtime
     assert "network_dim" not in runtime
@@ -248,8 +250,9 @@ def test_modern_full_finetune_workflow_selects_full_trainer_and_strips_lora(
     assert "block_swap_h2d_only" not in runtime
 
 
-def test_krea_legacy_sdpa_is_gui_only_and_persists_in_workflow(tmp_path: Path):
-    spec = get_architecture("krea2")
+@pytest.mark.parametrize("spec_key", ["ideogram4", "krea2"])
+def test_modern_legacy_sdpa_persists_in_runtime_config(tmp_path: Path, spec_key: str):
+    spec = get_architecture(spec_key)
     values = _architecture_defaults(spec)
     values.update(
         {
@@ -264,22 +267,19 @@ def test_krea_legacy_sdpa_is_gui_only_and_persists_in_workflow(tmp_path: Path):
     )
     config_path = tmp_path / "runtime.toml"
 
-    workflow = prepare_modern_image_workflow("krea2", list(values.items()), str(config_path), python_cmd="python")
+    workflow = prepare_modern_image_workflow(spec_key, list(values.items()), str(config_path), python_cmd="python")
     runtime = toml.load(config_path)
 
     assert dict(workflow.parameters)["use_legacy_sdpa"] is True
-    assert "use_legacy_sdpa" not in runtime
+    assert runtime["use_legacy_sdpa"] is True
     assert _architecture_defaults(spec)["use_legacy_sdpa"] is False
 
 
 @pytest.mark.parametrize(
-    "operating_system, expected_line",
-    [
-        ("Windows", 'set "MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA=1"'),
-        ("Linux", "export MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA=1"),
-    ],
+    "operating_system",
+    ["Windows", "Linux"],
 )
-def test_krea_workflow_script_exports_legacy_sdpa_selection(tmp_path: Path, monkeypatch, operating_system, expected_line):
+def test_workflow_script_does_not_mutate_attention_environment(tmp_path: Path, monkeypatch, operating_system):
     monkeypatch.setattr(modern_image_lora_gui.platform, "system", lambda: operating_system)
     workflow = ModernImageWorkflow(
         parameters=[("use_legacy_sdpa", True)],
@@ -292,27 +292,7 @@ def test_krea_workflow_script_exports_legacy_sdpa_selection(tmp_path: Path, monk
     script_path, content = _build_workflow_script(get_architecture("krea2"), workflow)
     Path(script_path).unlink()
 
-    assert expected_line in content
-
-
-def test_krea_attention_environment_overrides_inherited_mode():
-    spec = get_architecture("krea2")
-
-    automatic = _configure_krea2_attention_environment(
-        spec,
-        {"use_legacy_sdpa": False},
-        {"MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA": "1"},
-    )
-    legacy = _configure_krea2_attention_environment(spec, {"use_legacy_sdpa": True}, {})
-    unrelated = _configure_krea2_attention_environment(
-        get_architecture("ideogram4"),
-        {"use_legacy_sdpa": True},
-        {"KEEP": "value"},
-    )
-
-    assert automatic["MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA"] == "0"
-    assert legacy["MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA"] == "1"
-    assert unrelated == {"KEEP": "value"}
+    assert "MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA" not in content
 
 
 @pytest.mark.parametrize(
@@ -367,6 +347,7 @@ def test_flux_full_finetune_runtime_uses_full_script_and_valid_config(
     runtime = toml.load(runtime_files[0])
     assert runtime["full_bf16"] is True
     assert runtime["fused_backward_pass"] is True
+    assert runtime["use_legacy_sdpa"] is True
     assert runtime["save_precision"] == "bf16"
     assert "training_mode" not in runtime
     assert "network_module" not in runtime

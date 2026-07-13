@@ -90,6 +90,7 @@ flash_attn = false  # Use Flash Attention (requires installation)
 sage_attn = false  # Use Sage Attention (inference only)
 xformers = false  # Use xFormers attention
 split_attn = false  # Split attention computation to reduce peak memory use
+use_legacy_sdpa = false  # Force the older PyTorch SDPA path instead of automatic verified acceleration
 max_train_steps = 90000  # Maximum training steps
 max_train_epochs = 200  # Maximum training epochs
 max_data_loader_n_workers = 2  # Number of data loader workers

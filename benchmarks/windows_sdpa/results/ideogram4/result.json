@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "created_at_unix": 1783942232.7334254,
+  "gpu": {
+    "index": 0,
+    "name": "NVIDIA GeForce RTX 5090",
+    "uuid": "GPU-21350b86-3099-1af0-58ef-f6432e60d9d0",
+    "driver_version": "596.21",
+    "memory_total_mib": 32607.0
+  },
+  "base_config": "G:\\SECourses_Musubi_Trainer_v29\\Training_Outputs_Ideogram_4\\My_Ideogram_4_Rank_128_LoRA_20260712-143217.toml",
+  "train_script": "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\musubi-tuner\\src\\musubi_tuner\\ideogram4_train_network.py",
+  "steps": 20,
+  "blocks_to_swap": 0,
+  "results": [
+    {
+      "name": "ideogram4",
+      "mode": "legacy",
+      "status": "passed",
+      "return_code": 0,
+      "duration_seconds": 41.816,
+      "seconds_per_step": 5.79,
+      "completed_steps": 20,
+      "peak_memory_mib": 15296.0,
+      "baseline_memory_mib": 0.0,
+      "config": "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\ideogram4\\legacy\\training.toml",
+      "config_sha256": "ce720bd4d230065464d52c75a0830b3379b670589c915b24d4f9cba139e1eabf",
+      "log": "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\ideogram4\\legacy\\training.log",
+      "command": [
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\venv\\Scripts\\accelerate.exe",
+        "launch",
+        "--num_processes",
+        "1",
+        "--num_machines",
+        "1",
+        "--num_cpu_threads_per_process",
+        "1",
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\musubi-tuner\\src\\musubi_tuner\\ideogram4_train_network.py",
+        "--config_file",
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\ideogram4\\legacy\\training.toml"
+      ],
+      "removed_weight_files": [
+        "benchmark_ideogram4_legacy.safetensors"
+      ]
+    },
+    {
+      "name": "ideogram4",
+      "mode": "automatic",
+      "status": "passed",
+      "return_code": 0,
+      "duration_seconds": 42.307,
+      "seconds_per_step": 5.73,
+      "completed_steps": 20,
+      "peak_memory_mib": 15296.0,
+      "baseline_memory_mib": 0.0,
+      "config": "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\ideogram4\\automatic\\training.toml",
+      "config_sha256": "95e930c2bd04ff0a76c9eddb7f2dd7e1043cf937c442075ef1214ea09554471b",
+      "log": "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\ideogram4\\automatic\\training.log",
+      "command": [
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\venv\\Scripts\\accelerate.exe",
+        "launch",
+        "--num_processes",
+        "1",
+        "--num_machines",
+        "1",
+        "--num_cpu_threads_per_process",
+        "1",
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\musubi-tuner\\src\\musubi_tuner\\ideogram4_train_network.py",
+        "--config_file",
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\ideogram4\\automatic\\training.toml"
+      ],
+      "removed_weight_files": [
+        "benchmark_ideogram4_automatic.safetensors"
+      ]
+    }
+  ]
+}

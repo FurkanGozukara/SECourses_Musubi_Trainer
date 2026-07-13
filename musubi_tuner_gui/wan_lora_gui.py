@@ -2146,7 +2146,7 @@ def wan_gui_actions(
                 # Advanced Memory & Model Loading
                 "disable_numpy_memmap", "img_in_txt_in_offloading",
                 # training_settings
-                "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
+                "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "use_legacy_sdpa", "max_train_steps", "max_train_epochs",
                 "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
                 "gradient_checkpointing_cpu_offload", "gradient_accumulation_steps", "full_bf16", "full_fp16",
                 "logging_dir", "log_with", "log_prefix", "log_tracker_name", "wandb_run_name", "log_tracker_config",
@@ -2216,7 +2216,7 @@ def wan_gui_actions(
                 # Advanced Memory & Model Loading
                 "disable_numpy_memmap", "img_in_txt_in_offloading",
                 # training_settings
-                "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
+                "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "use_legacy_sdpa", "max_train_steps", "max_train_epochs",
                 "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
                 "gradient_checkpointing_cpu_offload", "gradient_accumulation_steps", "full_bf16", "full_fp16",
                 "logging_dir", "log_with", "log_prefix", "log_tracker_name", "wandb_run_name", "log_tracker_config",
@@ -2286,7 +2286,7 @@ def wan_gui_actions(
                 # Advanced Memory & Model Loading
                 "disable_numpy_memmap", "img_in_txt_in_offloading",
                 # training_settings
-                "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
+                "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "use_legacy_sdpa", "max_train_steps", "max_train_epochs",
                 "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
                 "gradient_checkpointing_cpu_offload", "gradient_accumulation_steps", "full_bf16", "full_fp16",
                 "logging_dir", "log_with", "log_prefix", "log_tracker_name", "wandb_run_name", "log_tracker_config",
@@ -2358,7 +2358,7 @@ def wan_gui_actions(
                 # Advanced Memory & Model Loading
                 "disable_numpy_memmap", "img_in_txt_in_offloading",
                 # training_settings
-                "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "max_train_steps", "max_train_epochs",
+                "sdpa", "flash_attn", "sage_attn", "xformers", "split_attn", "use_legacy_sdpa", "max_train_steps", "max_train_epochs",
                 "max_data_loader_n_workers", "persistent_data_loader_workers", "seed", "gradient_checkpointing",
                 "gradient_checkpointing_cpu_offload", "gradient_accumulation_steps", "full_bf16", "full_fp16",
                 "logging_dir", "log_with", "log_prefix", "log_tracker_name", "wandb_run_name", "log_tracker_config",
@@ -3924,6 +3924,7 @@ def wan_lora_tab(
         training_settings.sage_attn,
         training_settings.xformers,
         training_settings.split_attn,
+        training_settings.use_legacy_sdpa,
         training_settings.max_train_steps,
         training_settings.max_train_epochs,
         training_settings.max_data_loader_n_workers,

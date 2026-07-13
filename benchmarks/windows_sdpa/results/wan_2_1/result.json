@@ -1,0 +1,77 @@
+{
+  "schema_version": 1,
+  "created_at_unix": 1783942723.598755,
+  "gpu": {
+    "index": 0,
+    "name": "NVIDIA GeForce RTX 5090",
+    "uuid": "GPU-21350b86-3099-1af0-58ef-f6432e60d9d0",
+    "driver_version": "596.21",
+    "memory_total_mib": 32607.0
+  },
+  "base_config": "G:\\SECourses_Musubi_Trainer_v29\\Demo_Training_Configs_FLUX-2_Z-Image_FLUX-Klein_WAN-21_Krea2_Ideogram4\\Wan_2.1_text_to_video_test_lora_8500_mb.toml",
+  "train_script": "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\musubi-tuner\\src\\musubi_tuner\\wan_train_network.py",
+  "steps": 20,
+  "blocks_to_swap": 0,
+  "results": [
+    {
+      "name": "wan_2_1",
+      "mode": "legacy",
+      "status": "passed",
+      "return_code": 0,
+      "duration_seconds": 62.806,
+      "seconds_per_step": 1.58,
+      "completed_steps": 20,
+      "peak_memory_mib": 21180.0,
+      "baseline_memory_mib": 0.0,
+      "config": "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\wan_2_1\\legacy\\training.toml",
+      "config_sha256": "0e2cbaba30d2ed67ad73ddafa13208e20225c5b5afb20d082d407c0baa98570a",
+      "log": "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\wan_2_1\\legacy\\training.log",
+      "command": [
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\venv\\Scripts\\accelerate.exe",
+        "launch",
+        "--num_processes",
+        "1",
+        "--num_machines",
+        "1",
+        "--num_cpu_threads_per_process",
+        "1",
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\musubi-tuner\\src\\musubi_tuner\\wan_train_network.py",
+        "--config_file",
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\wan_2_1\\legacy\\training.toml"
+      ],
+      "removed_weight_files": [
+        "benchmark_wan_2_1_legacy.safetensors"
+      ]
+    },
+    {
+      "name": "wan_2_1",
+      "mode": "automatic",
+      "status": "passed",
+      "return_code": 0,
+      "duration_seconds": 64.346,
+      "seconds_per_step": 1.54,
+      "completed_steps": 20,
+      "peak_memory_mib": 21180.0,
+      "baseline_memory_mib": 0.0,
+      "config": "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\wan_2_1\\automatic\\training.toml",
+      "config_sha256": "9565e9bcab9bcd2c8285d0f7b11b7f2d01b79bf67e7a0d8b31e1ae886ad8b93c",
+      "log": "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\wan_2_1\\automatic\\training.log",
+      "command": [
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\venv\\Scripts\\accelerate.exe",
+        "launch",
+        "--num_processes",
+        "1",
+        "--num_machines",
+        "1",
+        "--num_cpu_threads_per_process",
+        "1",
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\musubi-tuner\\src\\musubi_tuner\\wan_train_network.py",
+        "--config_file",
+        "G:\\SECourses_Musubi_Trainer_v29\\SECourses_Musubi_Trainer\\benchmarks\\windows_sdpa\\results\\wan_2_1\\automatic\\training.toml"
+      ],
+      "removed_weight_files": [
+        "benchmark_wan_2_1_automatic.safetensors"
+      ]
+    }
+  ]
+}
