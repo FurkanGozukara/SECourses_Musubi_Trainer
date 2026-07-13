@@ -196,6 +196,7 @@ MODERN_IMAGE_PARAM_KEYS = [
     "sage_attn",
     "xformers",
     "split_attn",
+    "use_legacy_sdpa",
     "max_train_steps",
     "max_train_epochs",
     "max_data_loader_n_workers",
@@ -670,6 +671,7 @@ def _run_config_exclusions(spec: ModernImageArchitecture, parameters: list[tuple
         "sample_seed",
         "sample_negative_prompt",
         "sample_cfg_scale",
+        "use_legacy_sdpa",
     }
     exclusions.update(training_mode_runtime_exclusions(param_dict.get("training_mode")))
     exclusions.update(
@@ -1023,8 +1025,11 @@ def _command_line(command: list[str]) -> str:
 
 
 def _build_workflow_script(spec: ModernImageArchitecture, workflow: ModernImageWorkflow) -> tuple[str, str]:
+    legacy_sdpa = _krea2_legacy_sdpa_env_value(spec, dict(workflow.parameters))
     if platform.system() == "Windows":
         lines = ["@echo off", "setlocal"]
+        if legacy_sdpa is not None:
+            lines.append(f'set "MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA={legacy_sdpa}"')
         for index, command in enumerate(workflow.commands):
             label = "training" if index == len(workflow.commands) - 1 else "caching"
             lines.append(f"echo Starting {spec.display_name} {label}...")
@@ -1033,6 +1038,8 @@ def _build_workflow_script(spec: ModernImageArchitecture, workflow: ModernImageW
         suffix = ".bat"
     else:
         lines = ["#!/bin/bash", "set -e"]
+        if legacy_sdpa is not None:
+            lines.append(f"export MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA={legacy_sdpa}")
         for index, command in enumerate(workflow.commands):
             label = "training" if index == len(workflow.commands) - 1 else "caching"
             lines.append(f'echo "Starting {spec.display_name} {label}..."')
@@ -1046,6 +1053,25 @@ def _build_workflow_script(spec: ModernImageArchitecture, workflow: ModernImageW
     if platform.system() != "Windows":
         os.chmod(path, os.stat(path).st_mode | 0o100)
     return path, content
+
+
+def _krea2_legacy_sdpa_env_value(spec: ModernImageArchitecture, parameters: dict[str, object]) -> str | None:
+    if not spec.is_krea:
+        return None
+    return "1" if bool(parameters.get("use_legacy_sdpa")) else "0"
+
+
+def _configure_krea2_attention_environment(
+    spec: ModernImageArchitecture,
+    parameters: dict[str, object],
+    env: dict[str, str],
+) -> dict[str, str]:
+    legacy_sdpa = _krea2_legacy_sdpa_env_value(spec, parameters)
+    if legacy_sdpa is not None:
+        env["MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA"] = legacy_sdpa
+        mode = "legacy PyTorch SDPA" if legacy_sdpa == "1" else "automatic fused attention with safe SDPA fallback"
+        log.info("Krea 2 attention mode: %s", mode)
+    return env
 
 
 def train_modern_image_model(
@@ -1108,6 +1134,7 @@ def train_modern_image_model(
         script_type=spec.slug,
     )
     env = setup_environment(compile_requested=requires_native_compile_toolchain(workflow.parameters))
+    env = _configure_krea2_attention_environment(spec, dict(workflow.parameters), env)
     command = [script_path] if platform.system() == "Windows" else ["bash", script_path]
     executor.execute_command(
         run_cmd=command,
@@ -1212,6 +1239,7 @@ def _architecture_defaults(spec: ModernImageArchitecture) -> dict[str, object]:
         "sage_attn": False,
         "xformers": False,
         "split_attn": False,
+        "use_legacy_sdpa": False,
         "max_train_steps": 80000,
         "max_train_epochs": 200,
         "max_data_loader_n_workers": 1,
@@ -1801,6 +1829,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
             headless=headless,
             config=config,
             supported_attention={"sdpa", "flash_attn", "xformers"},
+            show_legacy_sdpa=spec.is_krea,
         )
 
     sample_accordion = gr.Accordion(
@@ -2133,6 +2162,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         training.sage_attn,
         training.xformers,
         training.split_attn,
+        training.use_legacy_sdpa,
         training.max_train_steps,
         training.max_train_epochs,
         training.max_data_loader_n_workers,

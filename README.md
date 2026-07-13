@@ -62,6 +62,14 @@ On Linux:
 ./venv/bin/python -m musubi_tuner.torch_compile_toolchain --require-openmp --smoke-test
 ```
 
+## Windows Attention Performance
+
+Krea 2 keeps the `SDPA` setting portable across operating systems. If PyTorch reports that its native fused FlashAttention SDPA backend is unavailable, the trainer automatically uses the installed external FlashAttention implementation on supported CUDA GPUs. If the package or GPU support is unavailable, it retains PyTorch's normal SDPA fallback.
+
+Set `MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA=1` before launching the trainer to disable this compatibility path for debugging or strict backend comparisons. The capability probe is shared so other model trainers can adopt the same guarded behavior after model-specific validation.
+
+The Krea 2 **Training Settings** panel also provides **Use Legacy PyTorch SDPA** beside **Split Attention**. It is off by default, so the faster automatic strategy is used. Enable it to force PyTorch's older SDPA path for compatibility testing. The selection is saved with GUI presets and exported into generated workflow scripts; when automatic mode is selected, an unavailable or incompatible external FlashAttention installation safely falls back to PyTorch SDPA.
+
 
 ## Updates
 **- Click images to see their full sizes**
@@ -69,6 +77,7 @@ On Linux:
 ### 13 July 2026 Image Full-DiT Fine-Tuning
 
 - Integrated upstream musubi-tuner pull request #997 on top of the maintained performance and torch.compile changes.
+- Restored Krea 2 Windows/Linux SDPA performance parity by using external FlashAttention when the Windows PyTorch build lacks native fused FlashAttention.
 - Added GUI training-mode selection for FLUX.2 dev, FLUX.2 Klein 4B/9B, Ideogram 4, and Krea 2.
 - Full-DiT runtime configs automatically remove LoRA-only and FP8-base options and enforce supported precision, optimizer, distributed, and block-swap combinations.
 - Added ready demo presets for FLUX.2, FLUX.2 Klein, Krea 2, Ideogram 4, Z-Image, and supported Wan 2.1 LoRA fine-tuning in `Demo_Training_Configs_FLUX-2_Z-Image_FLUX-Klein_WAN-21_Krea2_Ideogram4`.

@@ -56,6 +56,7 @@ flash_attn = false
 sage_attn = false
 xformers = false
 split_attn = false
+use_legacy_sdpa = false
 max_train_steps = 80000
 max_train_epochs = 200
 max_data_loader_n_workers = 1

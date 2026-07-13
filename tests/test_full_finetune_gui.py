@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 import toml
 
-from musubi_tuner_gui import flux2_lora_gui, flux_klein_lora_gui, flux_lora_gui
+from musubi_tuner_gui import flux2_lora_gui, flux_klein_lora_gui, flux_lora_gui, modern_image_lora_gui
 from musubi_tuner_gui.full_finetune_gui import (
     FULL_FINE_TUNING_MODE,
     LORA_TRAINING_MODE,
@@ -13,7 +13,10 @@ from musubi_tuner_gui.full_finetune_gui import (
     training_mode_runtime_exclusions,
 )
 from musubi_tuner_gui.modern_image_lora_gui import (
+    ModernImageWorkflow,
     _architecture_defaults,
+    _build_workflow_script,
+    _configure_krea2_attention_environment,
     get_architecture,
     prepare_modern_image_workflow,
 )
@@ -243,6 +246,73 @@ def test_modern_full_finetune_workflow_selects_full_trainer_and_strips_lora(
     assert "network_dim" not in runtime
     assert "fp8_base" not in runtime
     assert "block_swap_h2d_only" not in runtime
+
+
+def test_krea_legacy_sdpa_is_gui_only_and_persists_in_workflow(tmp_path: Path):
+    spec = get_architecture("krea2")
+    values = _architecture_defaults(spec)
+    values.update(
+        {
+            "dataset_config": _touch(tmp_path / "dataset.toml"),
+            "dit": _touch(tmp_path / "dit.safetensors"),
+            "vae": _touch(tmp_path / "vae.safetensors"),
+            "text_encoder": _touch(tmp_path / "text_encoder.safetensors"),
+            "output_dir": str(tmp_path / "output"),
+            "output_name": "legacy-sdpa",
+            "use_legacy_sdpa": True,
+        }
+    )
+    config_path = tmp_path / "runtime.toml"
+
+    workflow = prepare_modern_image_workflow("krea2", list(values.items()), str(config_path), python_cmd="python")
+    runtime = toml.load(config_path)
+
+    assert dict(workflow.parameters)["use_legacy_sdpa"] is True
+    assert "use_legacy_sdpa" not in runtime
+    assert _architecture_defaults(spec)["use_legacy_sdpa"] is False
+
+
+@pytest.mark.parametrize(
+    "operating_system, expected_line",
+    [
+        ("Windows", 'set "MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA=1"'),
+        ("Linux", "export MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA=1"),
+    ],
+)
+def test_krea_workflow_script_exports_legacy_sdpa_selection(tmp_path: Path, monkeypatch, operating_system, expected_line):
+    monkeypatch.setattr(modern_image_lora_gui.platform, "system", lambda: operating_system)
+    workflow = ModernImageWorkflow(
+        parameters=[("use_legacy_sdpa", True)],
+        config_path=str(tmp_path / "runtime.toml"),
+        latent_cache_command=None,
+        text_cache_command=None,
+        train_command=["python", "train.py"],
+    )
+
+    script_path, content = _build_workflow_script(get_architecture("krea2"), workflow)
+    Path(script_path).unlink()
+
+    assert expected_line in content
+
+
+def test_krea_attention_environment_overrides_inherited_mode():
+    spec = get_architecture("krea2")
+
+    automatic = _configure_krea2_attention_environment(
+        spec,
+        {"use_legacy_sdpa": False},
+        {"MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA": "1"},
+    )
+    legacy = _configure_krea2_attention_environment(spec, {"use_legacy_sdpa": True}, {})
+    unrelated = _configure_krea2_attention_environment(
+        get_architecture("ideogram4"),
+        {"use_legacy_sdpa": True},
+        {"KEEP": "value"},
+    )
+
+    assert automatic["MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA"] == "0"
+    assert legacy["MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA"] == "1"
+    assert unrelated == {"KEEP": "value"}
 
 
 @pytest.mark.parametrize(

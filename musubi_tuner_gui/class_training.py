@@ -1,6 +1,7 @@
 import gradio as gr
-import toml
+
 from .class_gui_config import GUIConfig
+
 
 class TrainingSettings:
     def __init__(
@@ -8,10 +9,12 @@ class TrainingSettings:
         headless: bool,
         config: GUIConfig,
         supported_attention: set[str] | None = None,
+        show_legacy_sdpa: bool = False,
     ) -> None:
         self.config = config
         self.headless = headless
         self.supported_attention = supported_attention
+        self.show_legacy_sdpa = show_legacy_sdpa
 
         # Initialize the UI components
         self.initialize_ui_components()
@@ -50,6 +53,18 @@ class TrainingSettings:
                 label="Split Attention",
                 info="Use Split Attention for CrossAttention",
                 value=self.config.get("split_attn", False),
+            )
+
+            self.use_legacy_sdpa = gr.Checkbox(
+                label="Use Legacy PyTorch SDPA",
+                info=(
+                    "Krea 2 compatibility option. Leave this off (recommended) to let SDPA automatically use external "
+                    "FlashAttention when PyTorch's fused backend is unavailable. Turn it on to force PyTorch's older, "
+                    "usually slower built-in SDPA path. If the faster backend is missing or fails its GPU training probe, "
+                    "the trainer automatically falls back to working PyTorch SDPA even when this is off."
+                ),
+                value=bool(self.config.get("use_legacy_sdpa", False)),
+                visible=self.show_legacy_sdpa,
             )
 
         with gr.Row():
@@ -105,6 +120,7 @@ class TrainingSettings:
                 value=self.config.get("gradient_accumulation_steps", 1),
                 interactive=True,
             )
+
         
         # Add full precision training options
         with gr.Row():
@@ -113,6 +129,7 @@ class TrainingSettings:
                 info="[EXPERIMENTAL] Stores gradients in BF16 instead of FP32. Saves ~30% VRAM but may cause training instability. Requires mixed_precision='bf16'. Monitor loss carefully.",
                 value=self.config.get("full_bf16", False),
             )
+
             
             self.full_fp16 = gr.Checkbox(
                 label="Full FP16 Training", 
@@ -199,4 +216,3 @@ class TrainingSettings:
                 value=self.config.get("ddp_static_graph", False),
                 info="DDP optimization for static graphs.",
             )
-
