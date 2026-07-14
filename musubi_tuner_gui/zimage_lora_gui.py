@@ -20,6 +20,7 @@ from .class_network import Network
 from .class_optimizer_and_scheduler import OptimizerAndScheduler
 from .class_save_load import SaveLoadSettings
 from .class_training import TrainingSettings
+from .full_finetune_gui import normalize_image_training_parameters, training_mode_runtime_exclusions
 from .common_gui import (
     SaveConfigFile,
     SaveConfigFileToRun,
@@ -362,7 +363,7 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
     python_cmd = sys.executable
     run_cmd = _find_accelerate_launch(python_cmd)
 
-    param_dict = dict(parameters)
+    param_dict, parameters, full_finetune = normalize_image_training_parameters(parameters)
 
     def _strip_matching_quotes(s: str) -> str:
         if len(s) >= 2 and ((s[0] == s[-1] == '"') or (s[0] == s[-1] == "'")):
@@ -418,7 +419,7 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
         return []
 
     training_mode = (param_dict.get("training_mode") or "LoRA Training").strip()
-    validate_block_swap_options(param_dict, lora_training=training_mode == "LoRA Training")
+    validate_block_swap_options(param_dict, lora_training=not full_finetune)
 
     # Prefer generated dataset config when using folder mode.
     dataset_config_mode = (param_dict.get("dataset_config_mode") or "").strip()
@@ -486,7 +487,7 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
         parameters = [(k, (None if k == "base_weights_multiplier" else v)) for k, v in parameters]
 
     # Enforce correct LoRA module for LoRA training only.
-    if training_mode == "LoRA Training":
+    if not full_finetune:
         required_network_module = "networks.lora_zimage"
         if (param_dict.get("network_module") or "").strip() != required_network_module:
             param_dict["network_module"] = required_network_module
@@ -575,7 +576,7 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
         extra_accelerate_launch_args=param_dict.get("extra_accelerate_launch_args"),
     )
 
-    if training_mode == "DreamBooth Fine-Tuning":
+    if full_finetune:
         run_cmd.append(f"{scriptdir}/musubi-tuner/src/musubi_tuner/zimage_train.py")
     else:
         run_cmd.append(f"{scriptdir}/musubi-tuner/src/musubi_tuner/zimage_train_network.py")
@@ -590,7 +591,7 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
 
     pattern_exclusion = [k for k, _ in parameters if k.startswith("caching_latent_") or k.startswith("caching_teo_")]
 
-    dreambooth_mode = training_mode == "DreamBooth Fine-Tuning"
+    dreambooth_mode = full_finetune
     exclusion_extra = []
     if dreambooth_mode:
         exclusion_extra.extend(
@@ -661,7 +662,7 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
             "debug_mode",
             # Cache-only toggle
             "caching_teo_fp8_llm",
-        ] + pattern_exclusion + exclusion_extra
+        ] + pattern_exclusion + exclusion_extra + list(training_mode_runtime_exclusions(training_mode))
     mandatory_keys = ["dataset_config", "dit", "vae", "text_encoder"] + (
         [] if dreambooth_mode else ["network_module"]
     )

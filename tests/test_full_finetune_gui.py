@@ -1,13 +1,25 @@
 from __future__ import annotations
 
+import inspect
 from pathlib import Path
+from types import SimpleNamespace
 
+import gradio as gr
 import pytest
 import toml
 
-from musubi_tuner_gui import flux2_lora_gui, flux_klein_lora_gui, flux_lora_gui, modern_image_lora_gui
+from musubi_tuner_gui import (
+    flux2_lora_gui,
+    flux_klein_lora_gui,
+    flux_lora_gui,
+    modern_image_lora_gui,
+    qwen_image_lora_gui,
+    wan_lora_gui,
+    zimage_lora_gui,
+)
 from musubi_tuner_gui.full_finetune_gui import (
     FULL_FINE_TUNING_MODE,
+    FULL_FINE_TUNING_NETWORK_KEYS,
     LORA_TRAINING_MODE,
     normalize_image_training_parameters,
     training_mode_runtime_exclusions,
@@ -183,6 +195,272 @@ def test_training_mode_exclusions_keep_runtime_configs_mode_correct():
     assert {"network_module", "network_dim", "network_alpha", "full_fp16"} <= full
     assert {"fused_backward_pass", "block_swap_optimizer_patch_params", "mem_eff_save"} <= lora
     assert "network_module" not in lora
+
+
+def test_qwen_dreambooth_preview_normalizes_full_model_runtime_config(tmp_path: Path, monkeypatch):
+    dataset = tmp_path / "dataset.toml"
+    dataset.write_text("[[datasets]]\nimage_directory = 'images'\n", encoding="utf-8")
+    dit = _touch(tmp_path / "dit.safetensors")
+    vae = _touch(tmp_path / "vae.safetensors")
+    text_encoder = _touch(tmp_path / "text_encoder.safetensors")
+    captured: dict[str, object] = {}
+
+    def capture_preview(command, config_path):
+        captured["command"] = command
+        captured["config"] = toml.load(config_path)
+
+    monkeypatch.setattr(qwen_image_lora_gui, "print_command_and_toml", capture_preview)
+    parameters = [
+        ("training_mode", "DreamBooth Fine-Tuning"),
+        ("dataset_config_mode", "Use TOML File"),
+        ("dataset_config", str(dataset)),
+        ("model_version", "original"),
+        ("dit", dit),
+        ("vae", vae),
+        ("text_encoder", text_encoder),
+        ("output_dir", str(tmp_path / "output")),
+        ("output_name", "qwen-full-preview"),
+        ("mixed_precision", "bf16"),
+        ("full_bf16", True),
+        ("full_fp16", False),
+        ("save_precision", "fp32"),
+        ("dit_dtype", "float16"),
+        ("fp8_base", True),
+        ("fp8_scaled", True),
+        ("block_swap_h2d_only", True),
+        ("block_swap_ring_size", 2),
+        ("blocks_to_swap", 6),
+        ("gradient_checkpointing", True),
+        ("gradient_accumulation_steps", 1),
+        ("num_processes", 1),
+        ("num_machines", 1),
+        ("num_cpu_threads_per_process", 1),
+        ("gpu_ids", "0"),
+        ("dynamo_backend", "no"),
+        ("optimizer_type", "Automagic3"),
+        ("optimizer_args", ["scale_parameter=False", "relative_step=False"]),
+        ("fused_backward_pass", False),
+        ("block_swap_optimizer_patch_params", False),
+        ("network_module", "networks.lora_qwen_image"),
+        ("network_dim", 32),
+        ("network_alpha", 32),
+        ("network_dropout", 0),
+        ("network_args", []),
+        ("sdpa", True),
+        ("additional_parameters", ""),
+        ("mem_eff_save", True),
+    ]
+
+    qwen_image_lora_gui.train_qwen_image_model(True, True, parameters)
+
+    command = captured["command"]
+    config = captured["config"]
+    assert any(str(part).endswith("qwen_image_train.py") for part in command)
+    assert not any(str(part).endswith("qwen_image_train_network.py") for part in command)
+    assert config.get("fp8_base", False) is False
+    assert config.get("fp8_scaled", False) is False
+    assert config.get("dit_dtype", "bfloat16") == "bfloat16"
+    assert config["save_precision"] == "bf16"
+    assert config["optimizer_type"] == "Automagic3"
+    assert config["mem_eff_save"] is True
+    assert not FULL_FINE_TUNING_NETWORK_KEYS.intersection(config)
+    assert "block_swap_h2d_only" not in config
+
+
+def test_shipped_qwen_default_enables_resident_compile():
+    defaults_path = Path(__file__).resolve().parents[1] / "qwen_image_defaults.toml"
+
+    assert toml.load(defaults_path)["compile_resident_blocks_only"] is True
+
+
+@pytest.mark.parametrize(
+    ("config", "expected"),
+    [
+        ({}, True),
+        ({"compile_resident_blocks_only": True}, True),
+        ({"compile_resident_blocks_only": False}, False),
+    ],
+)
+def test_qwen_resident_compile_default_preserves_config_override(config, expected):
+    with gr.Blocks():
+        model = qwen_image_lora_gui.QwenImageModel(headless=True, config=config)
+
+    assert model.compile_resident_blocks_only.value is expected
+
+
+def test_qwen_resident_compile_callback_order_and_search_mapping_are_wired():
+    parameter_names = list(inspect.signature(qwen_image_lora_gui.qwen_image_gui_actions).parameters)
+    compile_start = parameter_names.index("compile")
+    assert parameter_names[compile_start : compile_start + 7] == [
+        "compile",
+        "compile_resident_blocks_only",
+        "compile_backend",
+        "compile_mode",
+        "compile_dynamic",
+        "compile_fullgraph",
+        "compile_cache_size_limit",
+    ]
+
+    tab_source = inspect.getsource(qwen_image_lora_gui.qwen_image_lora_tab)
+    component_names = [
+        "compile",
+        "compile_resident_blocks_only",
+        "compile_backend",
+        "compile_mode",
+        "compile_dynamic",
+        "compile_fullgraph",
+        "compile_cache_size_limit",
+    ]
+    positions = [tab_source.index(f"qwen_model.{name},") for name in component_names]
+    assert positions == sorted(positions)
+    assert (
+        '"compile_resident_blocks_only": ("Qwen Image Model Settings", "Compile Resident Blocks Only")'
+        in tab_source
+    )
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_qwen_resident_compile_persistent_config_round_trip(tmp_path: Path, enabled):
+    config_path = tmp_path / "qwen.toml"
+    parameters = [
+        ("training_mode", "LoRA Training"),
+        ("network_module", qwen_image_lora_gui.QWEN_IMAGE_NETWORK_MODULE),
+        ("fused_backward_pass", False),
+        ("compile_resident_blocks_only", enabled),
+    ]
+
+    qwen_image_lora_gui.save_qwen_image_configuration(False, str(config_path), parameters)
+
+    assert toml.load(config_path)["compile_resident_blocks_only"] is enabled
+    loaded = qwen_image_lora_gui.open_qwen_image_configuration(
+        False,
+        str(config_path),
+        [("compile_resident_blocks_only", not enabled)],
+    )
+    assert loaded[2] is enabled
+
+
+@pytest.mark.parametrize("enabled", [True, False])
+def test_qwen_resident_compile_reaches_training_preview_config(tmp_path: Path, monkeypatch, enabled):
+    dataset = tmp_path / "dataset.toml"
+    dataset.write_text("[[datasets]]\nimage_directory = 'images'\n", encoding="utf-8")
+    captured = {}
+
+    def capture_preview(command, config_path):
+        captured["command"] = command
+        captured["config"] = toml.load(config_path)
+
+    monkeypatch.setattr(qwen_image_lora_gui, "print_command_and_toml", capture_preview)
+    parameters = [
+        ("training_mode", "LoRA Training"),
+        ("dataset_config_mode", "Use TOML File"),
+        ("dataset_config", str(dataset)),
+        ("model_version", "original"),
+        ("dit", _touch(tmp_path / "dit.safetensors")),
+        ("vae", _touch(tmp_path / "vae.safetensors")),
+        ("text_encoder", _touch(tmp_path / "text_encoder.safetensors")),
+        ("output_dir", str(tmp_path / "output")),
+        ("output_name", f"qwen-resident-{enabled}"),
+        ("mixed_precision", "bf16"),
+        ("gradient_checkpointing", True),
+        ("blocks_to_swap", 6),
+        ("block_swap_h2d_only", False),
+        ("block_swap_ring_size", 2),
+        ("num_processes", 1),
+        ("num_machines", 1),
+        ("num_cpu_threads_per_process", 1),
+        ("gpu_ids", "0"),
+        ("dynamo_backend", "no"),
+        ("network_module", qwen_image_lora_gui.QWEN_IMAGE_NETWORK_MODULE),
+        ("network_dim", 16),
+        ("network_alpha", 16),
+        ("network_dropout", 0),
+        ("network_args", []),
+        ("compile", True),
+        ("compile_backend", "inductor"),
+        ("compile_mode", "default"),
+        ("compile_dynamic", "auto"),
+        ("compile_fullgraph", False),
+        ("compile_cache_size_limit", 0),
+        ("compile_resident_blocks_only", enabled),
+        ("sdpa", True),
+        ("additional_parameters", ""),
+    ]
+
+    qwen_image_lora_gui.train_qwen_image_model(True, True, parameters)
+
+    assert any(str(part).endswith("qwen_image_train_network.py") for part in captured["command"])
+    if enabled:
+        assert captured["config"]["compile_resident_blocks_only"] is True
+    else:
+        assert "compile_resident_blocks_only" not in captured["config"]
+
+
+def test_zimage_dreambooth_preview_normalizes_full_model_runtime_config(tmp_path: Path, monkeypatch):
+    dataset = tmp_path / "dataset.toml"
+    dataset.write_text("[[datasets]]\nimage_directory = 'images'\n", encoding="utf-8")
+    captured: list[tuple[list[str], str]] = []
+    monkeypatch.setattr(
+        zimage_lora_gui,
+        "print_command_and_toml",
+        lambda command, config_path: captured.append((command, config_path)),
+    )
+    parameters = [
+        ("training_mode", "DreamBooth Fine-Tuning"),
+        ("dataset_config_mode", "Use TOML File"),
+        ("dataset_config", str(dataset)),
+        ("dit", _touch(tmp_path / "dit.safetensors")),
+        ("vae", _touch(tmp_path / "vae.safetensors")),
+        ("text_encoder", _touch(tmp_path / "text_encoder.safetensors")),
+        ("output_dir", str(tmp_path / "output")),
+        ("output_name", "zimage-full-preview"),
+        ("mixed_precision", "bf16"),
+        ("full_bf16", True),
+        ("full_fp16", False),
+        ("save_precision", "fp32"),
+        ("fp8_base", True),
+        ("fp8_scaled", True),
+        ("block_swap_h2d_only", True),
+        ("block_swap_ring_size", 2),
+        ("blocks_to_swap", 6),
+        ("gradient_checkpointing", True),
+        ("gradient_accumulation_steps", 1),
+        ("num_processes", 1),
+        ("num_machines", 1),
+        ("num_cpu_threads_per_process", 1),
+        ("gpu_ids", "0"),
+        ("dynamo_backend", "no"),
+        ("optimizer_type", "Automagic3"),
+        ("optimizer_args", []),
+        ("fused_backward_pass", False),
+        ("block_swap_optimizer_patch_params", False),
+        ("network_module", "networks.lora_zimage"),
+        ("network_dim", 32),
+        ("network_alpha", 32),
+        ("network_dropout", 0),
+        ("network_args", []),
+        ("base_weights", ["old-adapter.safetensors"]),
+        ("base_weights_multiplier", [1.0]),
+        ("sdpa", True),
+        ("caching_latent_skip_existing", False),
+        ("caching_teo_skip_existing", False),
+        ("additional_parameters", ""),
+        ("mem_eff_save", True),
+    ]
+
+    zimage_lora_gui.train_zimage_model(True, True, parameters)
+
+    command, config_path = captured[-1]
+    config = toml.load(config_path)
+    assert any(str(part).endswith("zimage_train.py") for part in command)
+    assert not any(str(part).endswith("zimage_train_network.py") for part in command)
+    assert config.get("fp8_base", False) is False
+    assert config.get("fp8_scaled", False) is False
+    assert config["save_precision"] == "bf16"
+    assert config["optimizer_type"] == "Automagic3"
+    assert config["mem_eff_save"] is True
+    assert not FULL_FINE_TUNING_NETWORK_KEYS.intersection(config)
+    assert "block_swap_h2d_only" not in config
 
 
 def test_flux_accelerate_lookup_prefers_the_active_python_environment(tmp_path: Path, monkeypatch):
@@ -378,3 +656,220 @@ def test_flux_full_finetune_runtime_uses_full_script_and_valid_config(
     assert "training_mode" not in runtime
     assert "network_module" not in runtime
     assert "network_dim" not in runtime
+
+
+def test_wan_compile_callback_parameter_order_includes_residency_control():
+    assert wan_lora_gui.WAN_COMPILE_PARAMETER_NAMES == (
+        "compile",
+        "compile_resident_blocks_only",
+        "compile_backend",
+        "compile_mode",
+        "compile_dynamic",
+        "compile_fullgraph",
+        "compile_cache_size_limit",
+    )
+
+
+@pytest.mark.parametrize(
+    ("task", "expected"),
+    [
+        ("t2v-A14B", True),
+        ("i2v-A14B", True),
+        ("t2v-14B", False),
+        ("i2v-14B", False),
+    ],
+)
+def test_wan_compile_residency_default_is_wan22_only(task: str, expected: bool):
+    assert wan_lora_gui.wan_compile_resident_blocks_default(task) is expected
+
+
+@pytest.mark.parametrize(
+    ("task", "explicit_value", "expected"),
+    [
+        ("t2v-A14B", None, True),
+        ("t2v-14B", None, False),
+        ("t2v-A14B", False, False),
+        ("t2v-14B", True, True),
+    ],
+)
+def test_wan_model_settings_control_uses_task_aware_compile_default(
+    task: str,
+    explicit_value: bool | None,
+    expected: bool,
+):
+    values = {"task": task}
+    if explicit_value is not None:
+        values["compile_resident_blocks_only"] = explicit_value
+    config = SimpleNamespace(config=values, get=values.get)
+
+    with gr.Blocks():
+        settings = wan_lora_gui.WanModelSettings(headless=True, config=config)
+
+    assert settings.compile_resident_blocks_only.value is expected
+    assert settings.compile_resident_blocks_only_overridden.value is (
+        explicit_value is not None
+    )
+
+
+@pytest.mark.parametrize(
+    ("task", "explicit_value"),
+    [
+        ("t2v-A14B", False),
+        ("t2v-14B", True),
+    ],
+)
+def test_wan_compile_residency_default_preserves_explicit_override(
+    task: str,
+    explicit_value: bool,
+):
+    parameters = [
+        ("task", task),
+        ("compile_resident_blocks_only", explicit_value),
+    ]
+
+    normalized = wan_lora_gui.apply_wan_compile_residency_default(parameters)
+
+    assert dict(normalized)["compile_resident_blocks_only"] is explicit_value
+    assert sum(key == "compile_resident_blocks_only" for key, _ in normalized) == 1
+
+
+@pytest.mark.parametrize(
+    ("task", "configured_value", "expected"),
+    [
+        ("t2v-A14B", None, True),
+        ("t2v-14B", None, False),
+        ("t2v-A14B", False, False),
+        ("t2v-14B", True, True),
+    ],
+)
+def test_wan_load_config_uses_task_compile_default_only_when_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    task: str,
+    configured_value: bool | None,
+    expected: bool,
+):
+    monkeypatch.setattr(wan_lora_gui.gr, "Info", lambda *_args, **_kwargs: None)
+    config_path = tmp_path / "wan.toml"
+    config = {"task": task}
+    if configured_value is not None:
+        config["compile_resident_blocks_only"] = configured_value
+    config_path.write_text(toml.dumps(config), encoding="utf-8")
+
+    result = wan_lora_gui.open_wan_configuration(
+        False,
+        str(config_path),
+        [
+            ("task", "t2v-14B"),
+            ("compile_resident_blocks_only", False),
+        ],
+    )
+
+    assert result[2] == task
+    assert result[3] is expected
+    assert wan_lora_gui.wan_config_has_compile_residency_override(config_path) is (
+        configured_value is not None
+    )
+
+
+@pytest.mark.parametrize(
+    ("task", "explicit_value", "expected"),
+    [
+        ("t2v-A14B", None, True),
+        ("t2v-14B", None, False),
+        ("t2v-A14B", False, False),
+        ("t2v-14B", True, True),
+    ],
+)
+def test_wan_training_preview_serializes_effective_compile_residency(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    task: str,
+    explicit_value: bool | None,
+    expected: bool,
+):
+    captured: list[str] = []
+    monkeypatch.setattr(
+        wan_lora_gui,
+        "print_command_and_toml",
+        lambda _command, config_path: captured.append(config_path) if config_path else None,
+    )
+
+    dataset = tmp_path / "dataset.toml"
+    dataset.write_text("[[datasets]]\nimage_directory = 'images'\n", encoding="utf-8")
+    parameters = [
+        ("training_mode", "LoRA Training"),
+        ("task", task),
+        ("dataset_config_mode", "Use TOML File"),
+        ("dataset_config", str(dataset)),
+        ("dit", str(tmp_path / "dit.safetensors")),
+        ("vae", str(tmp_path / "vae.safetensors")),
+        ("t5", str(tmp_path / "t5.safetensors")),
+        ("clip", str(tmp_path / "clip.safetensors")),
+        ("output_name", "wan-compile-default"),
+        ("network_module", "networks.lora_wan"),
+        ("compile", True),
+        ("compile_backend", "inductor"),
+        ("compile_mode", "default"),
+        ("compile_dynamic", "auto"),
+        ("caching_latent_skip_existing", False),
+        ("caching_teo_skip_existing", False),
+        ("dynamo_backend", "no"),
+        ("additional_parameters", ""),
+    ]
+    if explicit_value is not None:
+        parameters.append(("compile_resident_blocks_only", explicit_value))
+
+    wan_lora_gui.train_wan_model(True, True, parameters)
+
+    assert captured
+    runtime_config = toml.load(captured[-1])
+    if expected:
+        assert runtime_config["compile_resident_blocks_only"] is True
+    else:
+        assert "compile_resident_blocks_only" not in runtime_config
+
+
+def test_wan_saved_gui_config_keeps_explicit_compile_residency_override(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+):
+    monkeypatch.setattr(wan_lora_gui.gr, "Info", lambda *_args, **_kwargs: None)
+    config_path = tmp_path / "wan-explicit.toml"
+
+    wan_lora_gui.save_wan_configuration(
+        False,
+        str(config_path),
+        [
+            ("training_mode", "LoRA Training"),
+            ("task", "t2v-A14B"),
+            ("compile_resident_blocks_only", False),
+        ],
+    )
+
+    saved = toml.load(config_path)
+    assert saved["compile_resident_blocks_only"] is False
+
+
+@pytest.mark.parametrize(
+    ("task", "current_value", "overridden", "expected"),
+    [
+        ("t2v-A14B", False, False, True),
+        ("t2v-14B", True, False, False),
+        ("t2v-A14B", False, True, False),
+        ("t2v-14B", True, True, True),
+    ],
+)
+def test_wan_task_switch_updates_only_automatic_compile_default(
+    task: str,
+    current_value: bool,
+    overridden: bool,
+    expected: bool,
+):
+    result = wan_lora_gui.WanModelSettings._update_compile_residency_default(
+        task,
+        current_value,
+        overridden,
+    )
+
+    assert result is expected

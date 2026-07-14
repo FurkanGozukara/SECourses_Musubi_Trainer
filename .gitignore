@@ -13,6 +13,7 @@ develop-eggs/
 dist/
 downloads/
 eggs/
+benchmarks
 .claude/
 ai-toolkit
 .eggs/

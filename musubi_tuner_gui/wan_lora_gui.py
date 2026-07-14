@@ -57,6 +57,18 @@ executor = None
 huggingface = None
 train_state_value = time.time()
 
+WAN_2_2_TASKS = frozenset({"t2v-A14B", "i2v-A14B"})
+COMPILE_RESIDENT_BLOCKS_KEY = "compile_resident_blocks_only"
+WAN_COMPILE_PARAMETER_NAMES = (
+    "compile",
+    COMPILE_RESIDENT_BLOCKS_KEY,
+    "compile_backend",
+    "compile_mode",
+    "compile_dynamic",
+    "compile_fullgraph",
+    "compile_cache_size_limit",
+)
+
 
 def is_wan_image_conditioned_task(task: object) -> bool:
     """Match the trainer's image-conditioned task detection for cache creation."""
@@ -68,6 +80,43 @@ def add_wan_image_conditioning_cache_flag(command: list[str], task: object) -> l
     if is_wan_image_conditioned_task(task) and "--i2v" not in command:
         command.append("--i2v")
     return command
+
+
+def is_wan_2_2_task(task: object) -> bool:
+    return str(task or "") in WAN_2_2_TASKS
+
+
+def wan_compile_resident_blocks_default(task: object) -> bool:
+    """Use the validated resident-only compile path by default for Wan 2.2."""
+    return is_wan_2_2_task(task)
+
+
+def apply_wan_compile_residency_default(parameters: list[tuple]) -> list[tuple]:
+    """Add the task-aware default without replacing an explicit GUI/config value."""
+    normalized = list(parameters)
+    if any(key == COMPILE_RESIDENT_BLOCKS_KEY for key, _ in normalized):
+        return normalized
+
+    task = dict(normalized).get("task", "t2v-14B")
+    return upsert_parameter(
+        normalized,
+        COMPILE_RESIDENT_BLOCKS_KEY,
+        wan_compile_resident_blocks_default(task),
+    )
+
+
+def wan_config_has_compile_residency_override(
+    file_path: object,
+    current_value: object = False,
+) -> bool:
+    """Track whether a loaded config explicitly owns the task-aware GUI default."""
+    path = str(file_path or "").strip()
+    if not path or not os.path.isfile(path):
+        return bool(current_value)
+    try:
+        return COMPILE_RESIDENT_BLOCKS_KEY in toml.load(path)
+    except (OSError, toml.TomlDecodeError):
+        return bool(current_value)
 
 
 def validate_wan_block_swap_options(param_dict: dict) -> None:
@@ -1200,6 +1249,27 @@ class WanModelSettings:
                     interactive=True,
                 )
 
+            initial_task = self.config.get("task", "t2v-14B")
+            raw_config = getattr(self.config, "config", {})
+            has_residency_override = (
+                isinstance(raw_config, dict) and COMPILE_RESIDENT_BLOCKS_KEY in raw_config
+            )
+            self.compile_resident_blocks_only = gr.Checkbox(
+                label="Compile Resident Blocks Only",
+                info=(
+                    "Compile only blocks that stay on the GPU while block swapping. "
+                    "Enabled by default for Wan 2.2; Wan 2.1 keeps the standard compile path."
+                ),
+                value=self.config.get(
+                    COMPILE_RESIDENT_BLOCKS_KEY,
+                    wan_compile_resident_blocks_default(initial_task),
+                ),
+                interactive=True,
+            )
+            self.compile_resident_blocks_only_overridden = gr.State(
+                value=has_residency_override
+            )
+
         # Wan Model Selection
         with gr.Row():
             self.task = gr.Dropdown(
@@ -1709,6 +1779,22 @@ class WanModelSettings:
             outputs=[self.dit_high_noise, self.timestep_boundary, self.offload_inactive_dit]
         )
 
+        # `.input` only fires for user edits, so config loading can restore its own value.
+        self.compile_resident_blocks_only.input(
+            fn=lambda _value: True,
+            inputs=[self.compile_resident_blocks_only],
+            outputs=[self.compile_resident_blocks_only_overridden],
+        )
+        self.task.input(
+            fn=self._update_compile_residency_default,
+            inputs=[
+                self.task,
+                self.compile_resident_blocks_only,
+                self.compile_resident_blocks_only_overridden,
+            ],
+            outputs=[self.compile_resident_blocks_only],
+        )
+
     def _update_resolution_info(self, task):
         """Update resolution information based on selected Wan model"""
         # Based on actual SUPPORTED_SIZES from musubi-tuner/src/musubi_tuner/wan/configs/__init__.py
@@ -1730,6 +1816,12 @@ class WanModelSettings:
         return gr.HTML(
             value=f"<div style='background: #374151; padding: 10px; border-radius: 5px; color: #d1d5db;'><strong>📐 {task} Details:</strong> {resolutions}</div>"
         )
+
+    @staticmethod
+    def _update_compile_residency_default(task, current_value, explicitly_overridden):
+        if explicitly_overridden:
+            return bool(current_value)
+        return wan_compile_resident_blocks_default(task)
 
     def _update_wan22_visibility(self, task):
         """Update Wan 2.2 settings visibility based on selected model"""
@@ -2134,7 +2226,7 @@ def wan_gui_actions(
                 "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
                 "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap", "block_swap_h2d_only", "block_swap_ring_size",
                 # Torch Compile settings
-                "compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit",
+                *WAN_COMPILE_PARAMETER_NAMES,
                 "vae_tiling", "vae_chunk_size", "vae_spatial_tile_sample_min_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
                 # Timestep Sampling parameters
                 "timestep_sampling", "discrete_flow_shift", "min_timestep", "max_timestep",
@@ -2204,7 +2296,7 @@ def wan_gui_actions(
                 "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
                 "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap", "block_swap_h2d_only", "block_swap_ring_size",
                 # Torch Compile settings
-                "compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit",
+                *WAN_COMPILE_PARAMETER_NAMES,
                 "vae_tiling", "vae_chunk_size", "vae_spatial_tile_sample_min_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
                 # Timestep Sampling parameters
                 "timestep_sampling", "discrete_flow_shift", "min_timestep", "max_timestep",
@@ -2274,7 +2366,7 @@ def wan_gui_actions(
                 "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
                 "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap", "block_swap_h2d_only", "block_swap_ring_size",
                 # Torch Compile settings
-                "compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit",
+                *WAN_COMPILE_PARAMETER_NAMES,
                 "vae_tiling", "vae_chunk_size", "vae_spatial_tile_sample_min_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
                 # Timestep Sampling parameters
                 "timestep_sampling", "discrete_flow_shift", "min_timestep", "max_timestep",
@@ -2346,7 +2438,7 @@ def wan_gui_actions(
                 "text_encoder_dtype", "vae_dtype", "clip_vision_dtype", "fp8_base", "fp8_scaled",
                 "fp8_t5", "blocks_to_swap", "use_pinned_memory_for_block_swap", "block_swap_h2d_only", "block_swap_ring_size",
                 # Torch Compile settings
-                "compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit",
+                *WAN_COMPILE_PARAMETER_NAMES,
                 "vae_tiling", "vae_chunk_size", "vae_spatial_tile_sample_min_size", "vae_cache_cpu", "num_frames", "one_frame", "force_v2_1_time_embedding",
                 # Timestep Sampling parameters
                 "timestep_sampling", "discrete_flow_shift", "min_timestep", "max_timestep",
@@ -2439,6 +2531,7 @@ def train_wan_model(headless, print_only, parameters):
             log.warning("Accelerate binary not found, using Python module fallback")
             run_cmd = [python_cmd, "-m", "accelerate.commands.launch"]
 
+    parameters = apply_wan_compile_residency_default(list(parameters))
     param_dict = dict(parameters)
     training_mode = str(param_dict.get("training_mode") or "LoRA Training")
     if training_mode != "LoRA Training":
@@ -3293,6 +3386,12 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
                 values.append(toml_value)
             else:
                 # Use original default value if not found in config
+                if (
+                    key == COMPILE_RESIDENT_BLOCKS_KEY
+                    and key not in my_data
+                    and "task" in my_data
+                ):
+                    value = wan_compile_resident_blocks_default(my_data["task"])
                 value = resolve_portable_model_value(key, value)
                 # Special handling for debug_mode - use "None" as default if missing
                 if key == "debug_mode" and toml_value is None:
@@ -3880,6 +3979,7 @@ def wan_lora_tab(
         
         # Torch Compile settings
         wan_model_settings.compile,
+        wan_model_settings.compile_resident_blocks_only,
         wan_model_settings.compile_backend,
         wan_model_settings.compile_mode,
         wan_model_settings.compile_dynamic,
@@ -4054,7 +4154,7 @@ def wan_lora_tab(
         ("Wan Training Dataset", "dataset config folder resolution caption batch bucket cache frames video image"),
         ("Dataset Preparation Details", "dataset preparation frame extraction stride sample target frames fps normalize"),
         ("Wan Model Settings", "wan model dit vae t5 clip fp8 dtype block swap offload task"),
-        ("Torch Compile Settings", "torch compile inductor backend dynamic fullgraph cache"),
+        ("Torch Compile Settings", "torch compile inductor backend dynamic fullgraph cache resident blocks swapping wan 2.2"),
         ("Timestep Sampling Settings", "timestep sampling shift min max buckets sigmoid preserve distribution"),
         ("Loss Weighting Settings", "loss weighting logit mean std mode scale"),
         ("Training Settings", "training attention steps epochs workers seed gradient logging ddp bf16 fp16"),
@@ -4135,19 +4235,37 @@ def wan_lora_tab(
     )
 
     # Set up configuration file handlers
-    configuration.button_open_config.click(
+    open_config_event = configuration.button_open_config.click(
         wan_gui_actions,
         inputs=[gr.Textbox(value="open_configuration", visible=False), configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
         outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
         show_progress=False,
     )
+    open_config_event.then(
+        wan_config_has_compile_residency_override,
+        inputs=[
+            configuration.config_file_name,
+            wan_model_settings.compile_resident_blocks_only_overridden,
+        ],
+        outputs=[wan_model_settings.compile_resident_blocks_only_overridden],
+        show_progress=False,
+    )
 
-    configuration.button_load_config.click(
+    load_config_event = configuration.button_load_config.click(
         wan_gui_actions,
         inputs=[gr.Textbox(value="reload_configuration", visible=False), configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
         outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
         show_progress=False,
         queue=False,
+    )
+    load_config_event.then(
+        wan_config_has_compile_residency_override,
+        inputs=[
+            configuration.config_file_name,
+            wan_model_settings.compile_resident_blocks_only_overridden,
+        ],
+        outputs=[wan_model_settings.compile_resident_blocks_only_overridden],
+        show_progress=False,
     )
 
     configuration.button_save_config.click(

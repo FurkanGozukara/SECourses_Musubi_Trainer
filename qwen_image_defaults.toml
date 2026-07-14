@@ -176,6 +176,7 @@ caching_teo_keep_cache = true
 
 # Torch compile (optional)
 compile = false
+compile_resident_blocks_only = true  # Recommended: compile resident Qwen blocks; swapped blocks remain eager
 compile_backend = "inductor"
 compile_mode = "default"
 compile_dynamic = "auto"         # "auto" | "true" | "false"

@@ -2267,7 +2267,7 @@ def SaveConfigFileToRun(
             "use_unconditional_dit_for_lora_sampling", "turbo_dit_cache",
             "validate_caption_structure", "warn_on_caption_issues", "log_loss_stats",
             # Torch compile parameters - store_true flags
-            "compile", "compile_fullgraph",
+            "compile", "compile_fullgraph", "compile_resident_blocks_only",
             # Additional Wan parameters that should not be passed when False
             "fp8_llm"  # This was already in the list but ensuring it's complete
         ]

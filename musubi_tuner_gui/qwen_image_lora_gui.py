@@ -17,6 +17,10 @@ from .class_latent_caching import LatentCaching
 from .class_network import Network
 from .class_optimizer_and_scheduler import OptimizerAndScheduler
 from .optimizer_catalog import add_automagic_optimizer_choices, optimizer_guidance
+from .full_finetune_gui import (
+    normalize_image_training_parameters,
+    training_mode_runtime_exclusions,
+)
 from .class_save_load import SaveLoadSettings
 from .class_text_encoder_outputs_caching import TextEncoderOutputsCaching
 from .class_training import create_legacy_sdpa_checkbox
@@ -55,6 +59,7 @@ train_state_value = time.time()
 
 QWEN_IMAGE_NETWORK_MODULE = "networks.lora_qwen_image"
 REMOVED_QWEN_NETWORK_MODULES = frozenset({"networks.dylora", "networks.lora_fa"})
+QWEN_COMPILE_RESIDENT_BLOCKS_ONLY_DEFAULT = True
 
 
 def normalize_qwen_image_network_module(value) -> str:
@@ -734,7 +739,18 @@ class QwenImageModel:
                     value=self.config.get("compile", False),
                     interactive=True,
                 )
-                
+
+                self.compile_resident_blocks_only = gr.Checkbox(
+                    label="Compile Resident Blocks Only",
+                    info="Recommended for Qwen Image. Compiles permanently GPU-resident blocks while leaving swapped blocks eager; ignored when torch.compile is disabled.",
+                    value=self.config.get(
+                        "compile_resident_blocks_only",
+                        QWEN_COMPILE_RESIDENT_BLOCKS_ONLY_DEFAULT,
+                    ),
+                    interactive=True,
+                )
+
+            with gr.Row():
                 self.compile_backend = gr.Dropdown(
                     label="Compile Backend",
                     info="Backend for torch.compile (default: inductor)",
@@ -750,8 +766,7 @@ class QwenImageModel:
                     value=self.config.get("compile_mode", "default"),
                     interactive=True,
                 )
-            
-            with gr.Row():
+
                 self.compile_dynamic = gr.Dropdown(
                     label="Dynamic Shapes",
                     info="Dynamic shape handling: auto (default), true (enable), false (disable)",
@@ -760,7 +775,8 @@ class QwenImageModel:
                     allow_custom_value=False,
                     interactive=True,
                 )
-                
+
+            with gr.Row():
                 self.compile_fullgraph = gr.Checkbox(
                     label="Fullgraph Mode",
                     info="Enable fullgraph mode in torch.compile (may fail with complex models)",
@@ -1272,6 +1288,7 @@ def qwen_image_gui_actions(
     block_swap_ring_size,
     # Torch Compile settings
     compile,
+    compile_resident_blocks_only,
     compile_backend,
     compile_mode,
     compile_dynamic,
@@ -1963,10 +1980,10 @@ def train_qwen_image_model(headless, print_only, parameters):
             log.warning("Accelerate binary not found, using Python module fallback")
             run_cmd = [python_cmd, "-m", "accelerate.commands.launch"]
 
-    param_dict = dict(parameters)
+    param_dict, parameters, full_finetune = normalize_image_training_parameters(parameters)
     validate_block_swap_options(
         param_dict,
-        lora_training=(param_dict.get("training_mode", "LoRA Training") == "LoRA Training"),
+        lora_training=not full_finetune,
     )
 
     # Resolve model version (supports new --model_version flow and migrates legacy edit/edit_plus flags)
@@ -2300,7 +2317,7 @@ def train_qwen_image_model(headless, print_only, parameters):
 
     # Select the appropriate Qwen Image training script based on training mode
     training_mode = param_dict.get("training_mode", "LoRA Training")
-    if training_mode == "DreamBooth Fine-Tuning":
+    if full_finetune:
         # Use full fine-tuning script for DreamBooth mode
         run_cmd.append(f"{scriptdir}/musubi-tuner/src/musubi_tuner/qwen_image_train.py")
         log.info("Using qwen_image_train.py for full DreamBooth fine-tuning")
@@ -2311,7 +2328,7 @@ def train_qwen_image_model(headless, print_only, parameters):
 
     if print_only:
         preview_parameters = list(parameters)
-        if training_mode == "LoRA Training":
+        if not full_finetune:
             selected_module = param_dict.get("network_module")
             if selected_module == "custom":
                 selected_module = (param_dict.get("custom_network_module") or "").strip()
@@ -2346,8 +2363,9 @@ def train_qwen_image_model(headless, print_only, parameters):
             "custom_network_module", "convert_to_diffusers", "diffusers_output_dir",
             "convert_to_safetensors", "safetensors_output_dir", "training_mode",
         ]
-        if training_mode != "DreamBooth Fine-Tuning":
+        if not full_finetune:
             gui_only_exclusion.append("mem_eff_save")
+        gui_only_exclusion.extend(training_mode_runtime_exclusions(training_mode))
         preview_path = save_training_preview_config(
             preview_parameters,
             f"qwen_{param_dict.get('output_name') or 'training'}",
@@ -2451,7 +2469,7 @@ def train_qwen_image_model(headless, print_only, parameters):
         modified_params = [("training_mode", training_mode)]
         
         for key, value in parameters:
-            if training_mode == "DreamBooth Fine-Tuning":
+            if full_finetune:
                 # For DreamBooth/Fine-tuning, we need to disable network parameters
                 if key == "network_module":
                     # Set to empty or None to disable LoRA
@@ -2654,9 +2672,10 @@ def train_qwen_image_model(headless, print_only, parameters):
             "convert_to_safetensors",
             "safetensors_output_dir",
         ]
-        if training_mode != "DreamBooth Fine-Tuning":
+        if not full_finetune:
             # mem_eff_save belongs to qwen_image_train.py, not the LoRA trainer.
             gui_only_exclusion.append("mem_eff_save")
+        gui_only_exclusion.extend(training_mode_runtime_exclusions(training_mode))
 
         SaveConfigFileToRun(
             parameters=parameters,
@@ -4277,6 +4296,7 @@ def qwen_image_lora_tab(
         
         # Torch Compile settings
         qwen_model.compile,
+        qwen_model.compile_resident_blocks_only,
         qwen_model.compile_backend,
         qwen_model.compile_mode,
         qwen_model.compile_dynamic,
@@ -4391,6 +4411,8 @@ def qwen_image_lora_tab(
             # Torch Compile Settings
             "compile": ("Qwen Image Model Settings", "Enable torch.compile"),
             "torch_compile": ("Qwen Image Model Settings", "Enable torch.compile"),
+            "compile_resident_blocks_only": ("Qwen Image Model Settings", "Compile Resident Blocks Only"),
+            "resident_blocks": ("Qwen Image Model Settings", "Compile Resident Blocks Only"),
             "compile_backend": ("Qwen Image Model Settings", "Compile Backend"),
             "compile_mode": ("Qwen Image Model Settings", "Compile Mode"),
             "compile_dynamic": ("Qwen Image Model Settings", "Dynamic Shapes"),
