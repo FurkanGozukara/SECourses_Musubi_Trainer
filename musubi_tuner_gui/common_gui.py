@@ -29,6 +29,10 @@ document_symbol = "\U0001F4C4"  # 📄
 
 scriptdir = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 
+SUBPROCESS_TEXT_ENCODING = "utf-8"
+SUBPROCESS_TEXT_ERRORS = "replace"
+SUBPROCESS_PYTHONIOENCODING = "utf-8:backslashreplace"
+
 if os.name == "nt":
     scriptdir = scriptdir.replace("\\", "/")
 
@@ -2613,8 +2617,8 @@ def setup_environment(
         rf"{scriptdir}{os.pathsep}{musubi_src_dir}{os.pathsep}{scriptdir}/sd-scripts{os.pathsep}{env.get('PYTHONPATH', '')}"
     )
     env["TF_ENABLE_ONEDNN_OPTS"] = "0"
-    env.setdefault("PYTHONIOENCODING", "utf-8")
-    env.setdefault("PYTHONUTF8", "1")
+    env["PYTHONIOENCODING"] = SUBPROCESS_PYTHONIOENCODING
+    env["PYTHONUTF8"] = "1"
 
     if allow_distributed is False:
         env = _sanitize_distributed_env(env)
@@ -2648,6 +2652,19 @@ def setup_environment(
             raise RuntimeError(message)
 
     return env
+
+
+def utf8_subprocess_options(env=None):
+    """Return a matched UTF-8 child environment and non-throwing text decoder."""
+    process_env = setup_environment() if env is None else dict(env)
+    process_env["PYTHONIOENCODING"] = SUBPROCESS_PYTHONIOENCODING
+    process_env["PYTHONUTF8"] = "1"
+    return {
+        "text": True,
+        "encoding": SUBPROCESS_TEXT_ENCODING,
+        "errors": SUBPROCESS_TEXT_ERRORS,
+        "env": process_env,
+    }
 
 
 def _sanitize_distributed_env(env: dict) -> dict:
@@ -2843,7 +2860,8 @@ def _query_latest_vs_installation(vswhere_path):
             ],
             capture_output=True,
             text=True,
-            encoding="utf-8",
+            encoding=SUBPROCESS_TEXT_ENCODING,
+            errors=SUBPROCESS_TEXT_ERRORS,
             check=True,
             timeout=30,  # Prevent hanging if vswhere is slow
         )

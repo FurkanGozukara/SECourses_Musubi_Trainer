@@ -18,7 +18,7 @@ from .common_gui import (
     get_folder_path,
     get_saveasfilename_path,
     get_file_path_or_save_as,
-    setup_environment,
+    utf8_subprocess_options,
     save_executed_script,
     generate_script_content,
 )
@@ -402,7 +402,7 @@ MODEL_PRESET_DISPLAY_NAMES = {
     "lens": "Microsoft LENS",
     "ltxv2": "LTX (2 / 2.3)",
     "ltx2": "LTX (2 / 2.3)",
-    "ltx2_3": "LTX (2 / 2.3)",
+    "ltx2_3": "LTX 2.3 (INT8 ConvRot Learned HQ)",
     "qwen": "Qwen Image / Edit (2509, 2511, 2512)",
     "qwen35": "Qwen3.5 Text/Multimodal",
     "t5xxl": "T5-XXL",
@@ -441,6 +441,7 @@ PRIMARY_MODEL_PRESET_VALUES = {
     "ideogram4",
     "krea2",
     "lens",
+    "ltx2_3",
     "ltxv2",
     "qwen",
     "wan",
@@ -919,11 +920,19 @@ MODEL_PRESET_SETTINGS.update({
         "dynamic_convrot": False,
     },
     "ltx2_3": {
-        "preset": PRESET_INT8_CONVROT,
+        "preset": PRESET_INT8_CONVROT_HQ,
         "quant_format": QUANT_FORMAT_INT8,
+        "comfy_quant": True,
         "scaling_mode": "row",
+        "block_size": 128,
         "convrot": True,
+        "convrot_group_size": 256,
         "dynamic_convrot": False,
+        "full_precision_matrix_mult": False,
+        "layer_config_path": "",
+        "layer_config_fullmatch": False,
+        "low_memory": True,
+        "save_quant_metadata": True,
     },
 })
 
@@ -1426,6 +1435,19 @@ class ModelQuantizer:
             return f"{desc}: {percent} ({count})"
         return stripped
 
+    @staticmethod
+    def _write_stdout(text: str) -> None:
+        stream = sys.stdout
+        if stream is None:
+            return
+        try:
+            stream.write(text)
+        except UnicodeEncodeError:
+            encoding = stream.encoding or "ascii"
+            safe_text = text.encode(encoding, errors="backslashreplace").decode(encoding)
+            stream.write(safe_text)
+        stream.flush()
+
     def _is_summary_line(self, line: str) -> bool:
         lowered = line.lower()
         keywords = (
@@ -1477,10 +1499,9 @@ class ModelQuantizer:
             cmd,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True,
             bufsize=1,
-            env=setup_environment(),
             cwd=REPO_ROOT,
+            **utf8_subprocess_options(),
         )
         setattr(self, process_attr, process)
         output_lines: List[str] = []
@@ -1498,8 +1519,7 @@ class ModelQuantizer:
                                 pad = ""
                                 if progress_len > len(compact_line):
                                     pad = " " * (progress_len - len(compact_line))
-                                sys.stdout.write("\r" + compact_line + pad)
-                                sys.stdout.flush()
+                                self._write_stdout("\r" + compact_line + pad)
                                 progress_active = True
                                 progress_len = len(compact_line)
 
@@ -1513,8 +1533,7 @@ class ModelQuantizer:
                         continue
 
                     if progress_active:
-                        sys.stdout.write("\n")
-                        sys.stdout.flush()
+                        self._write_stdout("\n")
                         progress_active = False
                         progress_len = 0
 
@@ -1526,9 +1545,16 @@ class ModelQuantizer:
                         log.info("[Model Quantizer] %s", line)
             process.wait()
             if progress_active:
-                sys.stdout.write("\n")
-                sys.stdout.flush()
+                self._write_stdout("\n")
             return "\n".join(output_lines), int(process.returncode or 0)
+        except Exception:
+            if self._is_running(process):
+                self._terminate_process(process)
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+            raise
         finally:
             setattr(self, process_attr, None)
 
@@ -1788,13 +1814,22 @@ class ModelQuantizer:
 
         model_preset = _model_preset_value(str(params.get(MODEL_PRESET_FIELD) or MODEL_PRESET_NONE))
         layer_config_path = params.get("layer_config_path")
+        uses_primary_convrot = (
+            params.get("quant_format") == QUANT_FORMAT_INT8
+            and params.get("scaling_mode") == "row"
+            and bool(params.get("convrot") or params.get("dynamic_convrot"))
+        )
+
+        if model_preset == "ltx2_3" and uses_primary_convrot:
+            if layer_config_path:
+                log.warning(
+                    "Ignoring Layer Config JSON for LTX 2.3 INT8 ConvRot so all eligible layers inherit ConvRot."
+                )
+            params["layer_config_path"] = ""
+            params["layer_config_fullmatch"] = False
+            return
 
         if model_preset == "krea2":
-            uses_primary_convrot = (
-                params.get("quant_format") == QUANT_FORMAT_INT8
-                and params.get("scaling_mode") == "row"
-                and bool(params.get("convrot") or params.get("dynamic_convrot"))
-            )
             if uses_primary_convrot and (
                 not layer_config_path or _is_krea2_managed_layer_config(layer_config_path)
             ):

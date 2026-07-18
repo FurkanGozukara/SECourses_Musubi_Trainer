@@ -15,7 +15,7 @@ from .common_gui import (
     get_model_file_path,
     get_saveasfilename_path,
     scriptdir,
-    setup_environment,
+    utf8_subprocess_options,
     save_executed_script,
     generate_script_content,
 )
@@ -155,7 +155,6 @@ class LoRAExtractor:
         command: List[str],
         process_attr: str,
     ) -> Tuple[int, str]:
-        env = setup_environment()
         log.info("Executing LoRA extraction command: %s", " ".join(command))
         
         # Save the extraction command
@@ -170,9 +169,8 @@ class LoRAExtractor:
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True,
             bufsize=1,
-            env=env,
+            **utf8_subprocess_options(),
         )
         setattr(self, process_attr, process)
         lines: List[str] = []
@@ -187,6 +185,14 @@ class LoRAExtractor:
             rc = process.returncode if process.returncode is not None else 0
             output = "\n".join(lines)
             return rc, output
+        except Exception:
+            if self._is_running(process):
+                self._terminate_process(process)
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+            raise
         finally:
             setattr(self, process_attr, None)
             gc.collect()

@@ -15,6 +15,7 @@ from .common_gui import (
     get_model_file_path,
     save_executed_script,
     setup_environment,
+    utf8_subprocess_options,
 )
 from .custom_logging import setup_logging
 
@@ -251,10 +252,9 @@ class LoRAConverter:
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True,
             bufsize=1,
-            env=self._build_env(),
             cwd=REPO_ROOT,
+            **utf8_subprocess_options(self._build_env()),
         )
         setattr(self, process_attr, process)
         captured_lines: List[str] = []
@@ -267,6 +267,14 @@ class LoRAConverter:
                         log.info("[LoRA Convert] %s", line)
             process.wait()
             return int(process.returncode or 0), "\n".join(captured_lines)
+        except Exception:
+            if self._is_running(process):
+                self._terminate_process(process)
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+            raise
         finally:
             setattr(self, process_attr, None)
 

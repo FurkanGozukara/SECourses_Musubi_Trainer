@@ -14,7 +14,7 @@ from .common_gui import (
     get_model_file_path,
     get_saveasfilename_path,
     scriptdir,
-    setup_environment,
+    utf8_subprocess_options,
     save_executed_script,
     generate_script_content,
 )
@@ -171,9 +171,8 @@ class LoRAMerger:
             command,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
-            text=True,
             bufsize=1,
-            env=setup_environment(),
+            **utf8_subprocess_options(),
         )
         setattr(self, process_attr, process)
         output_lines: List[str] = []
@@ -193,6 +192,14 @@ class LoRAMerger:
                     f"{summary}"
                 )
             return result.get("status", "error"), result.get("message", "Worker returned no message.")
+        except Exception:
+            if self._is_running(process):
+                self._terminate_process(process)
+                try:
+                    process.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    pass
+            raise
         finally:
             setattr(self, process_attr, None)
             for path in (payload_path, result_path):

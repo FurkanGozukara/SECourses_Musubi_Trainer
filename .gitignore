@@ -208,3 +208,4 @@ tests/*
 !tests/test_ui_backend_contracts.py
 !tests/test_full_finetune_gui.py
 !tests/test_automagic_gui.py
+!tests/test_model_quantizer_gui.py
