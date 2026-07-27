@@ -3248,7 +3248,7 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
             return tuple(values)
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, "r", encoding="utf-8-sig") as f:
                 my_data = toml.load(f)
                 
                 # Validate and auto-correct corrupted parameter values from old bugs

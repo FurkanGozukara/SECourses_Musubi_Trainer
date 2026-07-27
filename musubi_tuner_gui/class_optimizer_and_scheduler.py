@@ -90,7 +90,6 @@ class OptimizerAndScheduler:
                 value=self.config.get("lr_warmup_steps", 0),
                 interactive=True,
                 step=0.01,
-                maximum=1,
             )
 
             self.lr_decay_steps = gr.Number(
@@ -99,7 +98,6 @@ class OptimizerAndScheduler:
                 value=self.config.get("lr_decay_steps", 0),
                 interactive=True,
                 step=0.01,
-                maximum=1,
             )
 
             self.lr_scheduler_num_cycles = gr.Number(

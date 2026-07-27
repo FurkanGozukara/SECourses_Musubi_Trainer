@@ -1001,7 +1001,7 @@ def open_modern_configuration(
         return tuple([original_path, gr.update(value=message, visible=True)] + [value for _, value in parameters])
 
     try:
-        with open(file_path, "r", encoding="utf-8") as handle:
+        with open(file_path, "r", encoding="utf-8-sig") as handle:
             data = toml.load(handle)
         values = []
         for key, default in parameters:

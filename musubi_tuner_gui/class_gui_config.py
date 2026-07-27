@@ -26,7 +26,8 @@ class GUIConfig:
         """
         try:
             # Attempt to load the TOML configuration file from the specified directory.
-            config = toml.load(f"{config_file_path}")
+            with open(config_file_path, "r", encoding="utf-8-sig") as config_file:
+                config = toml.load(config_file)
             log.debug(f"Loaded configuration from {config_file_path}")
         except FileNotFoundError:
             # If the config file is not found, initialize `config` as an empty dictionary to handle missing configurations gracefully.

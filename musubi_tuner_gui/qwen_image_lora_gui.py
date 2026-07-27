@@ -1609,7 +1609,7 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
             return tuple(values)
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, "r", encoding="utf-8-sig") as f:
                 my_data = toml.load(f)
                 config_name = os.path.basename(file_path)
                 status_msg = f"Configuration loaded successfully from: {config_name}"

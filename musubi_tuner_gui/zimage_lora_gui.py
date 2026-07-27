@@ -181,7 +181,7 @@ def open_zimage_configuration(ask_for_file, file_path, parameters):
         return tuple(values)
 
     try:
-        with open(file_path, "r", encoding="utf-8") as f:
+        with open(file_path, "r", encoding="utf-8-sig") as f:
             data = toml.load(f)
     except Exception as e:
         msg = f"Failed to load configuration: {e}"

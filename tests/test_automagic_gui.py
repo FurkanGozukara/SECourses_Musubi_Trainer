@@ -2,6 +2,7 @@ import gradio as gr
 import pytest
 
 from musubi_tuner_gui.class_optimizer_and_scheduler import OptimizerAndScheduler
+from musubi_tuner_gui.class_gui_config import GUIConfig
 from musubi_tuner_gui.optimizer_catalog import (
     AUTOMAGIC_OPTIMIZER_CHOICES,
     add_automagic_optimizer_choices,
@@ -73,3 +74,24 @@ def test_custom_optimizer_guidance_is_explicit():
 
     assert "Custom optimizer" in guidance
     assert "example.CustomOptimizer" in guidance
+
+
+@pytest.mark.parametrize("setting_name", ["lr_warmup_steps", "lr_decay_steps"])
+@pytest.mark.parametrize("value", [10, 0.1])
+def test_lr_step_inputs_accept_absolute_counts_and_ratios(setting_name, value):
+    with gr.Blocks():
+        settings = OptimizerAndScheduler(config={setting_name: value})
+
+    component = getattr(settings, setting_name)
+
+    assert component.maximum is None
+    assert component.preprocess(component.value) == value
+
+
+def test_gui_config_loads_utf8_bom_without_prefixing_first_key(tmp_path):
+    config_path = tmp_path / "preset.toml"
+    config_path.write_bytes(b"\xef\xbb\xbfadditional_parameters = \"test=true\"\n")
+
+    config = GUIConfig(str(config_path))
+
+    assert config.get("additional_parameters") == "test=true"
