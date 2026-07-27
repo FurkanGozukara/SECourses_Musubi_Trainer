@@ -2648,8 +2648,12 @@ def setup_environment(
             log.info(f"torch.compile toolchain ready: {status.detail}")
         else:
             message = f"torch.compile toolchain unavailable: {status.detail}"
-            log.error(message)
-            raise RuntimeError(message)
+            env["MUSUBI_TORCH_COMPILE_ACTIVE"] = "0"
+            if _compile_env_flag(env, "MUSUBI_TORCH_COMPILE_FALLBACK", True):
+                log.warning(f"{message}. Training will continue without torch.compile.")
+            else:
+                log.error(message)
+                raise RuntimeError(message)
 
     return env
 

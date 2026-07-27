@@ -209,3 +209,4 @@ tests/*
 !tests/test_full_finetune_gui.py
 !tests/test_automagic_gui.py
 !tests/test_model_quantizer_gui.py
+!tests/test_torch_compile_gui_environment.py

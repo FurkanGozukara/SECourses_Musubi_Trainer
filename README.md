@@ -45,6 +45,8 @@ When the Inductor backend is selected through `Enable torch.compile` or Accelera
 - Linux discovery covers configured, versioned, Conda, GCC, Clang, NVIDIA HPC, Intel, and ARM C++ compilers. Candidates must compile and link C++17/OpenMP code and, when available, pass an `nvcc -ccbin` probe.
 - The RunPod and Massed Compute installers add `build-essential` and `ninja-build` when the host does not already provide them.
 - CUDA selection follows `torch.version.cuda`, Ninja is discovered automatically, and stable Inductor/Triton caches are created under `.cache/torch_compile`.
+- Successful native toolchain probes are fingerprint-cached inside the current installation and inherited by training workers, avoiding repeated temporary `probe.exe` runs until the compiler, CUDA, SDK, Python, PyTorch, or requirements change. A fresh installation starts with a fresh validation cache.
+- If toolchain validation or the initial `torch.compile` attempt fails, training logs the reason and continues in eager mode by default.
 - Direct GUI runs, worker subprocesses, direct training CLI runs, and Accelerate Dynamo all use the same backend setup.
 - If the first real compiled block fails for a graph-specific reason, training transparently retries in eager mode while preserving compiled state-dict compatibility. Set `MUSUBI_TORCH_COMPILE_FALLBACK=0` to make that failure strict.
 
