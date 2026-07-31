@@ -8,6 +8,18 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 31 July 2026 - Krea 2 ConvRot INT8 Quantization
+
+**⚡ A faster, more accurate alternative to Scaled FP8 for Krea 2 LoRA training — and it finally makes Krea 2 fast on RTX 30 series and older GPUs.**
+
+- Integrated musubi-tuner pull request #1008 (ConvRot INT8, [arXiv:2512.03673](https://arxiv.org/abs/2512.03673)).
+- **New "ConvRot INT8" checkbox** in the Krea 2 LoRA tab's Model Settings. It replaces FP8 Base + Scaled FP8 (the two cannot be combined) and quantizes the frozen DiT base weights to INT8 after a block-diagonal Hadamard rotation that smooths activation outliers.
+- **New "ConvRot INT8 Backward" dropdown**: `bf16` (default, most accurate) or `int8` (faster gradients, slightly quantized).
+- **Same VRAM as FP8** (1 byte per base weight, half of BF16) but roughly **2.5x faster Linear forward than BF16 and 2.7x faster than Scaled FP8**, because the forward runs a real fused Triton INT8 GEMM instead of dequantizing to BF16 on every forward pass.
+- **Better numerical accuracy than block-wise Scaled FP8** — measured output relative error against the BF16 reference is about 1.4e-2 for ConvRot INT8 vs about 2.5e-2 for Scaled FP8.
+- Works with block swap, gradient checkpointing, and torch.compile (the quantized Linears are automatically excluded from compilation). Requires `triton` on Linux / `triton-windows` on Windows — both are already installed by this application's requirements, so no extra setup is needed on either platform.
+- Not compatible with Krea 2 Turbo sample generation (`--turbo_dit`) or full fine-tuning; the GUI blocks those combinations with a clear message.
+
 ### 13 July 2026 - Image Full-DiT Fine-Tuning
 
 - Integrated musubi-tuner pull request #997.

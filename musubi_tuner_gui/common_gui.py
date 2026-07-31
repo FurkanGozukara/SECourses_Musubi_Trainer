@@ -2260,6 +2260,7 @@ def SaveConfigFileToRun(
             "resume_from_huggingface", "async_upload", "fused_backward_pass",
             # Wan/Qwen specific parameters
             "fp8_llm", "vae_tiling", "fp8_vl", "fp8_base", "fp8_scaled", "fp8_t5", "fp8_text_encoder",
+            "convrot_int8",  # Krea 2 ConvRot INT8 base quantization - store_true, omit when False
             "edit", "edit_plus", "full_bf16", "full_fp16", "offload_inactive_dit", "vae_cache_cpu",
             "force_v2_1_time_embedding", "one_frame",
             # Multi-GPU parameter - should not be passed when False

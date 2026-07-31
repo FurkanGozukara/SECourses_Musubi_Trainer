@@ -76,6 +76,16 @@ Set `MUSUBI_DISABLE_EXTERNAL_FLASH_SDPA=1` before launching a trainer to disable
 ## Updates
 **- Click images to see their full sizes**
 
+### 31 July 2026 Krea 2 ConvRot INT8 Training
+
+- Integrated upstream musubi-tuner pull request #1008: ConvRot INT8 base-weight quantization for Krea 2 LoRA training ([arXiv:2512.03673](https://arxiv.org/abs/2512.03673)).
+- The same ConvRot scheme the Model Quantizer already uses for inference checkpoints is now available **during training**: a block-diagonal Hadamard rotation (group size 256) smooths activation outliers, then the frozen DiT base weights are quantized per-channel to INT8 and the forward runs a fused Triton INT8 GEMM.
+- New **ConvRot INT8** checkbox and **ConvRot INT8 Backward** dropdown (`bf16` / `int8`) in the Krea 2 LoRA tab's Model Settings. It is an alternative to FP8 Base + Scaled FP8, not an addition — the GUI rejects the combination.
+- Same weight VRAM as FP8 (1 byte per base weight), but the Linear forward is roughly **2.5x faster than BF16 and 2.7x faster than Scaled FP8**, and measured output error against the BF16 reference is **lower** than block-wise Scaled FP8 (~1.4e-2 vs ~2.5e-2).
+- The biggest win is on GPUs with no FP8 hardware (RTX 30 series and older), where the FP8 path has to dequantize to BF16 on every forward pass.
+- `triton` (Linux) / `triton-windows` (Windows) are already in this application's requirements, so the fused kernels work out of the box on both platforms. Without triton it still runs, via a slower dequantized BF16 fallback.
+- Composes with block swap, gradient checkpointing, and torch.compile. Not supported with Krea 2 Turbo sample generation or full fine-tuning.
+
 ### 13 July 2026 Image Full-DiT Fine-Tuning
 
 - Integrated upstream musubi-tuner pull request #997 on top of the maintained performance and torch.compile changes.

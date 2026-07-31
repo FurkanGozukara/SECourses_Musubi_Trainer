@@ -166,6 +166,8 @@ MODERN_IMAGE_PARAM_KEYS = [
     "dit_variant",
     "fp8_base",
     "fp8_scaled",
+    "convrot_int8",
+    "convrot_int8_bwd",
     "disable_numpy_memmap",
     "blocks_to_swap",
     "use_pinned_memory_for_block_swap",
@@ -464,6 +466,10 @@ def _normalize_modern_parameters(
         param_dict["fp8_base"] = False
         param_dict["fp8_scaled"] = False
         parameters = _replace_parameter(_replace_parameter(parameters, "fp8_base", False), "fp8_scaled", False)
+        # ConvRot int8 is a Krea 2-only base-weight quantization (musubi PR #1008).
+        param_dict["convrot_int8"] = False
+        param_dict["convrot_int8_bwd"] = "bf16"
+        parameters = _replace_parameter(_replace_parameter(parameters, "convrot_int8", False), "convrot_int8_bwd", "bf16")
         if param_dict.get("warn_on_caption_issues") and not param_dict.get("validate_caption_structure"):
             param_dict["warn_on_caption_issues"] = False
             parameters = _replace_parameter(parameters, "warn_on_caption_issues", False)
@@ -482,6 +488,30 @@ def _normalize_modern_parameters(
         fp8_scaled = bool(param_dict.get("fp8_scaled"))
         if fp8_base != fp8_scaled:
             raise ValueError("Krea 2 requires fp8_base and fp8_scaled to be enabled together.")
+        # ConvRot int8 (musubi PR #1008): an alternative to scaled fp8 for the frozen DiT base
+        # weights. LoRA-only, and mutually exclusive with fp8 -- only one base quantization.
+        convrot_int8 = bool(param_dict.get("convrot_int8"))
+        convrot_int8_bwd = str(param_dict.get("convrot_int8_bwd") or "bf16").strip().lower()
+        if convrot_int8_bwd not in {"bf16", "int8"}:
+            raise ValueError("ConvRot INT8 backward mode must be 'bf16' or 'int8'.")
+        if convrot_int8 and (fp8_base or fp8_scaled):
+            raise ValueError(
+                "ConvRot INT8 cannot be combined with FP8 Base / Scaled FP8: choose one base quantization."
+            )
+        if convrot_int8_bwd == "int8" and not convrot_int8:
+            # harmless on its own -- normalize instead of failing the run
+            convrot_int8_bwd = "bf16"
+        if full_finetune:
+            # Full-DiT training trains the base weights, so no base-weight quantization is
+            # possible. normalize_image_training_parameters() already forces this off (same as
+            # fp8_base/fp8_scaled); repeated here so the value is consistent either way.
+            convrot_int8 = False
+            convrot_int8_bwd = "bf16"
+        param_dict["convrot_int8"] = convrot_int8
+        param_dict["convrot_int8_bwd"] = convrot_int8_bwd
+        parameters = _replace_parameter(
+            _replace_parameter(parameters, "convrot_int8", convrot_int8), "convrot_int8_bwd", convrot_int8_bwd
+        )
         turbo_dit = str(param_dict.get("turbo_dit") or "").strip()
         if full_finetune:
             dit_variant = str(param_dict.get("dit_variant") or "raw").strip().lower()
@@ -497,6 +527,11 @@ def _normalize_modern_parameters(
             raise ValueError("turbo_dit_cache requires a Krea 2 Turbo DiT path.")
         if turbo_dit and blocks_to_swap:
             raise ValueError("Krea 2 Turbo sample generation cannot be combined with blocks_to_swap.")
+        if turbo_dit and convrot_int8:
+            raise ValueError(
+                "ConvRot INT8 is not supported together with a Krea 2 Turbo DiT (Turbo sample generation "
+                "swaps the base weights and the ConvRot quantizer is not threaded through that path yet)."
+            )
 
     base_weights = _coerce_cli_list(param_dict.get("base_weights"))
     base_weight_multipliers = _coerce_float_list(param_dict.get("base_weights_multiplier"))
@@ -679,7 +714,9 @@ def _run_config_exclusions(spec: ModernImageArchitecture, parameters: list[tuple
         if key.startswith("caching_") or key in {"cache_latents", "cache_text_encoder_outputs"}
     )
     if spec.is_ideogram:
-        exclusions.update({"turbo_dit", "turbo_dit_cache", "dit_variant", "fp8_base", "fp8_scaled"})
+        exclusions.update(
+            {"turbo_dit", "turbo_dit_cache", "dit_variant", "fp8_base", "fp8_scaled", "convrot_int8", "convrot_int8_bwd"}
+        )
     else:
         exclusions.update(
             {
@@ -695,7 +732,11 @@ def _run_config_exclusions(spec: ModernImageArchitecture, parameters: list[tuple
             }
         )
         if full_finetune:
-            exclusions.update({"turbo_dit", "turbo_dit_cache", "fp8_base", "fp8_scaled"})
+            # krea2_train.py has no fp8 / ConvRot flags at all -- leaving them in the run TOML
+            # would make its argparse reject the config file.
+            exclusions.update(
+                {"turbo_dit", "turbo_dit_cache", "fp8_base", "fp8_scaled", "convrot_int8", "convrot_int8_bwd"}
+            )
     return sorted(exclusions)
 
 
@@ -1274,6 +1315,8 @@ def _architecture_defaults(spec: ModernImageArchitecture) -> dict[str, object]:
                 "sample_cfg_scale": 7.0,
                 "fp8_base": False,
                 "fp8_scaled": False,
+                "convrot_int8": False,
+                "convrot_int8_bwd": "bf16",
             }
         )
     else:
@@ -1286,6 +1329,8 @@ def _architecture_defaults(spec: ModernImageArchitecture) -> dict[str, object]:
                 "sample_cfg_scale": 5.5,
                 "fp8_base": True,
                 "fp8_scaled": True,
+                "convrot_int8": False,
+                "convrot_int8_bwd": "bf16",
                 "turbo_dit_cache": False,
             }
         )
@@ -1640,6 +1685,24 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 value=bool(config.get("fp8_scaled", False)),
                 visible=spec.is_krea,
                 info="Krea 2 only. Must be enabled together with FP8 Base.",
+            )
+            convrot_int8 = gr.Checkbox(
+                label="ConvRot INT8",
+                value=bool(config.get("convrot_int8", False)),
+                visible=spec.is_krea,
+                info=(
+                    "Krea 2 LoRA only. Alternative to FP8 (cannot be combined with it): Hadamard-rotated "
+                    "INT8 base weights with a fused Triton INT8 GEMM. Same VRAM as FP8, roughly 2.5x faster "
+                    "Linear forward than BF16/FP8 and slightly more accurate. Needs triton / triton-windows."
+                ),
+            )
+            convrot_int8_bwd = gr.Dropdown(
+                label="ConvRot INT8 Backward",
+                choices=["bf16", "int8"],
+                value=str(config.get("convrot_int8_bwd", "bf16") or "bf16"),
+                visible=spec.is_krea,
+                allow_custom_value=False,
+                info="bf16: most accurate (default). int8: faster gradients, slightly quantized.",
             )
             initial_max_blocks_to_swap = (
                 spec.max_blocks_to_swap - 1 if initial_full_finetune and spec.is_ideogram else spec.max_blocks_to_swap
@@ -2105,6 +2168,8 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         dit_variant,
         fp8_base,
         fp8_scaled,
+        convrot_int8,
+        convrot_int8_bwd,
         disable_numpy_memmap,
         blocks_to_swap,
         use_pinned_memory_for_block_swap,

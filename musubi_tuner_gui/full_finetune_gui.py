@@ -71,7 +71,7 @@ def normalize_image_training_parameters(
         raise ValueError("Full FP16 is not supported for full-DiT fine-tuning; use FP32 or Full BF16.")
 
     # Full-DiT training cannot use a frozen/quantized base or the LoRA-only H2D path.
-    for key in ("fp8_base", "fp8_scaled", "block_swap_h2d_only"):
+    for key in ("fp8_base", "fp8_scaled", "convrot_int8", "block_swap_h2d_only"):
         if key in param_dict:
             param_dict[key] = False
             parameters = replace_parameter(parameters, key, False)
