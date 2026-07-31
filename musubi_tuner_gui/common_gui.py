@@ -2607,6 +2607,99 @@ def _compile_env_flag(env: dict, name: str, default: bool) -> bool:
     return str(value).strip().casefold() not in _DISABLED_COMPILE_BACKENDS
 
 
+CACHING_ERROR_HINTS = (
+    (
+        ("bn.running_mean", "bn.running_var"),
+        "The VAE file is missing the training statistics the trainer needs (bn.*). This usually means a "
+        "ComfyUI/SwarmUI-packaged VAE was selected instead of the trainer's VAE. For FLUX.2 / FLUX Klein use "
+        "FLUX_2_Klein_Train_VAE.safetensors, and for Z-Image use Z_Image_Train_VAE.safetensors, both from the "
+        "model downloader.",
+    ),
+    (
+        ("Missing key(s) in state_dict", "Unexpected key(s) in state_dict"),
+        "The model file does not match the architecture the trainer expected. Re-check that the DiT / VAE / "
+        "Text Encoder boxes point at files for this model family and version.",
+    ),
+    (
+        ("No training items found", "no images found", "num train items / 学習画像、動画数: 0"),
+        "The dataset produced zero items. Check the dataset folder path, the caption extension, and that the "
+        "latent/Text Encoder caches were built for this same model version.",
+    ),
+    (
+        ("CUDA out of memory", "torch.OutOfMemoryError"),
+        "The GPU ran out of memory during caching. Lower the caching batch size, or lower the resolution / "
+        "control resolution.",
+    ),
+)
+
+
+def explain_subprocess_failure(output_tail: str) -> Optional[str]:
+    """Map a known failure signature in captured output to an actionable hint, or None."""
+    if not output_tail:
+        return None
+    for needles, hint in CACHING_ERROR_HINTS:
+        if any(n in output_tail for n in needles):
+            return hint
+    return None
+
+
+def run_subprocess_with_captured_errors(cmd, env, *, label: str, tail_lines: int = 40):
+    """Run `cmd`, streaming its output live while retaining the tail for error reporting.
+
+    subprocess.run(..., check=True) raises CalledProcessError carrying only a return code, so the
+    child's actual traceback is lost to whoever reads the GUI error. Here the child's output is
+    echoed as it arrives (tqdm progress bars keep working) and the last `tail_lines` lines are kept,
+    so a failure can report what actually went wrong.
+
+    Raises RuntimeError with the captured tail on non-zero exit.
+    """
+    from collections import deque
+
+    proc = subprocess.Popen(
+        cmd,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        **utf8_subprocess_options(env),
+    )
+
+    # newline="" keeps line terminators untranslated, so tqdm's "\r" progress updates are echoed
+    # as in-place redraws instead of scrolling one line per update.
+    try:
+        proc.stdout.reconfigure(newline="")
+    except (AttributeError, ValueError):  # not a TextIOWrapper on some platforms
+        pass
+
+    tail = deque(maxlen=tail_lines)
+    try:
+        for line in proc.stdout:
+            sys.stdout.write(line)
+            sys.stdout.flush()
+            stripped = line.rstrip("\r\n")
+            if stripped.strip():
+                tail.append(stripped)
+    finally:
+        proc.stdout.close()
+        returncode = proc.wait()
+
+    if returncode != 0:
+        output_tail = "\n".join(tail)
+        hint = explain_subprocess_failure(output_tail)
+        log.error(f"{label} failed with return code {returncode}")
+        if output_tail:
+            log.error(f"--- last output from {label} ---\n{output_tail}")
+        if hint:
+            log.error(f"Likely cause: {hint}")
+
+        message = f"{label} failed with return code {returncode}."
+        if hint:
+            message += f"\n\nLikely cause: {hint}"
+        if output_tail:
+            message += f"\n\nLast output:\n{output_tail}"
+        raise RuntimeError(message)
+
+    return returncode
+
+
 def setup_environment(
     allow_distributed: Optional[bool] = None,
     *,

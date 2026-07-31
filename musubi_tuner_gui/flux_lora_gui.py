@@ -37,6 +37,7 @@ from .common_gui import (
     scriptdir,
     requires_native_compile_toolchain,
     setup_environment,
+    run_subprocess_with_captured_errors,
     validate_block_swap_options,
 )
 from .custom_logging import setup_logging
@@ -797,12 +798,13 @@ def train_flux_model(headless: bool, print_only: bool, parameters):
             gr.Info("Starting latent caching... This may take a while.")
             import subprocess
 
-            subprocess.run(latent_cache_cmd, env=setup_environment(), check=True)
+            run_subprocess_with_captured_errors(
+                latent_cache_cmd, setup_environment(), label="Latent caching"
+            )
             gr.Info("Latent caching completed successfully!")
-        except subprocess.CalledProcessError as e:
-            log.error(f"Latent caching failed with return code {e.returncode}")
-            gr.Warning(f"Latent caching failed with return code {e.returncode}")
-            raise RuntimeError(f"Latent caching failed with return code {e.returncode}")
+        except RuntimeError as e:
+            gr.Warning(str(e))
+            raise
         except FileNotFoundError:
             raise RuntimeError(f"Python executable not found: {python_cmd}")
 

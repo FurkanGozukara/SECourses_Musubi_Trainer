@@ -37,6 +37,7 @@ from .common_gui import (
     scriptdir,
     requires_native_compile_toolchain,
     setup_environment,
+    run_subprocess_with_captured_errors,
     save_executed_script,
     save_training_preview_config,
     generate_script_content,
@@ -2213,15 +2214,16 @@ def train_qwen_image_model(headless, print_only, parameters):
         )
         
         try:
-            # Run without capture_output to show progress in real-time
+            # Streams progress in real-time while retaining the tail for error reporting
             gr.Info("Starting latent caching... This may take a while.")
-            result = subprocess.run(run_cache_latent_cmd, env=setup_environment(), check=True)
+            run_subprocess_with_captured_errors(
+                run_cache_latent_cmd, setup_environment(), label="Latent caching"
+            )
             log.debug("Latent caching completed.")
             gr.Info("Latent caching completed successfully!")
-        except subprocess.CalledProcessError as e:
-            log.error(f"Latent caching failed with return code {e.returncode}")
-            gr.Warning(f"Latent caching failed with return code {e.returncode}")
-            raise RuntimeError(f"Latent caching failed with return code {e.returncode}")
+        except RuntimeError as e:
+            gr.Warning(str(e))
+            raise
         except FileNotFoundError as e:
             log.error(f"Command not found: {e}")
             log.error("Please ensure Python is installed and accessible in your PATH")

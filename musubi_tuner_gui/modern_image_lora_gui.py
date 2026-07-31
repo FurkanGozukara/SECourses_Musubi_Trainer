@@ -2424,5 +2424,15 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         ],
         js="() => { if (confirm('Stop training/caching?')) { return []; } else { throw new Error('Cancelled'); } }",
     )
+    run_state.change(
+        fn=executor.wait_for_training_to_end,
+        outputs=[
+            executor.button_run,
+            executor.stop_row,
+            executor.button_stop_training,
+            executor.training_status,
+        ],
+        show_progress=False,
+    )
 
     return settings_list

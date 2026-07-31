@@ -36,6 +36,7 @@ from .common_gui import (
     scriptdir,
     requires_native_compile_toolchain,
     setup_environment,
+    run_subprocess_with_captured_errors,
     manage_additional_parameters,
     save_executed_script,
     save_training_preview_config,
@@ -3095,13 +3096,14 @@ def train_wan_model(headless, print_only, parameters):
             
             try:
                 gr.Info("Starting latent caching... This may take a while.")
-                result = subprocess.run(latent_cache_cmd, env=setup_environment(), check=True)
+                run_subprocess_with_captured_errors(
+                    latent_cache_cmd, setup_environment(), label="Latent caching"
+                )
                 log.debug("Latent caching completed.")
                 gr.Info("Latent caching completed successfully!")
-            except subprocess.CalledProcessError as e:
-                log.error(f"Latent caching failed with return code {e.returncode}")
-                gr.Warning(f"Latent caching failed with return code {e.returncode}")
-                raise RuntimeError(f"Latent caching failed with return code {e.returncode}")
+            except RuntimeError as e:
+                gr.Warning(str(e))
+                raise
             except FileNotFoundError as e:
                 log.error(f"Command not found: {e}")
                 log.error("Please ensure Python is installed and accessible in your PATH")
