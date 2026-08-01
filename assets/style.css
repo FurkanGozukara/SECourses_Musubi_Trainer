@@ -23,6 +23,14 @@
     --btn-radius: 10px;
 }
 
+/* Gradio's bootstrap sets `body { background: var(--bg) }` from the OS
+   prefers-color-scheme, which leaks a dark backdrop behind light-themed pages
+   (visible during lazy panel mounts and overscroll). Follow the ACTIVE app
+   theme instead. */
+body {
+    background: var(--body-background-fill, var(--bg)) !important;
+}
+
 /* ------------------------------ Global font ------------------------------ */
 .gradio-container,
 .gradio-container * {
@@ -152,9 +160,43 @@
     border: 1px solid rgba(99, 102, 241, 0.25);
 }
 
-.gradio-container .tab-container {
-    gap: 4px;
-    flex-wrap: nowrap;
+/* ---- Show ALL tabs (wrap into rows) instead of hiding them in the "…" menu ----
+   Gradio 6 measures the hidden .visually-hidden buttons to decide which tabs
+   overflow. Zeroing those measurement buttons makes the cumulative width ~0,
+   so every tab stays in the visible bar; the bar itself is allowed to wrap. */
+.gradio-container .tab-container.visually-hidden button {
+    width: 0 !important;
+    min-width: 0 !important;
+    max-width: 0 !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    border: 0 !important;
+    font-size: 0 !important;
+    overflow: hidden !important;
+}
+
+.gradio-container .tab-container:not(.visually-hidden) {
+    flex-wrap: wrap !important;
+    height: auto !important;
+    overflow: visible !important;
+    gap: 5px 5px;
+    padding-bottom: 2px;
+}
+
+/* The stock 1px underline looks odd across wrapped rows — the wrapper card
+   already provides the boundary. */
+.gradio-container .tab-container:not(.visually-hidden)::after {
+    display: none;
+}
+
+/* Stock buttons stretch to the old fixed bar height; let pills size naturally. */
+.gradio-container .tab-container button {
+    height: auto !important;
+}
+
+/* No overflow menu needed anymore. */
+.gradio-container .tabs > .tab-wrapper > .overflow-menu {
+    display: none !important;
 }
 
 .gradio-container .tab-container button {

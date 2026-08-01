@@ -8,7 +8,6 @@ import contextlib
 import musubi_tuner_gui.torch_compat  # noqa: F401
 import gradio as gr
 
-from musubi_tuner_gui.lora_gui import lora_tab
 from musubi_tuner_gui.qwen_image_lora_gui import qwen_image_lora_tab
 from musubi_tuner_gui.wan_lora_gui import wan_lora_tab
 from musubi_tuner_gui.flux_lora_gui import flux_lora_tab
@@ -114,10 +113,6 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
         
         with gr.Tab("Version History"):
             version_history_tab(headless=headless, config=None)
-            
-        with gr.Tab("Musubi Tuner (Deprecated)"):
-            musubi_config = config_manager.get_config_for_tab("musubi_tuner")
-            lora_tab(headless=headless, config=musubi_config)
 
     return ui_interface
 
