@@ -2559,6 +2559,43 @@ def validate_args_setting(input_string):
         return False
 
 
+def run_gui_training_action(action, *, display_name: str, print_only: bool, is_running=None):
+    """Run a GUI training/preview callback with a clear, non-misleading result."""
+    try:
+        result = action()
+    except gr.Error:
+        raise
+    except Exception as exc:
+        log.exception("Failed to start %s training", display_name)
+        raise gr.Error(
+            f"{type(exc).__name__}: {exc}",
+            title=f"{display_name} training could not start",
+            duration=None,
+            print_exception=False,
+        ) from exc
+
+    if print_only:
+        gr.Info("Training command preview generated. Check the console/log for the full command.")
+    elif is_running is None or is_running():
+        gr.Info("Training started. Please check the console for progress.")
+    return result
+
+
+class TrainingCancelled(RuntimeError):
+    """Raised when the user stops a managed caching or training subprocess."""
+
+
+def cancelled_training_updates(headless: bool):
+    """Return the standard GUI state for a workflow cancelled before training starts."""
+    return (
+        gr.update(visible=True),
+        gr.update(visible=headless),
+        gr.update(interactive=True),
+        gr.update(value="Training stopped by user"),
+        gr.update(),
+    )
+
+
 def validate_block_swap_options(param_dict: dict, *, lora_training: bool = True) -> None:
     """Fail early for combinations the backend H2D offloader cannot run safely."""
     raw_ring_size = param_dict.get("block_swap_ring_size", 2)
@@ -2666,7 +2703,7 @@ def explain_subprocess_failure(output_tail: str) -> Optional[str]:
     return None
 
 
-def run_subprocess_with_captured_errors(cmd, env, *, label: str, tail_lines: int = 40):
+def run_subprocess_with_captured_errors(cmd, env, *, label: str, tail_lines: int = 40, executor=None):
     """Run `cmd`, streaming its output live while retaining the tail for error reporting.
 
     subprocess.run(..., check=True) raises CalledProcessError carrying only a return code, so the
@@ -2684,6 +2721,9 @@ def run_subprocess_with_captured_errors(cmd, env, *, label: str, tail_lines: int
         stderr=subprocess.STDOUT,
         **utf8_subprocess_options(env),
     )
+    if executor is not None:
+        executor.process = proc
+        executor._cancel_requested = False
 
     # newline="" keeps line terminators untranslated, so tqdm's "\r" progress updates are echoed
     # as in-place redraws instead of scrolling one line per update.
@@ -2703,6 +2743,10 @@ def run_subprocess_with_captured_errors(cmd, env, *, label: str, tail_lines: int
     finally:
         proc.stdout.close()
         returncode = proc.wait()
+
+    if executor is not None and executor._cancel_requested:
+        executor._cancel_requested = False
+        raise TrainingCancelled(f"{label} stopped by user")
 
     if returncode != 0:
         output_tail = "\n".join(tail)

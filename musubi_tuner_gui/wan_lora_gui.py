@@ -31,6 +31,9 @@ from .common_gui import (
     print_command_and_toml,
     resolve_portable_model_value,
     run_cmd_advanced_training,
+    run_gui_training_action,
+    TrainingCancelled,
+    cancelled_training_updates,
     SaveConfigFile,
     SaveConfigFileToRun,
     scriptdir,
@@ -2424,10 +2427,6 @@ def wan_gui_actions(
         )))
     elif action == "train_model":
         log.info("Train WAN model...")
-        if print_only:
-            gr.Info("Generating training command preview... Check the console/log for the full command.")
-        else:
-            gr.Info("Training is starting... Please check the console for progress.")
         parameters = list(zip(
             [
                 # accelerate_launch
@@ -2497,10 +2496,15 @@ def wan_gui_actions(
             ],
             args
         ))
-        return train_wan_model(
-            headless=headless,
+        return run_gui_training_action(
+            lambda: train_wan_model(
+                headless=headless,
+                print_only=print_only,
+                parameters=parameters,
+            ),
+            display_name="Wan",
             print_only=print_only,
-            parameters=parameters,
+            is_running=executor.is_running,
         )
     
     return "Unknown action"
@@ -3105,10 +3109,12 @@ def train_wan_model(headless, print_only, parameters):
             try:
                 gr.Info("Starting latent caching... This may take a while.")
                 run_subprocess_with_captured_errors(
-                    latent_cache_cmd, setup_environment(), label="Latent caching"
+                    latent_cache_cmd, setup_environment(), label="Latent caching", executor=executor
                 )
                 log.debug("Latent caching completed.")
                 gr.Info("Latent caching completed successfully!")
+            except TrainingCancelled:
+                return cancelled_training_updates(headless)
             except RuntimeError as e:
                 gr.Warning(str(e))
                 raise
@@ -4307,7 +4313,7 @@ def wan_lora_tab(
         show_progress=False,
     )
     
-    # Wire up stop button with JavaScript confirmation
+    # Keep cancellation outside Gradio's queue so it can interrupt caching/training.
     executor.button_stop_training.click(
         executor.kill_command,
         inputs=[],
@@ -4317,7 +4323,8 @@ def wan_lora_tab(
             executor.button_stop_training,
             executor.training_status,
         ],
-        js="() => { if (confirm('Are you sure you want to stop training?')) { return []; } else { throw new Error('Cancelled'); } }",
+        queue=False,
+        show_progress=False,
     )
 
     run_state.change(

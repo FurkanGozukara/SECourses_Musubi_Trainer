@@ -21,6 +21,7 @@ class CommandExecutor:
         """
         self.headless = headless
         self.process = None
+        self._cancel_requested = False
         
         with gr.Row():
             self.button_run = gr.Button(
@@ -58,6 +59,7 @@ class CommandExecutor:
         if self.process and self.process.poll() is None:
             log.info("The command is already running. Please wait for it to finish.")
         else:
+            self._cancel_requested = False
             # for i, item in enumerate(run_cmd):
             #     log.info(f"{i}: {item}")
 
@@ -75,6 +77,7 @@ class CommandExecutor:
         """
         if self.is_running():
             try:
+                self._cancel_requested = True
                 # Get the parent process and kill all its children (including any text encoder caching)
                 parent = psutil.Process(self.process.pid)
                 children = parent.children(recursive=True)
@@ -135,8 +138,12 @@ class CommandExecutor:
             time.sleep(1)
             log.debug("Waiting for training to end...")
         
-        # Check if process ended with error
-        if self.process and self.process.returncode != 0:
+        # A user-requested termination is not a training failure.
+        if self._cancel_requested:
+            log.info("Training stopped by user.")
+            status_msg = "Training stopped by user"
+            self._cancel_requested = False
+        elif self.process and self.process.returncode != 0:
             log.error(f"Training failed with exit code: {self.process.returncode}")
             gr.Warning(f"Training failed with exit code: {self.process.returncode}. Check console for details.")
             status_msg = f"Training failed (exit code: {self.process.returncode}). Check console for details."
@@ -170,7 +177,10 @@ class CommandExecutor:
             log.debug("Waiting for training to end...")
         
         # Check if process ended with error
-        if self.process and self.process.returncode != 0:
+        if self._cancel_requested:
+            log.info("Training stopped by user.")
+            self._cancel_requested = False
+        elif self.process and self.process.returncode != 0:
             log.error(f"Training failed with exit code: {self.process.returncode}")
         else:
             log.info("Training completed successfully.")
@@ -186,6 +196,7 @@ class CommandExecutor:
         """
         if self.is_running():
             try:
+                self._cancel_requested = True
                 # Get the parent process and kill all its children
                 parent = psutil.Process(self.process.pid)
                 for child in parent.children(recursive=True):

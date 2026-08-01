@@ -997,7 +997,8 @@ def lora_tab(
             executor.button_stop_training,
             executor.training_status,
         ],
-        js="() => { if (confirm('Are you sure you want to stop training?')) { return []; } else { throw new Error('Cancelled'); } }",
+        queue=False,
+        show_progress=False,
     )
 
     

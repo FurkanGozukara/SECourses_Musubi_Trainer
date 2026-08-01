@@ -38,6 +38,8 @@ from .common_gui import (
     requires_native_compile_toolchain,
     setup_environment,
     run_subprocess_with_captured_errors,
+    TrainingCancelled,
+    cancelled_training_updates,
     validate_block_swap_options,
 )
 from .custom_logging import setup_logging
@@ -799,9 +801,11 @@ def train_flux_model(headless: bool, print_only: bool, parameters):
             import subprocess
 
             run_subprocess_with_captured_errors(
-                latent_cache_cmd, setup_environment(), label="Latent caching"
+                latent_cache_cmd, setup_environment(), label="Latent caching", executor=executor
             )
             gr.Info("Latent caching completed successfully!")
+        except TrainingCancelled:
+            return cancelled_training_updates(headless)
         except RuntimeError as e:
             gr.Warning(str(e))
             raise
@@ -2465,7 +2469,8 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
         executor.kill_command,
         inputs=[],
         outputs=[executor.button_run, executor.stop_row, executor.button_stop_training, executor.training_status],
-        js="() => { if (confirm('Stop training/caching?')) { return []; } else { throw new Error('Cancelled'); } }",
+        queue=False,
+        show_progress=False,
     )
 
     run_state.change(

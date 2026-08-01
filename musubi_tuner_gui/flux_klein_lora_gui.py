@@ -864,7 +864,8 @@ def flux_klein_lora_tab(headless=False, config: GUIConfig = {}):
         executor.kill_command,
         inputs=[],
         outputs=[executor.button_run, executor.stop_row, executor.button_stop_training, executor.training_status],
-        js="() => { if (confirm('Stop training/caching?')) { return []; } else { throw new Error('Cancelled'); } }",
+        queue=False,
+        show_progress=False,
     )
 
     run_state.change(

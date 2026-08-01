@@ -2429,7 +2429,8 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
         executor.kill_command,
         inputs=[],
         outputs=[executor.button_run, executor.stop_row, executor.button_stop_training, executor.training_status],
-        js="() => { if (confirm('Stop LTX-2 training/caching?')) { return []; } else { throw new Error('Cancelled'); } }",
+        queue=False,
+        show_progress=False,
     )
     run_state.change(
         fn=executor.wait_for_training_to_end,
