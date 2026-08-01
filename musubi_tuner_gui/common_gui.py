@@ -44,6 +44,8 @@ PORTABLE_MODEL_PATH_KEYS = frozenset(
         "clip_vision",
         "dit",
         "dit_high_noise",
+        "gemma_safetensors",
+        "ltx2_checkpoint",
         "network_weights",
         "t5",
         "text_encoder",
@@ -1886,7 +1888,17 @@ def SaveConfigFile(
                 'sample_discrete_flow_shift', 'sample_cfg_scale', 'dataset_qwen_image_edit_control_resolution_width',
                 'dataset_qwen_image_edit_control_resolution_height',
                 # Torch compile
-                'compile_cache_size_limit'
+                'compile_cache_size_limit',
+                # LTX-2 numeric fields
+                'width', 'height', 'split_attn_chunk_size', 'block_swap_ring_size',
+                'blocks_to_checkpoint', 'ltx2_first_frame_conditioning_p',
+                'dataset_num_frames', 'dataset_frame_stride', 'dataset_frame_sample',
+                'dataset_max_frames', 'dataset_source_fps', 'dataset_target_fps',
+                'caching_latent_vae_spatial_tile_size', 'caching_latent_vae_spatial_tile_overlap',
+                'caching_latent_vae_temporal_tile_size', 'caching_latent_vae_temporal_tile_overlap',
+                'caching_latent_vae_chunk_size',
+                'sample_vae_tile_size', 'sample_vae_tile_overlap',
+                'sample_vae_temporal_tile_size', 'sample_vae_temporal_tile_overlap'
             ]
 
             if name in numeric_fields and value is not None:
@@ -2128,6 +2140,8 @@ def SaveConfigFileToRun(
         "network_weights", "base_weights", "dit", "vae", "text_encoder",
         "weights", "pretrained_model_name_or_path", "state_dict",
         "checkpoint", "ckpt", "safetensors", "model_path",
+        # LTX-2 model paths
+        "ltx2_checkpoint", "gemma_root", "gemma_safetensors",
         
         # Text encoder paths
         "text_encoder1", "text_encoder2", 
@@ -2273,6 +2287,14 @@ def SaveConfigFileToRun(
             "validate_caption_structure", "warn_on_caption_issues", "log_loss_stats",
             # Torch compile parameters - store_true flags
             "compile", "compile_fullgraph", "compile_resident_blocks_only",
+            # LTX-2 store_true flags - omit from run TOML when False
+            "gemma_load_in_8bit", "gemma_load_in_4bit", "cpu_staged_checkpoint_loading",
+            "fp8_w8a8", "nf4_base", "int8_convrot_dynamic", "int8_convrot_base",
+            "int8_convrot_no_mse_clip", "int8_fused_quant", "blockwise_checkpointing",
+            "ltx2_low_ram_load", "separate_audio_buckets", "train_connectors",
+            "no_convert_to_comfy", "no_save_original_lora", "dim_from_weights",
+            "sample_with_offloading", "sample_tiled_vae", "sample_merge_audio",
+            "sample_disable_audio", "sample_audio_only",
             # Additional Wan parameters that should not be passed when False
             "fp8_llm"  # This was already in the list but ensuring it's complete
         ]

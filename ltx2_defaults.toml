@@ -1,0 +1,229 @@
+# LTX 2.3 Video Training Tab Default Configuration
+# SECourses Musubi Trainer - LTX-2 / LTX-2.3 LoRA training defaults
+# INT8 ConvRot quantized base + block swap so a 22B model trains on 24-32 GB GPUs.
+
+# ============ Accelerate Launch ============
+mixed_precision = "bf16"
+num_processes = 1
+num_machines = 1
+num_cpu_threads_per_process = 1
+dynamo_backend = "no"
+dynamo_mode = ""
+dynamo_use_fullgraph = false
+dynamo_use_dynamic = false
+multi_gpu = false
+gpu_ids = "0"
+main_process_port = 0
+extra_accelerate_launch_args = ""
+
+# ============ Model ============
+ltx2_checkpoint = ""
+gemma_root = ""
+gemma_safetensors = ""
+ltx_version = "2.3"
+ltx_version_check_mode = "warn"
+ltx2_mode = "video"
+vae_dtype = "bfloat16"
+gemma_load_in_8bit = false
+gemma_load_in_4bit = false
+cpu_staged_checkpoint_loading = false
+
+# ============ Attention ============
+sdpa = true
+flash_attn = false
+sage_attn = false
+xformers = false
+split_attn_target = "none"
+split_attn_mode = "batch"
+split_attn_chunk_size = 0
+
+# ============ Quantization (INT8 ConvRot recommended) ============
+fp8_base = false
+fp8_scaled = false
+fp8_keep_blocks = ""
+fp8_w8a8 = false
+int8_convrot_dynamic = true
+int8_convrot_base = false
+int8_convrot_groupsize = "auto"
+int8_convrot_no_mse_clip = false
+int8_convrot_write_quality_report = false
+nf4_base = false
+quantize_device = ""
+w8a8_backend = ""
+
+# ============ Memory ============
+blocks_to_swap = 20
+use_pinned_memory_for_block_swap = false
+block_swap_h2d_only = false
+block_swap_ring_size = 2
+gradient_checkpointing = true
+gradient_checkpointing_cpu_offload = false
+blockwise_checkpointing = false
+blocks_to_checkpoint = -1
+ltx2_low_ram_load = false
+
+# ============ Dataset ============
+dataset_config_mode = "Generate from Folder Structure"
+dataset_config = ""
+parent_folder_path = ""
+generated_toml_path = ""
+dataset_resolution_width = 768
+dataset_resolution_height = 512
+dataset_batch_size = 1
+dataset_enable_bucket = true
+dataset_bucket_no_upscale = false
+dataset_cache_directory = "cache_dir"
+dataset_caption_extension = ".txt"
+caption_strategy = "folder_name"
+create_missing_captions = true
+dataset_num_frames = 33          # LTX-2 frame counts must be 8k+1 (1, 9, 17, 25, 33, 41, 49...)
+dataset_frame_extraction = "head"
+dataset_frame_stride = 1
+dataset_frame_sample = 1
+dataset_max_frames = 129
+dataset_source_fps = 0           # 0 = auto-detect
+dataset_target_fps = 25.0        # LTX-2 native training FPS
+
+# ============ Audio / AV ============
+ltx2_audio_source = "video"
+separate_audio_buckets = false
+ltx2_first_frame_conditioning_p = 0.1
+
+# ============ Caching ============
+cache_latents = true
+caching_latent_device = "cuda"
+caching_latent_batch_size = 1
+caching_latent_num_workers = 2
+caching_latent_skip_existing = true
+caching_latent_keep_cache = true
+caching_latent_atomic_writes = true
+caching_latent_vae_spatial_tile_size = 0
+caching_latent_vae_spatial_tile_overlap = 64
+caching_latent_vae_temporal_tile_size = 0
+caching_latent_vae_temporal_tile_overlap = 24
+caching_latent_vae_chunk_size = 0
+cache_text_encoder_outputs = true
+caching_teo_device = "cuda"
+caching_teo_batch_size = 1
+caching_teo_num_workers = 1
+caching_teo_skip_existing = true
+caching_teo_keep_cache = true
+caching_teo_atomic_writes = true
+cache_before_connector = false
+
+# ============ Network (LoRA) ============
+network_module = "networks.lora_ltx2"
+network_dim = 128
+network_alpha = 128
+network_dropout = 0
+network_args = ""
+network_weights = ""
+base_weights = ""
+base_weights_multiplier = 1
+dim_from_weights = false
+scale_weight_norms = 0
+lora_target_preset = "t2v"
+train_connectors = false
+no_convert_to_comfy = false
+no_save_original_lora = false
+
+# ============ Optimizer / Scheduler ============
+optimizer_type = "AdaFactor"
+optimizer_args = "scale_parameter=False relative_step=False warmup_init=False weight_decay=0.01"
+learning_rate = 1e-4
+max_grad_norm = 0
+lr_scheduler = "constant"
+lr_warmup_steps = 0
+lr_decay_steps = 0
+lr_scheduler_num_cycles = 1
+lr_scheduler_power = 1
+lr_scheduler_timescale = 0
+lr_scheduler_min_lr_ratio = 0
+lr_scheduler_type = ""
+lr_scheduler_args = ""
+gradient_accumulation_steps = 1
+
+# ============ Training ============
+max_train_steps = 80000
+max_train_epochs = 100
+seed = 42
+max_data_loader_n_workers = 2
+persistent_data_loader_workers = true
+timestep_sampling = "shifted_logit_normal"
+discrete_flow_shift = 1
+min_timestep = 0
+max_timestep = 1000
+
+# ============ Saving ============
+output_dir = ""
+output_name = "my-ltx2-lora"
+save_every_n_epochs = 10
+save_every_n_steps = 0
+save_last_n_epochs = 0
+save_last_n_steps = 0
+save_last_n_epochs_state = 0
+save_last_n_steps_state = 0
+save_state = false
+save_state_on_train_end = false
+resume = ""
+
+# ============ Sampling ============
+sample_every_n_epochs = 0
+sample_every_n_steps = 0
+sample_at_first = false
+sample_prompts = ""
+width = 768
+height = 512
+sample_num_frames = 49
+sample_sampling_preset = "defaults"
+sample_sampler = "auto"
+sample_sigma_schedule = "auto"
+sample_with_offloading = true
+sample_tiled_vae = true
+sample_vae_tile_size = 512
+sample_vae_tile_overlap = 64
+sample_vae_temporal_tile_size = 48
+sample_vae_temporal_tile_overlap = 8
+sample_merge_audio = false
+sample_disable_audio = false
+sample_audio_only = false
+sample_steps = 30
+sample_seed = 42
+sample_cfg_scale = 4.0
+sample_negative_prompt = ""
+sample_output_dir = ""
+disable_prompt_enhancement = false
+
+# ============ Logging / Metadata / HuggingFace ============
+logging_dir = ""
+log_with = ""
+log_prefix = ""
+log_tracker_name = ""
+log_tracker_config = ""
+log_config = false
+wandb_api_key = ""
+wandb_run_name = ""
+no_metadata = false
+metadata_author = ""
+metadata_description = ""
+metadata_license = ""
+metadata_tags = ""
+metadata_title = ""
+training_comment = ""
+huggingface_repo_id = ""
+huggingface_token = ""
+huggingface_repo_type = "model"
+huggingface_repo_visibility = "private"
+huggingface_path_in_repo = ""
+save_state_to_huggingface = false
+resume_from_huggingface = false
+async_upload = false
+
+# ============ DDP ============
+ddp_timeout = 0
+ddp_gradient_as_bucket_view = false
+ddp_static_graph = false
+
+# ============ Misc ============
+additional_parameters = ""
+debug_mode = "None"

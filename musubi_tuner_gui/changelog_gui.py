@@ -8,6 +8,20 @@ def version_history_tab(headless=False, config=None):
         gr.Markdown("""
 ## Version History
 
+### 1 August 2026 - V32: LTX 2.3 (22B) Video Training
+
+**🎬 Full LTX-2 / LTX-2.3 text-to-video and audio-video LoRA training with INT8 ConvRot quantization.**
+
+- **New "LTX 2.3 Video Training" tab** supporting both LTX-2 (19B) and LTX-2.3 (22B) checkpoints (`--ltx_version` selector with automatic checkpoint version detection).
+- **Complete video training pipeline**: dataset TOML generation from folder structures (videos and images, 8k+1 frame rule and 25 FPS resampling handled automatically), VAE latent caching, Gemma 3 12B text-encoder output caching, and LoRA training with `networks.lora_ltx2` — all chained from a single Start Training button.
+- **INT8 ConvRot quantized training** for the 22B base model: group-wise Hadamard rotation + per-row MSE-clipped INT8 (≈41 dB weight SQNR vs ≈32 dB for scaled FP8), selectable group size, optional per-layer quality report JSON, and support for pre-quantized INT8 ConvRot checkpoints produced by `ltx2_quantize_int8_convrot.py`.
+- **Additional base quantizations**: Scaled FP8 (with keep-blocks list and optional W8A8 activations) and NF4, plus block swap up to 47 blocks, H2D-only block swap, blockwise checkpointing, and low main-RAM loading for large-model training on consumer GPUs.
+- **Audio-video (av) and audio-only training modes** with separate audio buckets and selectable audio source (video container or external .wav files).
+- **Video sample generation during training** with tiled VAE decoding, CPU offloading, LTX-2.3 sampling presets, and optional audio merge into the preview mp4.
+- **Model downloader**: new "LTX 2.3 Training Models" bundle (LTX-2.3 22B dev checkpoint + Gemma 3 12B FP8 single-file text encoder, ~59 GB total, no gated repos - no login needed).
+- **Demo preset**: `LTX_2.3_LoRA_Demo.toml` — rank 128 LoRA with INT8 ConvRot, tuned for 24-32 GB GPUs.
+- Merged the complete LTX-2 backend (AkaneTendo25/musubi-tuner `ltx-2` branch) into our musubi-tuner fork: 60+ new LTX-2 modules including quantizers, LoRA merge/extract/convert utilities, IC-LoRA and conditioning systems, and audio-video joint training - while keeping every existing model family (Qwen, Wan, FLUX, Z Image, Ideogram 4, Krea 2, Hunyuan, FramePack...) unchanged and fully working.
+
 ### 31 July 2026 - Krea 2 ConvRot INT8 Quantization
 
 **⚡ A faster, more accurate alternative to Scaled FP8 for Krea 2 LoRA training — and it finally makes Krea 2 fast on RTX 30 series and older GPUs.**

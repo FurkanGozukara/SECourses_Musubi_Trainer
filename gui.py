@@ -15,6 +15,7 @@ from musubi_tuner_gui.flux_lora_gui import flux_lora_tab
 from musubi_tuner_gui.zimage_lora_gui import zimage_lora_tab
 from musubi_tuner_gui.ideogram4_lora_gui import ideogram4_lora_tab
 from musubi_tuner_gui.krea2_lora_gui import krea2_lora_tab
+from musubi_tuner_gui.ltx2_lora_gui import ltx2_lora_tab
 from musubi_tuner_gui.image_captioning_gui import image_captioning_tab
 from musubi_tuner_gui.model_quantizer_gui import model_quantizer_tab
 from musubi_tuner_gui.image_preprocessing_gui import image_preprocessing_tab
@@ -43,10 +44,10 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
     css = read_file_content("./assets/style.css")
 
     # Create the main Gradio Blocks interface
-    ui_interface = gr.Blocks(css=css, title="SECourses Musubi Trainer V31.0", theme=gr.themes.Soft())
+    ui_interface = gr.Blocks(css=css, title="SECourses Musubi Trainer V32.0", theme=gr.themes.Soft())
     with ui_interface:
         # Add title with Patreon link
-        gr.Markdown("# SECourses Musubi Trainer V31.0 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
+        gr.Markdown("# SECourses Musubi Trainer V32.0 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
         
         # Create tabs for different functionalities
         with gr.Tab("Qwen Image Training"):
@@ -72,6 +73,10 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
         with gr.Tab("Krea 2 Training"):
             krea2_config = config_manager.get_config_for_tab("krea2")
             krea2_lora_tab(headless=headless, config=krea2_config)
+
+        with gr.Tab("LTX 2.3 Video Training"):
+            ltx2_config = config_manager.get_config_for_tab("ltx2")
+            ltx2_lora_tab(headless=headless, config=ltx2_config)
         
         with gr.Tab("Image Captioning"):
             captioning_config = config_manager.get_config_for_tab("image_captioning")
