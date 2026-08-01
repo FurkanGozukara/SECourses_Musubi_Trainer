@@ -40,14 +40,27 @@ def read_file_content(file_path):
 
 # Function to initialize the Gradio UI interface
 def initialize_ui_interface(config_manager, headless, release_info, readme_content):
-    # Load custom CSS if available
-    css = read_file_content("./assets/style.css")
-
     # Create the main Gradio Blocks interface
-    ui_interface = gr.Blocks(css=css, title="SECourses Musubi Trainer V32.0", theme=gr.themes.Soft())
+    # NOTE: In Gradio 6, `css` and `theme` are passed to launch() instead of Blocks().
+    ui_interface = gr.Blocks(title="SECourses Musubi Trainer V32.0")
     with ui_interface:
-        # Add title with Patreon link
-        gr.Markdown("# SECourses Musubi Trainer V32.0 : [https://www.patreon.com/posts/137551634](https://www.patreon.com/posts/137551634)")
+        # Modern hero header with Patreon link
+        gr.HTML(
+            """
+            <div class="app-hero">
+                <div class="app-hero-left">
+                    <div class="app-hero-badge">V32.0</div>
+                    <div>
+                        <h1>SECourses <span class="grad">Musubi Trainer</span></h1>
+                        <p>Qwen · Wan · FLUX · Z-Image · Ideogram 4 · Krea 2 · LTX 2.3 — LoRA &amp; fine-tune training toolkit</p>
+                    </div>
+                </div>
+                <a class="app-hero-link" href="https://www.patreon.com/posts/137551634" target="_blank" rel="noopener">
+                    ⭐ Patreon Guide &amp; Support
+                </a>
+            </div>
+            """
+        )
         
         # Create tabs for different functionalities
         with gr.Tab("Qwen Image Training"):
@@ -129,6 +142,7 @@ def UI(**kwargs):
     ui_interface = initialize_ui_interface(config_manager, kwargs.get("headless", False), release_info, readme_content)
 
     # Construct launch parameters using dictionary comprehension
+    # Gradio 6: theme and css belong to launch(), not the Blocks constructor.
     launch_params = {
         "server_name": kwargs.get("listen"),
         "auth": (kwargs["username"], kwargs["password"]) if kwargs.get("username") and kwargs.get("password") else None,
@@ -137,6 +151,13 @@ def UI(**kwargs):
         "share": kwargs.get("share", False),
         "root_path": kwargs.get("root_path", None),
         "debug": kwargs.get("debug", False),
+        "theme": gr.themes.Soft(
+            primary_hue="indigo",
+            secondary_hue="violet",
+            neutral_hue="slate",
+            radius_size=gr.themes.sizes.radius_lg,
+        ),
+        "css": read_file_content("./assets/style.css"),
     }
   
     # This line filters out any key-value pairs from `launch_params` where the value is `None`, ensuring only valid parameters are passed to the `launch` function.

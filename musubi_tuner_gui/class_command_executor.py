@@ -23,7 +23,11 @@ class CommandExecutor:
         self.process = None
         
         with gr.Row():
-            self.button_run = gr.Button("Start training", variant="primary")
+            self.button_run = gr.Button(
+                "Start training",
+                variant="primary",
+                elem_classes=["mbtn", "mbtn-emerald"],
+            )
         
         # Training status indicator
         with gr.Row():
@@ -36,10 +40,11 @@ class CommandExecutor:
         # Stop training controls - now under status
         with gr.Row(visible=self.process is not None or headless) as self.stop_row:
             self.button_stop_training = gr.Button(
-                "Stop training", 
+                "Stop training",
                 variant="stop",
                 interactive=True,
-                elem_id="stop_training_btn"
+                elem_id="stop_training_btn",
+                elem_classes=["mbtn", "mbtn-red"],
             )
 
     def execute_command(self, run_cmd: str, **kwargs):

@@ -372,14 +372,14 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             placeholder="Path to DiT .safetensors/.pt model",
                             info="Required only for LoRA ➜ DiT merges.",
                         )
-                        dit_path_button = gr.Button("Browse File", size="lg", visible=not headless)
+                        dit_path_button = gr.Button("Browse File", size="lg", elem_classes=["mbtn", "mbtn-blue"], visible=not headless)
 
                     with gr.Row():
                         lora1_input = gr.Textbox(
                             label="LoRA #1",
                             placeholder="First LoRA weights file",
                         )
-                        lora1_button = gr.Button("Browse File", size="lg", visible=not headless)
+                        lora1_button = gr.Button("Browse File", size="lg", elem_classes=["mbtn", "mbtn-violet"], visible=not headless)
                         lora1_multiplier = gr.Number(
                             label="Multiplier #1",
                             value=1.0,
@@ -391,7 +391,7 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             label="LoRA #2 (optional)",
                             placeholder="Second LoRA weights file",
                         )
-                        lora2_button = gr.Button("Browse File", size="lg", visible=not headless)
+                        lora2_button = gr.Button("Browse File", size="lg", elem_classes=["mbtn", "mbtn-purple"], visible=not headless)
                         lora2_multiplier = gr.Number(
                             label="Multiplier #2",
                             value=1.0,
@@ -403,7 +403,7 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             label="LoRA #3 (optional)",
                             placeholder="Third LoRA weights file",
                         )
-                        lora3_button = gr.Button("Browse File", size="lg", visible=not headless)
+                        lora3_button = gr.Button("Browse File", size="lg", elem_classes=["mbtn", "mbtn-fuchsia"], visible=not headless)
                         lora3_multiplier = gr.Number(
                             label="Multiplier #3",
                             value=1.0,
@@ -415,7 +415,7 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             label="Merged Output Path",
                             placeholder="Where to save merged checkpoint",
                         )
-                        output_path_button = gr.Button("Save As", size="lg", visible=not headless)
+                        output_path_button = gr.Button("Save As", size="lg", elem_classes=["mbtn", "mbtn-navy"], visible=not headless)
 
                     overwrite_single_checkbox = gr.Checkbox(
                         label="Overwrite Existing Output",
@@ -432,10 +432,12 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                     merge_button = gr.Button(
                         "Merge LoRA(s)",
                         variant="primary",
+                        elem_classes=["mbtn", "mbtn-emerald"],
                     )
                     cancel_single_button = gr.Button(
                         "Cancel Merge",
                         variant="secondary",
+                        elem_classes=["mbtn", "mbtn-stone"],
                     )
 
                 with gr.Tab("Batch Merge"):
@@ -444,14 +446,14 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             label="Base DiT Checkpoint",
                             placeholder="Path to DiT .safetensors/.pt model",
                         )
-                        batch_dit_button = gr.Button("Browse File", size="lg", visible=not headless)
+                        batch_dit_button = gr.Button("Browse File", size="lg", elem_classes=["mbtn", "mbtn-indigo"], visible=not headless)
 
                     with gr.Row():
                         lora_folder_input = gr.Textbox(
                             label="LoRA Folder",
                             placeholder="Folder containing LoRA weights",
                         )
-                        lora_folder_button = gr.Button("Browse Folder", size="lg", visible=not headless)
+                        lora_folder_button = gr.Button("Browse Folder", size="lg", elem_classes=["mbtn", "mbtn-pink"], visible=not headless)
 
                     with gr.Row():
                         output_folder_input = gr.Textbox(
@@ -459,7 +461,7 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             info="Leave empty to write merged outputs next to LoRA files.",
                             placeholder="Folder to save merged checkpoints",
                         )
-                        output_folder_button = gr.Button("Browse Folder", size="lg", visible=not headless)
+                        output_folder_button = gr.Button("Browse Folder", size="lg", elem_classes=["mbtn", "mbtn-forest"], visible=not headless)
 
                     with gr.Row():
                         output_suffix_input = gr.Textbox(
@@ -505,10 +507,12 @@ def lora_merge_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                     batch_merge_button = gr.Button(
                         "Start Batch Merge",
                         variant="primary",
+                        elem_classes=["mbtn", "mbtn-orange"],
                     )
                     cancel_batch_button = gr.Button(
                         "Cancel Batch Merge",
                         variant="secondary",
+                        elem_classes=["mbtn", "mbtn-red"],
                     )
 
         with gr.Column(scale=1):

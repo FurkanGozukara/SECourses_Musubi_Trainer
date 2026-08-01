@@ -487,21 +487,21 @@ def lora_extractor_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             label="Base Model (Original)",
                             placeholder="Path to original checkpoint (e.g., ./models/base/qwen_image.safetensors)",
                         )
-                        base_model_button = gr.Button("Browse File", size="lg", visible=not headless)
+                        base_model_button = gr.Button("Browse File", size="lg", elem_classes=["mbtn", "mbtn-blue"], visible=not headless)
 
                     with gr.Row():
                         tuned_model_path = gr.Textbox(
                             label="Tuned Model (Fine-Tuned)",
                             placeholder="Path to fine-tuned checkpoint (e.g., ./models/tuned/qwen_image_person.safetensors)",
                         )
-                        tuned_model_button = gr.Button("Browse File", size="lg", visible=not headless)
+                        tuned_model_button = gr.Button("Browse File", size="lg", elem_classes=["mbtn", "mbtn-violet"], visible=not headless)
 
                     with gr.Row():
                         output_lora_path = gr.Textbox(
                             label="Output LoRA Path",
                             placeholder="Where to save the LoRA (e.g., ./loras/qwen_person_LoRA.safetensors)",
                         )
-                        output_path_button = gr.Button("Save As", size="lg", visible=not headless)
+                        output_path_button = gr.Button("Save As", size="lg", elem_classes=["mbtn", "mbtn-navy"], visible=not headless)
 
                     single_status = gr.Textbox(
                         label="Extraction Log",
@@ -513,10 +513,12 @@ def lora_extractor_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                     extract_button = gr.Button(
                         "Extract LoRA",
                         variant="primary",
+                        elem_classes=["mbtn", "mbtn-emerald"],
                     )
                     cancel_single_button = gr.Button(
                         "Cancel Extraction",
                         variant="secondary",
+                        elem_classes=["mbtn", "mbtn-stone"],
                     )
 
                 with gr.Tab("Batch Extraction"):
@@ -526,14 +528,14 @@ def lora_extractor_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             placeholder="Path to the original/base checkpoint used for fine-tuning",
                             info="This model will be compared against every tuned checkpoint in the folder.",
                         )
-                        batch_base_model_button = gr.Button("Browse File", size="lg", visible=not headless)
+                        batch_base_model_button = gr.Button("Browse File", size="lg", elem_classes=["mbtn", "mbtn-indigo"], visible=not headless)
 
                     with gr.Row():
                         tuned_folder_input = gr.Textbox(
                             label="Tuned Models Folder",
                             placeholder="Folder containing fine-tuned checkpoints",
                         )
-                        tuned_folder_button = gr.Button("Browse Folder", size="lg", visible=not headless)
+                        tuned_folder_button = gr.Button("Browse Folder", size="lg", elem_classes=["mbtn", "mbtn-pink"], visible=not headless)
 
                     with gr.Row():
                         output_folder_input = gr.Textbox(
@@ -541,7 +543,7 @@ def lora_extractor_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             info="Leave empty to write LoRAs next to tuned models.",
                             placeholder="Folder to save extracted LoRAs",
                         )
-                        output_folder_button = gr.Button("Browse Folder", size="lg", visible=not headless)
+                        output_folder_button = gr.Button("Browse Folder", size="lg", elem_classes=["mbtn", "mbtn-forest"], visible=not headless)
 
                     with gr.Row():
                         tuned_suffix_input = gr.Textbox(
@@ -594,10 +596,12 @@ def lora_extractor_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                     batch_button = gr.Button(
                         "Start Batch Extraction",
                         variant="primary",
+                        elem_classes=["mbtn", "mbtn-orange"],
                     )
                     cancel_batch_button = gr.Button(
                         "Cancel Batch",
                         variant="secondary",
+                        elem_classes=["mbtn", "mbtn-red"],
                     )
 
         with gr.Column(scale=1):

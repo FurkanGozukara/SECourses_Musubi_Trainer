@@ -1310,7 +1310,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                     info="Single-file LTX-2 / LTX-2.3 checkpoint. Pre-quantized FP8 and INT8 ConvRot checkpoints are supported.",
                 ),
             )
-            ltx2_checkpoint_button = gr.Button("📂", elem_id="ltx2_checkpoint_button", size="sm", visible=(not headless))
+            ltx2_checkpoint_button = gr.Button("📂", elem_id="ltx2_checkpoint_button", elem_classes=["mbtn", "mbtn-blue"], size="sm", visible=(not headless))
             ltx2_checkpoint_button.click(
                 get_file_path,
                 inputs=[ltx2_checkpoint],
@@ -1327,7 +1327,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                     info="Single-file Gemma text encoder (weights + tokenizer + config). Leave empty when using the HF folder.",
                 ),
             )
-            gemma_safetensors_button = gr.Button("📂", size="sm", visible=(not headless))
+            gemma_safetensors_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-lime"], visible=(not headless))
             gemma_safetensors_button.click(
                 get_file_path,
                 inputs=[gemma_safetensors],
@@ -1344,7 +1344,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                     info="HuggingFace-format Gemma folder. Required for gemma_load_in_8bit / 4bit. Leave empty when using the single file.",
                 ),
             )
-            gemma_root_button = gr.Button("📂", size="sm", visible=(not headless))
+            gemma_root_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-fuchsia"], visible=(not headless))
             gemma_root_button.click(
                 get_folder_path,
                 inputs=[gemma_root],
@@ -1665,7 +1665,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                         info="Each subfolder becomes a dataset. Prefix with repeats like '3_name'. Captions are .txt files next to the media.",
                     ),
                 )
-                parent_folder_button = gr.Button("📂", size="sm", visible=(not headless))
+                parent_folder_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-pink"], visible=(not headless))
                 parent_folder_button.click(
                     get_folder_path,
                     inputs=[parent_folder_path],
@@ -1764,7 +1764,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                     gr.Number(label="Target FPS", value=get_value("dataset_target_fps"), minimum=1,
                               info="Videos are resampled to this rate during caching (LTX-2 default 25)."),
                 )
-                generate_toml_button = gr.Button("🛠️ Generate Dataset Config", variant="secondary")
+                generate_toml_button = gr.Button("🛠️ Generate Dataset Config", variant="secondary", elem_classes=["mbtn", "mbtn-orange"])
         with gr.Row():
             dataset_config = reg(
                 "dataset_config",
@@ -1775,7 +1775,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                     info="The dataset TOML used by caching and training.",
                 ),
             )
-            dataset_config_button = gr.Button("📂", size="sm", visible=(not headless))
+            dataset_config_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-gold"], visible=(not headless))
             dataset_config_button.click(
                 get_file_path,
                 inputs=[dataset_config],
@@ -2118,7 +2118,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                 "output_dir",
                 gr.Textbox(label="Output Directory", value=get_value("output_dir"), placeholder="Where checkpoints and run configs are written"),
             )
-            output_dir_button = gr.Button("📂", size="sm", visible=(not headless))
+            output_dir_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-teal"], visible=(not headless))
             output_dir_button.click(get_folder_path, inputs=[output_dir], outputs=[output_dir], show_progress=False)
             output_name = reg(
                 "output_name",
@@ -2187,7 +2187,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                 gr.Textbox(label="Sample Prompts File", value=get_value("sample_prompts"),
                            placeholder="Path to a .txt file with one prompt per line"),
             )
-            sample_prompts_button = gr.Button("📂", size="sm", visible=(not headless))
+            sample_prompts_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-forest"], visible=(not headless))
             sample_prompts_button.click(get_file_path, inputs=[sample_prompts], outputs=[sample_prompts], show_progress=False)
         with gr.Row():
             width = reg("width", gr.Number(label="Sample Width", value=get_value("width"), precision=0, minimum=64, step=32))
@@ -2389,7 +2389,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
 
     with gr.Column(), gr.Group():
         with gr.Row():
-            print_button = gr.Button("Print Command", variant="secondary")
+            print_button = gr.Button("Print Command", variant="secondary", elem_classes=["mbtn", "mbtn-slate"])
         executor = CommandExecutor(headless=headless)
 
     run_state = gr.Textbox(value=str(train_state_value), visible=False)

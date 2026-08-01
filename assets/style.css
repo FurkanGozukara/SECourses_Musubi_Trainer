@@ -1,39 +1,307 @@
-* {
-    font-family: Tahoma, sans-serif !important;
+/* ============================================================================
+   SECourses Musubi Trainer — Modern UI (Gradio 6)
+   ----------------------------------------------------------------------------
+   Design system:
+   - Global font + rendering polish
+   - Hero header
+   - Modern pill tab navigation (incl. overflow menu)
+   - .mbtn color system: every button gets a unique color per tab
+   - Accordion "cards" + legacy tinted section backgrounds (light/dark)
+   - Inputs, toasts, scrollbars, focus rings
+   ============================================================================ */
+
+/* ----------------------------- Design tokens ----------------------------- */
+:root {
+    --app-font: "Inter", "Segoe UI Variable Text", "Segoe UI", system-ui,
+        -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --app-mono: ui-monospace, "Cascadia Code", "JetBrains Mono", Consolas,
+        "Courier New", monospace;
+    --accent-1: #6366f1;   /* indigo */
+    --accent-2: #8b5cf6;   /* violet */
+    --accent-3: #d946ef;   /* fuchsia */
+    --card-radius: 14px;
+    --btn-radius: 10px;
 }
 
+/* ------------------------------ Global font ------------------------------ */
+.gradio-container,
+.gradio-container * {
+    font-family: var(--app-font) !important;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+}
+
+/* Keep code-ish surfaces monospace (command output, code blocks, editors) */
+.gradio-container code,
+.gradio-container pre,
+.gradio-container kbd,
+.gradio-container .cm-editor,
+.gradio-container .cm-editor *,
+.gradio-container .code_wrap * {
+    font-family: var(--app-mono) !important;
+}
+
+/* ------------------------------- Hero header ------------------------------ */
+.app-hero {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-wrap: wrap;
+    gap: 14px;
+    padding: 18px 22px;
+    margin: 2px 0 10px 0;
+    border-radius: 16px;
+    background:
+        radial-gradient(1200px 140px at 8% -30%, rgba(99, 102, 241, 0.18), transparent 60%),
+        radial-gradient(900px 140px at 60% -40%, rgba(217, 70, 239, 0.14), transparent 60%),
+        linear-gradient(135deg, rgba(99, 102, 241, 0.10), rgba(139, 92, 246, 0.08) 45%, rgba(217, 70, 239, 0.10));
+    border: 1px solid rgba(99, 102, 241, 0.25);
+    box-shadow: 0 4px 24px rgba(99, 102, 241, 0.10);
+}
+
+.dark .app-hero {
+    background:
+        radial-gradient(1200px 140px at 8% -30%, rgba(99, 102, 241, 0.25), transparent 60%),
+        radial-gradient(900px 140px at 60% -40%, rgba(217, 70, 239, 0.18), transparent 60%),
+        linear-gradient(135deg, rgba(49, 46, 129, 0.55), rgba(76, 29, 149, 0.35) 45%, rgba(112, 26, 117, 0.30));
+    border: 1px solid rgba(139, 92, 246, 0.35);
+    box-shadow: 0 6px 28px rgba(0, 0, 0, 0.35);
+}
+
+.app-hero-left {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    min-width: 0;
+}
+
+.app-hero-badge {
+    flex: 0 0 auto;
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-weight: 800;
+    font-size: 0.82em;
+    letter-spacing: 0.06em;
+    color: #fff;
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-3));
+    box-shadow: 0 3px 12px rgba(139, 92, 246, 0.45);
+    white-space: nowrap;
+}
+
+.app-hero h1 {
+    margin: 0;
+    font-size: 1.45em;
+    font-weight: 800;
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+}
+
+.app-hero h1 .grad {
+    background-image: linear-gradient(90deg, #4f46e5, #7c3aed 55%, #c026d3) !important;
+    -webkit-background-clip: text !important;
+    background-clip: text !important;
+    -webkit-text-fill-color: transparent;
+    color: #7c3aed;
+}
+
+.dark .app-hero h1 .grad {
+    background-image: linear-gradient(90deg, #818cf8, #a78bfa 55%, #e879f9) !important;
+    color: #a78bfa;
+}
+
+.app-hero p {
+    margin: 2px 0 0 0;
+    font-size: 0.86em;
+    opacity: 0.75;
+}
+
+.app-hero-link {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border-radius: 12px;
+    font-weight: 700;
+    font-size: 0.92em;
+    text-decoration: none !important;
+    color: #fff !important;
+    background: linear-gradient(135deg, #f43f5e, #d946ef);
+    box-shadow: 0 4px 16px rgba(217, 70, 239, 0.35);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, filter 0.18s ease;
+}
+
+.app-hero-link:hover {
+    transform: translateY(-1px);
+    filter: brightness(1.06);
+    box-shadow: 0 6px 22px rgba(217, 70, 239, 0.45);
+}
+
+/* ------------------------------ Tab navigation ---------------------------- */
+.gradio-container .tab-wrapper {
+    height: auto !important;
+    padding: 6px;
+    margin-bottom: 14px;
+    border-radius: 14px;
+    background: color-mix(in srgb, var(--accent-1) 6%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-1) 18%, transparent);
+}
+
+.dark .gradio-container .tab-wrapper {
+    background: rgba(30, 27, 75, 0.35);
+    border: 1px solid rgba(99, 102, 241, 0.25);
+}
+
+.gradio-container .tab-container {
+    gap: 4px;
+    flex-wrap: nowrap;
+}
+
+.gradio-container .tab-container button {
+    border: 1px solid transparent !important;
+    border-radius: 10px !important;
+    padding: 8px 14px !important;
+    font-weight: 600 !important;
+    font-size: 0.92em !important;
+    white-space: nowrap;
+    transition: background 0.18s ease, color 0.18s ease, box-shadow 0.18s ease,
+        transform 0.18s ease;
+}
+
+.gradio-container .tab-container button:hover:not(.selected) {
+    background: color-mix(in srgb, var(--accent-1) 12%, transparent) !important;
+    transform: translateY(-1px);
+}
+
+.gradio-container .tab-container button.selected {
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2)) !important;
+    color: #fff !important;
+    box-shadow: 0 3px 14px rgba(99, 102, 241, 0.40) !important;
+}
+
+/* Overflow ("More tabs") menu */
+.gradio-container .overflow-menu > button {
+    border-radius: 10px !important;
+    padding: 8px 10px !important;
+}
+
+.gradio-container .overflow-menu > button.overflow-item-selected {
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2)) !important;
+    color: #fff !important;
+}
+
+.gradio-container .overflow-dropdown {
+    border-radius: 12px !important;
+    box-shadow: 0 12px 34px rgba(0, 0, 0, 0.18) !important;
+    border: 1px solid color-mix(in srgb, var(--accent-1) 25%, transparent) !important;
+    overflow: hidden;
+    z-index: 1000;
+}
+
+.gradio-container .overflow-dropdown button {
+    font-weight: 600 !important;
+    padding: 9px 16px !important;
+    transition: background 0.15s ease;
+}
+
+.gradio-container .overflow-dropdown button:hover {
+    background: color-mix(in srgb, var(--accent-1) 14%, transparent) !important;
+}
+
+.gradio-container .overflow-dropdown button.selected {
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-2)) !important;
+    color: #fff !important;
+}
+
+/* ============================================================================
+   .mbtn — colored button system
+   Every button within a tab gets a UNIQUE color class.
+   Bright classes (lime / amber / cyan) use dark ink text for contrast.
+   ============================================================================ */
+.gradio-container button[class*="mbtn-"] {
+    --tx: #ffffff;
+    background: linear-gradient(135deg, var(--g1), var(--g2)) !important;
+    color: var(--tx) !important;
+    border: none !important;
+    border-radius: var(--btn-radius) !important;
+    font-weight: 600 !important;
+    letter-spacing: 0.01em;
+    text-shadow: none;
+    box-shadow: 0 2px 10px rgba(var(--gs), 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.18) !important;
+    transition: transform 0.16s ease, box-shadow 0.16s ease, filter 0.16s ease;
+}
+
+.gradio-container button[class*="mbtn-"]:hover:not([disabled]) {
+    filter: brightness(1.07) saturate(1.05);
+    transform: translateY(-1px);
+    box-shadow: 0 5px 18px rgba(var(--gs), 0.42), inset 0 1px 0 rgba(255, 255, 255, 0.20) !important;
+}
+
+.gradio-container button[class*="mbtn-"]:active:not([disabled]) {
+    filter: brightness(0.94);
+    transform: translateY(0) scale(0.985);
+    box-shadow: 0 1px 6px rgba(var(--gs), 0.30) !important;
+}
+
+.gradio-container button[class*="mbtn-"]:focus-visible {
+    outline: none !important;
+    box-shadow: 0 0 0 3px rgba(var(--gs), 0.35), 0 2px 10px rgba(var(--gs), 0.30) !important;
+}
+
+.gradio-container button[class*="mbtn-"][disabled] {
+    opacity: 0.55;
+    filter: saturate(0.55);
+    cursor: not-allowed;
+    box-shadow: none !important;
+}
+
+.dark .gradio-container button[class*="mbtn-"] {
+    box-shadow: 0 2px 12px rgba(var(--gs), 0.20), inset 0 1px 0 rgba(255, 255, 255, 0.10) !important;
+}
+
+/* ------------------------------ Color classes ----------------------------- */
+.gradio-container button.mbtn-red     { --g1: #ef4444; --g2: #dc2626; --gs: 239, 68, 68; }
+.gradio-container button.mbtn-orange  { --g1: #f97316; --g2: #ea580c; --gs: 249, 115, 22; }
+.gradio-container button.mbtn-amber   { --g1: #fbbf24; --g2: #f59e0b; --gs: 245, 158, 11; --tx: #451a03; }
+.gradio-container button.mbtn-gold    { --g1: #ca8a04; --g2: #854d0e; --gs: 202, 138, 4; }
+.gradio-container button.mbtn-lime    { --g1: #a3e635; --g2: #84cc16; --gs: 132, 204, 22; --tx: #1a2e05; }
+.gradio-container button.mbtn-green   { --g1: #22c55e; --g2: #16a34a; --gs: 34, 197, 94; }
+.gradio-container button.mbtn-emerald { --g1: #10b981; --g2: #059669; --gs: 16, 185, 129; }
+.gradio-container button.mbtn-forest  { --g1: #15803d; --g2: #14532d; --gs: 21, 128, 61; }
+.gradio-container button.mbtn-teal    { --g1: #14b8a6; --g2: #0d9488; --gs: 20, 184, 166; }
+.gradio-container button.mbtn-cyan    { --g1: #22d3ee; --g2: #06b6d4; --gs: 6, 182, 212; --tx: #083344; }
+.gradio-container button.mbtn-sky     { --g1: #0ea5e9; --g2: #0369a1; --gs: 14, 165, 233; }
+.gradio-container button.mbtn-blue    { --g1: #3b82f6; --g2: #2563eb; --gs: 59, 130, 246; }
+.gradio-container button.mbtn-navy    { --g1: #1d4ed8; --g2: #1e3a8a; --gs: 30, 64, 175; }
+.gradio-container button.mbtn-indigo  { --g1: #6366f1; --g2: #4f46e5; --gs: 99, 102, 241; }
+.gradio-container button.mbtn-violet  { --g1: #8b5cf6; --g2: #7c3aed; --gs: 139, 92, 246; }
+.gradio-container button.mbtn-purple  { --g1: #a855f7; --g2: #9333ea; --gs: 168, 85, 247; }
+.gradio-container button.mbtn-fuchsia { --g1: #d946ef; --g2: #c026d3; --gs: 217, 70, 239; }
+.gradio-container button.mbtn-plum    { --g1: #86198f; --g2: #701a75; --gs: 134, 25, 143; }
+.gradio-container button.mbtn-pink    { --g1: #ec4899; --g2: #be185d; --gs: 236, 72, 153; }
+.gradio-container button.mbtn-rose    { --g1: #fb7185; --g2: #e11d48; --gs: 244, 63, 94; }
+.gradio-container button.mbtn-slate   { --g1: #64748b; --g2: #475569; --gs: 100, 116, 139; }
+.gradio-container button.mbtn-stone   { --g1: #a8a29e; --g2: #78716c; --gs: 120, 113, 108; --tx: #1c1917; }
+
+/* -------------------- Compact icon (emoji) button sizing ------------------ */
 #open_folder_small {
     min-width: auto;
     flex-grow: 0;
-    padding-left: 0.25em;
-    padding-right: 0.25em;
-    padding: 0.5em;
-    font-size: 1.5em;
+    padding: 0.5em 0.9em;
+    font-size: 1.05em;
+    white-space: nowrap;
 }
 
-#output_dir_button {
-    font-size: 1.5em;
-    padding: 0.25em;
-    min-width: 2em;
-    min-height: 2em;
-}
-
-#parent_folder_button {
-    font-size: 1.5em;
-    padding: 0.25em;
-    min-width: 2em;
-    min-height: 2em;
-}
-
-/* Folder/File selection buttons - consistent sizing */
+#output_dir_button,
+#parent_folder_button,
 #dit_button, #vae_button, #t5_button, #clip_button, #dit_high_noise_button,
 #text_encoder_button, #logging_dir_button, #sample_prompts_button,
 #sample_output_dir_button, #single_input_button, #single_output_button,
-#input_folder_button, #output_folder_button {
-    font-size: 1.5em;
+#input_folder_button, #output_folder_button, #ltx2_checkpoint_button {
+    font-size: 1.25em;
     padding: 0.25em;
-    min-width: 2em;
-    min-height: 2em;
+    min-width: 2.4em;
+    min-height: 2.2em;
 }
 
 #open_folder {
@@ -51,225 +319,167 @@
 }
 
 .ver-class {
-    color: #6d6d6d; /* Neutral dark gray */
+    color: #6d6d6d;
     font-size: small;
     text-align: right;
     padding-right: 1em;
 }
 
-#myDropdown {
-    height: auto;
-    width: 33%;
-    flex-grow: 0;
+/* ------------------------------ Accordions -------------------------------- */
+.gradio-container button.label-wrap {
+    font-weight: 700 !important;
+    padding: 10px 14px !important;
+    border-radius: 10px;
+    transition: background 0.18s ease;
 }
 
-#myTensorButton {
-    background: #555c66; /* Muted dark gray */
-    color: white;
-    border: none;
-    border-radius: 4px;
-    padding: 0.5em 1em;
-    /* box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1); Subtle shadow */
-    /* transition: box-shadow 0.3s ease; */
+.gradio-container button.label-wrap:hover {
+    background: color-mix(in srgb, var(--accent-1) 8%, transparent);
 }
 
-#myTensorButton:hover {
-    /* box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15); Slightly increased shadow on hover */
+.gradio-container button.label-wrap .icon {
+    color: var(--accent-1);
 }
 
-#myTensorButtonStop {
-    background: #777d85; /* Lighter muted gray */
-    color: white;
-    border: none;
-    border-radius: 4px;
-    padding: 0.5em 1em;
-    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-    /* transition: box-shadow 0.3s ease; */
-}
-
-#myTensorButtonStop:hover {
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
+/* Legacy tinted section cards — translucent, work in light AND dark */
+.advanced_background,
+.basic_background,
+.huggingface_background,
+.flux1_background,
+.preset_background,
+.samples_background,
+.flux1_rank_layers_background {
+    border-radius: var(--card-radius) !important;
+    padding: 0.35em;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
 }
 
 .advanced_background {
-    background: #f4f4f4; /* Light neutral gray */
-    padding: 1em;
-    border-radius: 8px;
-    transition: background-color 0.3s ease, border 0.3s ease, box-shadow 0.3s ease; /* Added transition for smooth shadow effect */
-}
-
-.advanced_background:hover {
-    background-color: #ebebeb; /* Slightly darker background on hover */
-    border: 1px solid #ccc; /* Add a subtle border */
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow on hover */
+    background: color-mix(in srgb, #8b5cf6 7%, transparent) !important;
+    border: 1px solid color-mix(in srgb, #8b5cf6 22%, transparent) !important;
 }
 
 .basic_background {
-    background: #eaeff1; /* Muted cool gray */
-    padding: 1em;
-    border-radius: 8px;
-    transition: background-color 0.3s ease, border 0.3s ease, box-shadow 0.3s ease;
-}
-
-.basic_background:hover {
-    background-color: #dfe4e7; /* Slightly darker cool gray on hover */
-    border: 1px solid #ccc;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow on hover */
+    background: color-mix(in srgb, #3b82f6 7%, transparent) !important;
+    border: 1px solid color-mix(in srgb, #3b82f6 22%, transparent) !important;
 }
 
 .huggingface_background {
-    background: #e0e4e7; /* Light gray with a hint of blue */
-    padding: 1em;
-    border-radius: 8px;
-    transition: background-color 0.3s ease, border 0.3s ease, box-shadow 0.3s ease;
-}
-
-.huggingface_background:hover {
-    background-color: #d6dce0; /* Slightly darker on hover */
-    border: 1px solid #bbb;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow on hover */
+    background: color-mix(in srgb, #f59e0b 7%, transparent) !important;
+    border: 1px solid color-mix(in srgb, #f59e0b 25%, transparent) !important;
 }
 
 .flux1_background {
-    background: #ece9e6; /* Light beige tone */
-    padding: 1em;
-    border-radius: 8px;
-    transition: background-color 0.3s ease, border 0.3s ease, box-shadow 0.3s ease;
-}
-
-.flux1_background:hover {
-    background-color: #e2dfdb; /* Slightly darker beige on hover */
-    border: 1px solid #ccc;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow on hover */
+    background: color-mix(in srgb, #f97316 7%, transparent) !important;
+    border: 1px solid color-mix(in srgb, #f97316 24%, transparent) !important;
 }
 
 .preset_background {
-    background: #f0f0f0; /* Light gray */
-    padding: 1em;
-    border-radius: 8px;
-    transition: background-color 0.3s ease, border 0.3s ease, box-shadow 0.3s ease;
-}
-
-.preset_background:hover {
-    background-color: #e6e6e6; /* Slightly darker on hover */
-    border: 1px solid #ccc;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow on hover */
+    background: color-mix(in srgb, #64748b 8%, transparent) !important;
+    border: 1px solid color-mix(in srgb, #64748b 25%, transparent) !important;
 }
 
 .samples_background {
-    background: #d9dde1; /* Soft muted gray-blue */
-    padding: 1em;
-    border-radius: 8px;
-    transition: background-color 0.3s ease, border 0.3s ease, box-shadow 0.3s ease;
-}
-
-.samples_background:hover {
-    background-color: #cfd3d8; /* Slightly darker on hover */
-    border: 1px solid #bbb;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow on hover */
-}
-
-/* Dark mode styles */
-.dark .advanced_background {
-    background: #172029; /* Slightly darker gradio dark theme */
-    padding: 1em;
-    border-radius: 8px;
-    transition: background-color 0.3s ease, border 0.3s ease, box-shadow 0.3s ease; /* Added transition for smooth shadow effect */
-}
-
-.dark .advanced_background:hover {
-    background-color: #121920; /* Slightly darker background on hover */
-    border: 1px solid #000000; /* Add a subtle border */
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow on hover */
-}
-
-.dark .basic_background {
-    background: #172029;
-    padding: 1em;
-    border-radius: 8px;
-    transition: background-color 0.3s ease, border 0.3s ease, box-shadow 0.3s ease;
-}
-
-.dark .basic_background:hover {
-    background-color: #11181e;
-    border: 1px solid #000000;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow on hover */
-}
-
-.dark .huggingface_background {
-    background: #131c25;
-    padding: 1em;
-    border-radius: 8px;
-    transition: background-color 0.3s ease, border 0.3s ease, box-shadow 0.3s ease;
-}
-
-.dark .huggingface_background:hover {
-    background-color: #131c25;
-    border: 1px solid #000000;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow on hover */
-}
-
-.dark .flux1_background {
-    background: #131c25;
-    padding: 1em;
-    border-radius: 8px;
-    transition: background-color 0.3s ease, border 0.3s ease, box-shadow 0.3s ease;
-}
-
-.dark .flux1_background:hover {
-    background-color: #131c25;
-    border: 1px solid #000000;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow on hover */
-}
-
-.dark .preset_background {
-    background: #191d25;
-    padding: 1em;
-    border-radius: 8px;
-    transition: background-color 0.3s ease, border 0.3s ease, box-shadow 0.3s ease;
-}
-
-.dark .preset_background:hover {
-    background-color: #212530;
-    border: 1px solid #000000;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow on hover */
-}
-
-.dark .samples_background {
-    background: #101e2c;
-    padding: 1em;
-    border-radius: 8px;
-    transition: background-color 0.3s ease, border 0.3s ease, box-shadow 0.3s ease;
-}
-
-.dark .samples_background:hover {
-    background-color: #17293a;
-    border: 1px solid #000000;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow on hover */
+    background: color-mix(in srgb, #14b8a6 7%, transparent) !important;
+    border: 1px solid color-mix(in srgb, #14b8a6 24%, transparent) !important;
 }
 
 .flux1_rank_layers_background {
-    background: #ece9e6; /* White background for clear theme */
-    padding: 1em;
-    border-radius: 8px;
-    transition: background-color 0.3s ease, border 0.3s ease, box-shadow 0.3s ease;
+    background: color-mix(in srgb, #f43f5e 7%, transparent) !important;
+    border: 1px solid color-mix(in srgb, #f43f5e 24%, transparent) !important;
 }
 
+.advanced_background:hover,
+.basic_background:hover,
+.huggingface_background:hover,
+.flux1_background:hover,
+.preset_background:hover,
+.samples_background:hover,
 .flux1_rank_layers_background:hover {
-    background-color: #dddad7; /* Slightly darker on hover */
-    border: 1px solid #ccc;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow on hover */
+    box-shadow: 0 6px 22px rgba(15, 23, 42, 0.10);
 }
 
-.dark .flux1_rank_layers_background {
-    background: #131c25; /* Dark background for dark theme */
-    padding: 1em;
-    border-radius: 8px;
-    transition: background-color 0.3s ease, border 0.3s ease, box-shadow 0.3s ease;
-}
-
+.dark .advanced_background:hover,
+.dark .basic_background:hover,
+.dark .huggingface_background:hover,
+.dark .flux1_background:hover,
+.dark .preset_background:hover,
+.dark .samples_background:hover,
 .dark .flux1_rank_layers_background:hover {
-    background-color: #131c25; /* Slightly darker on hover */
-    border: 1px solid #000000;
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1); /* Subtle shadow on hover */
+    box-shadow: 0 6px 22px rgba(0, 0, 0, 0.45);
+}
+
+/* -------------------------------- Inputs ---------------------------------- */
+.gradio-container input[type="text"]:focus,
+.gradio-container input[type="number"]:focus,
+.gradio-container input[type="password"]:focus,
+.gradio-container textarea:focus,
+.gradio-container select:focus {
+    border-color: var(--accent-1) !important;
+    box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.22) !important;
+}
+
+.gradio-container input[type="checkbox"],
+.gradio-container input[type="radio"] {
+    accent-color: var(--accent-1);
+}
+
+/* --------------------------------- Toasts --------------------------------- */
+.gradio-container .toast-body {
+    border-radius: 12px !important;
+    backdrop-filter: blur(12px);
+    box-shadow: 0 10px 32px rgba(0, 0, 0, 0.22) !important;
+    border-width: 1px !important;
+    border-left-width: 5px !important;
+}
+
+/* ------------------------------- Scrollbars ------------------------------- */
+.gradio-container *::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+}
+
+.gradio-container *::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.gradio-container *::-webkit-scrollbar-thumb {
+    background: color-mix(in srgb, var(--accent-1) 35%, transparent);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+}
+
+.gradio-container *::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in srgb, var(--accent-1) 55%, transparent);
+    background-clip: content-box;
+}
+
+/* ------------------------------ Misc polish ------------------------------- */
+/* Keep long status/command textareas readable */
+.gradio-container .block {
+    border-radius: 12px;
+}
+
+/* Markdown links */
+.gradio-container .prose a {
+    color: var(--accent-1);
+    font-weight: 600;
+    text-decoration: none;
+}
+
+.gradio-container .prose a:hover {
+    text-decoration: underline;
+}
+
+/* Respect users who prefer less motion */
+@media (prefers-reduced-motion: reduce) {
+    .gradio-container * {
+        transition: none !important;
+        animation: none !important;
+    }
+
+    .gradio-container button[class*="mbtn-"]:hover:not([disabled]) {
+        transform: none;
+    }
 }

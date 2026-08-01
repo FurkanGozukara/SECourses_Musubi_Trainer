@@ -73,18 +73,18 @@ class ConfigurationFile:
                 self.button_open_config = gr.Button(
                     "📂 Open",
                     elem_id="open_folder_small",
-                    elem_classes=["tool"],
+                    elem_classes=["tool", "mbtn", "mbtn-amber"],
                     visible=(not self.headless),
                 )
                 self.button_save_config = gr.Button(
                     "💾 Save",
                     elem_id="open_folder_small",
-                    elem_classes=["tool"],
+                    elem_classes=["tool", "mbtn", "mbtn-sky"],
                 )
                 self.button_load_config = gr.Button(
                     "📥 Load",
                     elem_id="open_folder_small",
-                    elem_classes=["tool"],
+                    elem_classes=["tool", "mbtn", "mbtn-violet"],
                 )
             
             # Status display for configuration operations

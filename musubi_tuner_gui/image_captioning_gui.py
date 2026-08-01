@@ -49,7 +49,8 @@ class ImageCaptioningTab:
                         self.caption_single_button = gr.Button(
                             "Generate Caption",
                             variant="primary",
-                            size="lg"
+                            size="lg",
+                            elem_classes=["mbtn", "mbtn-emerald"],
                         )
                 
                 with gr.Column(scale=1):
@@ -61,8 +62,8 @@ class ImageCaptioningTab:
                     )
                     
                     with gr.Row():
-                        self.copy_caption_button = gr.Button("Copy Caption")
-                        self.save_caption_button = gr.Button("Save as Text File")
+                        self.copy_caption_button = gr.Button("Copy Caption", elem_classes=["mbtn", "mbtn-cyan"])
+                        self.save_caption_button = gr.Button("Save as Text File", elem_classes=["mbtn", "mbtn-blue"])
                     with gr.Row():
                         gr.Markdown("You can also test and use our amazing Joy Caption App: https://www.patreon.com/posts/118827960")
                     
@@ -71,7 +72,8 @@ class ImageCaptioningTab:
                         self.unload_model_button = gr.Button(
                             "🗑️ Unload Model from VRAM",
                             variant="secondary",
-                            size="sm"
+                            size="sm",
+                            elem_classes=["mbtn", "mbtn-plum"],
                         )
                         self.auto_unload_after_caption = gr.Checkbox(
                             label="Auto-unload model after captioning",
@@ -99,12 +101,13 @@ class ImageCaptioningTab:
                                 "📁",
                                 size="sm",
                                 scale=0,
+                                elem_classes=["mbtn", "mbtn-gold"],
                                 visible=not self.headless,
                             )
                         
                         with gr.Row():
-                            self.save_config_button = gr.Button("Save Configuration")
-                            self.load_config_button = gr.Button("Load Configuration")
+                            self.save_config_button = gr.Button("Save Configuration", elem_classes=["mbtn", "mbtn-teal"])
+                            self.load_config_button = gr.Button("Load Configuration", elem_classes=["mbtn", "mbtn-violet"])
                         
                         self.config_status = gr.Textbox(
                             label="Configuration Status",
@@ -126,6 +129,7 @@ class ImageCaptioningTab:
                                 "📁",
                                 size="sm",
                                 scale=0,
+                                elem_classes=["mbtn", "mbtn-navy"],
                                 visible=not self.headless,
                             )
                         
@@ -263,8 +267,8 @@ class ImageCaptioningTab:
                     )
                     
                     with gr.Row():
-                        self.show_default_prompt = gr.Button("Show Default Prompt")
-                        self.clear_prompt = gr.Button("Clear Prompt")
+                        self.show_default_prompt = gr.Button("Show Default Prompt", elem_classes=["mbtn", "mbtn-indigo"])
+                        self.clear_prompt = gr.Button("Clear Prompt", elem_classes=["mbtn", "mbtn-stone"])
                     
                     # Unified Batch Captioning panel
                     with gr.Accordion("Batch Captioning", open=True):
@@ -281,6 +285,7 @@ class ImageCaptioningTab:
                                 "📁",
                                 size="sm",
                                 scale=0,
+                                elem_classes=["mbtn", "mbtn-pink"],
                                 visible=not self.headless,
                             )
                         
@@ -297,6 +302,7 @@ class ImageCaptioningTab:
                                 "📁",
                                 size="sm",
                                 scale=0,
+                                elem_classes=["mbtn", "mbtn-forest"],
                                 visible=not self.headless,
                             )
                         
@@ -327,6 +333,7 @@ class ImageCaptioningTab:
                                 "📁",
                                 size="sm",
                                 scale=0,
+                                elem_classes=["mbtn", "mbtn-lime"],
                                 visible=not self.headless,
                             )
                         
@@ -361,6 +368,7 @@ class ImageCaptioningTab:
                                 "Start Batch Captioning",
                                 variant="primary",
                                 size="lg",
+                                elem_classes=["mbtn", "mbtn-orange"],
                                 scale=2
                             )
                             
@@ -368,6 +376,7 @@ class ImageCaptioningTab:
                                 "⏹️ Stop Processing",
                                 variant="stop",
                                 size="lg",
+                                elem_classes=["mbtn", "mbtn-red"],
                                 interactive=False,
                                 scale=1
                             )

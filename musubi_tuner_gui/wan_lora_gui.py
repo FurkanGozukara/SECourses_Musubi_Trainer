@@ -393,8 +393,9 @@ class WanDataset:
                         value=self.config.get("parent_folder_path", "")
                     )
                 self.parent_folder_button = gr.Button(
-                    "📂", 
-                    elem_id="parent_folder_button", 
+                    "📂",
+                    elem_id="parent_folder_button",
+                    elem_classes=["mbtn", "mbtn-pink"],
                     size="lg",
                     visible=not self.headless,
                 )
@@ -533,7 +534,8 @@ class WanDataset:
             with gr.Row():
                 self.generate_toml_button = gr.Button(
                     "Generate Dataset Configuration",
-                    variant="primary"
+                    variant="primary",
+                    elem_classes=["mbtn", "mbtn-orange"],
                 )
                 self.generated_toml_path = gr.Textbox(
                     label="Generated TOML Path",
@@ -545,7 +547,8 @@ class WanDataset:
             with gr.Row():
                 self.copy_generated_path_button = gr.Button(
                     "📋 Copy Generated TOML Path to Dataset Config",
-                    variant="secondary"
+                    variant="secondary",
+                    elem_classes=["mbtn", "mbtn-cyan"],
                 )
 
             self.dataset_status = gr.Textbox(
@@ -1368,7 +1371,7 @@ class WanModelSettings:
                             value=str(self.config.get("dit", "")), lines=3
                         )
                     with gr.Column(min_width=60):
-                        self.dit_button = gr.Button("Browse Folder", size="lg", elem_id="dit_button", visible=not self.headless)
+                        self.dit_button = gr.Button("Browse Folder", size="lg", elem_id="dit_button", elem_classes=["mbtn", "mbtn-blue"], visible=not self.headless)
             with gr.Column():
                 with gr.Row():
                     with gr.Column(scale=2):
@@ -1379,7 +1382,7 @@ class WanModelSettings:
                             value=str(self.config.get("vae", "")), lines=3
                         )
                     with gr.Column(min_width=60):
-                        self.vae_button = gr.Button("Browse Folder", size="lg", elem_id="vae_button", visible=not self.headless)
+                        self.vae_button = gr.Button("Browse Folder", size="lg", elem_id="vae_button", elem_classes=["mbtn", "mbtn-rose"], visible=not self.headless)
 
         with gr.Row():
             with gr.Column():
@@ -1392,7 +1395,7 @@ class WanModelSettings:
                             value=str(self.config.get("t5", "")), lines=3
                         )
                     with gr.Column(min_width=60):
-                        self.t5_button = gr.Button("Browse Folder", size="lg", elem_id="t5_button", visible=not self.headless)
+                        self.t5_button = gr.Button("Browse Folder", size="lg", elem_id="t5_button", elem_classes=["mbtn", "mbtn-lime"], visible=not self.headless)
             with gr.Column():
                 with gr.Row():
                     with gr.Column(scale=2):
@@ -1403,7 +1406,7 @@ class WanModelSettings:
                             value=str(self.config.get("clip", "")), lines=3
                         )
                     with gr.Column(min_width=60):
-                        self.clip_button = gr.Button("Browse Folder", size="lg", elem_id="clip_button", visible=not self.headless)
+                        self.clip_button = gr.Button("Browse Folder", size="lg", elem_id="clip_button", elem_classes=["mbtn", "mbtn-fuchsia"], visible=not self.headless)
 
         # Wan 2.2 Advanced Models Settings
         with gr.Row():
@@ -1445,7 +1448,7 @@ class WanModelSettings:
                     value=str(self.config.get("dit_high_noise", ""))
                 )
             with gr.Column(scale=1):
-                self.dit_high_noise_button = gr.Button("Browse Folder", size="lg", elem_id="dit_high_noise_button", visible=not self.headless)
+                self.dit_high_noise_button = gr.Button("Browse Folder", size="lg", elem_id="dit_high_noise_button", elem_classes=["mbtn", "mbtn-plum"], visible=not self.headless)
 
         with gr.Row():
             self.timestep_boundary = gr.Number(
@@ -1936,6 +1939,7 @@ class WanSampleSettings:
                 "📂",
                 size="lg",
                 elem_id="sample_prompts_button",
+                elem_classes=["mbtn", "mbtn-forest"],
                 visible=not self.headless,
             )
         
@@ -1952,6 +1956,7 @@ class WanSampleSettings:
                 "📂",
                 size="lg",
                 elem_id="sample_output_dir_button",
+                elem_classes=["mbtn", "mbtn-navy"],
                 visible=not self.headless,
             )
         
@@ -2419,7 +2424,10 @@ def wan_gui_actions(
         )))
     elif action == "train_model":
         log.info("Train WAN model...")
-        gr.Info("Training is starting... Please check the console for progress.")
+        if print_only:
+            gr.Info("Generating training command preview... Check the console/log for the full command.")
+        else:
+            gr.Info("Training is starting... Please check the console for progress.")
         parameters = list(zip(
             [
                 # accelerate_launch
@@ -3800,10 +3808,11 @@ def wan_lora_tab(
             )
         with gr.Column(scale=1):
             toggle_all_btn = gr.Button(
-                value="Open All Panels", 
-                variant="secondary", 
+                value="Open All Panels",
+                variant="secondary",
                 size="lg",
-                elem_id="toggle-all-btn"
+                elem_id="toggle-all-btn",
+                elem_classes=["mbtn", "mbtn-indigo"],
             )
             # Hidden state to track if panels are open or closed
             panels_state = gr.State(value="closed")  # Default state is closed
@@ -3909,7 +3918,7 @@ def wan_lora_tab(
 
     # Command execution and training controls
     with gr.Row():
-        button_print = gr.Button("Print Command", variant="secondary")
+        button_print = gr.Button("Print Command", variant="secondary", elem_classes=["mbtn", "mbtn-slate"])
     
     global executor
     executor = CommandExecutor(headless=headless)

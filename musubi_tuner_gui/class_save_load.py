@@ -31,6 +31,7 @@ class SaveLoadSettings:
                 "📂",
                 size="lg",
                 elem_id="output_dir_button",
+                elem_classes=["mbtn", "mbtn-teal"],
                 visible=not self.headless,
             )
             with gr.Column(scale=4):

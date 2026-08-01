@@ -2606,14 +2606,14 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         value=config.get("model_quantizer.input_scales_path", ""),
                         placeholder="Optional input scales for NVFP4",
                     )
-                    input_scales_button = gr.Button("Browse File", size="lg", visible=not headless)
+                    input_scales_button = gr.Button("Browse File", size="lg", elem_classes=["mbtn", "mbtn-blue"], visible=not headless)
                 with gr.Row():
                     tensor_scales_path = gr.Textbox(
                         label="Tensor Scales for Hybrid MXFP8",
                         value=config.get("model_quantizer.tensor_scales_path", ""),
                         placeholder="Optional tensorwise FP8 model for hybrid conversion",
                     )
-                    tensor_scales_button = gr.Button("Browse File", size="lg", visible=not headless)
+                    tensor_scales_button = gr.Button("Browse File", size="lg", elem_classes=["mbtn", "mbtn-cyan"], visible=not headless)
 
             with gr.Accordion("Layer Config & Dry Run", open=False) as layer_config_group:
                 with gr.Row():
@@ -2622,7 +2622,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         value=config.get("model_quantizer.layer_config_path", ""),
                         placeholder="Path to layer-config JSON",
                     )
-                    layer_config_button = gr.Button("Browse File", size="lg", visible=not headless)
+                    layer_config_button = gr.Button("Browse File", size="lg", elem_classes=["mbtn", "mbtn-teal"], visible=not headless)
                 layer_config_fullmatch = gr.Checkbox(
                     label="Layer Config Fullmatch",
                     value=config.get("model_quantizer.layer_config_fullmatch", False),
@@ -2656,7 +2656,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         value=config.get("model_quantizer.actcal_lora", ""),
                         placeholder="Optional LoRA file for informed calibration",
                     )
-                    actcal_lora_button = gr.Button("Browse File", size="lg", visible=not headless)
+                    actcal_lora_button = gr.Button("Browse File", size="lg", elem_classes=["mbtn", "mbtn-pink"], visible=not headless)
                 actcal_device = gr.Textbox(
                     label="Calibration Device",
                     value=config.get("model_quantizer.actcal_device", ""),
@@ -2743,21 +2743,21 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     value=config.get("model_quantizer.single_input_file", ""),
                     placeholder="Path to model .safetensors",
                 )
-                single_input_button = gr.Button("Browse File", size="lg", visible=not headless)
+                single_input_button = gr.Button("Browse File", size="lg", elem_classes=["mbtn", "mbtn-indigo"], visible=not headless)
             with gr.Row():
                 single_output_file = gr.Textbox(
                     label="Output File (optional)",
                     value=config.get("model_quantizer.single_output_file", ""),
                     placeholder="Leave empty for auto naming",
                 )
-                single_output_button = gr.Button("Save As", size="lg", visible=not headless)
+                single_output_button = gr.Button("Save As", size="lg", elem_classes=["mbtn", "mbtn-navy"], visible=not headless)
             with gr.Row():
                 single_delete_original = gr.Checkbox(
                     label="Delete original after success",
                     value=config.get("model_quantizer.single_delete_original", False),
                 )
-            single_run_button = gr.Button("Start Conversion", variant="primary")
-            single_cancel_button = gr.Button("Cancel", variant="secondary")
+            single_run_button = gr.Button("Start Conversion", variant="primary", elem_classes=["mbtn", "mbtn-emerald"])
+            single_cancel_button = gr.Button("Cancel", variant="secondary", elem_classes=["mbtn", "mbtn-stone"])
             single_queue_status = gr.Textbox(
                 label="Single Conversion Queue",
                 value=quantizer.single_queue_text(),
@@ -2779,14 +2779,14 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     value=config.get("model_quantizer.batch_input_folder", ""),
                     placeholder="Folder with model files",
                 )
-                batch_input_button = gr.Button("Browse Folder", size="lg", visible=not headless)
+                batch_input_button = gr.Button("Browse Folder", size="lg", elem_classes=["mbtn", "mbtn-forest"], visible=not headless)
             with gr.Row():
                 batch_output_folder = gr.Textbox(
                     label="Output Folder (optional)",
                     value=config.get("model_quantizer.batch_output_folder", ""),
                     placeholder="Leave empty to use input folder",
                 )
-                batch_output_button = gr.Button("Browse Folder", size="lg", visible=not headless)
+                batch_output_button = gr.Button("Browse Folder", size="lg", elem_classes=["mbtn", "mbtn-lime"], visible=not headless)
             with gr.Row():
                 batch_extensions = gr.Textbox(
                     label="File Extensions",
@@ -2806,8 +2806,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     label="Delete originals after success",
                     value=config.get("model_quantizer.batch_delete_original", False),
                 )
-            batch_run_button = gr.Button("Start Batch Conversion", variant="primary")
-            batch_cancel_button = gr.Button("Cancel Batch", variant="secondary")
+            batch_run_button = gr.Button("Start Batch Conversion", variant="primary", elem_classes=["mbtn", "mbtn-orange"])
+            batch_cancel_button = gr.Button("Cancel Batch", variant="secondary", elem_classes=["mbtn", "mbtn-red"])
             batch_status = gr.Textbox(
                 label="Batch Conversion Log",
                 lines=18,

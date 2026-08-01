@@ -524,14 +524,14 @@ def lora_convert_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             label="Input LoRA File",
                             placeholder="Path to source LoRA (.safetensors/.pt/.ckpt/.pth)",
                         )
-                        single_input_button = gr.Button("Browse File", size="lg", visible=not headless)
+                        single_input_button = gr.Button("Browse File", size="lg", elem_classes=["mbtn", "mbtn-blue"], visible=not headless)
 
                     with gr.Row():
                         single_output_folder = gr.Textbox(
                             label="Output Folder",
                             placeholder="Folder where converted LoRA will be saved",
                         )
-                        single_output_folder_button = gr.Button("Browse Folder", size="lg", visible=not headless)
+                        single_output_folder_button = gr.Button("Browse Folder", size="lg", elem_classes=["mbtn", "mbtn-navy"], visible=not headless)
 
                     single_output_name = gr.Textbox(
                         label="Output File Name",
@@ -564,10 +564,12 @@ def lora_convert_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                         run_single_button = gr.Button(
                             "Convert Single LoRA",
                             variant="primary",
+                            elem_classes=["mbtn", "mbtn-emerald"],
                         )
                         cancel_single_button = gr.Button(
                             "Cancel Single Conversion",
                             variant="secondary",
+                            elem_classes=["mbtn", "mbtn-stone"],
                         )
 
                 with gr.Tab("Batch Convert"):
@@ -587,7 +589,7 @@ def lora_convert_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             label="Batch Input Folder",
                             placeholder="Folder containing source LoRA files",
                         )
-                        batch_input_folder_button = gr.Button("Browse Folder", size="lg", visible=not headless)
+                        batch_input_folder_button = gr.Button("Browse Folder", size="lg", elem_classes=["mbtn", "mbtn-pink"], visible=not headless)
 
                     with gr.Row():
                         batch_output_folder = gr.Textbox(
@@ -595,7 +597,7 @@ def lora_convert_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                             placeholder="Folder to save converted LoRA files",
                             info="Batch output keeps the same file names as input files.",
                         )
-                        batch_output_folder_button = gr.Button("Browse Folder", size="lg", visible=not headless)
+                        batch_output_folder_button = gr.Button("Browse Folder", size="lg", elem_classes=["mbtn", "mbtn-forest"], visible=not headless)
 
                     with gr.Row():
                         batch_extensions = gr.Textbox(
@@ -632,10 +634,12 @@ def lora_convert_tab(headless: bool, config: Optional[GUIConfig]) -> None:
                         run_batch_button = gr.Button(
                             "Start Batch Conversion",
                             variant="primary",
+                            elem_classes=["mbtn", "mbtn-orange"],
                         )
                         cancel_batch_button = gr.Button(
                             "Cancel Batch Conversion",
                             variant="secondary",
+                            elem_classes=["mbtn", "mbtn-red"],
                         )
 
         with gr.Column(scale=1):

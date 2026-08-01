@@ -928,7 +928,7 @@ def lora_tab(
 
     with gr.Column(), gr.Group():
         with gr.Row():
-            button_print = gr.Button("Print training command")
+            button_print = gr.Button("Print training command", elem_classes=["mbtn", "mbtn-slate"])
 
     global executor
     executor = CommandExecutor(headless=headless)

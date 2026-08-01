@@ -194,7 +194,7 @@ def image_preprocessing_tab(headless: bool, config: GUIConfig):
             input_folder_button = gr.Button(
                 folder_symbol,
                 elem_id="open_folder",
-                elem_classes=["tool"],
+                elem_classes=["tool", "mbtn", "mbtn-blue"],
                 visible=not headless,
             )
             
@@ -206,7 +206,7 @@ def image_preprocessing_tab(headless: bool, config: GUIConfig):
             output_folder_button = gr.Button(
                 folder_symbol,
                 elem_id="open_folder_save",
-                elem_classes=["tool"],
+                elem_classes=["tool", "mbtn", "mbtn-navy"],
                 visible=not headless,
             )
         
@@ -259,6 +259,7 @@ def image_preprocessing_tab(headless: bool, config: GUIConfig):
             process_button = gr.Button(
                 value="Process Images",
                 variant="primary",
+                elem_classes=["mbtn", "mbtn-emerald"],
             )
         
         with gr.Row():

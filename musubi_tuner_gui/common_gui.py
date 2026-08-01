@@ -2313,7 +2313,7 @@ def SaveConfigFileToRun(
             if key == "dataset_config" and not value:
                 raise ValueError("dataset_config missing for training run; please retry saving configuration.")
             if key in ["dit", "vae", "text_encoder"] and (not value or value == ""):
-                raise ValueError(f"{key} path is required for Qwen Image training but is missing or empty.")
+                raise ValueError(f"{key} model path is required for training but is missing or empty. Please set it in the Model Settings section.")
             variables[key] = value
 
     folder_path = os.path.dirname(file_path)

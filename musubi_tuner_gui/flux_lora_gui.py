@@ -1160,7 +1160,8 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                 value="Open All Panels",
                 variant="secondary",
                 size="lg",
-                elem_id="toggle-all-btn"
+                elem_id="toggle-all-btn",
+                elem_classes=["mbtn", "mbtn-indigo"],
             )
             # Hidden state to track if panels are open or closed
             panels_state = gr.State(value="closed")  # Default state is closed
@@ -1208,7 +1209,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                 interactive=True,
                 info="Path to dataset TOML used by caching and training.",
             )
-            dataset_config_btn = gr.Button("📁", size="lg", visible=not headless)
+            dataset_config_btn = gr.Button("📁", size="lg", elem_classes=["mbtn", "mbtn-gold"], visible=not headless)
             dataset_config_btn.click(
                 fn=lambda: get_file_path(file_path="", default_extension=".toml", extension_name="TOML files"),
                 outputs=[dataset_config],
@@ -1225,7 +1226,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                     interactive=True,
                     info="Parent folder used to generate a dataset TOML (only in Generate mode).",
                 )
-                parent_folder_btn = gr.Button("📂", size="lg", visible=not headless)
+                parent_folder_btn = gr.Button("📂", size="lg", elem_classes=["mbtn", "mbtn-pink"], visible=not headless)
                 parent_folder_btn.click(fn=lambda: get_folder_path(folder_path=""), outputs=[parent_folder_path])
 
             with gr.Row():
@@ -1331,7 +1332,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                 dataset_status = gr.Textbox(label="Dataset status", value="", interactive=False, info="Validation and status messages.")
 
             with gr.Row():
-                generate_toml_btn = gr.Button("Generate dataset TOML", variant="primary")
+                generate_toml_btn = gr.Button("Generate dataset TOML", variant="primary", elem_classes=["mbtn", "mbtn-orange"])
                 generate_toml_btn.click(
                     fn=_generate_flux_dataset_toml,
                     inputs=[
@@ -1395,7 +1396,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                 interactive=True,
                 info="Required DiT checkpoint. Examples: FLUX_2_Dev_BF16.safetensors or FLUX2-Klein-Base-9B.safetensors.",
             )
-            dit_btn = gr.Button("📁", size="lg", visible=not headless)
+            dit_btn = gr.Button("📁", size="lg", elem_classes=["mbtn", "mbtn-blue"], visible=not headless)
             dit_btn.click(
                 fn=lambda: get_file_path(file_path="", default_extension=".safetensors", extension_name="Model files"),
                 outputs=[dit],
@@ -1408,7 +1409,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                 interactive=True,
                 info="Required VAE/AE checkpoint (e.g., FLUX_2_Klein_Train_VAE.safetensors).",
             )
-            vae_btn = gr.Button("📁", size="lg", visible=not headless)
+            vae_btn = gr.Button("📁", size="lg", elem_classes=["mbtn", "mbtn-rose"], visible=not headless)
             vae_btn.click(
                 fn=lambda: get_file_path(file_path="", default_extension=".safetensors", extension_name="Model files"),
                 outputs=[vae],
@@ -1429,7 +1430,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                 interactive=True,
                 info="Required text encoder. Examples: Mistral3_FLUX2_BF16.safetensors (dev) or qwen_3_8b.safetensors (Klein).",
             )
-            te_btn = gr.Button("📁", size="lg", visible=not headless)
+            te_btn = gr.Button("📁", size="lg", elem_classes=["mbtn", "mbtn-lime"], visible=not headless)
             te_btn.click(
                 fn=lambda: get_file_path(file_path="", default_extension=".safetensors", extension_name="Model files"),
                 outputs=[text_encoder],
@@ -1628,7 +1629,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                 interactive=True,
                 info="Path to a prompt file (one prompt per line). Missing defaults are auto-added unless disabled below.",
             )
-            sample_prompts_btn = gr.Button("📁", size="lg", visible=not headless)
+            sample_prompts_btn = gr.Button("📁", size="lg", elem_classes=["mbtn", "mbtn-forest"], visible=not headless)
             sample_prompts_btn.click(fn=lambda: get_file_path(file_path="", default_extension=".txt", extension_name="Text files"), outputs=[sample_prompts])
         with gr.Row():
             disable_prompt_enhancement = gr.Checkbox(
@@ -1643,7 +1644,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                 interactive=True,
                 info="Folder to save generated samples.",
             )
-            sample_output_dir_btn = gr.Button("📂", size="lg", visible=not headless)
+            sample_output_dir_btn = gr.Button("📂", size="lg", elem_classes=["mbtn", "mbtn-navy"], visible=not headless)
             sample_output_dir_btn.click(fn=lambda: get_folder_path(folder_path=""), outputs=[sample_output_dir])
         with gr.Row():
             sample_width = gr.Number(
@@ -1836,10 +1837,14 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
 
     with gr.Column(), gr.Group():
         with gr.Row():
-            button_print = gr.Button("Print training command")
+            button_print = gr.Button(
+                "Print training command",
+                elem_classes=["mbtn", "mbtn-slate"],
+            )
             toggle_all_btn_bottom = gr.Button(
                 value="Open All Panels",
-                variant="secondary"
+                variant="secondary",
+                elem_classes=["mbtn", "mbtn-purple"],
             )
 
     # Dynamic UI updates based on model family selection.

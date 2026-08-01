@@ -1058,7 +1058,8 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
                 value="Open All Panels",
                 variant="secondary",
                 size="lg",
-                elem_id="toggle-all-btn"
+                elem_id="toggle-all-btn",
+                elem_classes=["mbtn", "mbtn-indigo"],
             )
             # Hidden state to track if panels are open or closed
             panels_state = gr.State(value="closed")  # Default state is closed
@@ -1105,7 +1106,7 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
                 interactive=True,
                 info="Path to dataset TOML used by caching and training.",
             )
-            dataset_config_btn = gr.Button("📁", size="lg", visible=not headless)
+            dataset_config_btn = gr.Button("📁", size="lg", elem_classes=["mbtn", "mbtn-gold"], visible=not headless)
             dataset_config_btn.click(
                 fn=lambda: get_file_path(file_path="", default_extension=".toml", extension_name="TOML files"),
                 outputs=[dataset_config],
@@ -1121,7 +1122,7 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
                     interactive=True,
                     info="Parent folder used to generate a dataset TOML (only in Generate mode).",
                 )
-                parent_folder_btn = gr.Button("📂", size="lg", visible=not headless)
+                parent_folder_btn = gr.Button("📂", size="lg", elem_classes=["mbtn", "mbtn-pink"], visible=not headless)
                 parent_folder_btn.click(fn=lambda: get_folder_path(folder_path=""), outputs=[parent_folder_path])
 
             with gr.Row():
@@ -1198,7 +1199,7 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
                 dataset_status = gr.Textbox(label="Dataset status", value="", interactive=False, info="Validation and status messages.")
 
             with gr.Row():
-                generate_toml_btn = gr.Button("Generate dataset TOML", variant="primary")
+                generate_toml_btn = gr.Button("Generate dataset TOML", variant="primary", elem_classes=["mbtn", "mbtn-orange"])
                 generate_toml_btn.click(
                     fn=_generate_zimage_dataset_toml,
                     inputs=[
@@ -1249,7 +1250,7 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
                 interactive=True,
                 info="Optional Turbo Training Adapter (LoRA). If set, it is passed as base_weights (--base_weights).",
             )
-            adapter_btn = gr.Button("📁", size="lg", visible=not headless)
+            adapter_btn = gr.Button("📁", size="lg", elem_classes=["mbtn", "mbtn-stone"], visible=not headless)
             adapter_btn.click(fn=lambda: get_file_path(file_path="", default_extension=".safetensors", extension_name="Model files"), outputs=[training_adapter_path])
             training_adapter_multiplier = gr.Number(
                 label="training_adapter_multiplier",
@@ -1266,7 +1267,7 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
                 interactive=True,
                 info="Required DiT checkpoint. Examples: Z_Image_BF16.safetensors or Z_Image_Turbo_BF16.safetensors.",
             )
-            dit_btn = gr.Button("📁", size="lg", visible=not headless)
+            dit_btn = gr.Button("📁", size="lg", elem_classes=["mbtn", "mbtn-blue"], visible=not headless)
             dit_btn.click(fn=lambda: get_file_path(file_path="", default_extension=".safetensors", extension_name="Model files"), outputs=[dit])
         with gr.Row():
             vae = gr.Textbox(
@@ -1276,7 +1277,7 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
                 interactive=True,
                 info="Required VAE checkpoint (e.g., Z_Image_Train_VAE.safetensors).",
             )
-            vae_btn = gr.Button("📁", size="lg", visible=not headless)
+            vae_btn = gr.Button("📁", size="lg", elem_classes=["mbtn", "mbtn-rose"], visible=not headless)
             vae_btn.click(fn=lambda: get_file_path(file_path="", default_extension=".safetensors", extension_name="Model files"), outputs=[vae])
         with gr.Row():
             text_encoder = gr.Textbox(
@@ -1286,7 +1287,7 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
                 interactive=True,
                 info="Required Qwen3 text encoder (Z_Image_Training_Text_Encoder.safetensors).",
             )
-            te_btn = gr.Button("📁", size="lg", visible=not headless)
+            te_btn = gr.Button("📁", size="lg", elem_classes=["mbtn", "mbtn-lime"], visible=not headless)
             te_btn.click(fn=lambda: get_file_path(file_path="", default_extension=".safetensors", extension_name="Model files"), outputs=[text_encoder])
         with gr.Row():
             fp8_base = gr.Checkbox(
@@ -1485,7 +1486,7 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
                 interactive=True,
                 info="Path to a prompt file (one prompt per line). Missing defaults are auto-added unless disabled below.",
             )
-            sample_prompts_btn = gr.Button("📁", size="lg", visible=not headless)
+            sample_prompts_btn = gr.Button("📁", size="lg", elem_classes=["mbtn", "mbtn-forest"], visible=not headless)
             sample_prompts_btn.click(fn=lambda: get_file_path(file_path="", default_extension=".txt", extension_name="Text files"), outputs=[sample_prompts])
         with gr.Row():
             disable_prompt_enhancement = gr.Checkbox(
@@ -1500,7 +1501,7 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
                 interactive=True,
                 info="Folder to save generated samples.",
             )
-            sample_output_dir_btn = gr.Button("📂", size="lg", visible=not headless)
+            sample_output_dir_btn = gr.Button("📂", size="lg", elem_classes=["mbtn", "mbtn-navy"], visible=not headless)
             sample_output_dir_btn.click(fn=lambda: get_folder_path(folder_path=""), outputs=[sample_output_dir])
         with gr.Row():
             sample_width = gr.Number(
@@ -1671,10 +1672,14 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
 
     with gr.Column(), gr.Group():
         with gr.Row():
-            button_print = gr.Button("Print training command")
+            button_print = gr.Button(
+                "Print training command",
+                elem_classes=["mbtn", "mbtn-slate"],
+            )
             toggle_all_btn_bottom = gr.Button(
                 value="Open All Panels",
-                variant="secondary"
+                variant="secondary",
+                elem_classes=["mbtn", "mbtn-purple"],
             )
 
     settings_list = [

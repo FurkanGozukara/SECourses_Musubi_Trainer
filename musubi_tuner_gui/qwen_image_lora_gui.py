@@ -271,8 +271,9 @@ class QwenImageDataset:
                         value=self.config.get("parent_folder_path", "")
                     )
                 self.parent_folder_button = gr.Button(
-                    "📂", 
-                    elem_id="parent_folder_button", 
+                    "📂",
+                    elem_id="parent_folder_button",
+                    elem_classes=["mbtn", "mbtn-pink"],
                     size="lg",
                     visible=not self.headless,
                 )
@@ -382,7 +383,8 @@ class QwenImageDataset:
             with gr.Row():
                 self.generate_toml_button = gr.Button(
                     "Generate Dataset Configuration",
-                    variant="primary"
+                    variant="primary",
+                    elem_classes=["mbtn", "mbtn-orange"],
                 )
                 self.generated_toml_path = gr.Textbox(
                     label="Generated TOML Path",
@@ -394,7 +396,8 @@ class QwenImageDataset:
             with gr.Row():
                 self.copy_generated_path_button = gr.Button(
                     "📋 Copy Generated TOML Path to Dataset Config",
-                    variant="secondary"
+                    variant="secondary",
+                    elem_classes=["mbtn", "mbtn-cyan"],
                 )
             
             self.dataset_status = gr.Textbox(
@@ -806,6 +809,7 @@ class QwenImageModel:
                 "📁",
                 size="lg",
                 elem_id="dit_button",
+                elem_classes=["mbtn", "mbtn-blue"],
                 visible=not self.headless,
             )
             with gr.Column(scale=1):
@@ -851,6 +855,7 @@ class QwenImageModel:
                 "📁",
                 size="lg",
                 elem_id="vae_button",
+                elem_classes=["mbtn", "mbtn-rose"],
                 visible=not self.headless,
             )
             with gr.Column(scale=1):
@@ -875,6 +880,7 @@ class QwenImageModel:
                 "📁",
                 size="lg",
                 elem_id="text_encoder_button",
+                elem_classes=["mbtn", "mbtn-lime"],
                 visible=not self.headless,
             )
             with gr.Column(scale=1):
@@ -1413,7 +1419,10 @@ def qwen_image_gui_actions(
         
     if action_type == "train_model":
         log.info("Train Qwen Image model...")
-        gr.Info("Training is starting... Please check the console for progress.")
+        if print_only:
+            gr.Info("Generating training command preview... Check the console/log for the full command.")
+        else:
+            gr.Info("Training is starting... Please check the console for progress.")
         return train_qwen_image_model(
             headless=headless,
             print_only=print_only,
@@ -3052,6 +3061,7 @@ class QwenImageTrainingSettings:
                 "📂",
                 size="lg",
                 elem_id="logging_dir_button",
+                elem_classes=["mbtn", "mbtn-stone"],
                 visible=not self.headless,
             )
 
@@ -3206,6 +3216,7 @@ class QwenImageSampleSettings:
                 "📂",
                 size="lg",
                 elem_id="sample_prompts_button",
+                elem_classes=["mbtn", "mbtn-forest"],
                 visible=not self.headless,
             )
         
@@ -3222,6 +3233,7 @@ class QwenImageSampleSettings:
                 "📂",
                 size="lg",
                 elem_id="sample_output_dir_button",
+                elem_classes=["mbtn", "mbtn-navy"],
                 visible=not self.headless,
             )
         
@@ -3633,6 +3645,7 @@ class QwenImageSaveLoadSettings:
                 "📂",
                 size="sm",
                 elem_id="output_dir_button",
+                elem_classes=["mbtn", "mbtn-teal"],
                 visible=not self.headless,
             )
 
@@ -4059,10 +4072,11 @@ def qwen_image_lora_tab(
             )
         with gr.Column(scale=1):
             toggle_all_btn = gr.Button(
-                value="Open All Panels", 
-                variant="secondary", 
+                value="Open All Panels",
+                variant="secondary",
                 size="lg",
-                elem_id="toggle-all-btn"
+                elem_id="toggle-all-btn",
+                elem_classes=["mbtn", "mbtn-indigo"],
             )
             # Hidden state to track if panels are open or closed
             panels_state = gr.State(value="closed")  # Default state is closed
@@ -4377,10 +4391,14 @@ def qwen_image_lora_tab(
 
     with gr.Column(), gr.Group():
         with gr.Row():
-            button_print = gr.Button("Print training command")
+            button_print = gr.Button(
+                "Print training command",
+                elem_classes=["mbtn", "mbtn-slate"],
+            )
             toggle_all_btn_bottom = gr.Button(
-                value="Open All Panels", 
-                variant="secondary"
+                value="Open All Panels",
+                variant="secondary",
+                elem_classes=["mbtn", "mbtn-purple"],
             )
 
     global executor

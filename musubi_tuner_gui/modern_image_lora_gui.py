@@ -1383,7 +1383,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
             placeholder=f"Search {spec.display_name} settings",
             lines=1,
         )
-        toggle_all_button = gr.Button("Open All Panels", variant="secondary")
+        toggle_all_button = gr.Button("Open All Panels", variant="secondary", elem_classes=["mbtn", "mbtn-indigo"])
         panels_state = gr.State(value="closed")
     search_results = gr.HTML(visible=False)
 
@@ -1429,7 +1429,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 info="Dataset TOML used by both cache stages and training.",
             )
             dataset_config_button = gr.Button(
-                "📁", size="lg", scale=0, min_width=60, visible=not headless
+                "📁", size="lg", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-gold"], visible=not headless
             )
             dataset_config_button.click(
                 fn=lambda: get_file_path(
@@ -1450,7 +1450,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                     info="Parent folder containing repeat-prefixed training folders.",
                 )
                 parent_folder_button = gr.Button(
-                    "📂", size="lg", scale=0, min_width=60, visible=not headless
+                    "📂", size="lg", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-pink"], visible=not headless
                 )
                 parent_folder_button.click(
                     fn=lambda: get_folder_path(folder_path=""),
@@ -1512,7 +1512,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 lines=5,
                 interactive=False,
             )
-            generate_dataset_button = gr.Button("Generate Dataset TOML", variant="primary")
+            generate_dataset_button = gr.Button("Generate Dataset TOML", variant="primary", elem_classes=["mbtn", "mbtn-orange"])
             generate_dataset_button.click(
                 fn=partial(generate_modern_dataset_toml, spec_key),
                 inputs=[
@@ -1551,7 +1551,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 info="Required training transformer checkpoint.",
             )
             dit_button = gr.Button(
-                "📁", size="lg", scale=0, min_width=60, visible=not headless
+                "📁", size="lg", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-blue"], visible=not headless
             )
             dit_button.click(
                 fn=lambda: get_file_path(
@@ -1568,7 +1568,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 info="Flux2 VAE for Ideogram 4; Qwen-Image VAE for Krea 2.",
             )
             vae_button = gr.Button(
-                "📁", size="lg", scale=0, min_width=60, visible=not headless
+                "📁", size="lg", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-rose"], visible=not headless
             )
             vae_button.click(
                 fn=lambda: get_file_path(
@@ -1584,7 +1584,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 info="Required for text caching and training-time samples.",
             )
             text_encoder_button = gr.Button(
-                "📁", size="lg", scale=0, min_width=60, visible=not headless
+                "📁", size="lg", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-lime"], visible=not headless
             )
             text_encoder_button.click(
                 fn=lambda: get_file_path(
@@ -1624,6 +1624,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 size="lg",
                 scale=0,
                 min_width=60,
+                elem_classes=["mbtn", "mbtn-cyan"],
                 visible=not headless and spec.is_ideogram,
             )
             unconditional_button.click(
@@ -1654,6 +1655,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 size="lg",
                 scale=0,
                 min_width=60,
+                elem_classes=["mbtn", "mbtn-fuchsia"],
                 visible=not headless and spec.is_krea,
             )
             turbo_button.click(
@@ -1898,7 +1900,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 value=config.get("sample_prompts", ""),
             )
             sample_prompts_button = gr.Button(
-                "📁", size="lg", scale=0, min_width=60, visible=not headless
+                "📁", size="lg", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-forest"], visible=not headless
             )
             sample_prompts_button.click(
                 fn=lambda: get_file_path(
@@ -1918,7 +1920,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 value=config.get("sample_output_dir", ""),
             )
             sample_output_button = gr.Button(
-                "📂", size="lg", scale=0, min_width=60, visible=not headless
+                "📂", size="lg", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-navy"], visible=not headless
             )
             sample_output_button.click(
                 fn=lambda: get_folder_path(folder_path=""),
@@ -2120,8 +2122,8 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
     run_state = gr.Textbox(value=train_state_values[spec_key], visible=False)
 
     with gr.Row():
-        print_button = gr.Button("Print Training Workflow")
-        toggle_all_button_bottom = gr.Button("Open All Panels", variant="secondary")
+        print_button = gr.Button("Print Training Workflow", elem_classes=["mbtn", "mbtn-slate"])
+        toggle_all_button_bottom = gr.Button("Open All Panels", variant="secondary", elem_classes=["mbtn", "mbtn-purple"])
 
     settings_list = [
         # Accelerate
