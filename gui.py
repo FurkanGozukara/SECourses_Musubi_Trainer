@@ -41,14 +41,14 @@ def read_file_content(file_path):
 def initialize_ui_interface(config_manager, headless, release_info, readme_content):
     # Create the main Gradio Blocks interface
     # NOTE: In Gradio 6, `css` and `theme` are passed to launch() instead of Blocks().
-    ui_interface = gr.Blocks(title="SECourses Musubi Trainer V32.0")
+    ui_interface = gr.Blocks(title="SECourses Musubi Trainer V32.1")
     with ui_interface:
         # Modern hero header with Patreon link
         gr.HTML(
             """
             <div class="app-hero">
                 <div class="app-hero-left">
-                    <div class="app-hero-badge">V32.0</div>
+                    <div class="app-hero-badge">V32.1</div>
                     <div>
                         <h1>SECourses <span class="grad">Musubi Trainer</span></h1>
                         <p>Qwen · Wan · FLUX · Z-Image · Ideogram 4 · Krea 2 · LTX 2.3 — LoRA &amp; fine-tune training toolkit</p>

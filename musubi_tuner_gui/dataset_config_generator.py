@@ -7,18 +7,76 @@ from typing import Dict, List, Optional, Tuple
 from .common_gui import validate_path_for_toml, normalize_path, is_path_safe
 
 
+# Kohya-style dataset folders carry the repeat count as a numeric prefix:
+# "<repeats>_<name>" (e.g. "5_ohwx" = train images of "ohwx" 5 times per epoch).
+REPEAT_PREFIX_PATTERN = re.compile(r'^(\d+)_(.+)$')
+
+
+def parse_repeat_count(folder_name: str) -> Tuple[int, str, Optional[str]]:
+    """
+    Parse the repeat-count prefix from a dataset folder name.
+
+    Dataset folders should be named "<repeats>_<name>" (e.g. "5_ohwx").
+    This parser is deliberately forgiving: a folder that does not follow the
+    convention still trains with num_repeats defaulting to 1, and a
+    user-facing notice explains what happened so the omission is never silent.
+
+    Returns:
+        Tuple of (repeat_count, clean_name, notice)
+        repeat_count: parsed repeat count (always >= 1)
+        clean_name: folder name with the prefix stripped (used for captions)
+        notice: None for a well-formed name, otherwise a message to show
+                to the user
+
+    Examples:
+        "3_ohwx"        -> (3, "ohwx", None)
+        "10_my_dataset" -> (10, "my_dataset", None)
+        "dataset"       -> (1, "dataset", "[INFO] ...")
+        "0_ohwx"        -> (1, "ohwx", "[WARNING] ...")
+    """
+    name = str(folder_name) if folder_name is not None else ""
+    match = REPEAT_PREFIX_PATTERN.match(name)
+
+    if match:
+        repeat_count = int(match.group(1))
+        clean_name = match.group(2)
+        if repeat_count < 1:
+            return 1, clean_name, (
+                f"[WARNING] Folder '{name}': repeat count 0 is invalid - a dataset with 0 repeats "
+                f"would be skipped entirely during training. It was counted as 1 repeat instead. "
+                f"Rename the folder to 'N_{clean_name}' with N >= 1 (e.g. '5_{clean_name}') to set a real repeat count."
+            )
+        return repeat_count, clean_name, None
+
+    # Number-only names ("5") or a prefix with nothing after it ("5_") are
+    # ambiguous - treat the whole name as the dataset name with 1 repeat.
+    if re.fullmatch(r'\d+_?', name):
+        return 1, name, (
+            f"[INFO] Folder '{name}': name looks like a repeat count without a dataset name. "
+            f"Expected format is 'N_name' (e.g. '{name.rstrip('_')}_myconcept'), so no repeat count "
+            f"was applied - the folder was counted as 1 repeat (num_repeats = 1)."
+        )
+
+    return 1, name, (
+        f"[INFO] Folder '{name}': you forgot the repeat-count prefix (expected format 'N_name', "
+        f"e.g. '5_{name}'), so it was counted as 1 repeat (num_repeats = 1). Rename the folder to "
+        f"e.g. '1_{name}' to set the repeat count explicitly and remove this message."
+    )
+
+
 def extract_repeat_count(folder_name: str) -> Tuple[int, str]:
     """
     Extract repeat count from folder name.
+
+    Backward-compatible wrapper around parse_repeat_count(); use
+    parse_repeat_count() when the user-facing notice is also needed.
     Examples:
         "3_ohwx" -> (3, "ohwx")
         "10_my_dataset" -> (10, "my_dataset")
         "dataset" -> (1, "dataset")
     """
-    match = re.match(r'^(\d+)_(.+)$', folder_name)
-    if match:
-        return int(match.group(1)), match.group(2)
-    return 1, folder_name
+    repeat_count, clean_name, _ = parse_repeat_count(folder_name)
+    return repeat_count, clean_name
 
 
 def _get_files_by_extensions(directory: str, extensions: List[str]) -> List[str]:
@@ -151,8 +209,11 @@ def generate_wan_dataset_config_from_folders(
             messages.append(f"[WARNING] Skipping '{subdir}': No image or video files found")
             continue
 
-        # Extract repeat count and clean name
-        repeat_count, clean_name = extract_repeat_count(subdir)
+        # Extract repeat count and clean name, informing the user when the
+        # folder name deviates from the "N_name" convention
+        repeat_count, clean_name, repeat_notice = parse_repeat_count(subdir)
+        if repeat_notice:
+            messages.append(repeat_notice)
 
         # Determine dataset type based on content
         has_videos = len(video_files) > 0
@@ -222,7 +283,7 @@ def generate_wan_dataset_config_from_folders(
             media_info.append(f"{len(image_files)} images")
         if has_videos:
             media_info.append(f"{len(video_files)} videos")
-        messages.append(f"[OK] Added {subdir} ({', '.join(media_info)}) as {media_type} dataset")
+        messages.append(f"[OK] Added {subdir} ({', '.join(media_info)}) as {media_type} dataset with num_repeats={repeat_count}")
 
     if not config["datasets"]:
         raise ValueError("No valid datasets found in the provided folder structure")
@@ -330,7 +391,9 @@ def generate_ltx2_dataset_config_from_folders(
             messages.append(f"[WARNING] Skipping '{subdir}': No image or video files found")
             continue
 
-        repeat_count, clean_name = extract_repeat_count(subdir)
+        repeat_count, clean_name, repeat_notice = parse_repeat_count(subdir)
+        if repeat_notice:
+            messages.append(repeat_notice)
 
         has_videos = len(video_files) > 0
         has_images = len(image_files) > 0
@@ -394,7 +457,7 @@ def generate_ltx2_dataset_config_from_folders(
             media_info.append(f"{len(image_files)} images")
         if has_videos:
             media_info.append(f"{len(video_files)} videos")
-        messages.append(f"[OK] Added {subdir} ({', '.join(media_info)}) as {media_type} dataset")
+        messages.append(f"[OK] Added {subdir} ({', '.join(media_info)}) as {media_type} dataset with num_repeats={repeat_count}")
 
     if not config["datasets"]:
         raise ValueError("No valid datasets found in the provided folder structure")
@@ -480,9 +543,12 @@ def generate_dataset_config_from_folders(
             messages.append(f"[WARNING] Skipping '{subdir}': No image files found")
             continue
         
-        # Extract repeat count and clean name
-        repeat_count, clean_name = extract_repeat_count(subdir)
-        
+        # Extract repeat count and clean name, informing the user when the
+        # folder name deviates from the "N_name" convention
+        repeat_count, clean_name, repeat_notice = parse_repeat_count(subdir)
+        if repeat_notice:
+            messages.append(repeat_notice)
+
         # Create caption files if requested
         if create_missing_captions:
             caption_content = ""
@@ -544,9 +610,10 @@ def generate_dataset_config_from_folders(
                     pass
             
             messages.append(f"[OK] Found control directory for '{subdir}'")
-        
+
         config["datasets"].append(dataset_entry)
-    
+        messages.append(f"[OK] Added {subdir} ({len(image_files)} images) with num_repeats={repeat_count}")
+
     if not config["datasets"]:
         raise ValueError("No valid datasets found in the provided folder structure")
     

@@ -50,6 +50,7 @@ from .class_huggingface import HuggingFace
 from .class_metadata import MetaData
 from .custom_logging import setup_logging
 from .dataset_config_generator import (
+    extract_repeat_count,
     generate_wan_dataset_config_from_folders,
     save_dataset_config,
     validate_dataset_config
@@ -1031,14 +1032,10 @@ class WanDataset:
                     for folder_path in subfolder_paths:
                         # Parse folder name to get name without repeat count
                         folder_name = os.path.basename(folder_path)
-                        match = re.match(r"^(\d+)_(.+)$", folder_name)
 
-                        if match and caption_strat == "folder_name":
-                            # Use the name part only (without repeat count)
-                            caption_text = match.group(2)
-                        elif caption_strat == "folder_name":
-                            # Use full folder name if no repeat format
-                            caption_text = folder_name
+                        if caption_strat == "folder_name":
+                            # Use the name part only (repeat-count prefix stripped when present)
+                            _, caption_text = extract_repeat_count(folder_name)
                         else:
                             # Empty caption
                             caption_text = ""
