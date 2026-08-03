@@ -16,7 +16,7 @@ from .class_gui_config import GUIConfig
 from .class_latent_caching import LatentCaching
 from .class_network import Network
 from .class_optimizer_and_scheduler import OptimizerAndScheduler
-from .optimizer_catalog import add_automagic_optimizer_choices, optimizer_guidance
+from .optimizer_catalog import add_automagic_optimizer_choices, optimizer_guidance, validate_automagic_configuration
 from .full_finetune_gui import (
     normalize_image_training_parameters,
     training_mode_runtime_exclusions,
@@ -1991,6 +1991,7 @@ def train_qwen_image_model(headless, print_only, parameters):
             log.warning("Accelerate binary not found, using Python module fallback")
             run_cmd = [python_cmd, "-m", "accelerate.commands.launch"]
 
+    validate_automagic_configuration(dict(parameters), warning_callback=None if headless else gr.Warning)
     param_dict, parameters, full_finetune = normalize_image_training_parameters(parameters)
     validate_block_swap_options(
         param_dict,

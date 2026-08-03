@@ -16,6 +16,7 @@ from .class_gui_config import GUIConfig
 from .class_latent_caching import LatentCaching
 from .class_network import Network
 from .class_optimizer_and_scheduler import OptimizerAndScheduler
+from .optimizer_catalog import validate_automagic_configuration
 from .class_save_load import SaveLoadSettings
 from .class_text_encoder_outputs_caching import TextEncoderOutputsCaching
 from .class_training import TrainingSettings
@@ -2549,6 +2550,7 @@ def train_wan_model(headless, print_only, parameters):
         training_mode = "LoRA Training"
         param_dict["training_mode"] = training_mode
         parameters = upsert_parameter(parameters, "training_mode", training_mode)
+    validate_automagic_configuration(param_dict, warning_callback=None if headless else gr.Warning)
     validate_wan_block_swap_options(param_dict)
     
     # Debug: Log critical caching parameters to diagnose misalignment issues

@@ -54,7 +54,7 @@ from .dataset_config_generator import (
     save_dataset_config,
     validate_dataset_config,
 )
-from .optimizer_catalog import add_automagic_optimizer_choices, optimizer_guidance
+from .optimizer_catalog import add_automagic_optimizer_choices, optimizer_guidance, validate_automagic_configuration
 
 log = setup_logging()
 
@@ -1111,6 +1111,7 @@ def generate_ltx2_dataset_toml(*args):
 def train_ltx2_model(headless: bool, print_only: bool, parameters):
     global train_state_value
     param_dict = dict(parameters)
+    validate_automagic_configuration(param_dict, warning_callback=None if headless else gr.Warning)
 
     if str(param_dict.get("dataset_config_mode") or "") == "Generate from Folder Structure":
         generated = str(param_dict.get("generated_toml_path") or "").strip()

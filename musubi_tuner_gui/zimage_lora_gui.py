@@ -21,6 +21,7 @@ from .class_optimizer_and_scheduler import OptimizerAndScheduler
 from .class_save_load import SaveLoadSettings
 from .class_training import TrainingSettings
 from .full_finetune_gui import normalize_image_training_parameters, training_mode_runtime_exclusions
+from .optimizer_catalog import validate_automagic_configuration
 from .common_gui import (
     SaveConfigFile,
     SaveConfigFileToRun,
@@ -366,6 +367,7 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
     python_cmd = sys.executable
     run_cmd = _find_accelerate_launch(python_cmd)
 
+    validate_automagic_configuration(dict(parameters), warning_callback=None if headless else gr.Warning)
     param_dict, parameters, full_finetune = normalize_image_training_parameters(parameters)
 
     def _strip_matching_quotes(s: str) -> str:

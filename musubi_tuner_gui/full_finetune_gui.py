@@ -104,6 +104,13 @@ def normalize_image_training_parameters(
     fused_backward = bool(param_dict.get("fused_backward_pass", False))
     patch_optimizer = bool(param_dict.get("block_swap_optimizer_patch_params", False))
     if fused_backward:
+        if optimizer_type.startswith("automagic"):
+            detail = (
+                "Automagic2 is already internally fused"
+                if optimizer_type == "automagic2"
+                else "Automagic fused behavior is controlled by its optimizer arguments"
+            )
+            raise ValueError(f"The separate Fused Backward Pass option is Adafactor-only; {detail}. Turn it off.")
         if optimizer_type != "adafactor":
             raise ValueError("Fused backward pass requires the Adafactor optimizer.")
         if num_processes != 1:

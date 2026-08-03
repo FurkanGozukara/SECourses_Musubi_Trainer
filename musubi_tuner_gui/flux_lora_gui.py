@@ -52,6 +52,7 @@ from .full_finetune_gui import (
     normalize_training_mode,
     training_mode_runtime_exclusions,
 )
+from .optimizer_catalog import validate_automagic_configuration
 
 log = setup_logging()
 
@@ -503,6 +504,7 @@ def train_flux_model(headless: bool, print_only: bool, parameters):
     python_cmd = sys.executable
     run_cmd = _find_accelerate_launch(python_cmd)
 
+    validate_automagic_configuration(dict(parameters), warning_callback=None if headless else gr.Warning)
     param_dict, parameters, full_finetune = normalize_image_training_parameters(parameters)
 
     validate_block_swap_options(param_dict, lora_training=not full_finetune)

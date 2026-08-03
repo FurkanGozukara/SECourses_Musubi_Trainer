@@ -54,6 +54,7 @@ from .full_finetune_gui import (
     normalize_training_mode,
     training_mode_runtime_exclusions,
 )
+from .optimizer_catalog import validate_automagic_configuration
 
 log = setup_logging()
 
@@ -1098,6 +1099,7 @@ def train_modern_image_model(
 ):
     spec = get_architecture(spec_key)
     param_dict = dict(parameters)
+    validate_automagic_configuration(param_dict, warning_callback=None if headless else gr.Warning)
 
     if str(param_dict.get("dataset_config_mode") or "") == "Generate from Folder Structure":
         generated = str(param_dict.get("generated_toml_path") or "").strip()
