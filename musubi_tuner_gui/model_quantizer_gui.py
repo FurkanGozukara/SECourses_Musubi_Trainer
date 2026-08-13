@@ -36,6 +36,7 @@ WORKFLOW_CLEANUP_FP8 = "Legacy: Cleanup FP8 scaled"
 WORKFLOW_ACTCAL = "Activation calibration (actcal)"
 WORKFLOW_EDIT_QUANT = "Edit comfy_quant metadata"
 WORKFLOW_HYBRID_MXFP8 = "Hybrid MXFP8 (requires HybridMXFP8Layout)"
+WORKFLOW_LTX25_CONVROT = "LTX 2.5 22B ConvRot HQ (video-tuned 22 GB)"
 WORKFLOW_DRY_RUN = "Dry Run (Analyze / Create Template)"
 
 QUANT_FORMAT_FP8 = "FP8 (E4M3)"
@@ -349,7 +350,12 @@ def _load_model_filters() -> Dict[str, Dict[str, object]]:
     log.warning("Could not import convert_to_quant MODEL_FILTERS: %s", " | ".join(import_errors))
     return {
         "gemma4": {"help": "Gemma 4 text/multimodal model", "category": "text"},
-        "qwen35": {"help": "Qwen3.5 text/multimodal model", "category": "text"},
+        "qwen_vlm": {"help": "Qwen VLM family", "category": "text"},
+        "qwen35": {
+            "help": "Compatibility alias for Qwen VLM",
+            "category": "text",
+            "alias_for": "qwen_vlm",
+        },
         "t5xxl": {"help": "T5-XXL text encoder", "category": "text"},
         "mistral": {"help": "Mistral text encoder", "category": "text"},
         "visual": {"help": "Visual encoder", "category": "text"},
@@ -390,6 +396,8 @@ MODEL_CATEGORY_LABELS = {
 MODEL_PRESET_DISPLAY_NAMES = {
     "anima": "Anima (Base/Turbo)",
     "boogu": "Boogu-Image",
+    "distillation_large": "Chroma / Distilled (Large)",
+    "distillation_small": "Chroma / Distilled (Small)",
     "ernie_image": "ERNIE Image",
     "flux1": "FLUX.1",
     "flux2": "FLUX.2",
@@ -403,9 +411,14 @@ MODEL_PRESET_DISPLAY_NAMES = {
     "ltxv2": "LTX (2 / 2.3)",
     "ltx2": "LTX (2 / 2.3)",
     "ltx2_3": "LTX 2.3 (INT8 ConvRot Learned HQ)",
+    "mistral": "Mistral Text Encoder",
+    "nerf_large": "NeRF (Large)",
+    "nerf_small": "NeRF (Small)",
     "qwen": "Qwen Image / Edit (2509, 2511, 2512)",
-    "qwen35": "Qwen3.5 Text/Multimodal",
+    "qwen_vlm": "Qwen VLM (Qwen3.5 and newer)",
+    "radiance": "Radiance",
     "t5xxl": "T5-XXL",
+    "visual": "Visual Encoder",
     "wan": "WAN (2.1 / 2.2)",
     "zimage": "Z-Image",
     "zimage_refiner": "Z-Image Refiner",
@@ -415,6 +428,7 @@ MODEL_PRESET_LEGACY_ALIASES = {
     "flux2_klein_9b": "flux_klein",
     "flux2_klein_9b_kv": "flux_klein",
     "flux2_klein_4b": "flux_klein",
+    "qwen35": "qwen_vlm",
 }
 MODEL_PRESET_LEGACY_LABELS = {
     "Anima": "anima",
@@ -426,6 +440,7 @@ MODEL_PRESET_LEGACY_LABELS = {
     "LENS": "lens",
     "LTX_2_and_2.3": "ltxv2",
     "Qwen Image / Edit": "qwen",
+    "Qwen3.5 Text/Multimodal": "qwen_vlm",
     "WAN Video": "wan",
 }
 REGEX_ONLY_MODEL_PRESETS = set()
@@ -444,14 +459,17 @@ PRIMARY_MODEL_PRESET_VALUES = {
     "ltx2_3",
     "ltxv2",
     "qwen",
+    "qwen_vlm",
     "wan",
     "zimage",
     "zimage_refiner",
 }
-MODEL_PRESET_FILTER_ALIASES = {}
+MODEL_PRESET_FILTER_ALIASES = {
+    "qwen35": "qwen_vlm",
+}
 MODEL_PRESET_EXTRA_FILTERS = {
     # Keep combined filter behavior visible in Gradio instead of relying on CLI-side aliases.
-    "qwen35": {"generic_text"},
+    "qwen_vlm": {"generic_text"},
 }
 
 FLUX_KLEIN_MODEL_SETTINGS = {
@@ -661,13 +679,13 @@ known or uncertain exceptions stay on their safer FP8 or tensor-wise INT8 route.
 
 ### Model decisions
 
-- ConvRot defaults: FLUX.2, FLUX Klein, Gemma 4, Ideogram 4, Krea 2, LTX 2/2.3, Qwen3.5, T5-XXL, WAN, Radiance, distilled/Chroma, and NeRF presets.
+- ConvRot defaults: FLUX.2, FLUX Klein, Gemma 4, Ideogram 4, Krea 2, LTX 2/2.3, Qwen VLM/Qwen3.5+, T5-XXL, WAN, Radiance, distilled/Chroma, and NeRF presets.
 - Krea 2: ConvRot replaces the degraded blockwise route. Sensitive input/time/final/fusion layers remain high precision, and the GUI no longer generates a layer config that silently disables ConvRot.
 - Qwen Image / Edit: learned FP8 tensor scaling with full-precision matmul remains the quality-first exception. Do not use Simple for the best result.
 - Boogu-Image: native INT8 tensor-wise is used because important widths are not compatible with fixed ConvRot/block groups; norm and embedding layers remain high precision.
 - Z-Image and Anima: FP8 Compatibility remains the default because public NVFP4 results showed severe noise.
 - FLUX.1, ERNIE Image, Hunyuan, LENS, and filters without public ConvRot validation stay on native learned FP8 rather than receiving an optimistic INT8 default.
-- Qwen3.5 protects the first and size-specific last layers (23/31/63), embeddings, and the entire visual stack.
+- Qwen VLM protects the first and dynamically detected final language layer, embeddings, MTP weights, and the entire visual stack. The legacy Qwen3.5 preset name maps to it.
 - Gemma 4 protects embeddings, K/V projections, audio/vision paths, and multimodal projectors.
 - Generic Text Encoder is input-scale-only; it does not pretend to provide architecture-specific layer exclusions.
 
@@ -734,7 +752,10 @@ def _ordered_model_preset_choices(values) -> List[str]:
 
 
 def _all_model_preset_values():
-    return set(MODEL_FILTERS.keys()) | REGEX_ONLY_MODEL_PRESETS | GUI_ONLY_MODEL_PRESETS
+    canonical_filters = {
+        name for name, config in MODEL_FILTERS.items() if not config.get("alias_for")
+    }
+    return canonical_filters | REGEX_ONLY_MODEL_PRESETS | GUI_ONLY_MODEL_PRESETS
 
 
 MODEL_PRESET_PRIMARY_CHOICES = _ordered_model_preset_choices(PRIMARY_MODEL_PRESET_VALUES)
@@ -793,6 +814,7 @@ CONVROT_DEFAULT_MODEL_PRESETS = {
     "nerf_large",
     "nerf_small",
     "qwen35",
+    "qwen_vlm",
     "radiance",
     "t5xxl",
     "wan",
@@ -1669,6 +1691,10 @@ class ModelQuantizer:
                 cmd += ["--tensor-scales", str(params.get("tensor_scales_path"))]
             return cmd
 
+        if workflow == WORKFLOW_LTX25_CONVROT:
+            cmd += ["--ltx25-convrot-hq", "--ltx25-variant", "auto", "--ltx25-recipe", "video"]
+            return cmd
+
         if workflow == WORKFLOW_DRY_RUN:
             dry_run = params.get("dry_run") or "analyze"
             cmd += ["--dry-run", str(dry_run)]
@@ -1788,6 +1814,10 @@ class ModelQuantizer:
             cmd.append("--save-quant-metadata")
         if params.get("no_normalize_scales"):
             cmd.append("--no-normalize-scales")
+        if params.get("output_dtype"):
+            cmd += ["--output-dtype", str(params.get("output_dtype"))]
+        if params.get("preserve_layers"):
+            cmd += ["--preserve-layers", str(params.get("preserve_layers"))]
 
         if params.get("input_scales_path"):
             cmd += ["--input-scales", str(params.get("input_scales_path"))]
@@ -1918,6 +1948,9 @@ class ModelQuantizer:
             return f"{base}_edited.safetensors"
         if workflow == WORKFLOW_HYBRID_MXFP8:
             return f"{base}_hybrid.safetensors"
+        if workflow == WORKFLOW_LTX25_CONVROT:
+            ltx_base = re.sub(r"(?:[-_]transformer)?[-_]bf16$", "-transformer", base, flags=re.IGNORECASE)
+            return f"{ltx_base}-comfy-int8-convrot-hq-22gb-video.safetensors"
         if workflow == WORKFLOW_DRY_RUN:
             if params.get("dry_run") == "create-template":
                 return f"{base}_layer_config_template.json"
@@ -2303,6 +2336,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         WORKFLOW_ACTCAL,
                         WORKFLOW_EDIT_QUANT,
                         WORKFLOW_HYBRID_MXFP8,
+                        WORKFLOW_LTX25_CONVROT,
                         WORKFLOW_DRY_RUN,
                     ],
                     value=config.get("model_quantizer.workflow", WORKFLOW_QUANTIZE),
@@ -2366,7 +2400,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                 for category_key, category_label in MODEL_CATEGORY_LABELS.items():
                     filters_in_category = [
                         (name, cfg) for name, cfg in MODEL_FILTERS.items()
-                        if cfg.get("category") == category_key
+                        if cfg.get("category") == category_key and not cfg.get("alias_for")
                     ]
                     if not filters_in_category:
                         continue
@@ -2720,6 +2754,18 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         label="Low memory mode",
                         value=config.get("model_quantizer.low_memory", True),
                     )
+                with gr.Row():
+                    output_dtype = gr.Dropdown(
+                        label="Unquantized Weight Dtype",
+                        choices=["bfloat16", "float16"],
+                        value=config.get("model_quantizer.output_dtype", "bfloat16"),
+                        info="Output dtype for unquantized 2D weights and the compute dtype recorded for quantized layers.",
+                    )
+                    preserve_layers = gr.Textbox(
+                        label="Preserve Source Dtype (Regex)",
+                        value=config.get("model_quantizer.preserve_layers", ""),
+                        placeholder="Optional regex for unquantized 2D weight keys",
+                    )
                 allow_requantize = gr.Checkbox(
                     label="Allow detected quantized inputs",
                     value=config.get("model_quantizer.allow_requantize", False),
@@ -2828,6 +2874,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         dynamic_convrot_value,
         custom_layers_value,
         exclude_layers_value,
+        output_dtype_value,
+        preserve_layers_value,
         custom_type_value,
         custom_block_size_value,
         custom_scaling_mode_value,
@@ -2934,6 +2982,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             "dynamic_convrot": bool(dynamic_convrot_value),
             "custom_layers": custom_layers_value.strip() if isinstance(custom_layers_value, str) else custom_layers_value,
             "exclude_layers": exclude_layers_value.strip() if isinstance(exclude_layers_value, str) else exclude_layers_value,
+            "output_dtype": output_dtype_value,
+            "preserve_layers": preserve_layers_value.strip() if isinstance(preserve_layers_value, str) else preserve_layers_value,
             "custom_type": custom_type_value,
             "custom_block_size": custom_block_size_normalized,
             "custom_scaling_mode": custom_scaling_mode_normalized,
@@ -3461,6 +3511,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         dynamic_convrot,
         custom_layers,
         exclude_layers,
+        output_dtype,
+        preserve_layers,
         custom_type,
         custom_block_size,
         custom_scaling_mode,
@@ -3638,6 +3690,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         "dynamic_convrot",
         "custom_layers",
         "exclude_layers",
+        "output_dtype",
+        "preserve_layers",
         "custom_type",
         "custom_block_size",
         "custom_scaling_mode",
@@ -3725,6 +3779,8 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         dynamic_convrot,
         custom_layers,
         exclude_layers,
+        output_dtype,
+        preserve_layers,
         custom_type,
         custom_block_size,
         custom_scaling_mode,

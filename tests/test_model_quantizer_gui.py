@@ -9,9 +9,11 @@ import pytest
 from musubi_tuner_gui.common_gui import utf8_subprocess_options
 from musubi_tuner_gui.model_quantizer_gui import (
     MODEL_PRESET_NONE,
+    MODEL_PRESET_OTHER_CHOICES,
     MODEL_PRESET_PRIMARY_CHOICES,
     PRESET_INT8_CONVROT_HQ,
     QUANT_FORMAT_INT8,
+    WORKFLOW_LTX25_CONVROT,
     WORKFLOW_QUANTIZE,
     ModelQuantizer,
     _combined_preset_settings,
@@ -36,6 +38,35 @@ def test_ltx_2_3_hq_is_a_distinct_primary_model_preset():
     # Preserve the legacy combined preset and its stored label.
     assert _model_preset_value("LTX (2 / 2.3)") == "ltxv2"
     assert _model_preset_value(MODEL_PRESET_NONE) == MODEL_PRESET_NONE
+
+
+def test_upstream_qwen_vlm_is_exposed_as_one_canonical_primary_preset():
+    label = "Qwen VLM (Qwen3.5 and newer)"
+
+    assert label in MODEL_PRESET_PRIMARY_CHOICES
+    assert label not in MODEL_PRESET_OTHER_CHOICES
+    assert "qwen_vlm" not in MODEL_PRESET_OTHER_CHOICES
+    assert "Qwen3.5 Text/Multimodal" not in MODEL_PRESET_OTHER_CHOICES
+    assert _model_preset_value("qwen35") == "qwen_vlm"
+    assert _model_preset_value("Qwen3.5 Text/Multimodal") == "qwen_vlm"
+    assert _model_preset_filters("qwen35") == {"qwen_vlm", "generic_text"}
+    assert _model_preset_filters(label) == {"qwen_vlm", "generic_text"}
+
+    command = ModelQuantizer(headless=True, config=None)._build_command(
+        "qwen-vlm.safetensors",
+        "qwen-vlm-int8.safetensors",
+        {
+            "workflow": WORKFLOW_QUANTIZE,
+            "model_preset": "qwen_vlm",
+            "model_filters": {
+                name: True for name in _model_preset_filters(label)
+            },
+            "quant_format": QUANT_FORMAT_INT8,
+        },
+    )
+    assert "--qwen_vlm" in command
+    assert "--generic_text" in command
+    assert "--qwen35" not in command
 
 
 def test_ltx_2_3_hq_resolves_the_learned_fixed_convrot_recipe():
@@ -113,6 +144,24 @@ def test_ltx_2_3_hq_command_uses_native_convrot_and_ignores_layer_config():
     assert "--fullmatch" not in command
 
 
+def test_ltx_2_5_hq_workflow_uses_the_specialized_video_tuned_converter():
+    quantizer = ModelQuantizer(headless=True, config=None)
+    input_path = "ltx-2.5-22b-dev-transformer-bf16.safetensors"
+    params = {"workflow": WORKFLOW_LTX25_CONVROT, "verbose": "NORMAL"}
+
+    output_path = quantizer._default_output_name(input_path, params)
+    command = quantizer._build_command(input_path, output_path, params)
+
+    assert output_path.endswith(
+        "ltx-2.5-22b-dev-transformer-comfy-int8-convrot-hq-22gb-video.safetensors"
+    )
+    assert "--ltx25-convrot-hq" in command
+    assert _flag_value(command, "--ltx25-variant") == "auto"
+    assert _flag_value(command, "--ltx25-recipe") == "video"
+    assert "--int8" not in command
+    assert "--convrot" not in command
+
+
 def test_manual_no_model_preset_keeps_custom_layer_config_without_model_filter():
     command = ModelQuantizer(headless=True, config=None)._build_command(
         "model.safetensors",
@@ -131,6 +180,24 @@ def test_manual_no_model_preset_keeps_custom_layer_config_without_model_filter()
     assert _flag_value(command, "--layer-config") == "custom-layer-config.json"
     assert "--fullmatch" in command
     assert "--ltx2_3" not in command
+
+
+def test_output_dtype_policy_is_forwarded_to_upstream_converter():
+    command = ModelQuantizer(headless=True, config=None)._build_command(
+        "model.safetensors",
+        "model-int8.safetensors",
+        {
+            "workflow": WORKFLOW_QUANTIZE,
+            "model_preset": MODEL_PRESET_NONE,
+            "model_filters": {},
+            "quant_format": QUANT_FORMAT_INT8,
+            "output_dtype": "float16",
+            "preserve_layers": r"(?:embed|final).*weight$",
+        },
+    )
+
+    assert _flag_value(command, "--output-dtype") == "float16"
+    assert _flag_value(command, "--preserve-layers") == r"(?:embed|final).*weight$"
 
 
 def test_utf8_subprocess_options_override_host_locale_without_mutating_input():

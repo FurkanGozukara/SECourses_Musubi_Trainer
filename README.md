@@ -276,11 +276,14 @@ Automatic dataset captioning with Qwen2.5-VL, built in — and far deeper than a
 
 Turn your trained checkpoints (or any base model) into deploy-ready quants: FP8 Scaled, INT8 ConvRot, NVFP4, MXFP8. The INT8 Row ConvRot HQ preset produces quants that are **96.2% similar to BF16 while GGUF Q8 manages only 90.0%** — and they run about 2x faster than GGUF Q8 on RTX 3000 / 4000 / 5000. ComfyUI and SwarmUI load them natively. This is a full production quantization suite:
 
-- **13 quality / workflow presets** and around **20 model-family profiles** — FLUX, Klein, Krea, Ideogram, Wan, LTX, Qwen, Z-Image, Hunyuan, ERNIE, Gemma, T5 and more — each with recommended exclusions and defaults baked in.
+- **13 quality / workflow presets** and around **20 model-family profiles** — FLUX, Klein, Krea, Ideogram, Wan, LTX, Qwen Image, Qwen VLM/Qwen3.5+, Z-Image, Hunyuan, ERNIE, Gemma, T5 and more — each with recommended exclusions and defaults baked in.
 - **Learned ConvRot** using SVD and Prodigy optimization, activation calibration and bias correction — the "Best Quality / Slow" preset that beats GGUF Q8.
 - Optional **LoRA-informed calibration** — quantize a base model with your LoRA's behavior taken into account.
 - **Per-layer control**: layer exclusions, sensitive-layer protection, mixed precision, dry-run analysis and automatic layer-template generation.
 - **Single-file conversion queue and recursive folder batch conversion** — both with cancellation — plus low-memory conversion controls for modest machines.
+
+- A dedicated **LTX 2.5 22B ConvRot HQ** workflow creates the video-tuned approximately 22 GB ComfyUI checkpoint directly from the original BF16 dev or distilled model in one streaming pass, with automatic variant detection, architecture checks and a per-layer JSON quality report.
+- Upstream output-dtype controls are exposed in the GUI, including BF16/FP16 output policy and a regex for layers that must retain their source dtype.
 
 ![Model Quantizer tab](https://cdn-uploads.huggingface.co/production/uploads/6345bd89fe134dfd7a0dba40/Nu2G3yw12oAN381kmomDw.png)
 
