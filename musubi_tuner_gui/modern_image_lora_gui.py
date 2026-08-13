@@ -49,6 +49,7 @@ from .dataset_config_generator import (
 from .full_finetune_gui import (
     LORA_TRAINING_MODE,
     TRAINING_MODE_CHOICES,
+    infer_training_mode_from_loaded_config,
     is_full_fine_tuning,
     normalize_image_training_parameters,
     normalize_training_mode,
@@ -1001,8 +1002,14 @@ def save_modern_configuration(
         return original_path, gr.update(value=message, visible=True)
 
 
-def _config_value_for_component(key: str, value: object, default: object, spec: ModernImageArchitecture):
+def _config_value_for_component(key: str, value: object, default: object, spec: ModernImageArchitecture, data: dict | None = None):
     if key == "training_mode":
+        # Older/failed-run TOMLs may predate persisting training_mode, or may
+        # be a genuine full-fine-tune run that never writes network_module.
+        # Infer from the file itself instead of silently keeping whatever the
+        # GUI already had on screen.
+        if data is not None:
+            return infer_training_mode_from_loaded_config(data)
         return normalize_training_mode(value)
     if key == "network_module":
         return spec.network_module
@@ -1048,7 +1055,7 @@ def open_modern_configuration(
         values = []
         for key, default in parameters:
             value = resolve_portable_model_value(key, data.get(key, default))
-            values.append(_config_value_for_component(key, value, default, spec))
+            values.append(_config_value_for_component(key, value, default, spec, data))
         message = f"Configuration loaded: {os.path.basename(file_path)}"
         gr.Info(message)
         return tuple([file_path, gr.update(value=message, visible=True)] + values)
@@ -2409,8 +2416,21 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         show_progress=False,
     )
 
+    def sync_training_mode_visibility(mode):
+        # Load/Open-triggered counterpart to toggle_training_mode: only
+        # re-syncs accordion visibility. Deliberately does NOT also touch
+        # blocks_to_swap's value/maximum here -- that field's already-loaded
+        # value is used as an *input* to this same event, and re-clamping it
+        # from a chained .then() risks the incoming (pre-clamp) value being
+        # validated against a maximum a concurrent update already lowered,
+        # which raises a spurious "Value N is greater than maximum" error.
+        # The loaded blocks_to_swap value is not part of this bug fix's
+        # scope; leaving it as-is is safe and the user can adjust it manually.
+        full_finetune = is_full_fine_tuning(mode)
+        return gr.Accordion(visible=not full_finetune), gr.Accordion(visible=full_finetune)
+
     action = partial(modern_image_gui_actions, spec_key)
-    configuration.button_open_config.click(
+    open_config_event = configuration.button_open_config.click(
         action,
         inputs=[
             gr.Textbox(value="open_configuration", visible=False),
@@ -2423,7 +2443,15 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
         show_progress=False,
     )
-    configuration.button_load_config.click(
+    # Programmatic value updates from the Load/Open output tuple do not trigger
+    # training_mode.change(), so re-sync the accordion visibility explicitly.
+    open_config_event.then(
+        fn=sync_training_mode_visibility,
+        inputs=[training_mode],
+        outputs=[network_accordion, full_finetune_accordion],
+        show_progress=False,
+    )
+    load_config_event = configuration.button_load_config.click(
         action,
         inputs=[
             gr.Textbox(value="open_configuration", visible=False),
@@ -2436,6 +2464,12 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
         show_progress=False,
         queue=False,
+    )
+    load_config_event.then(
+        fn=sync_training_mode_visibility,
+        inputs=[training_mode],
+        outputs=[network_accordion, full_finetune_accordion],
+        show_progress=False,
     )
     configuration.button_save_config.click(
         action,

@@ -20,7 +20,11 @@ from .class_network import Network
 from .class_optimizer_and_scheduler import OptimizerAndScheduler
 from .class_save_load import SaveLoadSettings
 from .class_training import TrainingSettings
-from .full_finetune_gui import normalize_image_training_parameters, training_mode_runtime_exclusions
+from .full_finetune_gui import (
+    infer_training_mode_from_loaded_config,
+    normalize_image_training_parameters,
+    training_mode_runtime_exclusions,
+)
 from .optimizer_catalog import validate_automagic_configuration
 from .common_gui import (
     SaveConfigFile,
@@ -260,6 +264,14 @@ def open_zimage_configuration(ask_for_file, file_path, parameters):
 
     loaded_values = []
     for key, default_value in parameters:
+        if key == "training_mode":
+            # Older/failed-run TOMLs may predate persisting training_mode, or
+            # may be a genuine full-fine-tune (DreamBooth) run that never
+            # writes network_module. Infer from the file itself instead of
+            # silently keeping whatever the GUI already had on screen.
+            loaded_values.append(infer_training_mode_from_loaded_config(data, full_mode_label="DreamBooth Fine-Tuning"))
+            continue
+
         if key in data:
             v = resolve_portable_model_value(key, data[key])
             if isinstance(v, list) and key in numeric_fields:
@@ -660,7 +672,6 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
             "sample_guidance_scale",
             "sample_seed",
             "sample_negative_prompt",
-            "training_mode",
             "training_adapter_path",
             "training_adapter_multiplier",
             "additional_parameters",

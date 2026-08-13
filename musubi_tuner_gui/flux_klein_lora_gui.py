@@ -836,18 +836,32 @@ def flux_klein_lora_tab(headless=False, config: GUIConfig = {}):
 
     assert len(settings_list) == len(FLUX_KLEIN_PARAM_KEYS), f"settings_list ({len(settings_list)}) != keys ({len(FLUX_KLEIN_PARAM_KEYS)})"
 
-    configuration.button_open_config.click(
+    open_config_event = configuration.button_open_config.click(
         flux_klein_gui_actions,
         inputs=[gr.Textbox(value="open_configuration", visible=False), dummy_true, configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
         outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
         show_progress=False,
     )
-    configuration.button_load_config.click(
+    # Programmatic value updates from the Load/Open output tuple do not trigger
+    # training_mode.change(), so re-sync the accordion visibility explicitly.
+    open_config_event.then(
+        fn=toggle_training_mode,
+        inputs=[training_mode],
+        outputs=[network_accordion, full_finetune_accordion],
+        show_progress=False,
+    )
+    load_config_event = configuration.button_load_config.click(
         flux_klein_gui_actions,
         inputs=[gr.Textbox(value="open_configuration", visible=False), dummy_false, configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
         outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
         show_progress=False,
         queue=False,
+    )
+    load_config_event.then(
+        fn=toggle_training_mode,
+        inputs=[training_mode],
+        outputs=[network_accordion, full_finetune_accordion],
+        show_progress=False,
     )
     configuration.button_save_config.click(
         flux_klein_gui_actions,

@@ -47,6 +47,7 @@ from .dataset_config_generator import generate_dataset_config_from_folders, save
 from .full_finetune_gui import (
     LORA_TRAINING_MODE,
     TRAINING_MODE_CHOICES,
+    infer_training_mode_from_loaded_config,
     is_full_fine_tuning,
     normalize_image_training_parameters,
     normalize_training_mode,
@@ -341,11 +342,19 @@ def open_flux_configuration(ask_for_file, file_path, parameters):
             loaded_values.append(v)
             continue
 
+        if key == "training_mode":
+            # Older/failed-run TOMLs (written by SaveConfigFileToRun before this
+            # run) may predate persisting training_mode, or may be a genuine
+            # full-fine-tune run that never writes network_module. Infer from
+            # the file itself instead of silently keeping whatever the GUI
+            # already had on screen -- see full_finetune_gui.py for why the
+            # presence/absence of network_module is a reliable signal.
+            loaded_values.append(infer_training_mode_from_loaded_config(data))
+            continue
+
         if key in data:
             v = resolve_portable_model_value(key, data[key])
-            if key == "training_mode":
-                v = normalize_training_mode(v)
-            elif key == "vae_dtype":
+            if key == "vae_dtype":
                 v = str(v or "").strip() or "float32"
             if isinstance(v, list) and key in numeric_fields:
                 v = v[0] if v else None
@@ -744,7 +753,6 @@ def train_flux_model(headless: bool, print_only: bool, parameters):
             "control_resolution_height",
             "caching_teo_fp8_text_encoder",
             "model_family",  # GUI-only selector
-            "training_mode",  # GUI-only selector
             "additional_parameters",
             "debug_mode",
             "disable_prompt_enhancement",
@@ -2442,18 +2450,32 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
         show_progress=False,
     )
 
-    configuration.button_open_config.click(
+    open_config_event = configuration.button_open_config.click(
         flux_gui_actions,
         inputs=[gr.Textbox(value="open_configuration", visible=False), dummy_true, configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
         outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
         show_progress=False,
     )
-    configuration.button_load_config.click(
+    # Programmatic value updates from the Load/Open output tuple do not trigger
+    # training_mode.change(), so re-sync the accordion visibility explicitly.
+    open_config_event.then(
+        fn=toggle_training_mode,
+        inputs=[training_mode],
+        outputs=[network_accordion, full_finetune_accordion],
+        show_progress=False,
+    )
+    load_config_event = configuration.button_load_config.click(
         flux_gui_actions,
         inputs=[gr.Textbox(value="open_configuration", visible=False), dummy_false, configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
         outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
         show_progress=False,
         queue=False,
+    )
+    load_config_event.then(
+        fn=toggle_training_mode,
+        inputs=[training_mode],
+        outputs=[network_accordion, full_finetune_accordion],
+        show_progress=False,
     )
     configuration.button_save_config.click(
         flux_gui_actions,

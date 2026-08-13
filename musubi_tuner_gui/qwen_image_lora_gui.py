@@ -18,6 +18,8 @@ from .class_network import Network
 from .class_optimizer_and_scheduler import OptimizerAndScheduler
 from .optimizer_catalog import add_automagic_optimizer_choices, optimizer_guidance, validate_automagic_configuration
 from .full_finetune_gui import (
+    infer_training_mode_from_loaded_config,
+    is_full_fine_tuning,
     normalize_image_training_parameters,
     training_mode_runtime_exclusions,
 )
@@ -1491,7 +1493,7 @@ def save_qwen_image_configuration(save_as_bool, file_path, parameters):
                 value = migration_map[value]
                 log.info(f"Migrated debug_mode from '{old_value}' to '{value}'")
 
-        if training_mode == "DreamBooth Fine-Tuning":
+        if is_full_fine_tuning(training_mode):
             # For DreamBooth/Fine-tuning, we need to disable network parameters
             if key == "network_module":
                 # Set to empty or None to disable LoRA
@@ -1698,6 +1700,20 @@ def open_qwen_image_configuration(ask_for_file, file_path, parameters):
     for key, value in parameters:
         if not key in ["ask_for_file", "apply_preset", "file_path"]:
             included_params.append(key)  # Track this parameter
+
+            if key == "training_mode":
+                # Older/failed-run TOMLs may predate persisting training_mode,
+                # or may be a genuine full-fine-tune run that never writes
+                # network_module. Infer from the file itself (when a file was
+                # actually loaded) instead of silently keeping whatever the
+                # GUI already had on screen. If no file was loaded (my_data
+                # is empty, e.g. load cancelled), leave the live value alone.
+                values.append(
+                    infer_training_mode_from_loaded_config(my_data, full_mode_label="DreamBooth Fine-Tuning")
+                    if my_data else value
+                )
+                continue
+
             toml_value = my_data.get(key)
             toml_value = resolve_portable_model_value(key, toml_value)
 
@@ -2376,7 +2392,7 @@ def train_qwen_image_model(headless, print_only, parameters):
             "sample_discrete_flow_shift", "sample_cfg_scale", "sample_negative_prompt", "dit_dtype",
             "dit_in_channels", "text_encoder_dtype", "flow_shift", "faster_model_loading",
             "custom_network_module", "convert_to_diffusers", "diffusers_output_dir",
-            "convert_to_safetensors", "safetensors_output_dir", "training_mode",
+            "convert_to_safetensors", "safetensors_output_dir",
         ]
         if not full_finetune:
             gui_only_exclusion.append("mem_eff_save")
@@ -2711,7 +2727,6 @@ def train_qwen_image_model(headless, print_only, parameters):
                 "dynamo_use_fullgraph",
                 "dynamo_use_dynamic",
                 "extra_accelerate_launch_args",
-                "training_mode",  # Exclude training_mode as it's GUI-only
             ] + pattern_exclusion + gui_only_exclusion,
             mandatory_keys=["dataset_config", "dit", "vae", "text_encoder"],
         )

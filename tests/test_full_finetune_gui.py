@@ -22,6 +22,7 @@ from musubi_tuner_gui.full_finetune_gui import (
     FULL_FINE_TUNING_MODE,
     FULL_FINE_TUNING_NETWORK_KEYS,
     LORA_TRAINING_MODE,
+    infer_training_mode_from_loaded_config,
     normalize_image_training_parameters,
     training_mode_runtime_exclusions,
 )
@@ -295,6 +296,11 @@ def test_qwen_dreambooth_preview_normalizes_full_model_runtime_config(tmp_path: 
     assert config["mem_eff_save"] is True
     assert not FULL_FINE_TUNING_NETWORK_KEYS.intersection(config)
     assert "block_swap_h2d_only" not in config
+    # training_mode must survive into the runtime TOML (canonicalized by
+    # normalize_image_training_parameters) so a reload of this exact file
+    # (e.g. after a crash) can restore DreamBooth mode instead of silently
+    # defaulting back to LoRA Training.
+    assert config["training_mode"] == FULL_FINE_TUNING_MODE
 
 
 def test_shipped_qwen_default_enables_resident_compile():
@@ -491,6 +497,11 @@ def test_zimage_dreambooth_preview_normalizes_full_model_runtime_config(tmp_path
     assert config["mem_eff_save"] is True
     assert not FULL_FINE_TUNING_NETWORK_KEYS.intersection(config)
     assert "block_swap_h2d_only" not in config
+    # training_mode must survive into the runtime TOML (canonicalized by
+    # normalize_image_training_parameters) so a reload of this exact file
+    # (e.g. after a crash) can restore DreamBooth mode instead of silently
+    # defaulting back to LoRA Training.
+    assert config["training_mode"] == FULL_FINE_TUNING_MODE
 
 
 def test_flux_accelerate_lookup_prefers_the_active_python_environment(tmp_path: Path, monkeypatch):
@@ -582,6 +593,10 @@ def test_modern_full_finetune_workflow_selects_full_trainer_and_strips_lora(
     assert "network_dim" not in runtime
     assert "fp8_base" not in runtime
     assert "block_swap_h2d_only" not in runtime
+    # training_mode must survive into the runtime TOML so a reload of this
+    # exact file (e.g. after a crash) can restore Full Fine-Tuning instead of
+    # silently defaulting back to LoRA Training.
+    assert runtime["training_mode"] == FULL_FINE_TUNING_MODE
 
 
 @pytest.mark.parametrize("spec_key", ["ideogram4", "krea2"])
@@ -684,7 +699,10 @@ def test_flux_full_finetune_runtime_uses_full_script_and_valid_config(
     assert runtime["use_legacy_sdpa"] is True
     assert runtime["save_precision"] == "bf16"
     assert runtime["vae_dtype"] == "float32"
-    assert "training_mode" not in runtime
+    # training_mode IS persisted (unlike the LoRA-only keys below): it's what
+    # lets a saved/failed run be reloaded into the correct mode later, and is
+    # harmless to the backend (an unused argparse.Namespace attribute).
+    assert runtime["training_mode"] == FULL_FINE_TUNING_MODE
     assert "network_module" not in runtime
     assert "network_dim" not in runtime
 
@@ -904,3 +922,194 @@ def test_wan_task_switch_updates_only_automatic_compile_default(
     )
 
     assert result is expected
+
+
+# --- Regression coverage for: reloading a saved/failed run's TOML must not
+# --- silently downgrade a Full-Fine-Tuning run to LoRA. A real full-finetune
+# --- runtime TOML never contains network_module (see
+# --- FULL_FINE_TUNING_NETWORK_KEYS); older ones (including every file
+# --- already sitting on a user's disk before this fix) also lack
+# --- training_mode. infer_training_mode_from_loaded_config() and each
+# --- trainer's open_*_configuration() must recover Full Fine-Tuning from
+# --- that shape instead of silently keeping whatever the GUI already had on
+# --- screen (which is how a resumed full-finetune run used to turn into an
+# --- unwanted LoRA run).
+
+
+def test_infer_training_mode_treats_missing_network_module_as_full_finetune():
+    assert infer_training_mode_from_loaded_config({"full_bf16": True}) == FULL_FINE_TUNING_MODE
+
+
+def test_infer_training_mode_treats_present_network_module_as_lora():
+    assert infer_training_mode_from_loaded_config({"network_module": "networks.lora_wan"}) == LORA_TRAINING_MODE
+
+
+def test_infer_training_mode_treats_blank_network_module_as_full_finetune():
+    assert infer_training_mode_from_loaded_config({"network_module": ""}) == FULL_FINE_TUNING_MODE
+
+
+@pytest.mark.parametrize(
+    "stored, expected",
+    [
+        (FULL_FINE_TUNING_MODE, FULL_FINE_TUNING_MODE),
+        ("DreamBooth Fine-Tuning", FULL_FINE_TUNING_MODE),
+        ("full dit fine-tuning", FULL_FINE_TUNING_MODE),
+        (LORA_TRAINING_MODE, LORA_TRAINING_MODE),
+        ("lora training", LORA_TRAINING_MODE),
+    ],
+)
+def test_infer_training_mode_normalizes_explicit_legacy_aliases(stored, expected):
+    assert infer_training_mode_from_loaded_config({"training_mode": stored}) == expected
+
+
+def test_infer_training_mode_falls_back_to_lora_on_garbage_value_instead_of_raising():
+    # A hand-edited or corrupt file must not crash "Load Configuration".
+    assert infer_training_mode_from_loaded_config({"training_mode": "banana"}) == LORA_TRAINING_MODE
+
+
+def test_infer_training_mode_respects_caller_label_vocabulary():
+    # Qwen/Z-Image use "DreamBooth Fine-Tuning" as their own Radio choice
+    # instead of the shared canonical "Full Fine-Tuning" string.
+    assert (
+        infer_training_mode_from_loaded_config({}, full_mode_label="DreamBooth Fine-Tuning")
+        == "DreamBooth Fine-Tuning"
+    )
+    assert (
+        infer_training_mode_from_loaded_config(
+            {"training_mode": "Full Fine-Tuning"}, full_mode_label="DreamBooth Fine-Tuning"
+        )
+        == "DreamBooth Fine-Tuning"
+    )
+
+
+@pytest.mark.parametrize(
+    "loader",
+    [
+        flux_lora_gui.open_flux_configuration,
+        flux2_lora_gui.open_flux2_configuration,
+        flux_klein_lora_gui.open_flux_klein_configuration,
+    ],
+)
+def test_flux_family_reload_of_legacy_full_finetune_runtime_toml_infers_full_finetune(
+    tmp_path: Path, monkeypatch, loader
+):
+    """Reproduces the reported bug: a full-finetune run's TOML (as written by
+    any version of this app, old or new) lacks both network_module and
+    training_mode. Loading it while the GUI currently shows LoRA Training
+    (the ordinary case after restarting the app) must not silently keep it
+    on LoRA Training."""
+    monkeypatch.setattr(gr, "Info", lambda *_args, **_kwargs: None)
+    config_path = tmp_path / "legacy_full_finetune.toml"
+    config_path.write_text('full_bf16 = true\nsave_precision = "bf16"\n', encoding="utf-8")
+
+    current_gui_defaults = [("training_mode", LORA_TRAINING_MODE), ("network_module", "networks.lora_flux_2")]
+    result = loader(False, str(config_path), current_gui_defaults)
+
+    assert result[2] == FULL_FINE_TUNING_MODE
+
+
+@pytest.mark.parametrize(
+    "loader",
+    [
+        flux_lora_gui.open_flux_configuration,
+        flux2_lora_gui.open_flux2_configuration,
+        flux_klein_lora_gui.open_flux_klein_configuration,
+    ],
+)
+def test_flux_family_reload_of_legacy_lora_runtime_toml_stays_lora(tmp_path: Path, monkeypatch, loader):
+    """Mirror case: an ordinary LoRA runtime TOML (network_module present,
+    training_mode absent) must not be misread as full-finetune just because
+    training_mode is missing -- network_module presence settles it."""
+    monkeypatch.setattr(gr, "Info", lambda *_args, **_kwargs: None)
+    config_path = tmp_path / "legacy_lora.toml"
+    config_path.write_text('network_module = "networks.lora_flux_2"\n', encoding="utf-8")
+
+    current_gui_defaults = [("training_mode", FULL_FINE_TUNING_MODE), ("network_module", "")]
+    result = loader(False, str(config_path), current_gui_defaults)
+
+    assert result[2] == LORA_TRAINING_MODE
+
+
+def test_qwen_reload_of_legacy_full_finetune_runtime_toml_infers_dreambooth_mode(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(gr, "Info", lambda *_args, **_kwargs: None)
+    config_path = tmp_path / "legacy_qwen_full_finetune.toml"
+    config_path.write_text("full_bf16 = true\n", encoding="utf-8")
+
+    current_gui_defaults = [
+        ("training_mode", "LoRA Training"),
+        ("network_module", qwen_image_lora_gui.QWEN_IMAGE_NETWORK_MODULE),
+    ]
+    result = qwen_image_lora_gui.open_qwen_image_configuration(False, str(config_path), current_gui_defaults)
+
+    assert result[2] == "DreamBooth Fine-Tuning"
+
+
+def test_qwen_reload_of_legacy_lora_runtime_toml_stays_lora(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(gr, "Info", lambda *_args, **_kwargs: None)
+    config_path = tmp_path / "legacy_qwen_lora.toml"
+    config_path.write_text(f'network_module = "{qwen_image_lora_gui.QWEN_IMAGE_NETWORK_MODULE}"\n', encoding="utf-8")
+
+    current_gui_defaults = [("training_mode", "DreamBooth Fine-Tuning"), ("network_module", "")]
+    result = qwen_image_lora_gui.open_qwen_image_configuration(False, str(config_path), current_gui_defaults)
+
+    assert result[2] == "LoRA Training"
+
+
+def test_zimage_reload_of_legacy_full_finetune_runtime_toml_infers_dreambooth_mode(tmp_path: Path, monkeypatch):
+    monkeypatch.setattr(gr, "Info", lambda *_args, **_kwargs: None)
+    config_path = tmp_path / "legacy_zimage_full_finetune.toml"
+    config_path.write_text("full_bf16 = true\n", encoding="utf-8")
+
+    current_gui_defaults = [("training_mode", "LoRA Training"), ("network_module", "networks.lora_zimage")]
+    result = zimage_lora_gui.open_zimage_configuration(False, str(config_path), current_gui_defaults)
+
+    assert result[2] == "DreamBooth Fine-Tuning"
+
+
+@pytest.mark.parametrize("spec_key", ["ideogram4", "krea2"])
+def test_modern_image_reload_of_legacy_full_finetune_runtime_toml_infers_full_finetune(
+    tmp_path: Path, spec_key: str
+):
+    config_path = tmp_path / f"legacy_{spec_key}_full_finetune.toml"
+    config_path.write_text("full_bf16 = true\n", encoding="utf-8")
+
+    current_gui_defaults = [
+        ("training_mode", LORA_TRAINING_MODE),
+        ("network_module", get_architecture(spec_key).network_module),
+    ]
+    result = modern_image_lora_gui.open_modern_configuration(spec_key, False, str(config_path), current_gui_defaults)
+
+    assert result[2] == FULL_FINE_TUNING_MODE
+
+
+def test_flux_family_end_to_end_resume_of_failed_full_finetune_stays_full_finetune(tmp_path: Path, monkeypatch):
+    """End-to-end reproduction of the reported user flow: start a real
+    Full-Fine-Tuning run (writing the real runtime TOML to output_dir via
+    train_flux_model), then reload that exact file as if the app had been
+    restarted after a crash. The reloaded training_mode must still say Full
+    Fine-Tuning, not silently fall back to LoRA Training."""
+    values = _base_full_values(tmp_path, flux_lora_gui.FLUX_PARAM_KEYS, model_version="dev")
+    values["model_family"] = "FLUX.2"
+    fake_executor = _FakeExecutor()
+    monkeypatch.setattr(flux_lora_gui, "executor", fake_executor)
+    monkeypatch.setattr(flux_lora_gui, "save_executed_script", lambda **_kwargs: None)
+    monkeypatch.setattr(flux_lora_gui, "setup_environment", lambda **_kwargs: {})
+    monkeypatch.setattr(gr, "Info", lambda *_args, **_kwargs: None)
+
+    flux_lora_gui.train_flux_model(
+        headless=True,
+        print_only=False,
+        parameters=_ordered_parameters(flux_lora_gui.FLUX_PARAM_KEYS, values),
+    )
+    runtime_files = list((tmp_path / "output").glob("full-smoke_*.toml"))
+    assert len(runtime_files) == 1
+
+    # Simulate a fresh app restart: every field back to its ordinary LoRA-mode default.
+    fresh_gui_defaults = _ordered_parameters(
+        flux_lora_gui.FLUX_PARAM_KEYS,
+        {**{k: None for k in flux_lora_gui.FLUX_PARAM_KEYS}, "training_mode": LORA_TRAINING_MODE, "model_family": "FLUX.2"},
+    )
+    reloaded = flux_lora_gui.open_flux_configuration(False, str(runtime_files[0]), fresh_gui_defaults)
+
+    training_mode_index = 2 + flux_lora_gui.FLUX_PARAM_KEYS.index("training_mode")
+    assert reloaded[training_mode_index] == FULL_FINE_TUNING_MODE

@@ -46,6 +46,43 @@ def is_full_fine_tuning(value: object) -> bool:
     return normalize_training_mode(value) == FULL_FINE_TUNING_MODE
 
 
+def infer_training_mode_from_loaded_config(
+    data: dict,
+    full_mode_label: str = FULL_FINE_TUNING_MODE,
+    lora_mode_label: str = LORA_TRAINING_MODE,
+) -> str:
+    """Recover training_mode for a loaded run TOML, tolerating files saved
+    before the flag was persisted.
+
+    Not every trainer's Radio uses the shared canonical "Full Fine-Tuning" /
+    "LoRA Training" strings verbatim (Qwen Image and Z-Image use "DreamBooth
+    Fine-Tuning" as their own label) -- callers pass their own label spelling
+    via full_mode_label/lora_mode_label so the returned value is always one
+    of that trainer's actual Radio choices.
+
+    When the TOML has an explicit (even legacy-alias-spelled) training_mode,
+    normalize it and map back onto the caller's label. An unrecognized value
+    falls back to LoRA rather than raising, since a hand-edited or corrupt
+    file shouldn't crash config loading.
+
+    When training_mode is missing outright -- an older run TOML saved before
+    this flag was persisted, or a genuine full-fine-tune run that never
+    writes network_module (see FULL_FINE_TUNING_NETWORK_KEYS) -- infer it
+    from whether network_module is present: full-fine-tuning never writes
+    it, LoRA training always does (network_module is a mandatory key
+    whenever training_mode isn't Full Fine-Tuning).
+    """
+    if "training_mode" in data:
+        try:
+            full = is_full_fine_tuning(data.get("training_mode"))
+        except ValueError:
+            full = False
+        return full_mode_label if full else lora_mode_label
+    if not str(data.get("network_module") or "").strip():
+        return full_mode_label
+    return lora_mode_label
+
+
 def replace_parameter(
     parameters: list[tuple[str, object]],
     key: str,
@@ -131,7 +168,11 @@ def normalize_image_training_parameters(
 
 
 def training_mode_runtime_exclusions(mode: object) -> set[str]:
-    exclusions = {"training_mode"}
+    # training_mode itself is intentionally NOT excluded: it's harmless to the
+    # backend (unknown TOML keys become unused argparse.Namespace attributes,
+    # see training/parser_common.py:read_config_from_file) and persisting it
+    # is what lets a saved/failed run be reloaded into the correct mode later.
+    exclusions = set()
     if is_full_fine_tuning(mode):
         exclusions.update(FULL_FINE_TUNING_NETWORK_KEYS)
         exclusions.update({"full_fp16", "block_swap_h2d_only"})
