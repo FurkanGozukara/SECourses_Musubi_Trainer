@@ -265,6 +265,8 @@ def open_flux2_configuration(ask_for_file, file_path, parameters):
             v = data[key]
             if key == "training_mode":
                 v = normalize_training_mode(v)
+            elif key == "vae_dtype":
+                v = str(v or "").strip() or "float32"
             if isinstance(v, list) and key in numeric_fields:
                 v = v[0] if v else None
             elif isinstance(v, list) and key in list_to_str_fields:
@@ -353,6 +355,10 @@ def train_flux2_model(headless: bool, print_only: bool, parameters):
     run_cmd = _find_accelerate_launch(python_cmd)
 
     param_dict, parameters, full_finetune = normalize_image_training_parameters(parameters)
+
+    vae_dtype = str(param_dict.get("vae_dtype") or "").strip() or "float32"
+    param_dict["vae_dtype"] = vae_dtype
+    parameters = [(key, vae_dtype if key == "vae_dtype" else value) for key, value in parameters]
 
     # Prefer generated dataset config when using folder mode.
     dataset_config_mode = (param_dict.get("dataset_config_mode") or "").strip()
@@ -817,6 +823,7 @@ def flux2_lora_tab(headless=False, config: GUIConfig = {}):
     defaults = {
         "training_mode": LORA_TRAINING_MODE,
         "model_version": "dev",
+        "vae_dtype": "float32",
         "network_module": "networks.lora_flux_2",
         "output_name": "my-flux2-lora",
         "mixed_precision": "bf16",
@@ -1053,8 +1060,8 @@ def flux2_lora_tab(headless=False, config: GUIConfig = {}):
         with gr.Row():
             vae_dtype = gr.Dropdown(
                 label="vae_dtype",
-                choices=["", "float32", "bfloat16"],
-                value=config.get("vae_dtype", ""),
+                choices=["float32", "bfloat16"],
+                value=config.get("vae_dtype", "float32") or "float32",
                 interactive=True,
             )
         with gr.Row():

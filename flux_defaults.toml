@@ -14,6 +14,7 @@ model_version = "dev"  # FLUX.2: "dev" | FLUX Klein: "klein-4b", "klein-base-4b"
 # Required model paths (set these)
 dit = ""          # REQUIRED: path to DiT checkpoint (e.g. flux2-dev.safetensors or flux2-klein-9b.safetensors)
 vae = ""          # REQUIRED: path to AE checkpoint (ae.safetensors)
+vae_dtype = "float32" # FLUX.2/Klein default; bfloat16 reduces VRAM usage
 text_encoder = "" # REQUIRED: path to Text Encoder (Mistral 3 for dev, Qwen3 for Klein)
 
 # Dataset config

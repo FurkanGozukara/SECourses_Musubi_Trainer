@@ -17,6 +17,7 @@ from musubi_tuner_gui import (
     wan_lora_gui,
     zimage_lora_gui,
 )
+from musubi_tuner_gui.common_gui import SaveConfigFile, SaveConfigFileToRun
 from musubi_tuner_gui.full_finetune_gui import (
     FULL_FINE_TUNING_MODE,
     FULL_FINE_TUNING_NETWORK_KEYS,
@@ -69,6 +70,8 @@ def _base_full_values(tmp_path: Path, keys: list[str], *, model_version: str) ->
             "model_version": model_version,
             "dit": _touch(tmp_path / "dit.safetensors"),
             "vae": _touch(tmp_path / "vae.safetensors"),
+            # Gradio sends an unselected dropdown as an empty string, not None.
+            "vae_dtype": "",
             "text_encoder": _touch(tmp_path / "text_encoder.safetensors"),
             "fp8_base": False,
             "fp8_scaled": False,
@@ -100,6 +103,33 @@ def _base_full_values(tmp_path: Path, keys: list[str], *, model_version: str) ->
         }
     )
     return values
+
+
+@pytest.mark.parametrize("save_config", [SaveConfigFile, SaveConfigFileToRun])
+@pytest.mark.parametrize("blank_value", ["", "   "])
+def test_config_serializers_omit_blank_optional_vae_dtype(tmp_path: Path, save_config, blank_value: str):
+    config_path = tmp_path / "config.toml"
+
+    save_config(
+        [("mixed_precision", "bf16"), ("vae_dtype", blank_value)],
+        str(config_path),
+    )
+
+    assert toml.load(config_path) == {"mixed_precision": "bf16"}
+
+
+@pytest.mark.parametrize(
+    "loader",
+    [flux_lora_gui.open_flux_configuration, flux2_lora_gui.open_flux2_configuration],
+)
+def test_flux_config_loaders_normalize_legacy_blank_vae_dtype(tmp_path: Path, monkeypatch, loader):
+    config_path = tmp_path / "legacy.toml"
+    config_path.write_text('vae_dtype = ""\n', encoding="utf-8")
+    monkeypatch.setattr(gr, "Info", lambda *_args, **_kwargs: None)
+
+    loaded = loader(False, str(config_path), [("vae_dtype", "bfloat16")])
+
+    assert loaded[2] == "float32"
 
 
 def test_shared_full_finetune_rules_remove_quantized_base_and_align_precision():
@@ -653,6 +683,7 @@ def test_flux_full_finetune_runtime_uses_full_script_and_valid_config(
     assert runtime["fused_backward_pass"] is True
     assert runtime["use_legacy_sdpa"] is True
     assert runtime["save_precision"] == "bf16"
+    assert runtime["vae_dtype"] == "float32"
     assert "training_mode" not in runtime
     assert "network_module" not in runtime
     assert "network_dim" not in runtime

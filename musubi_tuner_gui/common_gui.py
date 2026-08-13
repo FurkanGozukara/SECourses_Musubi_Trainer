@@ -1786,6 +1786,17 @@ def verify_image_folder_pattern(folder_path: str) -> bool:
     # Return True to indicate that the folder pattern is valid
     return return_value
 
+_OPTIONAL_EMPTY_STRING_PARAMETERS = {"vae_dtype"}
+
+
+def _is_empty_optional_parameter(name: str, value) -> bool:
+    return (
+        name in _OPTIONAL_EMPTY_STRING_PARAMETERS
+        and isinstance(value, str)
+        and not value.strip()
+    )
+
+
 def SaveConfigFile(
     parameters,
     file_path: str,
@@ -1807,7 +1818,7 @@ def SaveConfigFile(
 
     variables = {}
     for name, value in sorted(parameters, key=lambda x: x[0]):
-        if name not in exclusion and value is not None:
+        if name not in exclusion and value is not None and not _is_empty_optional_parameter(name, value):
             # Convert string representations of lists back to actual lists for specific parameters
             if name in ["network_args", "optimizer_args", "lr_scheduler_args"]:
                 if isinstance(value, str):
@@ -2169,6 +2180,10 @@ def SaveConfigFileToRun(
     variables = {}
     for name, value in sorted(parameters, key=lambda x: x[0]):
         if name in exclusion:
+            continue
+        # Optional string-valued parameters must be omitted when blank so argparse
+        # can apply the model-specific default instead of receiving an invalid value.
+        if _is_empty_optional_parameter(name, value):
             continue
         # Skip empty string for log_with parameter (causes accelerate error)
         if name == "log_with" and value == "":

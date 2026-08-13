@@ -345,6 +345,8 @@ def open_flux_configuration(ask_for_file, file_path, parameters):
             v = resolve_portable_model_value(key, data[key])
             if key == "training_mode":
                 v = normalize_training_mode(v)
+            elif key == "vae_dtype":
+                v = str(v or "").strip() or "float32"
             if isinstance(v, list) and key in numeric_fields:
                 v = v[0] if v else None
             elif isinstance(v, list) and key in list_to_str_fields:
@@ -506,6 +508,12 @@ def train_flux_model(headless: bool, print_only: bool, parameters):
 
     validate_automagic_configuration(dict(parameters), warning_callback=None if headless else gr.Warning)
     param_dict, parameters, full_finetune = normalize_image_training_parameters(parameters)
+
+    # Gradio represents an unselected dropdown as an empty string, while the
+    # FLUX.2 backend expects the missing/default value to resolve to float32.
+    vae_dtype = str(param_dict.get("vae_dtype") or "").strip() or "float32"
+    param_dict["vae_dtype"] = vae_dtype
+    parameters = [(key, vae_dtype if key == "vae_dtype" else value) for key, value in parameters]
 
     validate_block_swap_options(param_dict, lora_training=not full_finetune)
 
@@ -1079,6 +1087,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
         "model_family": "FLUX.2",
         "training_mode": "LoRA Training",
         "model_version": "dev",
+        "vae_dtype": "float32",
         "network_module": "networks.lora_flux_2",
         "output_name": "my-flux-lora",
         "mixed_precision": "bf16",
@@ -1423,10 +1432,10 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
         with gr.Row():
             vae_dtype = gr.Dropdown(
                 label="vae_dtype",
-                choices=["", "float32", "bfloat16"],
-                value=config.get("vae_dtype", ""),
+                choices=["float32", "bfloat16"],
+                value=config.get("vae_dtype", "float32") or "float32",
                 interactive=True,
-                info="Optional VAE dtype override for caching/training (bfloat16 saves VRAM).",
+                info="VAE dtype for caching/training. Float32 is the FLUX default; bfloat16 saves VRAM.",
             )
         with gr.Row():
             text_encoder = gr.Textbox(

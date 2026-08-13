@@ -69,6 +69,10 @@ def train_flux_klein_model(headless: bool, print_only: bool, parameters):
 
     param_dict, parameters, full_finetune = normalize_image_training_parameters(parameters)
 
+    vae_dtype = str(param_dict.get("vae_dtype") or "").strip() or "float32"
+    param_dict["vae_dtype"] = vae_dtype
+    parameters = [(key, vae_dtype if key == "vae_dtype" else value) for key, value in parameters]
+
     # Prefer generated dataset config when using folder mode.
     dataset_config_mode = (param_dict.get("dataset_config_mode") or "").strip()
     if dataset_config_mode == "Generate from Folder Structure":
@@ -360,6 +364,7 @@ def flux_klein_lora_tab(headless=False, config: GUIConfig = {}):
         "training_mode": LORA_TRAINING_MODE,
         # musubi-tuner/docs/flux_2.md recommends klein-base-* for training (dev/klein are distilled, mainly inference).
         "model_version": "klein-base-9b",
+        "vae_dtype": "float32",
         "network_module": "networks.lora_flux_2",
         "output_name": "my-flux-klein-lora",
         "mixed_precision": "bf16",
@@ -518,7 +523,12 @@ def flux_klein_lora_tab(headless=False, config: GUIConfig = {}):
             vae_btn = gr.Button("Browse", size="lg", visible=not headless)
             vae_btn.click(fn=lambda: get_file_path(file_path="", default_extension=".safetensors", extension_name="Model files"), outputs=[vae])
         with gr.Row():
-            vae_dtype = gr.Dropdown(label="vae_dtype", choices=["", "float32", "bfloat16"], value=config.get("vae_dtype", ""), interactive=True)
+            vae_dtype = gr.Dropdown(
+                label="vae_dtype",
+                choices=["float32", "bfloat16"],
+                value=config.get("vae_dtype", "float32") or "float32",
+                interactive=True,
+            )
         with gr.Row():
             text_encoder = gr.Textbox(label="text_encoder", value=config.get("text_encoder", ""), interactive=True)
             te_btn = gr.Button("Browse", size="lg", visible=not headless)
