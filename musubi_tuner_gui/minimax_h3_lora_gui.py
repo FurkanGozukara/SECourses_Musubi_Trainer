@@ -1302,9 +1302,42 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
     with gr.Accordion("Configuration File", open=True):
         configuration = ConfigurationFile(headless=headless, config=config)
 
-    accelerate_launch = AccelerateLaunch(config=config)
+    with gr.Row():
+        search_input = gr.Textbox(
+            label="Search Settings",
+            placeholder="Search MiniMax H3 settings (for example: model, quantization, dataset, cache, optimizer)",
+            lines=1,
+        )
+        toggle_all_button = gr.Button(
+            "Open All Panels",
+            variant="secondary",
+            elem_classes=["mbtn", "mbtn-indigo"],
+        )
+        panels_state = gr.State(value="mixed")
+    search_results = gr.HTML(visible=False)
 
-    with gr.Accordion("Model Settings", open=True):
+    accordions = []
+    panel_search_specs = []
+
+    def tracked_panel(label, *, keywords="", open=False, **kwargs):
+        accordion = gr.Accordion(label, open=open, **kwargs)
+        accordions.append(accordion)
+        panel_search_specs.append((label, f"{label} {keywords}".lower()))
+        return accordion
+
+    with tracked_panel(
+        "Accelerate launch Settings",
+        keywords="resource gpu precision distributed multi gpu dynamo cpu threads port",
+        open=True,
+        elem_classes="flux1_background",
+    ):
+        accelerate_launch = AccelerateLaunch(config=config)
+
+    with tracked_panel(
+        "Model Settings",
+        keywords="task t2va fl2va ref2va dit transformer text encoder vae vocoder model paths",
+        open=True,
+    ):
         with gr.Row():
             task = reg(
                 "task",
@@ -1374,7 +1407,11 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                 ),
             )
 
-    with gr.Accordion("Attention Settings", open=False):
+    with tracked_panel(
+        "Attention Settings",
+        keywords="sdpa flash attention sage xformers split attention",
+        open=False,
+    ):
         with gr.Row():
             sdpa = reg("sdpa", gr.Checkbox(label="SDPA", value=get_value("sdpa"), info="PyTorch scaled dot-product attention (recommended)."))
             flash_attn = reg(
@@ -1390,7 +1427,11 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                 gr.Checkbox(label="xformers", value=get_value("xformers"), info="Requires xformers package."),
             )
 
-    with gr.Accordion("Quantization and Memory Settings", open=True):
+    with tracked_panel(
+        "Quantization and Memory Settings",
+        keywords="int8 convrot nvfp4 block swap offload memory dtype quantization",
+        open=True,
+    ):
         gr.Markdown(
             "**Pre-quantized ConvRot INT8 checkpoints are detected automatically - leave 'ConvRot INT8' unchecked for them.** "
             "Check it only to quantize a full/pruned **BF16** DiT at load time (bit-identical to the published INT8 files). "
@@ -1488,7 +1529,11 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                 ),
             )
 
-    with gr.Accordion("Dataset Settings", open=True):
+    with tracked_panel(
+        "Dataset Settings",
+        keywords="dataset config folder resolution caption batch bucket frames video image jsonl toml",
+        open=True,
+    ):
         with gr.Row():
             dataset_config_mode = reg(
                 "dataset_config_mode",
@@ -1622,7 +1667,11 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
             )
         dataset_status = gr.Textbox(label="Dataset Generation Status", lines=5, interactive=False, value="")
 
-    with gr.Accordion("Audio Supervision", open=False):
+    with tracked_panel(
+        "Audio Supervision",
+        keywords="audio video waveform sidecar silence supervision loss weight",
+        open=False,
+    ):
         gr.Markdown(
             "H3 generates video **and audio** jointly. Videos with a real audio track (or a same-stem .wav sidecar) are "
             "supervised on audio too; silent videos never are. A pure video-only LoRA can degrade audio quality - "
@@ -1648,7 +1697,11 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                 ),
             )
 
-    with gr.Accordion("Caching Settings", open=False):
+    with tracked_panel(
+        "Caching Settings",
+        keywords="cache latent text encoder unconditional probe device batch workers skip existing teacher",
+        open=False,
+    ):
         gr.Markdown(
             "Latent and text-encoder caches are (re)built automatically before each training start; existing cache files are skipped. "
             "TE caching streams the Qwen3-VL layers from CPU when 'Text Encoder Blocks to Swap' is set (50 = fits consumer GPUs)."
@@ -1731,7 +1784,11 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                 ),
             )
 
-    with gr.Accordion("H3 Loss and Schedule Settings", open=True):
+    with tracked_panel(
+        "H3 Loss and Schedule Settings",
+        keywords="h3 guidance loss schedule timestep teacher matching conditions distilled cfg weighting",
+        open=True,
+    ):
         gr.Markdown(
             "H3 checkpoints are CFG-distilled: plain flow-matching training slowly de-distills them (washed-out outputs). "
             "The **guidance loss** (scale 3-4; enabled by default at 4.0) re-anchors the target in the distilled space; "
@@ -1896,7 +1953,11 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                           info="Clean coefficient for reference-audio conditions (released: 1.0)."),
             )
 
-    with gr.Accordion("Network Settings (LoRA)", open=True):
+    with tracked_panel(
+        "Network Settings (LoRA)",
+        keywords="network lora rank dim alpha dropout weights module",
+        open=True,
+    ):
         with gr.Row():
             network_module = reg(
                 "network_module",
@@ -1940,7 +2001,11 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                           info="0 = disabled. Scales weights when their norm exceeds this value."),
             )
 
-    with gr.Accordion("Optimizer and Scheduler Settings", open=True):
+    with tracked_panel(
+        "Optimizer and Scheduler Settings",
+        keywords="optimizer learning rate scheduler warmup decay cycles gradient norm",
+        open=True,
+    ):
         with gr.Row():
             optimizer_type = reg(
                 "optimizer_type",
@@ -2027,7 +2092,11 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                 gr.Textbox(label="Scheduler Args", value=get_value("lr_scheduler_args"), placeholder='e.g. "T_max=100"'),
             )
 
-    with gr.Accordion("Training Settings", open=True):
+    with tracked_panel(
+        "Training Settings",
+        keywords="training epochs steps workers seed gradient accumulation checkpointing precision",
+        open=True,
+    ):
         with gr.Row():
             max_train_epochs = reg(
                 "max_train_epochs",
@@ -2049,7 +2118,11 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                 gr.Checkbox(label="Persistent DataLoader Workers", value=get_value("persistent_data_loader_workers")),
             )
 
-    with gr.Accordion("Saving Settings", open=True):
+    with tracked_panel(
+        "Saving Settings",
+        keywords="save output checkpoint resume state precision epochs steps retention",
+        open=True,
+    ):
         with gr.Row():
             output_dir = reg(
                 "output_dir",
@@ -2100,7 +2173,11 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                 gr.Textbox(label="Resume From State", value=get_value("resume"), placeholder="Path to a saved state folder"),
             )
 
-    with gr.Accordion("Sample Generation Settings", open=False):
+    with tracked_panel(
+        "Sample Generation Settings",
+        keywords="sample generation prompts output width height frames steps guidance seed negative audio video",
+        open=False,
+    ):
         gr.Markdown(
             "Training-time samples decode joint video+audio MP4s under `output_dir/sample`. They load the text encoder on the GPU "
             "(NVFP4 ~15 GB / INT8 ~25 GB / BF16 ~48 GB resident, minus what 'Text Encoder Blocks to Swap' streams from CPU). "
@@ -2157,7 +2234,11 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                             info="Use the .txt prompt file exactly as written."),
             )
 
-    with gr.Accordion("Logging / Metadata / HuggingFace", open=False):
+    with tracked_panel(
+        "Logging / Metadata / HuggingFace",
+        keywords="logging tensorboard wandb metadata author license tags huggingface repository upload",
+        open=False,
+    ):
         with gr.Row():
             logging_dir = reg("logging_dir", gr.Textbox(label="Logging Directory", value=get_value("logging_dir")))
             log_with = reg(
@@ -2199,7 +2280,11 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
             ddp_gradient_as_bucket_view = reg("ddp_gradient_as_bucket_view", gr.Checkbox(label="DDP Grad Bucket View", value=get_value("ddp_gradient_as_bucket_view")))
             ddp_static_graph = reg("ddp_static_graph", gr.Checkbox(label="DDP Static Graph", value=get_value("ddp_static_graph")))
 
-    with gr.Accordion("Additional Parameters", open=False):
+    with tracked_panel(
+        "Additional Parameters",
+        keywords="additional cli parameters arguments debug timesteps",
+        open=False,
+    ):
         with gr.Row():
             additional_parameters = reg(
                 "additional_parameters",
@@ -2275,9 +2360,81 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
     with gr.Column(), gr.Group():
         with gr.Row():
             print_button = gr.Button("Print Command", variant="secondary", elem_classes=["mbtn", "mbtn-slate"])
+            toggle_all_button_bottom = gr.Button(
+                "Open All Panels",
+                variant="secondary",
+                elem_classes=["mbtn", "mbtn-purple"],
+            )
         executor = CommandExecutor(headless=headless)
 
     run_state = gr.Textbox(value=str(train_state_value), visible=False)
+
+    def search_and_open_panels(query):
+        query = str(query or "").strip().lower()
+        if not query:
+            return [
+                "closed",
+                gr.Button(value="Open All Panels"),
+                gr.Button(value="Open All Panels"),
+                gr.HTML(value="", visible=False),
+            ] + [gr.Accordion(open=False) for _ in accordions]
+
+        matches = [query in searchable_text for _, searchable_text in panel_search_specs]
+        matched_names = [
+            label
+            for (label, _), matched in zip(panel_search_specs, matches)
+            if matched
+        ]
+        if matched_names:
+            items = "".join(f"<li>{name}</li>" for name in matched_names)
+            result = f"<strong>Matching panels</strong><ul>{items}</ul>"
+            button_label = f"Reset Search ({len(matched_names)} panel{'s' if len(matched_names) != 1 else ''} filtered)"
+        else:
+            result = "<strong>No settings found.</strong>"
+            button_label = "Reset Search"
+
+        return [
+            "search",
+            gr.Button(value=button_label),
+            gr.Button(value=button_label),
+            gr.HTML(value=result, visible=True),
+        ] + [gr.Accordion(open=matched) for matched in matches]
+
+    search_input.change(
+        fn=search_and_open_panels,
+        inputs=[search_input],
+        outputs=[panels_state, toggle_all_button, toggle_all_button_bottom, search_results] + accordions,
+        show_progress=False,
+    )
+
+    def toggle_panels(current_state):
+        # A toggle during filtered search acts as Reset Search, matching the
+        # behavior of the established trainer tabs.
+        open_panels = current_state not in {"open", "search"}
+        new_state = "open" if open_panels else "closed"
+        button_label = "Hide All Panels" if open_panels else "Open All Panels"
+        return [
+            new_state,
+            gr.Button(value=button_label),
+            gr.Button(value=button_label),
+            gr.Textbox(value=""),
+            gr.HTML(value="", visible=False),
+        ] + [gr.Accordion(open=open_panels) for _ in accordions]
+
+    for button in (toggle_all_button, toggle_all_button_bottom):
+        button.click(
+            fn=toggle_panels,
+            inputs=[panels_state],
+            outputs=[
+                panels_state,
+                toggle_all_button,
+                toggle_all_button_bottom,
+                search_input,
+                search_results,
+            ]
+            + accordions,
+            show_progress=False,
+        )
 
     configuration.button_open_config.click(
         minimax_h3_gui_actions,

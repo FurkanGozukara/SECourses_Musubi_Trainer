@@ -1297,10 +1297,43 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
     with gr.Accordion("Configuration File", open=True):
         configuration = ConfigurationFile(headless=headless, config=config)
 
-    accelerate_launch = AccelerateLaunch(config=config)
-    # Ensure single-GPU default threads=1 like other tabs when unset is handled by class defaults.
+    with gr.Row():
+        search_input = gr.Textbox(
+            label="Search Settings",
+            placeholder="Search LTX 2.3 settings (for example: model, quantization, dataset, cache, optimizer)",
+            lines=1,
+        )
+        toggle_all_button = gr.Button(
+            "Open All Panels",
+            variant="secondary",
+            elem_classes=["mbtn", "mbtn-indigo"],
+        )
+        panels_state = gr.State(value="mixed")
+    search_results = gr.HTML(visible=False)
 
-    with gr.Accordion("Model Settings", open=True):
+    accordions = []
+    panel_search_specs = []
+
+    def tracked_panel(label, *, keywords="", open=False, **kwargs):
+        accordion = gr.Accordion(label, open=open, **kwargs)
+        accordions.append(accordion)
+        panel_search_specs.append((label, f"{label} {keywords}".lower()))
+        return accordion
+
+    with tracked_panel(
+        "Accelerate launch Settings",
+        keywords="resource gpu precision distributed multi gpu dynamo cpu threads port",
+        open=True,
+        elem_classes="flux1_background",
+    ):
+        accelerate_launch = AccelerateLaunch(config=config)
+        # Ensure single-GPU default threads=1 like other tabs when unset is handled by class defaults.
+
+    with tracked_panel(
+        "Model Settings",
+        keywords="checkpoint dit transformer gemma text encoder vae vocoder model paths",
+        open=True,
+    ):
         with gr.Row():
             ltx2_checkpoint = reg(
                 "ltx2_checkpoint",
@@ -1426,7 +1459,11 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                 ),
             )
 
-    with gr.Accordion("Attention Settings", open=False):
+    with tracked_panel(
+        "Attention Settings",
+        keywords="sdpa flash attention sage xformers split attention",
+        open=False,
+    ):
         with gr.Row():
             sdpa = reg("sdpa", gr.Checkbox(label="SDPA", value=get_value("sdpa"), info="PyTorch scaled dot-product attention (recommended)."))
             flash_attn = reg(
@@ -1471,7 +1508,11 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                 ),
             )
 
-    with gr.Accordion("Quantization and Memory Settings", open=True):
+    with tracked_panel(
+        "Quantization and Memory Settings",
+        keywords="fp8 int8 convrot nf4 block swap offload memory dtype quantization",
+        open=True,
+    ):
         gr.Markdown(
             "Pick **one** base quantization: FP8 (fast, ~19 GB), **INT8 ConvRot** (higher fidelity than FP8), or NF4 (~10 GB). "
             "INT8 ConvRot rotates weights with a group-wise Hadamard matrix before int8 quantization — recommended for quality."
@@ -1644,7 +1685,11 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                 ),
             )
 
-    with gr.Accordion("Dataset Settings", open=True):
+    with tracked_panel(
+        "Dataset Settings",
+        keywords="dataset config folder resolution caption batch bucket frames video image toml",
+        open=True,
+    ):
         with gr.Row():
             dataset_config_mode = reg(
                 "dataset_config_mode",
@@ -1790,7 +1835,11 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
             )
         dataset_status = gr.Textbox(label="Dataset Generation Status", lines=5, interactive=False, value="")
 
-    with gr.Accordion("Audio / AV Settings", open=False):
+    with tracked_panel(
+        "Audio / AV Settings",
+        keywords="audio video av loss waveform mel spectrogram conditioning source",
+        open=False,
+    ):
         with gr.Row():
             ltx2_audio_source = reg(
                 "ltx2_audio_source",
@@ -1810,7 +1859,11 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                 ),
             )
 
-    with gr.Accordion("Caching Settings", open=False):
+    with tracked_panel(
+        "Caching Settings",
+        keywords="cache latent text encoder device batch workers skip existing",
+        open=False,
+    ):
         gr.Markdown("Latent and text-encoder caches are (re)built automatically before each training start; existing cache files are skipped.")
         with gr.Row():
             cache_latents = reg(
@@ -1903,7 +1956,11 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                             info="Also save pre-connector text features (needed for connector LoRA training)."),
             )
 
-    with gr.Accordion("Network Settings (LoRA)", open=True):
+    with tracked_panel(
+        "Network Settings (LoRA)",
+        keywords="network lora rank dim alpha dropout weights module",
+        open=True,
+    ):
         with gr.Row():
             network_module = reg(
                 "network_module",
@@ -1982,7 +2039,11 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                           info="0 = disabled. Scales weights when their norm exceeds this value."),
             )
 
-    with gr.Accordion("Optimizer and Scheduler Settings", open=True):
+    with tracked_panel(
+        "Optimizer and Scheduler Settings",
+        keywords="optimizer learning rate scheduler warmup decay cycles gradient norm",
+        open=True,
+    ):
         with gr.Row():
             optimizer_type = reg(
                 "optimizer_type",
@@ -2068,7 +2129,11 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                 gr.Textbox(label="Scheduler Args", value=get_value("lr_scheduler_args"), placeholder='e.g. "T_max=100"'),
             )
 
-    with gr.Accordion("Training Settings", open=True):
+    with tracked_panel(
+        "Training Settings",
+        keywords="training epochs steps workers seed gradient accumulation checkpointing precision",
+        open=True,
+    ):
         with gr.Row():
             max_train_epochs = reg(
                 "max_train_epochs",
@@ -2113,7 +2178,11 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                 gr.Number(label="Max Timestep", value=get_value("max_timestep"), precision=0, minimum=0, maximum=1000),
             )
 
-    with gr.Accordion("Saving Settings", open=True):
+    with tracked_panel(
+        "Saving Settings",
+        keywords="save output checkpoint resume state precision epochs steps retention",
+        open=True,
+    ):
         with gr.Row():
             output_dir = reg(
                 "output_dir",
@@ -2164,7 +2233,11 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                 gr.Textbox(label="Resume From State", value=get_value("resume"), placeholder="Path to a saved state folder"),
             )
 
-    with gr.Accordion("Sample Generation Settings", open=False):
+    with tracked_panel(
+        "Sample Generation Settings",
+        keywords="sample generation prompts output width height frames steps guidance seed negative",
+        open=False,
+    ):
         gr.Markdown(
             "Samples are generated during training from a prompt file (one prompt per line). "
             "Prompt lines are auto-augmented with width/height/frames/steps/guidance/seed unless disabled."
@@ -2279,7 +2352,11 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                             info="Use the prompt file exactly as written."),
             )
 
-    with gr.Accordion("Logging / Metadata / HuggingFace", open=False):
+    with tracked_panel(
+        "Logging / Metadata / HuggingFace",
+        keywords="logging tensorboard wandb metadata author license tags huggingface repository upload",
+        open=False,
+    ):
         with gr.Row():
             logging_dir = reg("logging_dir", gr.Textbox(label="Logging Directory", value=get_value("logging_dir")))
             log_with = reg(
@@ -2321,7 +2398,11 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
             ddp_gradient_as_bucket_view = reg("ddp_gradient_as_bucket_view", gr.Checkbox(label="DDP Grad Bucket View", value=get_value("ddp_gradient_as_bucket_view")))
             ddp_static_graph = reg("ddp_static_graph", gr.Checkbox(label="DDP Static Graph", value=get_value("ddp_static_graph")))
 
-    with gr.Accordion("Additional Parameters", open=False):
+    with tracked_panel(
+        "Additional Parameters",
+        keywords="additional cli parameters arguments debug timesteps",
+        open=False,
+    ):
         with gr.Row():
             additional_parameters = reg(
                 "additional_parameters",
@@ -2391,9 +2472,81 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
     with gr.Column(), gr.Group():
         with gr.Row():
             print_button = gr.Button("Print Command", variant="secondary", elem_classes=["mbtn", "mbtn-slate"])
+            toggle_all_button_bottom = gr.Button(
+                "Open All Panels",
+                variant="secondary",
+                elem_classes=["mbtn", "mbtn-purple"],
+            )
         executor = CommandExecutor(headless=headless)
 
     run_state = gr.Textbox(value=str(train_state_value), visible=False)
+
+    def search_and_open_panels(query):
+        query = str(query or "").strip().lower()
+        if not query:
+            return [
+                "closed",
+                gr.Button(value="Open All Panels"),
+                gr.Button(value="Open All Panels"),
+                gr.HTML(value="", visible=False),
+            ] + [gr.Accordion(open=False) for _ in accordions]
+
+        matches = [query in searchable_text for _, searchable_text in panel_search_specs]
+        matched_names = [
+            label
+            for (label, _), matched in zip(panel_search_specs, matches)
+            if matched
+        ]
+        if matched_names:
+            items = "".join(f"<li>{name}</li>" for name in matched_names)
+            result = f"<strong>Matching panels</strong><ul>{items}</ul>"
+            button_label = f"Reset Search ({len(matched_names)} panel{'s' if len(matched_names) != 1 else ''} filtered)"
+        else:
+            result = "<strong>No settings found.</strong>"
+            button_label = "Reset Search"
+
+        return [
+            "search",
+            gr.Button(value=button_label),
+            gr.Button(value=button_label),
+            gr.HTML(value=result, visible=True),
+        ] + [gr.Accordion(open=matched) for matched in matches]
+
+    search_input.change(
+        fn=search_and_open_panels,
+        inputs=[search_input],
+        outputs=[panels_state, toggle_all_button, toggle_all_button_bottom, search_results] + accordions,
+        show_progress=False,
+    )
+
+    def toggle_panels(current_state):
+        # A toggle during filtered search acts as Reset Search, matching the
+        # behavior of the established trainer tabs.
+        open_panels = current_state not in {"open", "search"}
+        new_state = "open" if open_panels else "closed"
+        button_label = "Hide All Panels" if open_panels else "Open All Panels"
+        return [
+            new_state,
+            gr.Button(value=button_label),
+            gr.Button(value=button_label),
+            gr.Textbox(value=""),
+            gr.HTML(value="", visible=False),
+        ] + [gr.Accordion(open=open_panels) for _ in accordions]
+
+    for button in (toggle_all_button, toggle_all_button_bottom):
+        button.click(
+            fn=toggle_panels,
+            inputs=[panels_state],
+            outputs=[
+                panels_state,
+                toggle_all_button,
+                toggle_all_button_bottom,
+                search_input,
+                search_results,
+            ]
+            + accordions,
+            show_progress=False,
+        )
 
     configuration.button_open_config.click(
         ltx2_gui_actions,
