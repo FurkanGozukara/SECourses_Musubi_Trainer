@@ -13,7 +13,6 @@ from musubi_tuner_gui.model_quantizer_gui import (
     MODEL_PRESET_PRIMARY_CHOICES,
     PRESET_INT8_CONVROT_HQ,
     QUANT_FORMAT_INT8,
-    WORKFLOW_LTX25_CONVROT,
     WORKFLOW_QUANTIZE,
     ModelQuantizer,
     _combined_preset_settings,
@@ -24,6 +23,7 @@ from musubi_tuner_gui.model_quantizer_gui import (
 
 
 LTX_2_3_LABEL = "LTX 2.3 (INT8 ConvRot Learned HQ)"
+LTX_2_5_LABEL = "LTX 2.5"
 
 
 def _flag_value(command, flag):
@@ -38,6 +38,23 @@ def test_ltx_2_3_hq_is_a_distinct_primary_model_preset():
     # Preserve the legacy combined preset and its stored label.
     assert _model_preset_value("LTX (2 / 2.3)") == "ltxv2"
     assert _model_preset_value(MODEL_PRESET_NONE) == MODEL_PRESET_NONE
+
+
+def test_ltx_2_5_is_a_primary_model_preset_with_an_intelligent_layer_filter():
+    assert _model_preset_label("ltx2_5") == LTX_2_5_LABEL
+    assert _model_preset_value(LTX_2_5_LABEL) == "ltx2_5"
+    assert LTX_2_5_LABEL in MODEL_PRESET_PRIMARY_CHOICES
+    assert LTX_2_5_LABEL not in MODEL_PRESET_OTHER_CHOICES
+    assert _model_preset_filters("ltx2_5") == {"ltx2_5"}
+
+    effective_preset, settings = _combined_preset_settings(
+        "ltx2_5",
+        None,
+        use_model_default_preset=True,
+    )
+
+    assert effective_preset == PRESET_INT8_CONVROT_HQ
+    assert settings["workflow"] == WORKFLOW_QUANTIZE
 
 
 def test_upstream_qwen_vlm_is_exposed_as_one_canonical_primary_preset():
@@ -144,10 +161,15 @@ def test_ltx_2_3_hq_command_uses_native_convrot_and_ignores_layer_config():
     assert "--fullmatch" not in command
 
 
-def test_ltx_2_5_hq_workflow_uses_the_specialized_video_tuned_converter():
+def test_ltx_2_5_model_preset_uses_the_specialized_video_tuned_converter():
     quantizer = ModelQuantizer(headless=True, config=None)
     input_path = "ltx-2.5-22b-dev-transformer-bf16.safetensors"
-    params = {"workflow": WORKFLOW_LTX25_CONVROT, "verbose": "NORMAL"}
+    params = {
+        "workflow": WORKFLOW_QUANTIZE,
+        "model_preset": "ltx2_5",
+        "model_filters": {"ltx2_5": True},
+        "verbose": "NORMAL",
+    }
 
     output_path = quantizer._default_output_name(input_path, params)
     command = quantizer._build_command(input_path, output_path, params)
@@ -160,6 +182,29 @@ def test_ltx_2_5_hq_workflow_uses_the_specialized_video_tuned_converter():
     assert _flag_value(command, "--ltx25-recipe") == "video"
     assert "--int8" not in command
     assert "--convrot" not in command
+
+
+def test_ltx_2_5_filter_can_be_disabled_for_manual_quantizer_settings():
+    params = {
+        "workflow": WORKFLOW_QUANTIZE,
+        "model_preset": "ltx2_5",
+        "model_filters": {"ltx2_5": False},
+        "quant_format": QUANT_FORMAT_INT8,
+        "comfy_quant": True,
+        "scaling_mode": "row",
+        "convrot": True,
+        "convrot_group_size": 256,
+    }
+
+    command = ModelQuantizer(headless=True, config=None)._build_command(
+        "ltx-2.5-22b-dev-transformer-bf16.safetensors",
+        "manual-int8.safetensors",
+        params,
+    )
+
+    assert "--ltx25-convrot-hq" not in command
+    assert "--int8" in command
+    assert "--convrot" in command
 
 
 def test_manual_no_model_preset_keeps_custom_layer_config_without_model_filter():

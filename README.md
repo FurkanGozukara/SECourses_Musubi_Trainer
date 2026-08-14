@@ -282,7 +282,7 @@ Turn your trained checkpoints (or any base model) into deploy-ready quants: FP8 
 - **Per-layer control**: layer exclusions, sensitive-layer protection, mixed precision, dry-run analysis and automatic layer-template generation.
 - **Single-file conversion queue and recursive folder batch conversion** — both with cancellation — plus low-memory conversion controls for modest machines.
 
-- A dedicated **LTX 2.5 22B ConvRot HQ** workflow creates the video-tuned approximately 22 GB ComfyUI checkpoint directly from the original BF16 dev or distilled model in one streaming pass, with automatic variant detection, architecture checks and a per-layer JSON quality report.
+- The **LTX 2.5** model preset creates the video-tuned approximately 22 GB ComfyUI checkpoint directly from the original BF16 dev or distilled model in one streaming pass. It automatically detects the variant and applies the benchmark-validated mixed BF16/INT8 layer plan, architecture checks, per-layer ConvRot group-size search and JSON quality report.
 - Upstream output-dtype controls are exposed in the GUI, including BF16/FP16 output policy and a regex for layers that must retain their source dtype.
 
 ![Model Quantizer tab](https://cdn-uploads.huggingface.co/production/uploads/6345bd89fe134dfd7a0dba40/Nu2G3yw12oAN381kmomDw.png)

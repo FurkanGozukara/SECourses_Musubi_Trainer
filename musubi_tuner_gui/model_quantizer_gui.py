@@ -385,7 +385,17 @@ def _load_model_filters() -> Dict[str, Dict[str, object]]:
     }
 
 
-MODEL_FILTERS = _load_model_filters()
+MODEL_FILTERS = dict(_load_model_filters())
+MODEL_FILTERS.setdefault(
+    "ltx2_5",
+    {
+        "help": (
+            "LTX 2.5 22B: auto-detect dev/distilled and apply the benchmark-validated "
+            "mixed BF16/INT8 ConvRot layer plan"
+        ),
+        "category": "video",
+    },
+)
 MODEL_CATEGORY_LABELS = {
     "text": "Text Encoders",
     "diffusion": "Diffusion Models",
@@ -411,6 +421,7 @@ MODEL_PRESET_DISPLAY_NAMES = {
     "ltxv2": "LTX (2 / 2.3)",
     "ltx2": "LTX (2 / 2.3)",
     "ltx2_3": "LTX 2.3 (INT8 ConvRot Learned HQ)",
+    "ltx2_5": "LTX 2.5",
     "mistral": "Mistral Text Encoder",
     "nerf_large": "NeRF (Large)",
     "nerf_small": "NeRF (Small)",
@@ -457,6 +468,7 @@ PRIMARY_MODEL_PRESET_VALUES = {
     "krea2",
     "lens",
     "ltx2_3",
+    "ltx2_5",
     "ltxv2",
     "qwen",
     "qwen_vlm",
@@ -956,6 +968,21 @@ MODEL_PRESET_SETTINGS.update({
         "low_memory": True,
         "save_quant_metadata": True,
     },
+    "ltx2_5": {
+        "preset": PRESET_INT8_CONVROT_HQ,
+        "quant_format": QUANT_FORMAT_INT8,
+        "comfy_quant": True,
+        "scaling_mode": "row",
+        "block_size": 128,
+        "convrot": True,
+        "convrot_group_size": 256,
+        "dynamic_convrot": False,
+        "full_precision_matrix_mult": False,
+        "layer_config_path": "",
+        "layer_config_fullmatch": False,
+        "low_memory": True,
+        "save_quant_metadata": True,
+    },
 })
 
 PRESET_OVERRIDES = {
@@ -1190,6 +1217,7 @@ PRESET_OVERRIDES = {
 
 PRESET_BASE_SETTINGS = {
     **MANUAL_QUANT_DEFAULTS,
+    "workflow": WORKFLOW_QUANTIZE,
     "quant_format": QUANT_FORMAT_FP8,
     "comfy_quant": SAFE_RUNTIME_DEFAULTS["comfy_quant"],
     "full_precision_matrix_mult": False,
@@ -1275,6 +1303,17 @@ def _combined_preset_settings(
 
     _clear_incompatible_model_settings(selected_model, combined)
     return effective_preset, combined
+
+
+def _uses_ltx25_model_plan(params: Dict[str, object]) -> bool:
+    """Return whether the research-validated LTX 2.5 layer plan is enabled."""
+    model_filters = params.get("model_filters")
+    if isinstance(model_filters, dict) and "ltx2_5" in model_filters:
+        return bool(model_filters["ltx2_5"])
+    selected_model = _model_preset_value(
+        str(params.get(MODEL_PRESET_FIELD) or MODEL_PRESET_NONE)
+    )
+    return selected_model == "ltx2_5"
 
 
 def _removed_quality_preset_settings(raw_preset: object, model_preset: object):
@@ -1691,7 +1730,9 @@ class ModelQuantizer:
                 cmd += ["--tensor-scales", str(params.get("tensor_scales_path"))]
             return cmd
 
-        if workflow == WORKFLOW_LTX25_CONVROT:
+        if workflow == WORKFLOW_LTX25_CONVROT or (
+            workflow == WORKFLOW_QUANTIZE and _uses_ltx25_model_plan(params)
+        ):
             cmd += ["--ltx25-convrot-hq", "--ltx25-variant", "auto", "--ltx25-recipe", "video"]
             return cmd
 
@@ -1833,7 +1874,7 @@ class ModelQuantizer:
             cmd.append("--low-memory")
 
         for name, enabled in params.get("model_filters", {}).items():
-            if enabled:
+            if enabled and name != "ltx2_5":
                 cmd.append(f"--{name}")
 
         return cmd
@@ -1849,6 +1890,15 @@ class ModelQuantizer:
             and params.get("scaling_mode") == "row"
             and bool(params.get("convrot") or params.get("dynamic_convrot"))
         )
+
+        if _uses_ltx25_model_plan(params):
+            if layer_config_path:
+                log.warning(
+                    "Ignoring Layer Config JSON for LTX 2.5 because its dev/distilled layer plan is selected automatically."
+                )
+            params["layer_config_path"] = ""
+            params["layer_config_fullmatch"] = False
+            return
 
         if model_preset == "ltx2_3" and uses_primary_convrot:
             if layer_config_path:
@@ -1879,6 +1929,8 @@ class ModelQuantizer:
 
     def _validate_quantization_params(self, params: Dict[str, object]) -> Optional[str]:
         if params.get("workflow") != WORKFLOW_QUANTIZE:
+            return None
+        if _uses_ltx25_model_plan(params):
             return None
         if params.get("convrot") or params.get("dynamic_convrot"):
             group_size = params.get("convrot_group_size")
@@ -1948,7 +2000,9 @@ class ModelQuantizer:
             return f"{base}_edited.safetensors"
         if workflow == WORKFLOW_HYBRID_MXFP8:
             return f"{base}_hybrid.safetensors"
-        if workflow == WORKFLOW_LTX25_CONVROT:
+        if workflow == WORKFLOW_LTX25_CONVROT or (
+            workflow == WORKFLOW_QUANTIZE and _uses_ltx25_model_plan(params)
+        ):
             ltx_base = re.sub(r"(?:[-_]transformer)?[-_]bf16$", "-transformer", base, flags=re.IGNORECASE)
             return f"{ltx_base}-comfy-int8-convrot-hq-22gb-video.safetensors"
         if workflow == WORKFLOW_DRY_RUN:
@@ -2260,10 +2314,23 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
     dummy_true = gr.Checkbox(value=True, visible=False)
     dummy_false = gr.Checkbox(value=False, visible=False)
     dummy_headless = gr.Checkbox(value=headless, visible=False)
+    configured_workflow = config.get("model_quantizer.workflow", WORKFLOW_QUANTIZE)
+    configured_model_preset = config.get("model_quantizer.model_preset", "krea2")
+    if configured_workflow == WORKFLOW_LTX25_CONVROT:
+        # Migrate the short-lived dedicated workflow into the model-preset design.
+        configured_workflow = WORKFLOW_QUANTIZE
+        configured_model_preset = "ltx2_5"
     initial_model_preset_primary, initial_model_preset_other, initial_model_preset = _split_model_preset_selection(
-        config.get("model_quantizer.model_preset", "krea2")
+        configured_model_preset
     )
     initial_model_filters = _model_preset_filters(initial_model_preset)
+    initial_workflow = config.get(
+        "model_quantizer.workflow",
+        MODEL_PRESET_SETTINGS.get(initial_model_preset, {}).get("workflow", WORKFLOW_QUANTIZE),
+    )
+    if initial_workflow == WORKFLOW_LTX25_CONVROT:
+        initial_workflow = WORKFLOW_QUANTIZE
+    initial_quantize_controls_visible = initial_workflow in (WORKFLOW_QUANTIZE, WORKFLOW_DRY_RUN)
     initial_quant_format = config.get("model_quantizer.quant_format", QUANT_FORMAT_INT8)
     initial_scaling_mode = _coerce_scaling_mode_for_format(
         initial_quant_format,
@@ -2336,13 +2403,16 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         WORKFLOW_ACTCAL,
                         WORKFLOW_EDIT_QUANT,
                         WORKFLOW_HYBRID_MXFP8,
-                        WORKFLOW_LTX25_CONVROT,
                         WORKFLOW_DRY_RUN,
                     ],
-                    value=config.get("model_quantizer.workflow", WORKFLOW_QUANTIZE),
+                    value=initial_workflow,
                 )
 
-            with gr.Accordion("Quantization Format", open=True) as quant_format_group:
+            with gr.Accordion(
+                "Quantization Format",
+                open=True,
+                visible=initial_quantize_controls_visible,
+            ) as quant_format_group:
                 with gr.Row():
                     quant_format = gr.Dropdown(
                         label="Primary Format",
@@ -2395,7 +2465,11 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         info=DYNAMIC_CONVROT_INFO,
                     )
 
-            with gr.Accordion("Model Filters", open=False) as model_filter_group:
+            with gr.Accordion(
+                "Model Filters",
+                open=False,
+                visible=initial_quantize_controls_visible,
+            ) as model_filter_group:
                 filter_checkboxes: Dict[str, gr.Checkbox] = {}
                 for category_key, category_label in MODEL_CATEGORY_LABELS.items():
                     filters_in_category = [
@@ -2413,7 +2487,11 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                                 value=bool(config.get(f"model_quantizer.filter.{name}", name in initial_model_filters)),
                             )
 
-            with gr.Accordion("Layer Mixing & Exclusions", open=False) as layer_mixing_group:
+            with gr.Accordion(
+                "Layer Mixing & Exclusions",
+                open=False,
+                visible=initial_quantize_controls_visible,
+            ) as layer_mixing_group:
                 with gr.Row():
                     custom_layers = gr.Textbox(
                         label="Custom Layers (Regex)",
@@ -2499,7 +2577,11 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     )
 
         with gr.Column(scale=1):
-            with gr.Accordion("Optimization & Quality", open=False) as optimization_group:
+            with gr.Accordion(
+                "Optimization & Quality",
+                open=False,
+                visible=initial_quantize_controls_visible,
+            ) as optimization_group:
                 with gr.Row():
                     simple = gr.Checkbox(
                         label="Simple quantization (skip SVD)",
@@ -2563,7 +2645,11 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         step=1,
                     )
 
-            with gr.Accordion("Advanced LR & Early Stopping", open=False) as advanced_lr_group:
+            with gr.Accordion(
+                "Advanced LR & Early Stopping",
+                open=False,
+                visible=initial_quantize_controls_visible,
+            ) as advanced_lr_group:
                 with gr.Row():
                     lr_gamma = gr.Number(
                         label="LR Gamma",
@@ -2622,7 +2708,11 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                         step=1,
                     )
 
-            with gr.Accordion("NVFP4 / MXFP8 Options", open=False) as nvfp4_group:
+            with gr.Accordion(
+                "NVFP4 / MXFP8 Options",
+                open=False,
+                visible=initial_quantize_controls_visible,
+            ) as nvfp4_group:
                 with gr.Row():
                     scale_optimization = gr.Dropdown(
                         label="Scale Optimization (NVFP4)",
@@ -2649,7 +2739,11 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
                     )
                     tensor_scales_button = gr.Button("Browse File", size="lg", elem_classes=["mbtn", "mbtn-cyan"], visible=not headless)
 
-            with gr.Accordion("Layer Config & Dry Run", open=False) as layer_config_group:
+            with gr.Accordion(
+                "Layer Config & Dry Run",
+                open=False,
+                visible=initial_quantize_controls_visible,
+            ) as layer_config_group:
                 with gr.Row():
                     layer_config_path = gr.Textbox(
                         label="Layer Config JSON",
@@ -3052,6 +3146,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         return {name: bool(val) for name, val in zip(filter_checkboxes.keys(), values)}
 
     preset_field_names = [
+        "workflow",
         "quant_format",
         "comfy_quant",
         "full_precision_matrix_mult",
@@ -3106,6 +3201,7 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
     ]
 
     preset_field_components = [
+        workflow,
         quant_format,
         comfy_quant,
         full_precision_matrix_mult,
@@ -3226,10 +3322,30 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         _, overrides = _combined_preset_settings(selected_model_preset, preset_name)
         return _preset_field_updates(overrides)
 
-    preset_dropdown.input(
+    def _update_workflow_visibility(selected: str):
+        is_quantize = selected == WORKFLOW_QUANTIZE or selected == WORKFLOW_DRY_RUN
+        return tuple(gr.update(visible=is_quantize) for _ in range(7))
+
+    workflow_visibility_outputs = [
+        quant_format_group,
+        model_filter_group,
+        layer_mixing_group,
+        optimization_group,
+        advanced_lr_group,
+        nvfp4_group,
+        layer_config_group,
+    ]
+
+    preset_event = preset_dropdown.input(
         fn=_apply_preset,
         inputs=[preset_dropdown, model_preset_primary_dropdown, model_preset_other_dropdown],
         outputs=preset_field_components,
+        show_progress=False,
+    )
+    preset_event.then(
+        fn=_update_workflow_visibility,
+        inputs=[workflow],
+        outputs=workflow_visibility_outputs,
         show_progress=False,
     )
 
@@ -3406,44 +3522,37 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             + [include_update]
         )
 
-    model_preset_primary_dropdown.input(
+    primary_model_preset_event = model_preset_primary_dropdown.input(
         fn=_apply_model_preset,
         inputs=[model_preset_primary_dropdown, preset_dropdown],
         outputs=[model_preset_other_dropdown] + list(filter_checkboxes.values()) + [preset_dropdown] + preset_field_components + [include_input_scale],
         show_progress=False,
     )
 
-    model_preset_other_dropdown.input(
+    other_model_preset_event = model_preset_other_dropdown.input(
         fn=_apply_model_preset,
         inputs=[model_preset_other_dropdown, preset_dropdown],
         outputs=[model_preset_primary_dropdown] + list(filter_checkboxes.values()) + [preset_dropdown] + preset_field_components + [include_input_scale],
         show_progress=False,
     )
 
-    def _update_workflow_visibility(selected: str):
-        is_quantize = selected == WORKFLOW_QUANTIZE or selected == WORKFLOW_DRY_RUN
-        return (
-            gr.update(visible=is_quantize),
-            gr.update(visible=is_quantize),
-            gr.update(visible=is_quantize),
-            gr.update(visible=is_quantize),
-            gr.update(visible=is_quantize),
-            gr.update(visible=is_quantize),
-            gr.update(visible=is_quantize),
-        )
+    primary_model_preset_event.then(
+        fn=_update_workflow_visibility,
+        inputs=[workflow],
+        outputs=workflow_visibility_outputs,
+        show_progress=False,
+    )
+    other_model_preset_event.then(
+        fn=_update_workflow_visibility,
+        inputs=[workflow],
+        outputs=workflow_visibility_outputs,
+        show_progress=False,
+    )
 
     workflow.change(
         fn=_update_workflow_visibility,
         inputs=[workflow],
-        outputs=[
-            quant_format_group,
-            model_filter_group,
-            layer_mixing_group,
-            optimization_group,
-            advanced_lr_group,
-            nvfp4_group,
-            layer_config_group,
-        ],
+        outputs=workflow_visibility_outputs,
         show_progress=False,
     )
 
@@ -3901,6 +4010,17 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         flat = _flatten_dict(data)
         raw_loaded_preset = flat.get("preset", flat.get("model_quantizer.preset"))
         raw_loaded_model = flat.get(MODEL_PRESET_FIELD, flat.get(f"model_quantizer.{MODEL_PRESET_FIELD}", MODEL_PRESET_NONE))
+        loaded_workflow = flat.get("workflow", flat.get("model_quantizer.workflow"))
+        if loaded_workflow == WORKFLOW_LTX25_CONVROT:
+            flat["workflow"] = WORKFLOW_QUANTIZE
+            flat["model_quantizer.workflow"] = WORKFLOW_QUANTIZE
+            raw_loaded_model = "ltx2_5"
+            flat[MODEL_PRESET_FIELD] = raw_loaded_model
+            flat[f"model_quantizer.{MODEL_PRESET_FIELD}"] = raw_loaded_model
+            flat[MODEL_PRESET_PRIMARY_FIELD] = raw_loaded_model
+            flat[f"model_quantizer.{MODEL_PRESET_PRIMARY_FIELD}"] = raw_loaded_model
+            flat[MODEL_PRESET_OTHER_FIELD] = MODEL_PRESET_NONE
+            flat[f"model_quantizer.{MODEL_PRESET_OTHER_FIELD}"] = MODEL_PRESET_NONE
         migration = _removed_quality_preset_settings(raw_loaded_preset, raw_loaded_model)
         if migration is not None:
             target_preset, migrated_settings = migration
