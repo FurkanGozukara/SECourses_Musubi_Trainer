@@ -49,7 +49,7 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
             """
             <div class="app-hero">
                 <div class="app-hero-left">
-                    <div class="app-hero-badge">V33.0</div>
+                    <div class="app-hero-badge">V34.0</div>
                     <div>
                         <h1>SECourses <span class="grad">Musubi Trainer</span></h1>
                         <p>Qwen · Wan · FLUX · Z-Image · Ideogram 4 · Krea 2 · LTX 2.3 · MiniMax H3 — LoRA &amp; fine-tune training toolkit</p>
