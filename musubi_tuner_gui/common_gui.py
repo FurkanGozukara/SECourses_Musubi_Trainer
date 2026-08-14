@@ -53,6 +53,8 @@ PORTABLE_MODEL_PATH_KEYS = frozenset(
         "turbo_dit",
         "unconditional_dit",
         "vae",
+        "video_vae",
+        "audio_vae",
     }
 )
 
@@ -2153,6 +2155,8 @@ def SaveConfigFileToRun(
         "checkpoint", "ckpt", "safetensors", "model_path",
         # LTX-2 model paths
         "ltx2_checkpoint", "gemma_root", "gemma_safetensors",
+        # MiniMax H3 model paths
+        "video_vae", "audio_vae", "h3_guidance_loss_uncond_cache",
         
         # Text encoder paths
         "text_encoder1", "text_encoder2", 
@@ -2302,6 +2306,9 @@ def SaveConfigFileToRun(
             "validate_caption_structure", "warn_on_caption_issues", "log_loss_stats",
             # Torch compile parameters - store_true flags
             "compile", "compile_fullgraph", "compile_resident_blocks_only",
+            # MiniMax H3 store_true flags - omit from run TOML when False
+            "prune_adaln", "video_only", "h3_teacher_matching",
+            "h3_allow_experimental_sample_duration", "nvfp4_scaled_mm", "disable_mmap",
             # LTX-2 store_true flags - omit from run TOML when False
             "gemma_load_in_8bit", "gemma_load_in_4bit", "cpu_staged_checkpoint_loading",
             "fp8_w8a8", "nf4_base", "int8_convrot_dynamic", "int8_convrot_base",

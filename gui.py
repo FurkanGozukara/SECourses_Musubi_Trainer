@@ -15,6 +15,7 @@ from musubi_tuner_gui.zimage_lora_gui import zimage_lora_tab
 from musubi_tuner_gui.ideogram4_lora_gui import ideogram4_lora_tab
 from musubi_tuner_gui.krea2_lora_gui import krea2_lora_tab
 from musubi_tuner_gui.ltx2_lora_gui import ltx2_lora_tab
+from musubi_tuner_gui.minimax_h3_lora_gui import minimax_h3_lora_tab
 from musubi_tuner_gui.image_captioning_gui import image_captioning_tab
 from musubi_tuner_gui.model_quantizer_gui import model_quantizer_tab
 from musubi_tuner_gui.image_preprocessing_gui import image_preprocessing_tab
@@ -51,7 +52,7 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
                     <div class="app-hero-badge">V33.0</div>
                     <div>
                         <h1>SECourses <span class="grad">Musubi Trainer</span></h1>
-                        <p>Qwen · Wan · FLUX · Z-Image · Ideogram 4 · Krea 2 · LTX 2.3 — LoRA &amp; fine-tune training toolkit</p>
+                        <p>Qwen · Wan · FLUX · Z-Image · Ideogram 4 · Krea 2 · LTX 2.3 · MiniMax H3 — LoRA &amp; fine-tune training toolkit</p>
                     </div>
                 </div>
                 <a class="app-hero-link" href="https://www.patreon.com/posts/137551634" target="_blank" rel="noopener">
@@ -89,7 +90,11 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
         with gr.Tab("LTX 2.3 Video Training"):
             ltx2_config = config_manager.get_config_for_tab("ltx2")
             ltx2_lora_tab(headless=headless, config=ltx2_config)
-        
+
+        with gr.Tab("MiniMax H3 Video Training"):
+            minimax_h3_config = config_manager.get_config_for_tab("minimax_h3")
+            minimax_h3_lora_tab(headless=headless, config=minimax_h3_config)
+
         with gr.Tab("Image Captioning"):
             captioning_config = config_manager.get_config_for_tab("image_captioning")
             image_captioning_tab(headless=headless, config=captioning_config)

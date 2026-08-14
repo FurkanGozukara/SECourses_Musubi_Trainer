@@ -70,3 +70,25 @@ Before finishing a new trainer with a LoRA/Full-Fine-Tuning toggle:
 - Hand-edit a copy of that TOML to delete the `training_mode` line (simulating a file saved by a pre-fix version, or any other trainer that predates this pattern) and reload it. It must still resolve to Full Fine-Tuning, inferred from the missing `network_module`.
 - Do the mirror check: reload an ordinary LoRA runtime TOML (has `network_module`, no `training_mode`) while the GUI currently shows Full Fine-Tuning, and confirm it correctly switches back to LoRA.
 - If mode drives panel visibility, confirm the correct panel is visible after Load/Open, not just after manually clicking the mode radio — and confirm no numeric-bounds error appears in the process (see the gotcha above).
+
+---
+
+## Guardrail 3: Attention-mode resolution ("flash_auto") for new architectures
+
+### Rule
+
+- Any new backend model whose attention routes through `musubi-tuner/src/musubi_tuner/modules/attention.py` must accept the attention mode string `"flash_auto"` in whatever `attn_mode` validation it performs.
+- Never validate `attn_mode` against only the upstream set `{"torch", "sdpa", "flash", "flash3", "sageattn", "xformers"}`.
+
+### Why this exists
+
+This fork's `trainer_base.py` resolves the `--sdpa` flag through `resolve_sdpa_backend()`, which returns the fork-specific mode `"flash_auto"` on machines where PyTorch's native flash SDPA is unavailable but the external FlashAttention package passes a forward+backward probe (a common Windows configuration). Upstream models validate `attn_mode` against a closed set that does not contain it. The MiniMax H3 tab shipped with `--sdpa` as its default attention and the very first training launch crashed at transformer load with `ValueError: Unsupported MiniMax-H3 attention mode: flash_auto` — after latent and text-encoder caching had already run for minutes. Nothing in the GUI-level tests catches this because the failure happens inside the backend model constructor on a real launch.
+
+### Required implementation pattern
+
+- When merging a new architecture from upstream, grep its model file for `attn_mode not in` and extend the accepted set with `"flash_auto"` (see `minimax_h3/model.py`). The shared `modules.attention` dispatch already implements the runtime behavior; only the closed-set validation needs the extra member.
+- Keep the regression test in `musubi-tuner/tests/test_attention_backend_selection.py` (`test_minimax_h3_model_accepts_resolved_flash_auto_mode`) and add an equivalent one for each new architecture.
+
+### Regression check
+
+Before finishing a new trainer: run a real "Start Training" (or at minimum construct the model with `attn_mode="flash_auto"`) on a machine where `resolve_sdpa_backend()` returns `"flash_auto"`, not just `pytest` — the crash only appears at real transformer load time.

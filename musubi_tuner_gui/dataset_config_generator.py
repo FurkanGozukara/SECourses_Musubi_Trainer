@@ -467,6 +467,191 @@ def generate_ltx2_dataset_config_from_folders(
     return config, messages
 
 
+def round_frames_to_minimax_h3(frames: int) -> int:
+    """Round a frame count DOWN to the nearest valid MiniMax H3 value (17*n + 5).
+
+    The MiniMax H3 packing requires frame counts of 5, 22, 39, 56, ..., and the
+    released duration range is 124-345 frames (5-15 seconds at 24 fps).
+    """
+    try:
+        frames = int(frames)
+    except (TypeError, ValueError):
+        return 124
+    if frames <= 5:
+        return 5
+    return ((frames - 5) // 17) * 17 + 5
+
+
+MINIMAX_H3_RELEASED_MIN_FRAMES = 124
+MINIMAX_H3_RELEASED_MAX_FRAMES = 345
+
+
+def generate_minimax_h3_dataset_config_from_folders(
+    parent_folder: str,
+    resolution: Tuple[int, int],
+    caption_extension: str = ".txt",
+    create_missing_captions: bool = True,
+    caption_strategy: str = "folder_name",  # "folder_name" or "empty"
+    enable_bucket: bool = True,
+    bucket_no_upscale: bool = False,
+    cache_directory_name: str = "cache_dir",
+    num_frames: int = 124,
+    frame_extraction: str = "head",
+    frame_stride: int = 1,
+    frame_sample: int = 1,
+    max_frames: int = MINIMAX_H3_RELEASED_MAX_FRAMES,
+    allow_experimental_duration: bool = False,
+) -> Tuple[Dict, List[str]]:
+    """
+    Generate a MiniMax H3 dataset configuration from folder structure (videos only).
+
+    Differences from the LTX-2/WAN generators:
+    - target_frames are rounded DOWN to the nearest 17*n + 5 (H3 packing rule)
+    - batch_size is always 1 (hard requirement of the architecture)
+    - no source_fps / target_fps: H3 always normalizes videos to 24 fps from timestamps
+    - image-only folders are skipped (H3 trains on video targets)
+    - resolution must be a multiple of 32 in both dimensions
+
+    Returns:
+        Tuple of (config_dict, messages_list)
+    """
+    messages = []
+
+    parent_folder = normalize_path(parent_folder)
+
+    if not os.path.exists(parent_folder):
+        raise ValueError(f"Parent folder does not exist: {parent_folder}")
+
+    if not os.path.isdir(parent_folder):
+        raise ValueError(f"Path is not a directory: {parent_folder}")
+
+    width, height = int(resolution[0]), int(resolution[1])
+    if width % 32 or height % 32 or width <= 0 or height <= 0:
+        raise ValueError(f"MiniMax H3 resolution must be positive multiples of 32, got {width}x{height}")
+
+    subdirs = [d for d in os.listdir(parent_folder)
+               if os.path.isdir(os.path.join(parent_folder, d))
+               and not d.startswith('.')]
+
+    if not subdirs:
+        raise ValueError(f"No subdirectories found in: {parent_folder}")
+
+    subdirs.sort()
+
+    config = {
+        "general": {
+            "resolution": [width, height],
+            "caption_extension": caption_extension,
+            "batch_size": 1,
+            "enable_bucket": enable_bucket,
+            "bucket_no_upscale": bucket_no_upscale
+        },
+        "datasets": []
+    }
+
+    normalized_frames = round_frames_to_minimax_h3(num_frames)
+    if normalized_frames != num_frames:
+        messages.append(
+            f"[INFO] Target frames adjusted from {num_frames} to {normalized_frames} (MiniMax H3 requires 17*n+5: 5, 22, 39, ..., 124, 141, ...)"
+        )
+    if normalized_frames < MINIMAX_H3_RELEASED_MIN_FRAMES:
+        if allow_experimental_duration:
+            messages.append(
+                f"[INFO] Target frames {normalized_frames} is below the released minimum {MINIMAX_H3_RELEASED_MIN_FRAMES} "
+                f"(5 s at 24 fps); latent caching will run with --allow_experimental_duration."
+            )
+        else:
+            messages.append(
+                f"[WARNING] Target frames {normalized_frames} is below the released minimum {MINIMAX_H3_RELEASED_MIN_FRAMES} "
+                f"(5 s at 24 fps). Enable 'Allow Experimental Duration' or caching will fail."
+            )
+    if normalized_frames > MINIMAX_H3_RELEASED_MAX_FRAMES:
+        messages.append(
+            f"[WARNING] Target frames {normalized_frames} exceeds the released maximum {MINIMAX_H3_RELEASED_MAX_FRAMES} (15 s at 24 fps)."
+        )
+
+    for subdir in subdirs:
+        subdir_path = os.path.join(parent_folder, subdir)
+
+        has_subdirs = any(os.path.isdir(os.path.join(subdir_path, item))
+                         for item in os.listdir(subdir_path)
+                         if not item.startswith('.') and item not in [cache_directory_name])
+
+        if has_subdirs:
+            messages.append(f"[WARNING] Skipping '{subdir}': Contains subdirectories (only direct video files are supported)")
+            continue
+
+        image_files, video_files = get_media_files(subdir_path)
+
+        if not video_files:
+            if image_files:
+                messages.append(
+                    f"[WARNING] Skipping '{subdir}': Only images found - MiniMax H3 trains on video targets "
+                    f"(frame counts 17*n+5); single images cannot satisfy the packing rule yet."
+                )
+            else:
+                messages.append(f"[WARNING] Skipping '{subdir}': No video files found")
+            continue
+
+        repeat_count, clean_name, repeat_notice = parse_repeat_count(subdir)
+        if repeat_notice:
+            messages.append(repeat_notice)
+
+        if create_missing_captions:
+            caption_content = ""
+            if caption_strategy == "folder_name":
+                caption_content = clean_name
+
+            created = create_caption_files(
+                video_files,
+                caption_extension,
+                caption_content
+            )
+
+            if created > 0:
+                messages.append(f"[OK] Created {created} caption files for '{subdir}' with content: '{caption_content}'")
+
+        missing_captions = []
+        for media_file in video_files:
+            caption_file = os.path.splitext(media_file)[0] + caption_extension
+            if not os.path.exists(caption_file):
+                missing_captions.append(os.path.basename(media_file))
+
+        if missing_captions:
+            messages.append(f"[WARNING] '{subdir}': {len(missing_captions)} videos missing caption files")
+
+        dataset_entry = {
+            "video_directory": validate_path_for_toml(subdir_path),
+            "num_repeats": repeat_count,
+            "target_frames": [normalized_frames],
+            "frame_extraction": frame_extraction,
+        }
+        if frame_extraction == "slide":
+            dataset_entry["frame_stride"] = frame_stride
+        if frame_extraction == "uniform":
+            dataset_entry["frame_sample"] = frame_sample
+        dataset_entry["max_frames"] = max_frames
+
+        if cache_directory_name:
+            if os.path.isabs(cache_directory_name):
+                cache_path = os.path.join(cache_directory_name, subdir)
+                dataset_entry["cache_directory"] = validate_path_for_toml(cache_path)
+            else:
+                cache_path = os.path.join(subdir_path, cache_directory_name)
+                dataset_entry["cache_directory"] = validate_path_for_toml(cache_path)
+
+        config["datasets"].append(dataset_entry)
+
+        messages.append(f"[OK] Added {subdir} ({len(video_files)} videos) as video dataset with num_repeats={repeat_count}")
+
+    if not config["datasets"]:
+        raise ValueError("No valid datasets found in the provided folder structure")
+
+    messages.append(f"[OK] Generated configuration for {len(config['datasets'])} datasets")
+
+    return config, messages
+
+
 def generate_dataset_config_from_folders(
     parent_folder: str,
     resolution: Tuple[int, int],
