@@ -170,6 +170,7 @@ MINIMAX_H3_PARAM_KEYS = [
     "h3_guidance_loss_sigma_min",
     "h3_guidance_loss_uncond_cache",
     "h3_teacher_matching",
+    "h3_teacher_conditions",
     "h3_teacher_condition_sigma_max",
     "h3_teacher_loss_dc_weight",
     "h3_teacher_loss_mag_weight",
@@ -455,6 +456,7 @@ MINIMAX_H3_DEFAULTS = {
     "h3_guidance_loss_sigma_min": 0.15,
     "h3_guidance_loss_uncond_cache": "",
     "h3_teacher_matching": False,
+    "h3_teacher_conditions": "first,last",
     "h3_teacher_condition_sigma_max": 0.75,
     "h3_teacher_loss_dc_weight": 1.0,
     "h3_teacher_loss_mag_weight": 1.0,
@@ -801,9 +803,12 @@ def build_minimax_h3_cache_commands(param_dict: dict, *, python_cmd: str | None 
 
     latent_command = None
     if bool(param_dict.get("cache_latents", True)):
-        # Teacher matching trains a T2VA student against FL2VA teacher forwards, so the
-        # latent caches must include the first/last condition latents (--task fl2va).
-        latent_task = "fl2va" if (teacher_matching and task == "t2va") else task
+        # The endpoint teacher (first,last) trains a T2VA student against FL2VA teacher
+        # forwards, so its latent caches must include the first/last condition latents
+        # (--task fl2va). The ref teacher uses the cached target latents themselves as the
+        # reference, so plain t2va caches suffice (fl2va caches also work).
+        teacher_conditions = str(param_dict.get("h3_teacher_conditions") or "first,last").strip() or "first,last"
+        latent_task = "fl2va" if (teacher_matching and task == "t2va" and teacher_conditions != "ref") else task
         latent_command = [
             python_cmd,
             _trainer_script_path("minimax_h3_cache_latents.py"),
@@ -869,7 +874,8 @@ def build_minimax_h3_cache_commands(param_dict: dict, *, python_cmd: str | None 
         if param_dict.get("disable_mmap"):
             text_command.append("--disable_mmap")
         if teacher_matching and task == "t2va":
-            text_command.extend(["--teacher_conditions", "first,last"])
+            teacher_conditions = str(param_dict.get("h3_teacher_conditions") or "first,last").strip() or "first,last"
+            text_command.extend(["--teacher_conditions", teacher_conditions])
         if _guidance_loss_enabled(param_dict):
             uncond_path = _uncond_cache_path(param_dict)
             if uncond_path:
@@ -1201,6 +1207,9 @@ def _config_value_for_component(key: str, value, default):
     if key == "convrot_int8_bwd":
         text = str(value or "bf16").strip()
         return text if text in ("bf16", "int8") else "bf16"
+    if key == "h3_teacher_conditions":
+        text = str(value or "first,last").strip()
+        return text if text in ("first,last", "ref") else "first,last"
     if isinstance(value, list):
         if key in {"optimizer_args", "lr_scheduler_args", "network_args"}:
             return " ".join(str(item) for item in value)
@@ -1727,7 +1736,8 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
             "H3 checkpoints are CFG-distilled: plain flow-matching training slowly de-distills them (washed-out outputs). "
             "The **guidance loss** (scale 3-4; enabled by default at 4.0) re-anchors the target in the distilled space; "
             "its uncond probe cache is generated automatically during TE caching. Cost: ~+50% step time (less with the sigma-min gate). "
-            "**Teacher matching** (t2va only) is the alternative: it matches the frozen FL2VA teacher instead and replaces the guidance loss."
+            "**Teacher matching** (t2va only) is the alternative: it matches a frozen privileged-condition teacher instead and replaces the guidance loss - "
+            "either the FL2VA endpoint teacher (first,last) or the reference teacher (ref), which teaches from the clip itself and makes audio a real teaching target."
         )
         with gr.Row():
             h3_guidance_loss_scale = reg(
@@ -1778,6 +1788,17 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                     info="Train the T2VA student against frozen FL2VA teacher predictions (real first/last frames). "
                     "Replaces the guidance loss; latent caches are built with --task fl2va automatically. "
                     "Audio becomes a base-preservation anchor in this mode. Generate with --lora_runtime_attach afterwards.",
+                ),
+            )
+            h3_teacher_conditions = reg(
+                "h3_teacher_conditions",
+                gr.Dropdown(
+                    label="Teacher Conditions",
+                    choices=["first,last", "ref"],
+                    value=get_value("h3_teacher_conditions"),
+                    info="first,last = FL2VA endpoint teacher (latent caches auto-switch to fl2va; audio stays a preservation anchor). "
+                    "ref = Ref2VA teacher on the training clip itself: complete information at every sigma, 3-5x lower teaching-band floor, "
+                    "and audio becomes a real teaching target - slower/heavier teacher step.",
                 ),
             )
             h3_teacher_condition_sigma_max = reg(

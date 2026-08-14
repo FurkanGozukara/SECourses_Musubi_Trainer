@@ -76,6 +76,7 @@ h3_guidance_loss_scale_audio = -1.0
 h3_guidance_loss_sigma_min = 0.15
 h3_guidance_loss_uncond_cache = ""
 h3_teacher_matching = false
+h3_teacher_conditions = "first,last"
 h3_teacher_condition_sigma_max = 0.75
 h3_teacher_loss_dc_weight = 1.0
 h3_teacher_loss_mag_weight = 1.0

@@ -171,6 +171,26 @@ def test_teacher_matching_switches_latent_cache_task_and_te_conditions(tmp_path)
         assert forbidden not in data, forbidden
 
 
+def test_ref_teacher_keeps_t2va_latent_cache_and_tags_te_command(tmp_path):
+    parameters = _base_parameters(
+        tmp_path,
+        h3_teacher_matching=True,
+        h3_teacher_conditions="ref",
+        h3_guidance_loss_scale=0.0,
+    )
+    param_dict = dict(parameters)
+    latent, text = build_minimax_h3_cache_commands(param_dict, python_cmd="python")
+    latent_line = " ".join(latent)
+    text_line = " ".join(text)
+    assert "--task t2va" in latent_line  # ref teacher: target latents double as the reference
+    assert "--task fl2va" not in latent_line
+    assert "--teacher_conditions ref" in text_line
+
+    workflow, data = _run_toml(tmp_path, parameters)
+    assert data["h3_teacher_matching"] is True
+    assert data["h3_teacher_conditions"] == "ref"
+
+
 def test_teacher_matching_and_guidance_are_mutually_exclusive(tmp_path):
     parameters = _base_parameters(tmp_path, h3_teacher_matching=True, h3_guidance_loss_scale=4.0)
     with pytest.raises(Exception, match="mutually exclusive"):
