@@ -51,6 +51,18 @@
   - Added official MiniMax H3 processor/configuration handling.
   - Fixed end-to-end H3 dataset validation and `flash_auto` launch support.
   - Expanded regression coverage across configuration round-trips, caching, quantization, teacher matching and dataset generation.
+- New training tab interface below
+
+<img height="600" alt="image" src="https://github.com/user-attachments/assets/5f1159ac-ce53-4f5e-8e27-ff458110a19e" />
+
+- Updated model downloader bat file interface below
+
+<img  height="600" alt="image" src="https://github.com/user-attachments/assets/f2726961-022e-4cfd-ae49-95e1d15a6309" />
+
+- Demo presets folder screenshot below
+
+<img height="600" alt="image" src="https://github.com/user-attachments/assets/cd38f0cc-7e17-4e20-a5de-b9b5fc18a46a" />
+
 - To update, download the latest zip, extract and overwrite the existing files, run `Windows_Install_and_Update.bat`, and use the newest preset TOMLs.
 
 ## 13 August 2026 Version 32.3 Update
