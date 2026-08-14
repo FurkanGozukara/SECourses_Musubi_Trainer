@@ -211,3 +211,4 @@ tests/*
 !tests/test_automagic_gui.py
 !tests/test_model_quantizer_gui.py
 !tests/test_torch_compile_gui_environment.py
+!tests/test_minimax_h3_gui.py
