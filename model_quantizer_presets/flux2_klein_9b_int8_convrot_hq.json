@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "name": "flux2_klein_9b_int8_convrot_hq_measured",
+  "default_mode": "int8",
+  "layers": {},
+  "metadata": {
+    "model": "FLUX.2 Klein Base 9B",
+    "quality_tier": "quality_first",
+    "calibration_schedule": "20 steps, Euler, flux2 scheduler, CFG 3.0",
+    "eligible_projection_count": 112,
+    "scale_search": "absmax_selected_by_end_to_end_holdout",
+    "protected_non_projection_policy": "BF16",
+    "validation": "four deterministic ComfyUI prompts plus 1024px decoded-image holdout",
+    "selection_date": "2026-08-16"
+  }
+}

@@ -11,6 +11,10 @@ from musubi_tuner_gui.model_quantizer_gui import (
     MODEL_PRESET_NONE,
     MODEL_PRESET_OTHER_CHOICES,
     MODEL_PRESET_PRIMARY_CHOICES,
+    FLUX_KLEIN_INT4_POLICY_PATH,
+    FLUX_KLEIN_INT8_POLICY_PATH,
+    PRESET_FLUX_KLEIN_INT4_HQ,
+    PRESET_FLUX_KLEIN_INT8_HQ,
     PRESET_INT8_CONVROT_HQ,
     QUANT_FORMAT_INT8,
     WORKFLOW_QUANTIZE,
@@ -38,6 +42,39 @@ def test_ltx_2_3_hq_is_a_distinct_primary_model_preset():
     # Preserve the legacy combined preset and its stored label.
     assert _model_preset_value("LTX (2 / 2.3)") == "ltxv2"
     assert _model_preset_value(MODEL_PRESET_NONE) == MODEL_PRESET_NONE
+
+
+@pytest.mark.parametrize(
+    "preset,precision,policy_path",
+    [
+        (PRESET_FLUX_KLEIN_INT8_HQ, "int8", FLUX_KLEIN_INT8_POLICY_PATH),
+        (PRESET_FLUX_KLEIN_INT4_HQ, "int4", FLUX_KLEIN_INT4_POLICY_PATH),
+    ],
+)
+def test_flux_klein_measured_presets_use_the_dedicated_compiler(preset, precision, policy_path):
+    effective, params = _combined_preset_settings("flux_klein", preset)
+    params.update(
+        {
+            "workflow": WORKFLOW_QUANTIZE,
+            "model_preset": "flux_klein",
+            "model_filters": {"flux_klein": True},
+        }
+    )
+    quantizer = ModelQuantizer(headless=True, config=None)
+    output = quantizer._default_output_name("FLUX-2-Klein-Base-9b.safetensors", params)
+    command = quantizer._build_command("FLUX-2-Klein-Base-9b.safetensors", output, params)
+
+    assert effective == preset
+    assert output.endswith(f"-comfy-{precision}-convrot-hq-measured.safetensors")
+    assert "--flux-klein-convrot-hq" in command
+    assert _flag_value(command, "--flux-klein-precision") == precision
+    assert _flag_value(command, "--flux-klein-policy") == policy_path
+    assert _flag_value(command, "--flux-klein-scale-search") == "absmax"
+    assert _flag_value(command, "--flux-klein-w4-activation") == "int8"
+    assert _flag_value(command, "--flux-klein-int4-layout") == "w4a8"
+    assert _flag_value(command, "--flux-klein-int4-group-size") == "16"
+    assert "--int8" not in command
+    assert "--convrot" not in command
 
 
 def test_ltx_2_5_is_a_primary_model_preset_with_an_intelligent_layer_filter():

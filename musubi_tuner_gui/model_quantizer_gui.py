@@ -53,6 +53,8 @@ PRESET_INT8_FAST = "INT8 Blockwise (QuantOps Only / Experimental)"
 PRESET_INT8_TENSOR = "INT8 Tensorwise (Native / Turing+)"
 PRESET_INT8_CONVROT = "INT8 ConvRot (Balanced / Native / Recommended)"
 PRESET_INT8_CONVROT_HQ = "INT8 ConvRot Learned (Best Quality / Slow)"
+PRESET_FLUX_KLEIN_INT8_HQ = "FLUX.2 Klein 9B INT8 ConvRot HQ (Measured)"
+PRESET_FLUX_KLEIN_INT4_HQ = "FLUX.2 Klein 9B INT4 ConvRot HQ (Packed W4A8 Compact)"
 PRESET_MXFP8_BALANCED = "MXFP8 (Native / Blackwell)"
 PRESET_NVFP4_BALANCED = "NVFP4 (Native / Blackwell / Experimental)"
 PRESET_FP8_SCALED = "FP8 Learned (Reference / Native Compute)"
@@ -60,6 +62,8 @@ PRESET_FP8_MIXED = "FP8 Compatibility (Full Precision Matmul)"
 
 QUALITY_PRESET_CHOICES = [
     PRESET_CUSTOM,
+    PRESET_FLUX_KLEIN_INT8_HQ,
+    PRESET_FLUX_KLEIN_INT4_HQ,
     PRESET_INT8_CONVROT,
     PRESET_INT8_CONVROT_HQ,
     PRESET_INT8_TENSOR,
@@ -105,6 +109,12 @@ def _quality_preset_choice(value: object) -> str:
     return normalized if normalized in QUALITY_PRESET_CHOICES else PRESET_INT8_CONVROT
 
 MODEL_PRESET_NONE = "None (manual)"
+FLUX_KLEIN_INT8_POLICY_PATH = os.path.join(
+    REPO_ROOT, "model_quantizer_presets", "flux2_klein_9b_int8_convrot_hq.json"
+)
+FLUX_KLEIN_INT4_POLICY_PATH = os.path.join(
+    REPO_ROOT, "model_quantizer_presets", "flux2_klein_9b_int4_convrot_hq.json"
+)
 ERNIE_IMAGE_EXCLUDE_LAYERS = (
     r"(time_embedding|adaLN_modulation|final_linear|final_norm|x_embedder|"
     r"layers[.]0[.]self_attention|layers[.]0[.]mlp.gate_proj|"
@@ -485,7 +495,7 @@ MODEL_PRESET_EXTRA_FILTERS = {
 }
 
 FLUX_KLEIN_MODEL_SETTINGS = {
-    "preset": PRESET_INT8_CONVROT,
+    "preset": PRESET_FLUX_KLEIN_INT8_HQ,
     "quant_format": QUANT_FORMAT_INT8,
     "comfy_quant": True,
     "scaling_mode": "row",
@@ -493,6 +503,8 @@ FLUX_KLEIN_MODEL_SETTINGS = {
     "convrot_group_size": 256,
     "dynamic_convrot": False,
     "full_precision_matrix_mult": False,
+    "flux_klein_precision": "int8",
+    "flux_klein_policy_path": FLUX_KLEIN_INT8_POLICY_PATH,
 }
 
 SCALING_MODE_INFO = (
@@ -687,7 +699,7 @@ known or uncertain exceptions stay on their safer FP8 or tensor-wise INT8 route.
 - Native tensor/row INT8 targets Turing-class GPUs and newer. FP8 acceleration is strongest on Ada/RTX 40 series and newer.
 - MXFP8 and NVFP4 are Blackwell-only expert routes. Keep `comfy-kitchen` current when creating them.
 - Native compute presets keep `full_precision_matrix_mult=false`; Compatibility deliberately sets it to true.
-- ComfyUI has a newer W4A4 ConvRot runtime layout, but convert_to_quant cannot export it yet, so the GUI does not offer a broken preset.
+- The measured FLUX.2 Klein presets use the dedicated native ConvRot compiler. The compact preset stores true packed four-bit weights with native `asym_w4a8_int8` metadata, group-16 local scales, and INT8 activation compute. Legacy `convrot_w4a4` remains an expert option.
 
 ### Model decisions
 
@@ -1127,6 +1139,46 @@ PRESET_OVERRIDES = {
         "full_matrix": False,
         "full_precision_matrix_mult": False,
     },
+    PRESET_FLUX_KLEIN_INT8_HQ: {
+        "quant_format": QUANT_FORMAT_INT8,
+        "comfy_quant": True,
+        "scaling_mode": "row",
+        "block_size": 128,
+        "convrot": True,
+        "convrot_group_size": 256,
+        "dynamic_convrot": False,
+        "simple": True,
+        "skip_inefficient_layers": False,
+        "optimizer": "original",
+        "full_precision_matrix_mult": False,
+        "layer_config_path": "",
+        "layer_config_fullmatch": False,
+        "low_memory": True,
+        "save_quant_metadata": True,
+        "flux_klein_precision": "int8",
+        "flux_klein_policy_path": FLUX_KLEIN_INT8_POLICY_PATH,
+    },
+    PRESET_FLUX_KLEIN_INT4_HQ: {
+        "quant_format": QUANT_FORMAT_INT8,
+        "comfy_quant": True,
+        "scaling_mode": "row",
+        "block_size": 128,
+        "convrot": True,
+        "convrot_group_size": 256,
+        "dynamic_convrot": False,
+        "simple": True,
+        "skip_inefficient_layers": False,
+        "optimizer": "original",
+        "full_precision_matrix_mult": False,
+        "layer_config_path": "",
+        "layer_config_fullmatch": False,
+        "low_memory": True,
+        "save_quant_metadata": True,
+        "flux_klein_precision": "int4",
+        "flux_klein_policy_path": FLUX_KLEIN_INT4_POLICY_PATH,
+        "flux_klein_int4_layout": "w4a8",
+        "flux_klein_int4_group_size": 16,
+    },
     PRESET_INT8_CONVROT: {
         "quant_format": QUANT_FORMAT_INT8,
         "comfy_quant": True,
@@ -1314,6 +1366,11 @@ def _uses_ltx25_model_plan(params: Dict[str, object]) -> bool:
         str(params.get(MODEL_PRESET_FIELD) or MODEL_PRESET_NONE)
     )
     return selected_model == "ltx2_5"
+
+
+def _uses_flux_klein_hq_plan(params: Dict[str, object]) -> bool:
+    """Return whether a measured FLUX.2 Klein 9B compiler preset is active."""
+    return params.get("flux_klein_precision") in {"int8", "int4"}
 
 
 def _removed_quality_preset_settings(raw_preset: object, model_preset: object):
@@ -1736,6 +1793,29 @@ class ModelQuantizer:
             cmd += ["--ltx25-convrot-hq", "--ltx25-variant", "auto", "--ltx25-recipe", "video"]
             return cmd
 
+        if workflow == WORKFLOW_QUANTIZE and _uses_flux_klein_hq_plan(params):
+            precision = str(params["flux_klein_precision"])
+            policy_path = str(
+                params.get("flux_klein_policy_path")
+                or (FLUX_KLEIN_INT8_POLICY_PATH if precision == "int8" else FLUX_KLEIN_INT4_POLICY_PATH)
+            )
+            cmd += [
+                "--flux-klein-convrot-hq",
+                "--flux-klein-precision",
+                precision,
+                "--flux-klein-policy",
+                policy_path,
+                "--flux-klein-scale-search",
+                "absmax",
+                "--flux-klein-w4-activation",
+                "int8",
+                "--flux-klein-int4-layout",
+                str(params.get("flux_klein_int4_layout", "w4a8")),
+                "--flux-klein-int4-group-size",
+                str(params.get("flux_klein_int4_group_size", 16)),
+            ]
+            return cmd
+
         if workflow == WORKFLOW_DRY_RUN:
             dry_run = params.get("dry_run") or "analyze"
             cmd += ["--dry-run", str(dry_run)]
@@ -1900,6 +1980,15 @@ class ModelQuantizer:
             params["layer_config_fullmatch"] = False
             return
 
+        if _uses_flux_klein_hq_plan(params):
+            if layer_config_path:
+                log.warning(
+                    "Ignoring Layer Config JSON because the measured FLUX.2 Klein policy owns exact layer routing."
+                )
+            params["layer_config_path"] = ""
+            params["layer_config_fullmatch"] = False
+            return
+
         if model_preset == "ltx2_3" and uses_primary_convrot:
             if layer_config_path:
                 log.warning(
@@ -1931,6 +2020,11 @@ class ModelQuantizer:
         if params.get("workflow") != WORKFLOW_QUANTIZE:
             return None
         if _uses_ltx25_model_plan(params):
+            return None
+        if _uses_flux_klein_hq_plan(params):
+            policy_path = params.get("flux_klein_policy_path")
+            if not policy_path or not os.path.isfile(str(policy_path)):
+                return f"FLUX.2 Klein policy file was not found: {policy_path}"
             return None
         if params.get("convrot") or params.get("dynamic_convrot"):
             group_size = params.get("convrot_group_size")
@@ -2005,6 +2099,9 @@ class ModelQuantizer:
         ):
             ltx_base = re.sub(r"(?:[-_]transformer)?[-_]bf16$", "-transformer", base, flags=re.IGNORECASE)
             return f"{ltx_base}-comfy-int8-convrot-hq-22gb-video.safetensors"
+        if workflow == WORKFLOW_QUANTIZE and _uses_flux_klein_hq_plan(params):
+            precision = str(params["flux_klein_precision"])
+            return f"{base}-comfy-{precision}-convrot-hq-measured.safetensors"
         if workflow == WORKFLOW_DRY_RUN:
             if params.get("dry_run") == "create-template":
                 return f"{base}_layer_config_template.json"
