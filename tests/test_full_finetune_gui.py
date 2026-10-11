@@ -197,6 +197,24 @@ def test_shared_full_finetune_rules_reject_unsupported_combinations(overrides, m
         normalize_image_training_parameters(list(values.items()))
 
 
+def test_dreamboothing_with_lora_defaults_says_how_to_fix_the_optimizer():
+    # the Qwen Image defaults keep fused backward on with AdamW8bit; switching to DreamBooth must explain the fix
+    values = {
+        "training_mode": "DreamBooth Fine-Tuning",
+        "mixed_precision": "bf16",
+        "full_bf16": True,
+        "full_fp16": False,
+        "blocks_to_swap": 0,
+        "num_processes": 1,
+        "gradient_accumulation_steps": 1,
+        "optimizer_type": "adamw8bit",
+        "fused_backward_pass": True,
+        "block_swap_optimizer_patch_params": False,
+    }
+    with pytest.raises(ValueError, match="Apply a Full Fine-Tuning / DreamBooth GPU preset"):
+        normalize_image_training_parameters(list(values.items()))
+
+
 @pytest.mark.parametrize("optimizer_type", ["Automagic", "Automagic3"])
 def test_full_finetune_block_swap_patch_accepts_non_fused_automagic(optimizer_type):
     values = {
@@ -622,6 +640,40 @@ def test_modern_legacy_sdpa_persists_in_runtime_config(tmp_path: Path, spec_key:
     assert dict(workflow.parameters)["use_legacy_sdpa"] is True
     assert runtime["use_legacy_sdpa"] is True
     assert _architecture_defaults(spec)["use_legacy_sdpa"] is False
+
+
+@pytest.mark.parametrize(
+    ("h2d_only", "activation_offload", "blocks_to_swap", "accepted"),
+    [(True, False, 33, True), (False, False, 33, False), (False, True, 33, False), (False, True, 32, True), (False, False, 32, True)],
+)
+def test_ideogram_lora_swaps_its_33rd_block_only_with_h2d_streaming(
+    tmp_path: Path, h2d_only: bool, activation_offload: bool, blocks_to_swap: int, accepted: bool
+):
+    """The standard offloader keeps 2 of Ideogram 4's 34 blocks resident (the backend asserts on 33); H2D-only keeps 1."""
+    spec = get_architecture("ideogram4")
+    values = _architecture_defaults(spec)
+    values.update(
+        {
+            "dataset_config": _touch(tmp_path / "dataset.toml"),
+            "dit": _touch(tmp_path / "dit.safetensors"),
+            "vae": _touch(tmp_path / "vae.safetensors"),
+            "text_encoder": _touch(tmp_path / "text_encoder.safetensors"),
+            "output_dir": str(tmp_path / "output"),
+            "output_name": "ideogram-swap",
+            "gradient_checkpointing": True,
+            "gradient_checkpointing_cpu_offload": activation_offload,
+            "block_swap_h2d_only": h2d_only,
+            "blocks_to_swap": blocks_to_swap,
+        }
+    )
+    config_path = tmp_path / "runtime.toml"
+
+    if accepted:
+        prepare_modern_image_workflow("ideogram4", list(values.items()), str(config_path), python_cmd="python")
+        assert toml.load(config_path)["blocks_to_swap"] == blocks_to_swap
+    else:
+        with pytest.raises(ValueError, match=r"between 0 and 32 \(33 needs H2D-only block swap\)"):
+            prepare_modern_image_workflow("ideogram4", list(values.items()), str(config_path), python_cmd="python")
 
 
 @pytest.mark.parametrize(
@@ -1113,3 +1165,82 @@ def test_flux_family_end_to_end_resume_of_failed_full_finetune_stays_full_finetu
 
     training_mode_index = 2 + flux_lora_gui.FLUX_PARAM_KEYS.index("training_mode")
     assert reloaded[training_mode_index] == FULL_FINE_TUNING_MODE
+
+
+def test_zimage_start_builds_the_dataset_toml_from_the_folder_settings(tmp_path: Path, monkeypatch):
+    """Folder mode needed the Generate button before Start; Start now builds the TOML from the current settings."""
+    folder = tmp_path / "dataset" / "1_ohwx"
+    folder.mkdir(parents=True)
+    (folder / "a.png").write_bytes(b"")
+    (folder / "a.txt").write_text("ohwx", encoding="utf-8")
+    captured: list[tuple[list[str], str]] = []
+    monkeypatch.setattr(zimage_lora_gui, "print_command_and_toml", lambda command, config_path: captured.append((command, config_path)))
+    parameters = [
+        ("training_mode", "LoRA Training"),
+        ("dataset_config_mode", "Generate from Folder Structure"),
+        ("dataset_config", ""),
+        ("generated_toml_path", ""),
+        ("parent_folder_path", f'"{tmp_path / "dataset"}"'),
+        ("dataset_resolution_width", 768),
+        ("dataset_resolution_height", 768),
+        ("dataset_caption_extension", ".txt"),
+        ("create_missing_captions", False),
+        ("caption_strategy", "folder_name"),
+        ("dataset_batch_size", 1),
+        ("dataset_enable_bucket", True),
+        ("dataset_bucket_no_upscale", False),
+        ("dataset_cache_directory", "cache_dir"),
+        ("dit", _touch(tmp_path / "dit.safetensors")),
+        ("vae", _touch(tmp_path / "vae.safetensors")),
+        ("text_encoder", _touch(tmp_path / "text_encoder.safetensors")),
+        ("output_dir", str(tmp_path / "output")),
+        ("output_name", "zimage-folder"),
+        ("mixed_precision", "bf16"),
+        ("network_module", "networks.lora_zimage"),
+        ("network_dim", 32),
+        ("network_alpha", 32),
+        ("sdpa", True),
+        ("gradient_checkpointing", True),
+        ("num_processes", 1),
+        ("num_machines", 1),
+        ("num_cpu_threads_per_process", 1),
+        ("gpu_ids", "0"),
+        ("dynamo_backend", "no"),
+        ("optimizer_type", "AdamW8bit"),
+        ("optimizer_args", []),
+        ("network_args", []),
+        ("additional_parameters", ""),
+    ]
+
+    zimage_lora_gui.train_zimage_model(True, True, parameters)
+
+    _command, config_path = captured[-1]
+    dataset_config = Path(toml.load(config_path)["dataset_config"])
+    assert dataset_config.is_file()
+    dataset = toml.load(dataset_config)
+    assert dataset["general"]["resolution"] == [768, 768]
+
+
+def test_wan_load_keeps_saved_zeros(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    """blocks_to_swap / VAE chunking / timestep buckets accept 0; a saved 0 loaded back as an empty field."""
+    monkeypatch.setattr(wan_lora_gui.gr, "Info", lambda *_args, **_kwargs: None)
+    keys = ["blocks_to_swap", "vae_chunk_size", "vae_spatial_tile_sample_min_size", "num_timestep_buckets"]
+    config_path = tmp_path / "wan.toml"
+    config_path.write_text(toml.dumps({key: 0 for key in keys}), encoding="utf-8")
+
+    result = wan_lora_gui.open_wan_configuration(False, str(config_path), [(key, 5) for key in keys])
+
+    assert list(result[2:]) == [0, 0, 0, 0]
+
+
+def test_wan_load_keeps_every_base_weight_and_multiplier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+    monkeypatch.setattr(wan_lora_gui.gr, "Info", lambda *_args, **_kwargs: None)
+    config_path = tmp_path / "wan.toml"
+    config_path.write_text(toml.dumps({"base_weights": ["C:/a/one.safetensors", "C:/b c/two.safetensors"], "base_weights_multiplier": [1.0, 0.5]}), encoding="utf-8")
+
+    result = wan_lora_gui.open_wan_configuration(False, str(config_path), [("base_weights", ""), ("base_weights_multiplier", "")])
+
+    assert result[2] == "C:/a/one.safetensors; C:/b c/two.safetensors"
+    assert result[3] == "1 0.5"
+    from musubi_tuner_gui.common_gui import split_float_list, split_path_list
+    assert split_path_list(result[2]) == ["C:/a/one.safetensors", "C:/b c/two.safetensors"] and split_float_list(result[3]) == [1.0, 0.5]

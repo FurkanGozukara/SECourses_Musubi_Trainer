@@ -525,3 +525,107 @@ body {
         transform: none;
     }
 }
+
+/* ============================================================================
+   V35 — grouped navigation, GPU preset card, model notes / status
+   ============================================================================ */
+
+/* Top-level groups (Image Models / Video & Audio / Tools / History): bold pills */
+#main_tabs > .tab-wrapper {
+    padding: 8px;
+    border-radius: 16px;
+    background: linear-gradient(135deg,
+        color-mix(in srgb, var(--accent-1) 10%, transparent),
+        color-mix(in srgb, var(--accent-3) 8%, transparent));
+    border: 1px solid color-mix(in srgb, var(--accent-2) 30%, transparent);
+}
+
+#main_tabs > .tab-wrapper .tab-container button {
+    font-size: 1.02em !important;
+    font-weight: 750 !important;
+    padding: 10px 20px !important;
+    border-radius: 12px !important;
+}
+
+#main_tabs > .tab-wrapper .tab-container button.selected {
+    background: linear-gradient(135deg, var(--accent-1), var(--accent-3)) !important;
+    box-shadow: 0 4px 18px rgba(139, 92, 246, 0.45) !important;
+}
+
+/* Second level (individual models / tools): lighter, compact chips */
+.model-tabs > .tab-wrapper {
+    padding: 5px;
+    margin-bottom: 12px;
+    background: color-mix(in srgb, var(--accent-1) 4%, transparent);
+    border: 1px dashed color-mix(in srgb, var(--accent-1) 22%, transparent);
+}
+
+.model-tabs > .tab-wrapper .tab-container button {
+    font-size: 0.88em !important;
+    padding: 6px 12px !important;
+}
+
+.model-tabs > .tab-wrapper .tab-container button.selected {
+    background: linear-gradient(135deg, var(--accent-2), var(--accent-1)) !important;
+    box-shadow: 0 2px 10px rgba(99, 102, 241, 0.35) !important;
+}
+
+/* Configuration + GPU preset card */
+.config-presets {
+    border-radius: var(--card-radius) !important;
+    background: color-mix(in srgb, #10b981 6%, transparent) !important;
+    border: 1px solid color-mix(in srgb, #10b981 28%, transparent) !important;
+}
+
+.preset-library {
+    border-radius: 12px !important;
+    border: 1px solid color-mix(in srgb, #10b981 30%, transparent) !important;
+    background: color-mix(in srgb, #10b981 5%, transparent) !important;
+    padding: 4px !important;
+}
+
+/* GPU VRAM | preset | Apply | refresh on one line, buttons level with the dropdown inputs */
+.preset-library .preset-row {
+    align-items: flex-end !important;
+    background: var(--block-background-fill);
+}
+
+.preset-library .preset-row > button.preset-action {
+    align-self: flex-end;
+    white-space: nowrap;
+    min-height: 42px;
+    margin: 0 8px 10px 0 !important;
+}
+
+.preset-details {
+    padding: 6px 12px !important;
+    font-size: 0.9em;
+    border-left: 4px solid #10b981;
+    border-radius: 8px;
+    background: color-mix(in srgb, #10b981 7%, transparent);
+}
+
+/* Model notes (top of the spec-driven tabs) and model-file status */
+.model-notes {
+    padding: 10px 14px !important;
+    border-radius: 12px;
+    border-left: 5px solid var(--accent-2);
+    background: color-mix(in srgb, var(--accent-2) 7%, transparent);
+}
+
+.model-notes h3 {
+    margin: 0 0 4px 0 !important;
+}
+
+.model-status {
+    padding: 8px 12px !important;
+    border-radius: 12px;
+    font-size: 0.9em;
+    background: color-mix(in srgb, #64748b 7%, transparent);
+    border: 1px solid color-mix(in srgb, #64748b 22%, transparent);
+}
+
+/* Sliders read better with the accent color */
+.gradio-container input[type="range"] {
+    accent-color: var(--accent-1);
+}

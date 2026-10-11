@@ -12,6 +12,25 @@
 
 ---
 
+## 11 October 2026 Version 35.0 Update
+
+- **Five new model families, each in its own tab**
+  - **Qwen-Image 2.1** — LoRA and Full Fine-Tuning, plus editing LoRAs with ordered control images.
+  - **ERNIE-Image** (Baidu, 8B) — LoRA.
+  - **Mage-Flow** and **Mage-Flow-Edit** (Microsoft, 4B, MIT) — LoRA, text-to-image and instruction editing with 1-3 reference images.
+  - **HiDream-O1** (pixel-space, single checkpoint) — LoRA and Full Fine-Tuning, t2i and i2i.
+  - **Kandinsky 6 Lite** — video + audio LoRA.
+- **Measured GPU-tier presets for every model** — 6, 8, 10, 12, 16, 24 and 32 GB tiers for all new models and for FLUX.2 Dev, FLUX.2 Klein 9B / 4B, Z-Image Base / Turbo, Krea 2, Ideogram 4, Wan 2.1, LTX 2.3 and MiniMax H3, LoRA and Full Fine-Tuning where the backend supports it. A tier ships only when a configuration really fits it; each folder's README lists any tier that cannot.
+  - Every preset was trained on a real GPU with VRAM sampled every 100 ms. Training **and** caching keep at least 1.5 GB of the tier free, so a 32 GB preset never goes above 30.5 GB.
+  - File names carry the tier and the measured peak (`24_GB_GPUs_21.3_GB_Quality_1.toml`); every model folder has a README table with peaks, speeds and settings.
+  - Presets now live in one folder per model next to the app (`Qwen_Image_2.1_Training_Configs`, `FLUX_2_Training_Configs`, `Krea_2_Training_Configs`, ...), each with `LoRA_Training` and `Fine_Tuning_Training` sub-folders, like `Wan22_Training_Configs`.
+- **⚡ GPU preset picker on every trainer tab** — filter by model, training type and GPU VRAM (auto-detected), the best preset for your GPU is pre-selected, and Apply loads it exactly like the Load button. Shipped presets are read-only.
+- **LTX 2.3 Full Fine-Tuning** — new Training Mode in the LTX tab (dense BF16, fused Adafactor, trainable block-swap ring) with an automatic merge into an inference-ready single-file LTX bundle after training.
+- **Live training monitor** under Start Training (phase, elapsed time, live VRAM and peak per GPU), **one-click model downloads** inside the new tabs, new downloader entries 20-26, and a faster UI (grouped navigation, lazily rendered tabs, Gradio run history disabled).
+- **Backend**: musubi-tuner upgraded to upstream 0.3.6 + dev with transformers 5.17, plus the new model trainers and several fixes found while measuring the presets.
+
+---
+
 ## 14 August 2026 Version 34.0 Update
 
 - **Full MiniMax H3 video + audio LoRA training added**
@@ -125,7 +144,7 @@ Everything in this post ships as one zip file. Extract it and you get the 1-clic
 
 ![Zip file contents — installers, downloader and preset folders](https://cdn-uploads.huggingface.co/production/uploads/6345bd89fe134dfd7a0dba40/OnFcR-bKDOwKK1Vrjyp-U.png)
 
-**Ready demo presets for every model family** — FLUX 2 (LoRA + Fine-Tuning), FLUX Klein 4B / 9B, Ideogram 4, Krea 2 (including the High-VRAM INT8 ConvRot variant), LTX 2.3, MiniMax H3 (24 GB and lowest-VRAM variants), Wan 2.1 and Z-Image Base / Turbo. Load one, point it at your dataset, press Start:
+**Measured GPU-tier presets for every model family (new in V35)** — one folder per model inside `Training_Presets` (`FLUX_2_Training_Configs`, `FLUX_Klein_9B_Training_Configs`, `FLUX_Klein_4B_Training_Configs`, `Z_Image_Base_Training_Configs`, `Z_Image_Turbo_Training_Configs`, `Krea_2_Training_Configs`, `Ideogram_4_Training_Configs`, `Wan_21_Training_Configs`, `LTX_2.3_Training_Configs`, `MiniMax_H3_Training_Configs`, `Qwen_Image_2.1_Training_Configs`, `ERNIE_Image_Training_Configs`, `Mage_Flow_Training_Configs`, `Mage_Flow_Edit_Training_Configs`, `HiDream_O1_Training_Configs`, `Kandinsky_6_Training_Configs`), each with `LoRA_Training` and, where supported, `Fine_Tuning_Training` presets for 6 / 8 / 10 / 12 / 16 / 24 / 32 GB GPUs (a tier ships only when a configuration really fits it). Every preset was measured on a real GPU and keeps at least 1.5 GB of VRAM free during training and caching; the tier and measured peak are in the file name and each folder's README lists peaks, speeds and settings. In the app, the ⚡ preset picker pre-selects the right one for your GPU. The previous single demo folder (shown below for V34) was replaced by these folders:
 
 ![V34 demo training config presets, including MiniMax H3](https://cdn-uploads.huggingface.co/production/uploads/6345bd89fe134dfd7a0dba40/LVtXuIFGJWQAF998Vd-3d.png)
 
@@ -323,7 +342,7 @@ The newest training tab brings complete **MiniMax H3 LoRA training** to consumer
 - **Dataset and audio safety** — batch size is fixed to 1, frame counts are normalized to the `17n+5` rule (released range 124–345), videos are normalized to 24 FPS, and resolutions use 32-pixel steps. Embedded audio or same-stem `.wav` sidecars provide joint audio supervision; silent clips are never trained toward silence.
 - **Distillation protection and teacher matching** — the default guidance loss preserves H3's CFG-distilled behavior and automatically creates its unconditional probe cache. Advanced users can select the `first,last` endpoint teacher or the stronger `ref` self-reference teacher and tune sigma protection, timestep focus, DC/magnitude shaping and audio-loss weighting.
 - **Consumer-GPU memory stack** — auto-detected approximately 21 GB pruned ConvRot INT8 transformer, approximately 15.7 GB NVFP4+AWQ text encoder with layer-by-layer CPU streaming, and H2D-only swapping for up to 48 of 50 transformer blocks. Full BF16 and compatible ComfyUI pre-quantized ConvRot checkpoints are supported; unsupported FP8 files are rejected before launch.
-- **Tested presets** — the 24 GB preset runs 384px / 124-frame training at a measured 22.5 GB peak on an RTX 3090; the lowest-VRAM preset uses 256px / 124 frames and heavy block swapping.
+- **Measured presets (V35)** — 124-frame (5 s) clips at 512 px on 32 GB GPUs (30.0 GB peak), 384 px on 24 GB (21.7 GB) and 256 px on 16 GB (14.4 GB), all rank 128 with H2D-only block swap. On 12 and 10 GB GPUs, rank 64 with activation CPU offload (9.5 / 8.2 GB, much slower). 8 GB and smaller GPUs cannot train H3 with 1.5 GB of VRAM kept free.
 
 ![MiniMax H3 Video Training tab — T2VA, FL2VA and Ref2VA video + audio LoRA training](https://cdn-uploads.huggingface.co/production/uploads/6345bd89fe134dfd7a0dba40/Y3e6_1J65e3Te14ypNeDg.png)
 
@@ -433,11 +452,11 @@ The most expensive failure in training is the one you discover 20 minutes in —
 
 ## Researched Presets — Not Guesses
 
-- **Qwen Image** : LoRA + Fine-Tuning configs from my 50+ full training research runs, tiered from **6 GB to 96 GB GPUs**, in 75 / 150 / 200-epoch quality variants (folder: `Qwen_Training_Configs`). 30+ result examples: [see this article](https://medium.com/@furkangozukara/qwen-image-lora-trainings-stage-1-results-and-pre-made-configs-published-as-low-as-training-with-ba0d41d76a05).
-- **Wan 2.2** : official configs distilled from 64+ unique research trainings — Text-to-Video, Image-to-Video and Text-to-Image, for every GPU tier (folder: `Wan22_Training_Configs`).
-- **Krea 2** : the demo preset ships with **INT8 ConvRot as the default** (faster and slightly more accurate than the old Scaled FP8 default at the same VRAM floor), plus the new Krea_2_LoRA_Demo_High_VRAM.toml for 24 GB+ cards at 1.72x the old throughput.
-- **MiniMax H3** : two tested rank-128 LoRA presets — `MiniMax_H3_LoRA_Demo_24GB.toml` for 384px / 124 frames and `MiniMax_H3_LoRA_Demo_Lowest_VRAM.toml` for 256px / 124 frames with aggressive H2D-only block swapping.
-- **Everything else** : ready demo presets for FLUX 2, Klein 4B/9B, Z-Image Base/Turbo, Ideogram 4 and LTX 2.3 (folder: `Demo_Training_Configs_FLUX-2_Z-Image_FLUX-Klein_WAN-21_Krea2_Ideogram4`).
+- **Qwen Image** : LoRA + Fine-Tuning configs from my 50+ full training research runs, tiered from **6 GB to 96 GB GPUs**, in 75 / 150 / 200-epoch quality variants (folder: `Training_Presets/Qwen_Training_Configs`). 30+ result examples: [see this article](https://medium.com/@furkangozukara/qwen-image-lora-trainings-stage-1-results-and-pre-made-configs-published-as-low-as-training-with-ba0d41d76a05).
+- **Wan 2.2** : official configs distilled from 64+ unique research trainings — Text-to-Video, Image-to-Video and Text-to-Image, for every GPU tier (folder: `Training_Presets/Wan22_Training_Configs`).
+- **Krea 2** : LoRA presets quantize the frozen DiT with **INT8 ConvRot** (faster and slightly more accurate than Scaled FP8 at the same VRAM floor), measured per GPU tier (folder: `Training_Presets/Krea_2_Training_Configs`).
+- **MiniMax H3** : measured rank-128 LoRA presets per GPU tier (folder: `Training_Presets/MiniMax_H3_Training_Configs`).
+- **Every other model** : measured 6-32 GB GPU-tier presets in one folder per model inside `Training_Presets` (`FLUX_2_Training_Configs`, `FLUX_Klein_9B_Training_Configs`, `Z_Image_Base_Training_Configs`, `Ideogram_4_Training_Configs`, `LTX_2.3_Training_Configs`, `Wan_21_Training_Configs`, ...), each with a README of measured peaks and speeds. They replace the V34 demo folder.
 - Sample generation during training, TensorBoard / Weights & Biases logging with gradient statistics, exact mid-epoch training resume, checkpoint retention policies and direct Hugging Face upload are all built in.
 
 ## Quality of Life You Will Not Find Anywhere Else

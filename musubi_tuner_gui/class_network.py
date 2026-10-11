@@ -105,12 +105,12 @@ class Network:
                 label="Base Weights (LoRA Base)",
                 placeholder="Paths to LoRA weights to merge into the model before training",
                 value=self.config.get("base_weights", ""),
-                info="Optional. Space-separated paths to LoRA weights to merge before training.",
+                info="Optional. LoRA files merged into the model before training; separate several with ';' (or quote each path).",
             )
 
             self.base_weights_multiplier = gr.Textbox(
                 label="Base Weights Multiplier",
                 placeholder="Multipliers for network weights to merge into the model before training",
                 value=self.config.get("base_weights_multiplier", ""),
-                info="Optional. Space-separated multipliers aligned with base_weights order.",
+                info="Optional. One multiplier per base weight, in the same order, separated by spaces (e.g. 1 0.5).",
             )

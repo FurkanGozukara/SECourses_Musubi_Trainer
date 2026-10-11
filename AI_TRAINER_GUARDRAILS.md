@@ -40,7 +40,7 @@ Before finishing a new trainer:
 
 ## Guardrail 2: Training-mode round-trip (LoRA vs. Full Fine-Tuning)
 
-Applies to any trainer that offers both a LoRA mode and a Full Fine-Tuning / DreamBooth mode (currently: FLUX, FLUX.2, FLUX Klein, Qwen Image, Z-Image, Ideogram 4, Krea 2). Skip this guardrail only if the new trainer is LoRA-only (like LTX-2) or has its full-finetune mode fully disabled in the UI (like Wan currently does).
+Applies to any trainer that offers both a LoRA mode and a Full Fine-Tuning / DreamBooth mode (currently: FLUX, FLUX.2, FLUX Klein, Qwen Image, Qwen-Image 2.1, HiDream-O1, Z-Image, Ideogram 4, Krea 2, LTX 2.3). Skip this guardrail only if the new trainer is LoRA-only (like ERNIE-Image, Mage-Flow, Kandinsky 6, MiniMax H3) or has its full-finetune mode fully disabled in the UI (like Wan currently does).
 
 ### Rule
 
@@ -92,3 +92,200 @@ This fork's `trainer_base.py` resolves the `--sdpa` flag through `resolve_sdpa_b
 ### Regression check
 
 Before finishing a new trainer: run a real "Start Training" (or at minimum construct the model with `attn_mode="flash_auto"`) on a machine where `resolve_sdpa_backend()` returns `"flash_auto"`, not just `pytest` — the crash only appears at real transformer load time.
+
+Applies to every architecture added in V35 as well: Qwen-Image 2.1 (`qwen_image_21_model.segmented_attention`) and Mage-Flow (`mage_flow/attention.packed_attention`, `MageFlow.set_attention_backend`) shipped with their own attention dispatchers that raised on `flash_auto`; both now resolve it per call with `resolve_automatic_flash_mode` / `external_flash_supports_inputs`, and `test_attention_backend_selection.py` covers Qwen-Image 2.1. Kandinsky 6 ignores `attn_mode` (its bundled engine is SDPA-only), ERNIE-Image routes through `modules.attention`.
+
+---
+
+## Guardrail 4: Fork compile residency selectors on new trainers
+
+### Rule
+
+- Every `model_utils.compile_transformer(...)` call in a `*_train_network.py` must pass `offloaders=[...]` (one entry per compiled block container: the container's block-swap offloader, or `None`).
+
+### Why this exists
+
+The fork's compile path decides which blocks stay resident (and therefore compiled with their Linears) from the offloaders. Upstream trainers do not pass them; merged as-is, Qwen-Image 2.1, Kandinsky 6, ERNIE-Image and Mage-Flow compiled every block as if resident. `tests/test_torch_compile_toolchain.py::ResidentBlockCompileTests::test_every_training_compile_call_site_supplies_residency_selectors` fails for any new call site without it.
+
+### Required implementation pattern
+
+`offloaders=[model.offloader if self.blocks_to_swap > 0 else None]` for a single swapped container; `None` entries for containers that are never swapped (e.g. Kandinsky 6 `[None, None, transformer.offloader]`). Update fake `compile_transformer` stubs in merged tests to accept `offloaders=None`.
+
+### Regression check
+
+Run the backend suite after every upstream/fork merge; the residency-selector test lists the offending `file:line`.
+
+---
+
+## Guardrail 5: Debug-mode logging goes through `log_with`, never a bare CLI flag
+
+### Rule
+
+- When the Advanced → Debug Mode dropdown selects "Enable Logging (TensorBoard/WandB/All)", set the `log_with` parameter **before** `SaveConfigFileToRun` runs and do not append `--log_with` to the command line.
+
+### Why this exists
+
+`debug_mode` is a GUI-only key excluded from the runtime TOML before logging normalization, so the old pattern (append `--log_with tensorboard` to the CLI) reached the backend without a `logging_dir` and failed with "logging_dir is required when log_with is tensorboard" — after caching had already run. Found in the Ideogram 4 / Krea 2 module during the V35 review; `image_models_gui.py` and `modern_image_lora_gui.py` now map it into `log_with` so `_normalize_logging_fields_for_run_config` resolves `output_dir/logs`.
+
+### Regression check
+
+`tests/test_image_models_gui.py::test_debug_logging_resolves_logging_dir_under_output` (parametrized over every spec).
+
+---
+
+## Guardrail 6: Pin auxiliary assets to sources that still exist
+
+### Rule
+
+- Before shipping a model whose loader downloads tokenizer/processor/config assets from a Hugging Face repo, verify the repo is still public (`HfApi().model_info(repo)` with and without a token). If it was removed, point the loader at a verified official copy (compare git blob ids file by file) and pin the revision.
+
+### Why this exists
+
+`microsoft/Mage-Flow` and `microsoft/Lens` were deleted from the Hub after their releases. Mage-Flow's loader fetched its Qwen3-VL processor assets from `microsoft/Mage-Flow/text_encoder`; every file there was byte-identical to `Qwen/Qwen3-VL-4B-Instruct`, so the fork now loads them from Qwen's repo at revision `ebb281ec70b05090aa6165b016eac8ec08e71b17`. Lens (never officially released, assets only in the deleted Microsoft repo) was not integrated.
+
+---
+
+## Guardrail 7: Trainers that override `process_batch` must use the upstream loop
+
+### Rule
+
+- A `*_train_network.py` whose trainer overrides `process_batch()` (Kandinsky 6, MiniMax H3, FLUX.2 Self-Flow) must subclass `musubi_tuner.training.trainer_base.NetworkTrainer`, not the fork-extended `NetworkTrainer` re-exported by `hv_train_network`.
+
+### Why this exists
+
+The fork binds `trainer_ext.NetworkTrainer.train` to its own `training/training_loop.py`, which calls `call_dit()` directly and never calls `process_batch()`. Kandinsky 6 (AkaneTendo25 branch) feeds its audio latents/noise through `process_batch()`, so after the V35 merge every K6 run died on the first step with `KeyError: 'audio_latents'` — no unit test covered the real loop. MiniMax H3 already imported the upstream base and worked.
+
+### Regression check
+
+Run one real training step (the VRAM lab or a 2-step GUI run) for every newly merged trainer, not only the unit tests.
+
+---
+
+## Guardrail 8: `GUIConfig()` is an empty configuration
+
+### Rule
+
+- `GUIConfig()` (no path) must never read `./config.toml`. Tabs without a defaults file (`TAB_DEFAULT_FILES[...] = None`) get an empty config and fill their own architecture defaults.
+
+### Why this exists
+
+A legacy HunyuanVideo `config.toml` (foreign `C:/Users/.../mp_rank_00_model_states_fp8.safetensors` paths, flow shift 7, 960x544, "Use TOML File") sits in the app folder. `GUIConfig()` used to load it implicitly, so every V35 spec-driven tab started with those values and showed its downloaded models as missing. Test: `tests/test_image_models_gui.py::test_tabs_without_defaults_file_ignore_stray_config_toml`.
+
+---
+
+## Guardrail 9: Block-swap maximums leave two resident blocks
+
+### Rule
+
+- A tab's `max_blocks_to_swap` for training is `num_blocks - 2`, even when the model's own assertion allows `num_blocks - 1`.
+
+### Why this exists
+
+Qwen-Image 2.1 (32 blocks) accepted 31 swapped blocks, then crashed in the backward recompute of a full fine-tune ("mat2 is on cpu"). HiDream-O1 (36 decoder layers) had the same `num_blocks - 1` ceiling. Both GUI specs now stop at 30 / 34.
+
+---
+
+## Guardrail 10: After an upstream merge, diff function signatures against upstream
+
+### Rule
+
+- After resolving merge conflicts, compare every function signature in `src/musubi_tuner` with `upstream/main` (AST walk over `git show upstream/main:<file>`); any parameter upstream has and the fork lost is a merge mistake until proven otherwise.
+- Also compare the *methods* of classes the fork keeps its own copy of (the datasources in `dataset/image_video_dataset.py` vs upstream `dataset/datasources.py`): a method upstream added to its classes but missing from the fork's falls back to the base class, which may raise `NotImplementedError` only at run time.
+
+### Why this exists
+
+The fork's `save_text_encoder_output_cache_hidream_o1` (defined twice: `dataset/cache_io.py` and `dataset/image_video_dataset.py`) had lost upstream's `pixel_values` parameter while `hidream_o1_cache_text_encoder_outputs.py` passes it, so HiDream-O1 text caching failed for every dataset. The V35 check over 239 files found exactly this one gap. A second one only showed in the GPU preset lab: the fork's `VideoDirectoryDatasource` / `VideoJsonlDatasource` lacked upstream's `get_item_extras`, so MiniMax-H3 latent caching from a video folder raised `NotImplementedError` (test: `musubi-tuner/tests/test_video_datasource_item_extras.py`). `image_video_dataset.py` now re-exports the `cache_io` writer; test: `musubi-tuner/tests/test_hidream_o1_cache_contract.py`.
+---
+
+## Guardrail 11: Vendored transformers model code must follow transformers 5
+
+### Rule
+
+- Any model class copied from transformers into `musubi-tuner` (today: `hidream_o1/qwen3_vl_transformers.py`) must work with the pinned transformers 5.x. In particular a rotary embedding whose `rope_type` is `"default"` must not index `ROPE_INIT_FUNCTIONS["default"]` (removed in v5) and must expose `compute_default_rope_parameters`, which `PreTrainedModel._init_weights` calls.
+
+### Why this exists
+
+Upstream bumped to transformers 5.17 without touching HiDream-O1's vendored Qwen3-VL code, so every HiDream-O1 run failed while building the model (`KeyError: 'default'`, then `'NoneType' object is not callable` from the weight initializer). Test: `musubi-tuner/tests/test_hidream_o1_rope_transformers5.py` compares the inverse frequencies with transformers' own class. The next failure was `create_causal_mask(input_embeds=..., cache_position=...)`: v5 renamed the argument to `inputs_embeds` and dropped `cache_position`; `_create_causal_mask_compat` passes whichever the installed version accepts, and `tests/test_hidream_o1_text_forward_transformers5.py` runs a tiny forward + backward on the CPU.
+
+The same v5 change broke LTX-2 text caching: transformers 5 stores Gemma 3 rotary buffers per layer type (`full_attention_inv_freq`, `sliding_attention_original_inv_freq`), which the single-file Gemma loader treated as missing weights. `base_encoder._materialize_meta_buffer` now rebuilds them from the per-layer RoPE parameters (test: `musubi-tuner/tests/test_ltx2_gemma_rope_transformers5.py`). After any transformers bump, run a fresh text-encoder caching pass for every model (the VRAM lab's cache measurements do this).
+---
+
+## Guardrail 12: Reference/control images that are enabled must exist
+
+### Rule
+
+- When a spec-driven tab generates its dataset TOML with reference/control images enabled (`use_control_images`: Qwen-Image 2.1 editing, Mage-Flow-Edit, HiDream-O1 i2i), every dataset folder must contain the control sub-folder; `create_dataset_config` raises a ValueError naming the folders that lack it.
+
+### Why this exists
+
+`generate_dataset_config_from_folders` silently leaves `control_directory` out when the sub-folder is missing, so a Mage-Flow-Edit run with an image-only dataset printed a clean workflow and wrote a dataset TOML without references; the edit run could only fail later, during caching or training. Test: `tests/test_image_models_gui.py::test_reference_images_enabled_without_control_folder_is_rejected`. Older tabs (FLUX.2, Qwen Image Edit) treat control images as optional on purpose and are not affected.
+
+---
+
+## Guardrail 13: Latent caches are not resolution-specific by name
+
+### Rule
+
+- Image latent cache files are named by the *source* image size (`img_1024x1024_<arch>.safetensors`), and training loads every `*_<arch>.safetensors` in its cache folder. A new latent cache writer must go through `save_latent_cache_common` (it records `bucket_size` in the metadata, which `--skip_existing` compares in `cache_latents.latent_cache_matches_bucket`); a new video dataset must keep `VideoDataset.drop_stale_video_caches` in its training path.
+- Measurement tooling must give each resolution / frame count its own cache folder (the VRAM lab uses `cache_dir_lab_<W>x<H>[_f<frames>]`).
+
+### Why this exists
+
+`--skip_existing` only tested that the file existed, so after a resolution change the old latents were reused silently: the V35 preset lab's 768 px and 512 px candidates trained on 1328 px / 1024 px latents, and Kandinsky 6 runs at 512x288 also trained on 864x480 clips left in the same folder. Users hit the same trap by applying a preset with another resolution to a dataset cached earlier. Tests: `musubi-tuner/tests/test_cache_latents_bucket_check.py`, `musubi-tuner/tests/test_video_stale_cache_filter.py`.
+
+---
+
+## Guardrail 14: Block-swap maxima follow the backend's offloader mode
+
+### Rule
+
+- A tab's `blocks_to_swap` limit must be the one the backend asserts for the selected mode, not one number per model. Ideogram 4 keeps 2 of its 34 blocks resident when gradients flow through swapped blocks (LoRA with standard swap, full fine-tuning) and 1 with H2D-only streaming, so 33 needs `block_swap_h2d_only`; `modern_image_lora_gui` validates this. FLUX.2 maps `blocks_to_swap` to a double/single split (`Flux2.split_blocks_to_swap`): the maxima are FLUX.2 dev 30, Klein 9B 18, Klein 4B 13.
+- LTX 2.3 LoRA with the standard block swap must not swap exactly 1 block: that swap pair races the full-block unload hook and corrupts the weights (the tab rejects it, the lab job skips it with `skip_swaps`). Do not relax that check without a loss comparison over several epochs.
+- When adding a model, read its `enable_block_swap` assertion for every offloader mode (standard, H2D-only, forward-only) and give the VRAM lab job a per-candidate `max_swap` (and `skip_swaps`) where the modes differ.
+
+### Why this exists
+
+The Ideogram 4 tab accepted 33 for every LoRA run, so 33 without H2D-only streaming failed at start-up with the backend's assertion; the V35 preset lab hit it on every activation-offload candidate and lost the 12 GB and lower Ideogram tiers until the job capped those candidates at 32. FLUX.2's proportional split stopped Klein 9B at 16 (6 double + 18 single blocks) although 6 + 22 can be swapped, leaving about 1.7 GB of BF16 weights on the GPU that low tiers could not shed. With one swapped block, LTX 2.3 LoRA trained normally for four steps and then sat at a loss of ~1.8 instead of ~0.3 (one run stopped with a CUDA device-side assert); 2, 4 and 10-26 swapped blocks reproduced the reference losses exactly. Tests: `tests/test_full_finetune_gui.py::test_ideogram_lora_swaps_its_33rd_block_only_with_h2d_streaming`, `tests/test_ltx2_gui.py::TestValidation::test_lora_rejects_exactly_one_swapped_block`, `musubi-tuner/tests/test_flux2_block_swap_split.py`.
+
+---
+
+## Guardrail 15: Runtime TOML values reach the backend unconverted
+
+### Rule
+
+- `read_config_from_file` builds the argparse namespace straight from the TOML, so no argparse `type=` runs on it. Write every value in the type the backend uses: `nargs="*"` options as lists (`base_weights`, `base_weights_multiplier`; `SaveConfigFileToRun` does this), float options keep their fractions (`network_alpha`: use `common_gui.number_keeping_fraction`, never an int-coercion list), and `lr_warmup_steps` / `lr_decay_steps` through `common_gui.steps_or_ratio` (the schedulers treat any float as a fraction of the total steps, so `100.0` must be written as `100`).
+- Write TOML only with `toml.dump` / `toml.dumps` inside the `musubi_tuner_gui` package, whose `__init__.py` installs `toml_compat` (a correct string writer, and reading of files the old writer broke). Never format TOML text by hand. A script outside the package that writes TOML must call `musubi_tuner_gui.toml_compat.install()` first.
+
+### Why this exists
+
+A single base-weights path reached the backend as a string, which it read character by character. LTX 2.3 and MiniMax H3 put `network_alpha` and the warmup / decay steps in their int lists, so alpha 0.5 became 0 (which the LoRA module reads as alpha = rank) and a 10% warmup became none. toml 0.10.2 writes strings through `repr` and then rewrites `\x`, which un-escapes the backslashes of any string that contains a backslash followed by `x`. Any Windows path with a folder or file name starting with "x" (`C:\Users\xavier\...`) was saved as invalid TOML: presets no longer loaded, and the trainer could not read its runtime or dataset TOML. Tests: `tests/test_runtime_toml_types.py`, `tests/test_toml_compat.py` (checked with the strict stdlib `tomllib` as well), `tests/test_ltx2_gui.py::TestValidation::test_fractional_alpha_and_warmup_ratio_survive`, `tests/test_minimax_h3_gui.py::test_runtime_toml_keeps_fractional_alpha_and_warmup_ratio`.
+
+---
+
+## Guardrail 16: kohya sd-scripts (FLUX.1 / SDXL backend) keeps its transformers 5 shims
+
+### Rule
+
+- `sd-scripts/` (kohya premium fork) must build every `CLIPTextModel` through `library/transformers_compat.clip_text_model_from_config` (FLUX CLIP-L in `flux_utils.load_clip_l`, SDXL text encoder 1 in `sdxl_model_util`, SD1/2 in `model_util`), keep the `CLIPFeatureExtractor` import fallback in the two lpw pipelines, and keep `strategy_base._ensure_sentencepiece_proto_compat()`. Re-apply them after pulling a newer sd-scripts (local branch `transformers5-compat`).
+
+### Why this exists
+
+transformers 5 flattened `CLIPTextModel` (no `text_model` sub-module, keys without `text_model.`): `load_state_dict(strict=False, assign=True)` then loads nothing and FLUX CLIP-L stays on the meta device, SDXL's strict loader raises, `text_encoder1.text_model...` in `sdxl_train.py` fails and LoRA / SDXL checkpoint key names change. `google/t5-v1_1-xxl` only ships `spiece.model`; transformers 5 converts it with sentencepiece's pb2, which needs protobuf >= 3.20 while the trainer pins 3.19 (`descript-audiotools`), so every FLUX.1 T5 tokenizer load fails. The same protobuf limitation affects musubi-tuner's own `T5Tokenizer.from_pretrained("google/t5-v1_1-xxl")` (FLUX.1 Kontext).
+
+### Regression check
+
+`tests/test_kohya_backend.py::test_runtime_tomls_pass_sd_scripts_setup_on_cpu` runs the real sd-scripts setup (tokenizers included) for FLUX.1 / SDXL LoRA and fine-tuning on the CPU. After an sd-scripts or transformers bump, also compare CLIP-L / T5 tokens and CLIP-L outputs with an environment running the previous version (the port check matched transformers 4.54.1 exactly).
+
+---
+
+## Guardrail 17: A setting that changes another setting needs a unified link
+
+### Rule
+
+- When a trainer tab sets one setting's value from another in a Gradio event (`.change` / `.input` / `.blur` writing to a different component, or rounding the field itself), add the same rule as a `Link` in `musubi_tuner_gui/unified/links.py`. The unified UI reuses the tab's load, save and train functions but never its events.
+- A rule whose trigger the unified registry fixes per model (`ModelEntry.fixed`, e.g. Mage-Flow Edit's `is_edit`) or sets by default (`default_overrides`, e.g. Wan 2.2's `task`) must run at load time: mark the link `on_load`.
+- A model-file switch between variants must never leave the other variant's checkpoint selected: clear the path when the target file is missing.
+
+### Why this exists
+
+The unified UI shipped without any of these couplings. Choosing HiDream-O1 "dev" kept the full checkpoint and the full model's noise schedule (the trainer accepts either file, so nothing failed); Mage-Flow Edit without a preset trained the text-to-image checkpoint; turning Wan's FP8 Base on left FP8 Scaled off (a plain FP8 cast), and turning it off after a Wan 2.2 preset hit the backend's `fp8_scaled requires fp8_base` assertion through a hidden setting; Wan 2.2 lost its resident-blocks-only compile default. Tests: `tests/test_unified_links.py` (every link's keys exist in its trainer, load-time and edit-time behaviour).

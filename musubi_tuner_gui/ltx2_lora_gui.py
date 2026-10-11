@@ -8,6 +8,8 @@ Backend scripts (musubi-tuner):
     ltx2_cache_latents.py                 - video/audio VAE latent caching
     ltx2_cache_text_encoder_outputs.py    - Gemma 3 12B text embedding caching
     ltx2_train_network.py                 - LoRA training (networks.lora_ltx2)
+    ltx2_train.py                         - full fine-tuning (dense BF16, fused Adafactor)
+    ltx2_merge_fft_to_model.py            - turns a full fine-tune into an inference-ready bundle
 
 The single --ltx2_checkpoint file provides the DiT, video VAE, audio VAE,
 vocoder and text-encoder connector weights. Gemma 3 12B is supplied either as
@@ -24,7 +26,7 @@ import subprocess
 import sys
 import tempfile
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 
 import gradio as gr
@@ -33,8 +35,13 @@ import toml
 from .class_accelerate_launch import AccelerateLaunch
 from .class_command_executor import CommandExecutor
 from .class_configuration_file import ConfigurationFile
+from .preset_library import PresetLibrary
 from .class_gui_config import GUIConfig
 from .common_gui import (
+    text_for_list,
+    number_keeping_fraction,
+    steps_or_ratio,
+    strip_path_parameters,
     SaveConfigFile,
     SaveConfigFileToRun,
     get_file_path,
@@ -49,10 +56,21 @@ from .common_gui import (
 )
 from .custom_logging import setup_logging
 from .dataset_config_generator import (
+    dataset_toml_matches,
     generate_ltx2_dataset_config_from_folders,
     round_frames_to_ltx2,
     save_dataset_config,
     validate_dataset_config,
+)
+from .full_finetune_gui import (
+    FULL_FINE_TUNING_MODE,
+    LORA_TRAINING_MODE,
+    TRAINING_MODE_CHOICES,
+    infer_training_mode_from_loaded_config,
+    is_full_fine_tuning,
+    normalize_image_training_parameters,
+    normalize_training_mode,
+    training_mode_runtime_exclusions,
 )
 from .optimizer_catalog import add_automagic_optimizer_choices, optimizer_guidance, validate_automagic_configuration
 
@@ -82,6 +100,8 @@ LTX2_PARAM_KEYS = [
     "gpu_ids",
     "main_process_port",
     "extra_accelerate_launch_args",
+    # Training mode (LoRA via ltx2_train_network.py, full fine-tuning via ltx2_train.py)
+    "training_mode",
     # Model
     "ltx2_checkpoint",
     "gemma_root",
@@ -124,6 +144,13 @@ LTX2_PARAM_KEYS = [
     "blockwise_checkpointing",
     "blocks_to_checkpoint",
     "ltx2_low_ram_load",
+    # Full fine-tuning (ltx2_train.py only)
+    "full_bf16",
+    "fused_backward_pass",
+    "ltx2_block_swap_trainable_ring",
+    "mem_eff_save",
+    "save_merged_checkpoint",
+    "ltx2_fft_merge_after_training",
     # Dataset (GUI-only, consumed by the dataset TOML generator)
     "dataset_config_mode",
     "dataset_config",
@@ -169,6 +196,7 @@ LTX2_PARAM_KEYS = [
     "caching_teo_skip_existing",
     "caching_teo_keep_cache",
     "caching_teo_atomic_writes",
+    "caching_teo_low_vram",
     "cache_before_connector",
     # Network
     "network_module",
@@ -325,6 +353,7 @@ LTX2_RUN_EXCLUSIONS = {
     "cache_text_encoder_outputs",
     "cache_before_connector",
     "int8_convrot_write_quality_report",
+    "ltx2_fft_merge_after_training",
     "sample_steps",
     "sample_seed",
     "sample_cfg_scale",
@@ -336,6 +365,21 @@ LTX2_RUN_EXCLUSIONS = {
 }
 # All caching_* keys are consumed by the cache command builders, never by the trainer.
 LTX2_RUN_EXCLUSIONS.update(key for key in LTX2_PARAM_KEYS if key.startswith("caching_"))
+
+# LoRA-only and full-fine-tune-only keys, kept out of the other mode's run TOML.
+LTX2_LORA_ONLY_KEYS = {"lora_target_preset", "train_connectors", "no_convert_to_comfy", "no_save_original_lora"}
+LTX2_FULL_ONLY_KEYS = {"full_bf16", "fused_backward_pass", "ltx2_block_swap_trainable_ring", "mem_eff_save", "save_merged_checkpoint"}
+# Full fine-tuning trains dense floating-point weights: no frozen/quantized base.
+LTX2_BASE_QUANTIZATION_KEYS = ("fp8_base", "fp8_scaled", "fp8_w8a8", "int8_convrot_dynamic", "int8_convrot_base", "nf4_base")
+# Values applied when the user switches the mode radio to Full Fine-Tuning (documented LTX-2.3 recipe:
+# fused Adafactor with manual LR; max_grad_norm 0 lets the fused path free each gradient immediately,
+# which saves roughly one copy of the 22B gradients compared with global clipping).
+LTX2_FULL_FINE_TUNING_DEFAULTS = {
+    "optimizer_type": "AdaFactor",
+    "optimizer_args": "scale_parameter=False relative_step=False warmup_init=False weight_decay=0.01",
+    "learning_rate": 1e-5,
+    "max_grad_norm": 0.0,
+}
 
 # Optional string args: drop from the run TOML when empty so the backend
 # argparse defaults (None) apply.
@@ -371,9 +415,6 @@ LTX2_INT_KEYS = {
     "block_swap_ring_size",
     "blocks_to_checkpoint",
     "network_dim",
-    "network_alpha",
-    "lr_warmup_steps",
-    "lr_decay_steps",
     "lr_scheduler_num_cycles",
     "gradient_accumulation_steps",
     "max_train_steps",
@@ -414,6 +455,7 @@ LTX2_DEFAULTS = {
     "gpu_ids": "0",
     "main_process_port": 0,
     "extra_accelerate_launch_args": "",
+    "training_mode": LORA_TRAINING_MODE,
     "ltx2_checkpoint": "",
     "gemma_root": "",
     "gemma_safetensors": "",
@@ -452,6 +494,12 @@ LTX2_DEFAULTS = {
     "blockwise_checkpointing": False,
     "blocks_to_checkpoint": -1,
     "ltx2_low_ram_load": False,
+    "full_bf16": True,
+    "fused_backward_pass": True,
+    "ltx2_block_swap_trainable_ring": True,
+    "mem_eff_save": True,
+    "save_merged_checkpoint": False,
+    "ltx2_fft_merge_after_training": True,
     "dataset_config_mode": "Generate from Folder Structure",
     "dataset_config": "",
     "parent_folder_path": "",
@@ -494,6 +542,7 @@ LTX2_DEFAULTS = {
     "caching_teo_skip_existing": True,
     "caching_teo_keep_cache": True,
     "caching_teo_atomic_writes": True,
+    "caching_teo_low_vram": False,
     "cache_before_connector": False,
     "network_module": "networks.lora_ltx2",
     "network_dim": 32,
@@ -606,9 +655,11 @@ class Ltx2Workflow:
     latent_cache_command: list | None
     text_cache_command: list | None
     train_command: list
+    post_train_commands: list = field(default_factory=list)
 
     @property
     def commands(self) -> list:
+        """Caching commands followed by the training command (the training command is always last)."""
         commands = []
         if self.latent_cache_command:
             commands.append(self.latent_cache_command)
@@ -616,6 +667,11 @@ class Ltx2Workflow:
             commands.append(self.text_cache_command)
         commands.append(self.train_command)
         return commands
+
+    @property
+    def all_commands(self) -> list:
+        """Every command the workflow script runs, including post-training steps (bundle merge)."""
+        return self.commands + list(self.post_train_commands)
 
 
 executor: CommandExecutor | None = None
@@ -707,6 +763,18 @@ def _validate_ltx2_parameters(param_dict: dict, *, validate_paths: bool = True) 
         if gemma_safetensors and not os.path.isfile(gemma_safetensors):
             raise ValueError(f"Gemma safetensors file does not exist: {gemma_safetensors}")
 
+    if (
+        bool(param_dict.get("cache_text_encoder_outputs", True))
+        and str(param_dict.get("caching_teo_device") or "cuda").strip().lower() == "cpu"
+        and gemma_safetensors
+    ):
+        # The single-file Gemma is FP8 and the backend loads FP8 Gemma weights on CUDA only; with --device cpu
+        # the LLM still lands on the GPU while the feature extractor stays on the CPU and caching crashes.
+        raise ValueError(
+            "Text-encoder caching on the CPU is not supported with the single-file FP8 Gemma. Set the text cache device "
+            "to cuda (its FP8 weights are streamed layer by layer, so VRAM use stays low)."
+        )
+
     if param_dict.get("gemma_load_in_8bit") and param_dict.get("gemma_load_in_4bit"):
         raise ValueError("gemma_load_in_8bit and gemma_load_in_4bit are mutually exclusive.")
     if gemma_safetensors and (param_dict.get("gemma_load_in_8bit") or param_dict.get("gemma_load_in_4bit")):
@@ -734,6 +802,11 @@ def _validate_ltx2_parameters(param_dict: dict, *, validate_paths: bool = True) 
             raise ValueError("block_swap_h2d_only requires blocks_to_swap > 0.")
         if not param_dict.get("gradient_checkpointing"):
             raise ValueError("block_swap_h2d_only requires gradient_checkpointing.")
+        # the backend rejects both at start-up (they move streamed blocks to the CPU and corrupt the H2D ring)
+        if param_dict.get("gradient_checkpointing_cpu_offload"):
+            raise ValueError("block_swap_h2d_only cannot be combined with activation CPU offload (gradient_checkpointing_cpu_offload): disable one of them.")
+        if param_dict.get("sample_with_offloading"):
+            raise ValueError("block_swap_h2d_only cannot be combined with Sample With Offloading: disable one of them.")
 
     mode = str(param_dict.get("ltx2_mode") or "video")
     if mode == "audio" and str(param_dict.get("lora_target_preset") or "t2v") == "t2v":
@@ -745,8 +818,26 @@ def _validate_ltx2_parameters(param_dict: dict, *, validate_paths: bool = True) 
     if sum(attention) > 1:
         raise ValueError("Select only one attention implementation (SDPA / FlashAttention / SageAttention / xformers).")
 
-    if _to_int(param_dict.get("network_dim"), 32) <= 0:
+    full_finetune = is_full_fine_tuning(param_dict.get("training_mode"))
+    if full_finetune:
+        quantized = [key for key in LTX2_BASE_QUANTIZATION_KEYS if param_dict.get(key)]
+        if quantized:
+            raise ValueError(
+                "Full fine-tuning trains the dense BF16 transformer weights. Turn off base quantization "
+                f"({', '.join(quantized)}) and use the BF16 ltx-2.3-22b-dev checkpoint."
+            )
+        if str(param_dict.get("mixed_precision") or "bf16") != "bf16":
+            raise ValueError("LTX-2 full fine-tuning requires mixed precision bf16.")
+    elif _to_int(param_dict.get("network_dim"), 32) <= 0:
         raise ValueError("Network dimension (rank) must be >= 1.")
+    elif blocks_to_swap == 1 and not param_dict.get("block_swap_h2d_only"):
+        # measured on LTX-2.3 22B (INT8 ConvRot): with one swapped block the standard offloader's swap pair
+        # (block 0 / last block) races the full-block unload hook, and from about step 5 the loss sits at ~1.8
+        # instead of ~0.3 (or training stops with a CUDA device-side assert); 2, 4 and 10-26 trained cleanly
+        raise ValueError(
+            "LTX 2.3 LoRA cannot swap exactly 1 block: the standard block swap corrupts the swapped weights with a "
+            "single block. Use 0, 2 or more blocks, or enable H2D-only block swap."
+        )
     if _to_int(param_dict.get("max_train_steps")) <= 0 and _to_int(param_dict.get("max_train_epochs")) <= 0:
         raise ValueError("Set max_train_epochs or max_train_steps to a value greater than 0.")
 
@@ -779,8 +870,31 @@ def _normalize_ltx2_parameters(parameters, *, validate_paths: bool = True):
             coerced = _to_int(param_dict[key], 0)
             param_dict[key] = coerced
             parameters = _replace_parameter(parameters, key, coerced)
+    # int() turned a fractional alpha into 0 (= alpha equal to the rank) and a warmup / decay ratio into 0
+    for key, coerce in (("network_alpha", number_keeping_fraction), ("lr_warmup_steps", steps_or_ratio), ("lr_decay_steps", steps_or_ratio)):
+        if param_dict.get(key) is not None and not isinstance(param_dict[key], bool):
+            param_dict[key] = coerce(param_dict[key])
+            parameters = _replace_parameter(parameters, key, param_dict[key])
+
+    try:
+        training_mode = normalize_training_mode(param_dict.get("training_mode"))
+    except ValueError:
+        training_mode = LORA_TRAINING_MODE
+    param_dict["training_mode"] = training_mode
+    parameters = _replace_parameter(parameters, "training_mode", training_mode)
+    if training_mode == FULL_FINE_TUNING_MODE:
+        # H2D-only streaming is for frozen LoRA bases; the trainable ring needs block swap.
+        if param_dict.get("block_swap_h2d_only"):
+            param_dict["block_swap_h2d_only"] = False
+            parameters = _replace_parameter(parameters, "block_swap_h2d_only", False)
+        if _to_int(param_dict.get("blocks_to_swap")) <= 0 and param_dict.get("ltx2_block_swap_trainable_ring"):
+            param_dict["ltx2_block_swap_trainable_ring"] = False
+            parameters = _replace_parameter(parameters, "ltx2_block_swap_trainable_ring", False)
 
     _validate_ltx2_parameters(param_dict, validate_paths=validate_paths)
+    if training_mode == FULL_FINE_TUNING_MODE:
+        # Shared full-fine-tune rules (fused backward needs Adafactor, accumulation 1, single process ...).
+        param_dict, parameters, _ = normalize_image_training_parameters(parameters)
     return param_dict, parameters
 
 
@@ -879,6 +993,8 @@ def build_ltx2_cache_commands(param_dict: dict, *, python_cmd: str | None = None
             text_command.append("--keep_cache")
         if param_dict.get("caching_teo_atomic_writes"):
             text_command.append("--atomic_cache_writes")
+        if param_dict.get("caching_teo_low_vram"):
+            text_command.append("--low_vram_text_encoding")
         if param_dict.get("cache_before_connector"):
             text_command.append("--cache_before_connector")
         if param_dict.get("cpu_staged_checkpoint_loading"):
@@ -967,18 +1083,25 @@ def _enhance_sample_prompts(param_dict: dict, parameters):
 
 
 def prepare_ltx2_workflow(parameters, config_path: str, *, validate_paths: bool = True, python_cmd: str | None = None) -> Ltx2Workflow:
+    parameters = strip_path_parameters(parameters)  # quoted / padded paths (Explorer's "Copy as path")
     param_dict, parameters = _normalize_ltx2_parameters(parameters, validate_paths=validate_paths)
     python_cmd = python_cmd or sys.executable
 
     if validate_paths:
         os.makedirs(str(param_dict["output_dir"]), exist_ok=True)
 
+    full_finetune = is_full_fine_tuning(param_dict.get("training_mode"))
     run_parameters = _run_config_parameters(param_dict, parameters)
+    exclusions = set(LTX2_RUN_EXCLUSIONS) | training_mode_runtime_exclusions(param_dict.get("training_mode"))
+    exclusions |= LTX2_LORA_ONLY_KEYS if full_finetune else LTX2_FULL_ONLY_KEYS
+    mandatory_keys = ["dataset_config", "ltx2_checkpoint", "output_dir", "output_name"]
+    if not full_finetune:
+        mandatory_keys.append("network_module")
     SaveConfigFileToRun(
         parameters=run_parameters,
         file_path=config_path,
-        exclusion=sorted(LTX2_RUN_EXCLUSIONS | {"file_path", "save_as", "headless", "print_only"}),
-        mandatory_keys=["dataset_config", "ltx2_checkpoint", "output_dir", "output_name", "network_module"],
+        exclusion=sorted(exclusions | {"file_path", "save_as", "headless", "print_only"}),
+        mandatory_keys=mandatory_keys,
     )
 
     latent_command, text_command = build_ltx2_cache_commands(param_dict, python_cmd=python_cmd)
@@ -999,7 +1122,8 @@ def prepare_ltx2_workflow(parameters, config_path: str, *, validate_paths: bool 
         mixed_precision=param_dict.get("mixed_precision"),
         extra_accelerate_launch_args=param_dict.get("extra_accelerate_launch_args"),
     )
-    train_command.extend([_trainer_script_path("ltx2_train_network.py"), "--config_file", config_path])
+    train_script = "ltx2_train.py" if full_finetune else "ltx2_train_network.py"
+    train_command.extend([_trainer_script_path(train_script), "--config_file", config_path])
 
     additional = str(param_dict.get("additional_parameters") or "").strip()
     debug = {
@@ -1010,12 +1134,32 @@ def prepare_ltx2_workflow(parameters, config_path: str, *, validate_paths: bool 
         additional = f"{additional} {debug}".strip()
     train_command = run_cmd_advanced_training(run_cmd=train_command, additional_parameters=additional)
 
+    post_train_commands = []
+    if full_finetune and bool(param_dict.get("ltx2_fft_merge_after_training", True)) and not bool(param_dict.get("save_merged_checkpoint")):
+        # ltx2_train.py saves a transformer-only checkpoint; LTX loaders (ComfyUI, generation, LoRA training)
+        # need the full single-file bundle, so merge the final checkpoint into a copy of the base bundle.
+        output_dir = os.path.abspath(str(param_dict.get("output_dir") or "."))
+        output_name = str(param_dict.get("output_name") or "ltx2_full_finetune")
+        post_train_commands.append(
+            [
+                python_cmd,
+                _trainer_script_path("ltx2_merge_fft_to_model.py"),
+                "--fft_checkpoint",
+                os.path.join(output_dir, f"{output_name}.safetensors"),
+                "--base_checkpoint",
+                str(param_dict["ltx2_checkpoint"]),
+                "--output",
+                os.path.join(output_dir, f"{output_name}_ltx2_bundle.safetensors"),
+            ]
+        )
+
     return Ltx2Workflow(
         parameters=parameters,
         config_path=config_path,
         latent_cache_command=latent_command,
         text_cache_command=text_command,
         train_command=train_command,
+        post_train_commands=post_train_commands,
     )
 
 
@@ -1025,22 +1169,27 @@ def _command_line(command: list) -> str:
     return shlex.join([str(item) for item in command])
 
 
+def _workflow_labels(workflow: Ltx2Workflow) -> list:
+    labeled = [(command, "caching") for command in workflow.commands[:-1]]
+    labeled.append((workflow.train_command, "training"))
+    labeled.extend((command, "full fine-tune bundle merge") for command in workflow.post_train_commands)
+    return labeled
+
+
 def _build_workflow_script(workflow: Ltx2Workflow) -> tuple:
     if platform.system() == "Windows":
         # UTF-8 console vars keep backend log lines (which include Japanese
         # help text) from crashing with cp1252 UnicodeEncodeError when the
         # script is re-run manually outside the GUI.
         lines = ["@echo off", "setlocal", "set PYTHONUTF8=1", "set PYTHONIOENCODING=utf-8:backslashreplace"]
-        for index, command in enumerate(workflow.commands):
-            label = "training" if index == len(workflow.commands) - 1 else "caching"
+        for command, label in _workflow_labels(workflow):
             lines.append(f"echo Starting LTX-2 {label}...")
             lines.append(_command_line(command))
             lines.append("if errorlevel 1 exit /b %errorlevel%")
         suffix = ".bat"
     else:
         lines = ["#!/bin/bash", "set -e", "export PYTHONUTF8=1", "export PYTHONIOENCODING=utf-8:backslashreplace"]
-        for index, command in enumerate(workflow.commands):
-            label = "training" if index == len(workflow.commands) - 1 else "caching"
+        for command, label in _workflow_labels(workflow):
             lines.append(f'echo "Starting LTX-2 {label}..."')
             lines.append(_command_line(command))
         suffix = ".sh"
@@ -1109,13 +1258,18 @@ def generate_ltx2_dataset_toml(*args):
 
 
 def train_ltx2_model(headless: bool, print_only: bool, parameters):
+    parameters = strip_path_parameters(parameters)  # quoted / padded paths (Explorer's "Copy as path")
     global train_state_value
     param_dict = dict(parameters)
     validate_automagic_configuration(param_dict, warning_callback=None if headless else gr.Warning)
 
     if str(param_dict.get("dataset_config_mode") or "") == "Generate from Folder Structure":
         generated = str(param_dict.get("generated_toml_path") or "").strip()
-        if not generated or not os.path.isfile(generated):
+        # reuse the generated TOML only while it still describes the chosen folder and resolution
+        if not generated or not os.path.isfile(generated) or not dataset_toml_matches(
+            generated, param_dict.get("parent_folder_path"),
+            (param_dict.get("dataset_resolution_width"), param_dict.get("dataset_resolution_height")),
+        ):
             generated, _ = _create_ltx2_dataset_config(param_dict)
         param_dict["dataset_config"] = generated
         parameters = _replace_parameter(parameters, "dataset_config", generated)
@@ -1141,6 +1295,8 @@ def train_ltx2_model(headless: bool, print_only: bool, parameters):
         for command in workflow.commands[:-1]:
             print_command_and_toml(command, "")
         print_command_and_toml(workflow.train_command, workflow.config_path)
+        for command in workflow.post_train_commands:
+            print_command_and_toml(command, "")
         return None
 
     if executor is None:
@@ -1207,7 +1363,7 @@ def _config_value_for_component(key: str, value, default):
         return {"v": "video", "a": "audio", "va": "av"}.get(text, text if text in ("video", "av", "audio") else "video")
     if isinstance(value, list):
         if key in {"optimizer_args", "lr_scheduler_args", "network_args", "base_weights"}:
-            return " ".join(str(item) for item in value)
+            return text_for_list(key, value)
         if key == "base_weights_multiplier":
             return value[0] if value else default
         if not isinstance(default, list):
@@ -1234,6 +1390,10 @@ def open_ltx2_configuration(ask_for_file: bool, file_path: str, parameters):
             data = toml.load(handle)
         values = []
         for key, default in parameters:
+            if key == "training_mode":
+                # Guardrail 2: never trust the on-screen mode; infer it from the file being loaded.
+                values.append(infer_training_mode_from_loaded_config(data))
+                continue
             value = resolve_portable_model_value(key, data.get(key, default))
             values.append(_config_value_for_component(key, value, default))
         message = f"Configuration loaded: {os.path.basename(file_path)}"
@@ -1289,13 +1449,34 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
         return component
 
     gr.Markdown(
-        "Train LoRA models for **LTX-2 (19B)** and **LTX-2.3 (22B)** text-to-video / audio-video models. "
+        "Train LoRAs or **full fine-tunes** of **LTX-2 (19B)** and **LTX-2.3 (22B)** text-to-video / audio-video models. "
         "The single LTX-2 checkpoint provides DiT + VAE + audio VAE + vocoder; Gemma 3 12B is the text encoder. "
         "Valid video frame counts are 8k+1 (1, 9, 17, 25, 33, 41, 49...) and training resolution steps are 32 px."
     )
+    try:
+        initial_mode = normalize_training_mode(get_value("training_mode"))
+    except ValueError:
+        initial_mode = LORA_TRAINING_MODE
+    initial_full = initial_mode == FULL_FINE_TUNING_MODE
 
-    with gr.Accordion("Configuration File", open=True):
+    with gr.Accordion("Configuration & GPU Presets", open=True, elem_classes=["config-presets"]):
         configuration = ConfigurationFile(headless=headless, config=config)
+        presets = PresetLibrary(("LTX_2.3_Training_Configs",), model_name="LTX 2.3", headless=headless)
+
+    training_mode = reg(
+        "training_mode",
+        gr.Radio(
+            label="Training Mode",
+            choices=TRAINING_MODE_CHOICES,
+            value=initial_mode,
+            info=(
+                "LoRA trains a small adapter (ltx2_train_network.py). Full Fine-Tuning updates every transformer weight "
+                "(ltx2_train.py: BF16, fused Adafactor, block swap) and needs 64 GB+ system RAM."
+            ),
+            elem_classes=["training-mode-radio"],
+        ),
+    )
+    presets.follow_training_mode(training_mode)
 
     with gr.Row():
         search_input = gr.Textbox(
@@ -1323,7 +1504,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
     with tracked_panel(
         "Accelerate launch Settings",
         keywords="resource gpu precision distributed multi gpu dynamo cpu threads port",
-        open=True,
+        open=False,
         elem_classes="flux1_background",
     ):
         accelerate_launch = AccelerateLaunch(config=config)
@@ -1344,7 +1525,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                     info="Single-file LTX-2 / LTX-2.3 checkpoint. Pre-quantized FP8 and INT8 ConvRot checkpoints are supported.",
                 ),
             )
-            ltx2_checkpoint_button = gr.Button("📂", elem_id="ltx2_checkpoint_button", elem_classes=["mbtn", "mbtn-blue"], size="sm", visible=(not headless))
+            ltx2_checkpoint_button = gr.Button("📂", elem_id="ltx2_checkpoint_button", elem_classes=["mbtn", "mbtn-blue"], size="sm", scale=0, min_width=60, visible=(not headless))
             ltx2_checkpoint_button.click(
                 get_file_path,
                 inputs=[ltx2_checkpoint],
@@ -1361,7 +1542,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                     info="Single-file Gemma text encoder (weights + tokenizer + config). Leave empty when using the HF folder.",
                 ),
             )
-            gemma_safetensors_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-lime"], visible=(not headless))
+            gemma_safetensors_button = gr.Button("📂", size="sm", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-lime"], visible=(not headless))
             gemma_safetensors_button.click(
                 get_file_path,
                 inputs=[gemma_safetensors],
@@ -1378,7 +1559,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                     info="HuggingFace-format Gemma folder. Required for gemma_load_in_8bit / 4bit. Leave empty when using the single file.",
                 ),
             )
-            gemma_root_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-fuchsia"], visible=(not headless))
+            gemma_root_button = gr.Button("📂", size="sm", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-fuchsia"], visible=(not headless))
             gemma_root_button.click(
                 get_folder_path,
                 inputs=[gemma_root],
@@ -1711,7 +1892,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                         info="Each subfolder becomes a dataset. Prefix with repeats like '3_name'. Captions are .txt files next to the media.",
                     ),
                 )
-                parent_folder_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-pink"], visible=(not headless))
+                parent_folder_button = gr.Button("📂", size="sm", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-pink"], visible=(not headless))
                 parent_folder_button.click(
                     get_folder_path,
                     inputs=[parent_folder_path],
@@ -1821,7 +2002,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                     info="The dataset TOML used by caching and training.",
                 ),
             )
-            dataset_config_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-gold"], visible=(not headless))
+            dataset_config_button = gr.Button("📂", size="sm", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-gold"], visible=(not headless))
             dataset_config_button.click(
                 get_file_path,
                 inputs=[dataset_config],
@@ -1950,6 +2131,11 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                 "caching_teo_atomic_writes",
                 gr.Checkbox(label="Atomic Writes", value=get_value("caching_teo_atomic_writes")),
             )
+            caching_teo_low_vram = reg(
+                "caching_teo_low_vram",
+                gr.Checkbox(label="Low-VRAM Text Caching", value=get_value("caching_teo_low_vram"),
+                            info="Moves Gemma's embedding table, the projection and the connector to the GPU one at a time: 5.3 GB instead of 10.8 GB, a little slower, same embeddings. Needed on 12 GB and smaller GPUs."),
+            )
             cache_before_connector = reg(
                 "cache_before_connector",
                 gr.Checkbox(label="Cache pre-connector features", value=get_value("cache_before_connector"),
@@ -1957,10 +2143,63 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
             )
 
     with tracked_panel(
+        "Full Fine-Tuning Settings",
+        keywords="full fine tuning finetune fft bf16 fused backward adafactor ring merge bundle checkpoint",
+        open=True,
+        visible=initial_full,
+    ) as full_finetune_panel:
+        gr.Markdown(
+            "Dense **BF16 full fine-tuning** with fused-backward Adafactor (LR around 1e-5, `max_grad_norm 0` so each "
+            "gradient is freed as soon as its parameter is stepped). Block swap uses the bidirectional path; the "
+            "**trainable ring** coalesces block transfers and is the fastest swap mode for full fine-tuning. "
+            "`ltx2_train.py` saves a transformer-only checkpoint, so the final checkpoint is merged into an "
+            "inference-ready single-file LTX bundle after training (usable in ComfyUI, generation and LoRA training)."
+        )
+        with gr.Row():
+            full_bf16 = reg(
+                "full_bf16",
+                gr.Checkbox(label="Full BF16 Weights", value=get_value("full_bf16"), info="Train BF16 weights (required to fit 22B on one GPU)."),
+            )
+            fused_backward_pass = reg(
+                "fused_backward_pass",
+                gr.Checkbox(label="Fused Backward Pass", value=get_value("fused_backward_pass"), info="Step Adafactor inside backward: no full gradient copy."),
+            )
+            ltx2_block_swap_trainable_ring = reg(
+                "ltx2_block_swap_trainable_ring",
+                gr.Checkbox(
+                    label="Trainable Block-Swap Ring",
+                    value=get_value("ltx2_block_swap_trainable_ring"),
+                    info="Fastest block swap for full fine-tuning (needs Blocks to Swap > 0).",
+                ),
+            )
+            mem_eff_save = reg(
+                "mem_eff_save",
+                gr.Checkbox(label="Memory-Efficient Saving", value=get_value("mem_eff_save"), info="Stream checkpoint writes to keep save-time RAM low."),
+            )
+        with gr.Row():
+            ltx2_fft_merge_after_training = reg(
+                "ltx2_fft_merge_after_training",
+                gr.Checkbox(
+                    label="Merge Into Inference Bundle After Training",
+                    value=get_value("ltx2_fft_merge_after_training"),
+                    info="Runs ltx2_merge_fft_to_model.py on the final checkpoint: <output_name>_ltx2_bundle.safetensors (~43 GB).",
+                ),
+            )
+            save_merged_checkpoint = reg(
+                "save_merged_checkpoint",
+                gr.Checkbox(
+                    label="Save Merged Bundle At Every Checkpoint",
+                    value=get_value("save_merged_checkpoint"),
+                    info="Every saved checkpoint is already a full bundle (more RAM and disk at save time). Replaces the merge step.",
+                ),
+            )
+
+    with tracked_panel(
         "Network Settings (LoRA)",
         keywords="network lora rank dim alpha dropout weights module",
         open=True,
-    ):
+        visible=not initial_full,
+    ) as network_panel:
         with gr.Row():
             network_module = reg(
                 "network_module",
@@ -1974,8 +2213,8 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
             )
             network_alpha = reg(
                 "network_alpha",
-                gr.Slider(label="Network Alpha", minimum=1, maximum=256, step=1, value=get_value("network_alpha"),
-                          info="LoRA alpha. Common practice: alpha = rank."),
+                gr.Number(label="Network Alpha", minimum=0, step=1, value=get_value("network_alpha"),
+                          info="LoRA alpha (fractions allowed; 0 = rank). Common practice: alpha = rank."),
             )
             network_dropout = reg(
                 "network_dropout",
@@ -2097,11 +2336,13 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
             )
             lr_warmup_steps = reg(
                 "lr_warmup_steps",
-                gr.Number(label="Warmup Steps", value=get_value("lr_warmup_steps"), precision=0, minimum=0),
+                gr.Number(label="Warmup Steps", value=get_value("lr_warmup_steps"), minimum=0, step=1,
+                          info="Steps, or below 1 a fraction of all steps (0.1 = 10%)."),
             )
             lr_decay_steps = reg(
                 "lr_decay_steps",
-                gr.Number(label="Decay Steps", value=get_value("lr_decay_steps"), precision=0, minimum=0),
+                gr.Number(label="Decay Steps", value=get_value("lr_decay_steps"), minimum=0, step=1,
+                          info="Steps, or below 1 a fraction of all steps (0.1 = 10%)."),
             )
             lr_scheduler_num_cycles = reg(
                 "lr_scheduler_num_cycles",
@@ -2188,7 +2429,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                 "output_dir",
                 gr.Textbox(label="Output Directory", value=get_value("output_dir"), placeholder="Where checkpoints and run configs are written"),
             )
-            output_dir_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-teal"], visible=(not headless))
+            output_dir_button = gr.Button("📂", size="sm", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-teal"], visible=(not headless))
             output_dir_button.click(get_folder_path, inputs=[output_dir], outputs=[output_dir], show_progress=False)
             output_name = reg(
                 "output_name",
@@ -2261,7 +2502,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                 gr.Textbox(label="Sample Prompts File", value=get_value("sample_prompts"),
                            placeholder="Path to a .txt file with one prompt per line"),
             )
-            sample_prompts_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-forest"], visible=(not headless))
+            sample_prompts_button = gr.Button("📂", size="sm", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-forest"], visible=(not headless))
             sample_prompts_button.click(get_file_path, inputs=[sample_prompts], outputs=[sample_prompts], show_progress=False)
         with gr.Row():
             width = reg("width", gr.Number(label="Sample Width", value=get_value("width"), precision=0, minimum=64, step=32))
@@ -2446,6 +2687,58 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
     assert not missing and not extra, f"LTX-2 GUI parameter mismatch. Missing: {missing} Extra: {extra}"
     settings_list = [registration_map[key] for key in LTX2_PARAM_KEYS]
 
+    def sync_training_mode_visibility(mode):
+        # Visibility only (Guardrail 2): also chained after Load/Open/Apply Preset.
+        try:
+            full = is_full_fine_tuning(mode)
+        except ValueError:
+            full = False
+        return gr.Accordion(visible=not full), gr.Accordion(visible=full)
+
+    def apply_training_mode_defaults(mode, current_optimizer, current_args, current_lr, current_grad_norm):
+        # Only on user interaction (.input): loading a preset must keep the preset's own values.
+        try:
+            full = is_full_fine_tuning(mode)
+        except ValueError:
+            full = False
+        if full:
+            defaults = LTX2_FULL_FINE_TUNING_DEFAULTS
+            optimizer = str(current_optimizer or "")
+            return (
+                gr.update(value=defaults["optimizer_type"]),
+                gr.update(value=defaults["optimizer_args"]) if optimizer.casefold() != "adafactor" else gr.update(),
+                gr.update(value=defaults["learning_rate"]) if _to_float(current_lr, 1e-4) > 3e-5 else gr.update(),
+                gr.update(value=defaults["max_grad_norm"]),
+                gr.update(value=False),
+                # full fine-tuning trains the dense BF16 weights: a LoRA preset's base quantization would make
+                # Start fail with "Turn off base quantization"
+                *[gr.update(value=False) for _ in LTX2_BASE_QUANTIZATION_KEYS],
+            )
+        # back to LoRA: the tab's own startup defaults (ltx2_defaults.toml: AdaFactor without clipping), not the
+        # upstream recipe in LTX2_DEFAULTS, so a fresh LoRA tab and one switched back from full fine-tuning agree
+        return (
+            gr.update(),
+            gr.update(),
+            gr.update(value=get_value("learning_rate")) if _to_float(current_lr, 1e-4) < 3e-5 else gr.update(),
+            gr.update(value=get_value("max_grad_norm")) if _to_float(current_grad_norm, 1.0) == 0 else gr.update(),
+            gr.update(),
+            *[gr.update() for _ in LTX2_BASE_QUANTIZATION_KEYS],
+        )
+
+    training_mode.change(
+        sync_training_mode_visibility,
+        inputs=[training_mode],
+        outputs=[network_panel, full_finetune_panel],
+        show_progress=False,
+    )
+    training_mode.input(
+        apply_training_mode_defaults,
+        inputs=[training_mode, optimizer_type, optimizer_args, learning_rate, max_grad_norm],
+        outputs=[optimizer_type, optimizer_args, learning_rate, max_grad_norm, block_swap_h2d_only]
+        + [registration_map[key] for key in LTX2_BASE_QUANTIZATION_KEYS],
+        show_progress=False,
+    )
+
     # Dataset config mode visibility toggle.
     dataset_config_mode.change(
         fn=lambda mode: gr.Group(visible=(mode == "Generate from Folder Structure")),
@@ -2553,13 +2846,22 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
         inputs=[gr.Textbox(value="open_configuration", visible=False), dummy_true, configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
         outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
         show_progress=False,
-    )
+    ).then(sync_training_mode_visibility, inputs=[training_mode], outputs=[network_panel, full_finetune_panel], show_progress=False)
     configuration.button_load_config.click(
         ltx2_gui_actions,
         inputs=[gr.Textbox(value="open_configuration", visible=False), dummy_false, configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
         outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
         show_progress=False,
         queue=False,
+    ).then(sync_training_mode_visibility, inputs=[training_mode], outputs=[network_panel, full_finetune_panel], show_progress=False)
+    presets.bind(
+        configuration.config_file_name,
+        ltx2_gui_actions,
+        [gr.Textbox(value="open_configuration", visible=False), dummy_false, configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
+        [configuration.config_file_name, configuration.config_status] + settings_list,
+        then_fn=sync_training_mode_visibility,
+        then_inputs=[training_mode],
+        then_outputs=[network_panel, full_finetune_panel],
     )
     configuration.button_save_config.click(
         ltx2_gui_actions,

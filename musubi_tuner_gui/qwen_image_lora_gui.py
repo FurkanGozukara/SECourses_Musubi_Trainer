@@ -12,6 +12,7 @@ from .class_accelerate_launch import AccelerateLaunch
 from .class_advanced_training import AdvancedTraining
 from .class_command_executor import CommandExecutor
 from .class_configuration_file import ConfigurationFile
+from .preset_library import PresetLibrary
 from .class_gui_config import GUIConfig
 from .class_latent_caching import LatentCaching
 from .class_network import Network
@@ -27,6 +28,8 @@ from .class_save_load import SaveLoadSettings
 from .class_text_encoder_outputs_caching import TextEncoderOutputsCaching
 from .class_training import create_legacy_sdpa_checkbox
 from .common_gui import (
+    strip_path_parameters,
+    strip_path_text,
     get_file_path,
     get_file_path_or_save_as,
     get_folder_path,
@@ -453,6 +456,7 @@ class QwenImageDataset:
         ):
             """Generate dataset configuration from folder structure"""
             try:
+                parent_folder = strip_path_text(parent_folder)
                 if not parent_folder:
                     return "", "", "[ERROR] Please specify a parent folder path containing your dataset folders"
                 
@@ -1974,6 +1978,7 @@ def generate_enhanced_prompt_file(
 
 
 def train_qwen_image_model(headless, print_only, parameters):
+    parameters = strip_path_parameters(parameters)  # quoted / padded paths (Explorer's "Copy as path")
     import sys
     import json
     import os
@@ -4053,32 +4058,10 @@ def qwen_image_lora_tab(
 
     # Setup Configuration Files Gradio
     with gr.Accordion("Configuration file Settings", open=True):
-        # Show configuration status
-        # Check if this is a default config by looking for Qwen-specific values
-        is_using_defaults = (hasattr(config, 'config') and 
-                            config.config.get("discrete_flow_shift") == 3.0 and 
-                            config.config.get("timestep_sampling") == "shift" and
-                            config.config.get("fp8_vl") == True)
-        
-        if is_using_defaults:
-            config_status = """
-            [OK] **Qwen Image Optimal Defaults Active**
-            
-            **Key Optimizations Applied:**
-            - Discrete Flow Shift: 3.0 (optimal for Qwen Image)
-            - Optimizer: adamw8bit (memory efficient, recommended)
-            - Learning Rate: 5e-5 (recommended for Qwen Image, per latest docs)
-            - Mixed Precision: bf16 (strongly recommended)
-            - SDPA Attention: Enabled (fastest for Qwen Image)
-            - Gradient Checkpointing: Enabled (memory savings)
-            """
-        elif hasattr(config, 'config') and config.config:
-            config_status = "[INFO] **Custom configuration loaded** - You may want to verify optimal settings are applied"
-        else:
-            config_status = "[WARNING] **No configuration** - Default values will be used"
-        
-        gr.Markdown(config_status)
         configuration = ConfigurationFile(headless=headless, config=config)
+        presets = PresetLibrary(("Qwen_Training_Configs",), model_name="Qwen Image", headless=headless)
+        # the config dropdown auto-loads on change, so applying a preset only selects it
+        presets.bind(configuration.config_file_name)
 
     # Add search functionality and unified toggle button
     with gr.Row():
@@ -4132,6 +4115,7 @@ def qwen_image_lora_tab(
     with qwen_model_accordion:
         qwen_model = QwenImageModel(headless=headless, config=config)
         qwen_model.setup_model_ui_events()  # Setup model UI events
+        presets.follow_training_mode(qwen_model.training_mode)
     
     # Add nested Torch Compile accordion to the main accordions list for toggle functionality
     accordions.append(qwen_model.torch_compile_accordion)

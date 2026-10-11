@@ -11,11 +11,15 @@ class GUIConfig:
     A class to handle the configuration for the Kohya SS GUI.
     """
 
-    def __init__(self, config_file_path: str = "./config.toml"):
+    def __init__(self, config_file_path: str | None = None):
         """
         Initialize the KohyaSSGUIConfig class.
+
+        ``GUIConfig()`` is an empty configuration (each tab then fills its own defaults). It must
+        never pick up a stray ``./config.toml`` from the working directory: a legacy HunyuanVideo
+        file shipped there once leaked foreign model paths and settings into every new tab.
         """
-        self.config = self.load_config(config_file_path=config_file_path)
+        self.config = self.load_config(config_file_path=config_file_path) if config_file_path else {}
 
     def load_config(self, config_file_path: str = "./config.toml") -> dict:
         """

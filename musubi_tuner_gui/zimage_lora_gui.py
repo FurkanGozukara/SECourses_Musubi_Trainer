@@ -13,6 +13,7 @@ from .class_accelerate_launch import AccelerateLaunch
 from .class_advanced_training import AdvancedTraining
 from .class_command_executor import CommandExecutor
 from .class_configuration_file import ConfigurationFile
+from .preset_library import PresetLibrary
 from .class_gui_config import GUIConfig
 from .class_huggingface import HuggingFace
 from .class_metadata import MetaData
@@ -27,6 +28,9 @@ from .full_finetune_gui import (
 )
 from .optimizer_catalog import validate_automagic_configuration
 from .common_gui import (
+    text_for_list,
+    strip_path_parameters,
+    strip_path_text,
     SaveConfigFile,
     SaveConfigFileToRun,
     generate_script_content,
@@ -95,7 +99,7 @@ def _generate_zimage_dataset_toml(
     output_dir: str,
 ):
     try:
-        parent_folder_path = (parent_folder_path or "").strip()
+        parent_folder_path = strip_path_text(parent_folder_path)
         if not parent_folder_path:
             raise ValueError("Parent folder path is required.")
         if not os.path.isdir(parent_folder_path):
@@ -254,14 +258,6 @@ def open_zimage_configuration(ask_for_file, file_path, parameters):
 
     list_to_str_fields = {"optimizer_args", "lr_scheduler_args", "network_args", "base_weights", "base_weights_multiplier"}
 
-    def _quote_if_needed(s: str) -> str:
-        s = str(s)
-        if not s:
-            return s
-        if any(ch.isspace() for ch in s):
-            return f"\"{s}\""
-        return s
-
     loaded_values = []
     for key, default_value in parameters:
         if key == "training_mode":
@@ -277,10 +273,7 @@ def open_zimage_configuration(ask_for_file, file_path, parameters):
             if isinstance(v, list) and key in numeric_fields:
                 v = v[0] if v else None
             elif isinstance(v, list) and key in list_to_str_fields:
-                if key == "base_weights":
-                    v = " ".join(_quote_if_needed(str(x)) for x in v)
-                else:
-                    v = " ".join(str(x) for x in v)
+                v = text_for_list(key, v)
             loaded_values.append(v)
         else:
             loaded_values.append(resolve_portable_model_value(key, default_value))
@@ -374,6 +367,7 @@ def _maybe_create_enhanced_sample_prompts_zimage(param_dict: dict, parameters: l
 
 
 def train_zimage_model(headless: bool, print_only: bool, parameters):
+    parameters = strip_path_parameters(parameters)  # quoted / padded paths (Explorer's "Copy as path")
     global train_state_value
 
     python_cmd = sys.executable
@@ -442,6 +436,28 @@ def train_zimage_model(headless: bool, print_only: bool, parameters):
     dataset_config_mode = (param_dict.get("dataset_config_mode") or "").strip()
     if dataset_config_mode == "Generate from Folder Structure":
         gen_path = (param_dict.get("generated_toml_path") or "").strip()
+        if str(param_dict.get("parent_folder_path") or "").strip():
+            # build the dataset TOML from the current folder settings at Start, like the other tabs: the
+            # Generate button is optional, and a TOML generated before a resolution change would be stale
+            generated, _shown, status = _generate_zimage_dataset_toml(
+                param_dict.get("parent_folder_path"),
+                param_dict.get("dataset_resolution_width"),
+                param_dict.get("dataset_resolution_height"),
+                param_dict.get("dataset_caption_extension"),
+                param_dict.get("create_missing_captions"),
+                param_dict.get("caption_strategy"),
+                param_dict.get("dataset_batch_size"),
+                param_dict.get("dataset_enable_bucket"),
+                param_dict.get("dataset_bucket_no_upscale"),
+                param_dict.get("dataset_cache_directory"),
+                param_dict.get("output_dir"),
+            )
+            if not generated:
+                raise ValueError(status)
+            log.info(status)
+            gen_path = generated
+            param_dict["generated_toml_path"] = gen_path
+            parameters = [(k, (gen_path if k == "generated_toml_path" else v)) for k, v in parameters]
         if gen_path:
             param_dict["dataset_config"] = gen_path
             parameters = [(k, (gen_path if k == "dataset_config" else v)) for k, v in parameters]
@@ -1057,8 +1073,9 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
         else:
             config.config.update({k: v for k, v in defaults.items() if k not in config.config})
 
-    with gr.Accordion("Configuration file Settings", open=True):
+    with gr.Accordion("Configuration & GPU Presets", open=True, elem_classes=["config-presets"]):
         configuration = ConfigurationFile(headless=headless, config=config)
+        presets = PresetLibrary(("Z_Image_Base_Training_Configs", "Z_Image_Turbo_Training_Configs"), model_name="Z-Image", headless=headless)
 
     # Add search functionality and unified toggle button
     with gr.Row():
@@ -1251,6 +1268,7 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
                 value=config.get("training_mode", "LoRA Training"),
                 info="LoRA: parameter-efficient. DreamBooth: full fine-tuning (more VRAM).",
             )
+            presets.follow_training_mode(training_mode)
         with gr.Row():
             zimage_variant = gr.Dropdown(
                 label="zimage_variant",
@@ -2207,6 +2225,12 @@ def zimage_lora_tab(headless=False, config: GUIConfig = {}):
         outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
         show_progress=False,
         queue=False,
+    )
+    presets.bind(
+        configuration.config_file_name,
+        zimage_gui_actions,
+        [gr.Textbox(value="open_configuration", visible=False), dummy_false, configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
+        [configuration.config_file_name, configuration.config_status] + settings_list,
     )
     configuration.button_save_config.click(
         zimage_gui_actions,

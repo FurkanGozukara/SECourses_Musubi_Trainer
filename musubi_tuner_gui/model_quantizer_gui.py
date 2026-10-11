@@ -1491,6 +1491,14 @@ class ModelQuantizer:
         with self.single_queue_lock:
             return self._single_queue_text_locked(), self.single_status_text
 
+    def single_queue_poll(self):
+        """Queue text, status and the poll timer, which keeps ticking only while a conversion runs or waits (an
+        always-on 2 s timer kept polling the server from every tab once this tab had been opened)."""
+        with self.single_queue_lock:
+            worker = self.single_worker_thread
+            busy = self.single_current_job is not None or bool(self.single_queue) or bool(worker and worker.is_alive())
+            return self._single_queue_text_locked(), self.single_status_text, gr.Timer(active=busy)
+
     def _set_single_status(self, text: str) -> None:
         with self.single_queue_lock:
             self.single_status_text = self._tail_text(text)
@@ -3800,17 +3808,21 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
             *base_values,
             filter_values=filter_values,
         )
-        return quantizer.enqueue_single(
+        queue_text, status = quantizer.enqueue_single(
             input_file=single_input_file_value,
             output_file=single_output_file_value,
             delete_original=bool(single_delete_original_value),
             params=params,
         )
+        return queue_text, status, gr.Timer(active=True)
+
+    # polls the queue only while a conversion runs or waits (Run starts it, the first idle tick stops it)
+    single_queue_timer = gr.Timer(2.0, active=False)
 
     single_run_button.click(
         fn=_run_single,
         inputs=[single_input_file, single_output_file, single_delete_original] + single_inputs,
-        outputs=[single_queue_status, single_status],
+        outputs=[single_queue_status, single_status, single_queue_timer],
         show_progress=False,
         queue=False,
     )
@@ -3823,11 +3835,10 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         queue=False,
     )
 
-    single_queue_timer = gr.Timer(2.0)
     single_queue_timer.tick(
-        fn=quantizer.single_queue_and_status,
+        fn=quantizer.single_queue_poll,
         inputs=[],
-        outputs=[single_queue_status, single_status],
+        outputs=[single_queue_status, single_status, single_queue_timer],
         show_progress=False,
         queue=False,
     )
@@ -4326,3 +4337,6 @@ def model_quantizer_tab(headless: bool, config: GUIConfig) -> None:
         show_progress=False,
         queue=False,
     )
+
+    # gui.py starts the queue poll when this tab is selected (after a page reload during a conversion)
+    return single_queue_timer

@@ -16,6 +16,13 @@ from musubi_tuner_gui.ideogram4_lora_gui import ideogram4_lora_tab
 from musubi_tuner_gui.krea2_lora_gui import krea2_lora_tab
 from musubi_tuner_gui.ltx2_lora_gui import ltx2_lora_tab
 from musubi_tuner_gui.minimax_h3_lora_gui import minimax_h3_lora_tab
+from musubi_tuner_gui.image_models_gui import (
+    ernie_image_tab,
+    hidream_o1_tab,
+    kandinsky6_tab,
+    mage_flow_tab,
+    qwen_image_21_tab,
+)
 from musubi_tuner_gui.image_captioning_gui import image_captioning_tab
 from musubi_tuner_gui.model_quantizer_gui import model_quantizer_tab
 from musubi_tuner_gui.image_preprocessing_gui import image_preprocessing_tab
@@ -31,6 +38,31 @@ import toml
 PYTHON = sys.executable
 project_dir = os.path.dirname(os.path.abspath(__file__))
 
+def use_patient_localhost_check(total_seconds: float = 90.0):
+    """Gradio's launch() aborts with "When localhost is not accessible..." if the first page request takes
+    over 3 s. Building this app's page takes longer on a busy machine (e.g. while a training run uses
+    every CPU core), so keep retrying with a longer timeout before giving up."""
+    import time
+
+    import httpx
+    from gradio import networking
+
+    def url_ok(url: str) -> bool:
+        deadline = time.monotonic() + total_seconds
+        while True:
+            try:
+                response = httpx.head(url, timeout=20, verify=False)
+                if response.status_code in (200, 401, 301, 302, 303, 307, 308):
+                    return True
+            except (ConnectionError, httpx.ConnectError, httpx.TimeoutException):
+                pass
+            if time.monotonic() >= deadline:
+                return False
+            time.sleep(0.5)
+
+    networking.url_ok = url_ok
+
+
 # Function to read file content, suppressing any FileNotFoundError
 def read_file_content(file_path):
     with contextlib.suppress(FileNotFoundError):
@@ -39,7 +71,14 @@ def read_file_content(file_path):
     return ""
 
 # Function to initialize the Gradio UI interface
-def initialize_ui_interface(config_manager, headless, release_info, readme_content):
+def initialize_ui_interface(config_manager, headless, release_info, readme_content, classic=False):
+    if not classic:
+        # Unified UI: Image / Video / Audio workspaces built on the trainer modules below.
+        from musubi_tuner_gui.unified.app import build_app
+
+        return build_app(headless=headless, config_manager=config_manager)
+
+    # Classic UI (python gui.py --classic): one tab per trainer.
     # Create the main Gradio Blocks interface
     # NOTE: In Gradio 6, `css` and `theme` are passed to launch() instead of Blocks().
     ui_interface = gr.Blocks(title="SECourses Musubi Trainer Premium")
@@ -49,75 +88,71 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
             """
             <div class="app-hero">
                 <div class="app-hero-left">
-                    <div class="app-hero-badge">V34.0</div>
+                    <div class="app-hero-badge">V35.0</div>
                     <div>
                         <h1>SECourses <span class="grad">Musubi Trainer</span></h1>
-                        <p>Qwen · Wan · FLUX · Z-Image · Ideogram 4 · Krea 2 · LTX 2.3 · MiniMax H3 — LoRA &amp; fine-tune training toolkit</p>
+                        <p>Qwen Image &middot; Qwen Image 2.1 &middot; FLUX.2 &middot; Z-Image &middot; Krea 2 &middot; Ideogram 4 &middot; ERNIE-Image &middot; Mage-Flow &middot; HiDream-O1 &middot; Wan &middot; LTX 2.3 &middot; MiniMax H3 &middot; Kandinsky 6 &mdash; LoRA &amp; fine-tune training with ready-made GPU presets</p>
                     </div>
                 </div>
                 <a class="app-hero-link" href="https://www.patreon.com/posts/137551634" target="_blank" rel="noopener">
-                    ⭐ Patreon Guide &amp; Support
+                    &#11088; Patreon Guide &amp; Support
                 </a>
             </div>
             """
         )
-        
-        # Create tabs for different functionalities
-        with gr.Tab("Qwen Image Training"):
-            qwen_config = config_manager.get_config_for_tab("qwen_image")
-            qwen_image_lora_tab(headless=headless, config=qwen_config)
-        
-        with gr.Tab("Wan Models Training"):
-            wan_config = config_manager.get_config_for_tab("wan")
-            wan_lora_tab(headless=headless, config=wan_config)
 
-        with gr.Tab("FLUX Training"):
-            flux_config = config_manager.get_config_for_tab("flux")
-            flux_lora_tab(headless=headless, config=flux_config)
+        with gr.Tabs(elem_id="main_tabs", elem_classes=["main-tabs"]):
+            with gr.Tab("🖼️ Image Models", id="image_models", elem_classes=["group-tab"]):
+                with gr.Tabs(elem_classes=["model-tabs"]):
+                    with gr.Tab("Qwen Image"):
+                        qwen_image_lora_tab(headless=headless, config=config_manager.get_config_for_tab("qwen_image"))
+                    with gr.Tab("Qwen Image 2.1 ✨"):
+                        qwen_image_21_tab(headless=headless, config=config_manager.get_config_for_tab("qwen_image_21"))
+                    with gr.Tab("FLUX · FLUX.2 · Klein"):
+                        flux_lora_tab(headless=headless, config=config_manager.get_config_for_tab("flux"))
+                    with gr.Tab("Z-Image"):
+                        zimage_lora_tab(headless=headless, config=config_manager.get_config_for_tab("zimage"))
+                    with gr.Tab("Krea 2"):
+                        krea2_lora_tab(headless=headless, config=config_manager.get_config_for_tab("krea2"))
+                    with gr.Tab("Ideogram 4"):
+                        ideogram4_lora_tab(headless=headless, config=config_manager.get_config_for_tab("ideogram4"))
+                    with gr.Tab("ERNIE-Image ✨"):
+                        ernie_image_tab(headless=headless, config=config_manager.get_config_for_tab("ernie_image"))
+                    with gr.Tab("Mage-Flow ✨"):
+                        mage_flow_tab(headless=headless, config=config_manager.get_config_for_tab("mage_flow"))
+                    with gr.Tab("HiDream-O1 ✨"):
+                        hidream_o1_tab(headless=headless, config=config_manager.get_config_for_tab("hidream_o1"))
 
-        with gr.Tab("Z Image Training"):
-            zimage_config = config_manager.get_config_for_tab("zimage")
-            zimage_lora_tab(headless=headless, config=zimage_config)
+            with gr.Tab("🎬 Video & Audio Models", id="video_models", elem_classes=["group-tab"]):
+                with gr.Tabs(elem_classes=["model-tabs"]):
+                    with gr.Tab("Wan 2.1 · 2.2"):
+                        wan_lora_tab(headless=headless, config=config_manager.get_config_for_tab("wan"))
+                    with gr.Tab("LTX 2.3"):
+                        ltx2_lora_tab(headless=headless, config=config_manager.get_config_for_tab("ltx2"))
+                    with gr.Tab("MiniMax H3"):
+                        minimax_h3_lora_tab(headless=headless, config=config_manager.get_config_for_tab("minimax_h3"))
+                    with gr.Tab("Kandinsky 6 ✨"):
+                        kandinsky6_tab(headless=headless, config=config_manager.get_config_for_tab("kandinsky6"))
 
-        with gr.Tab("Ideogram 4 Training"):
-            ideogram4_config = config_manager.get_config_for_tab("ideogram4")
-            ideogram4_lora_tab(headless=headless, config=ideogram4_config)
+            with gr.Tab("🧰 Tools", id="tools", elem_classes=["group-tab"]):
+                with gr.Tabs(elem_classes=["model-tabs"]):
+                    with gr.Tab("Image Captioning"):
+                        image_captioning_tab(headless=headless, config=config_manager.get_config_for_tab("image_captioning"))
+                    with gr.Tab("Image Preprocessing"):
+                        image_preprocessing_tab(headless=headless, config=config_manager.get_config_for_tab("image_preprocessing"))
+                    with gr.Tab("Model Quantizer") as model_quantizer_tab_item:
+                        quantizer_queue_timer = model_quantizer_tab(headless=headless, config=config_manager.get_config_for_tab("model_quantizer"))
+                    # one tick shows a conversion still running after a page reload; idle ticks stop the timer again
+                    model_quantizer_tab_item.select(lambda: gr.Timer(active=True), outputs=[quantizer_queue_timer], queue=False, show_progress="hidden")
+                    with gr.Tab("LoRA Extractor"):
+                        lora_extractor_tab(headless=headless, config=None)
+                    with gr.Tab("LoRA Merger"):
+                        lora_merge_tab(headless=headless, config=None)
+                    with gr.Tab("LoRA Converter"):
+                        lora_convert_tab(headless=headless, config=None)
 
-        with gr.Tab("Krea 2 Training"):
-            krea2_config = config_manager.get_config_for_tab("krea2")
-            krea2_lora_tab(headless=headless, config=krea2_config)
-
-        with gr.Tab("LTX 2.3 Video Training"):
-            ltx2_config = config_manager.get_config_for_tab("ltx2")
-            ltx2_lora_tab(headless=headless, config=ltx2_config)
-
-        with gr.Tab("MiniMax H3 Video Training"):
-            minimax_h3_config = config_manager.get_config_for_tab("minimax_h3")
-            minimax_h3_lora_tab(headless=headless, config=minimax_h3_config)
-
-        with gr.Tab("Image Captioning"):
-            captioning_config = config_manager.get_config_for_tab("image_captioning")
-            image_captioning_tab(headless=headless, config=captioning_config)
-        
-        with gr.Tab("Model Quantizer"):
-            quant_config = config_manager.get_config_for_tab("model_quantizer")
-            model_quantizer_tab(headless=headless, config=quant_config)
-
-        with gr.Tab("LoRA Extractor"):
-            lora_extractor_tab(headless=headless, config=None)
-
-        with gr.Tab("LoRA Merger"):
-            lora_merge_tab(headless=headless, config=None)
-
-        with gr.Tab("LoRA Converter"):
-            lora_convert_tab(headless=headless, config=None)
-        
-        with gr.Tab("Image Preprocessing"):
-            preprocessing_config = config_manager.get_config_for_tab("image_preprocessing")
-            image_preprocessing_tab(headless=headless, config=preprocessing_config)
-        
-        with gr.Tab("Version History"):
-            version_history_tab(headless=headless, config=None)
+            with gr.Tab("📜 Version History", id="version_history", elem_classes=["group-tab"]):
+                version_history_tab(headless=headless, config=None)
 
     return ui_interface
 
@@ -129,7 +164,7 @@ def UI(**kwargs):
     # Load release and README information
     release_info = "v18.0"  # Hardcoded version since pyproject.toml is not needed
     
-    readme_content = read_file_content("./README.md")
+    readme_content = read_file_content(os.path.join(project_dir, "README.md"))
     
     # Initialize tab-aware configuration manager - default to qwen_image_defaults.toml
     config_manager = TabConfigManager(config_file_path=kwargs.get("config", "./qwen_image_defaults.toml"))
@@ -139,7 +174,9 @@ def UI(**kwargs):
         log.info("No user config loaded - will use tab-specific defaults")
 
     # Initialize the Gradio UI interface
-    ui_interface = initialize_ui_interface(config_manager, kwargs.get("headless", False), release_info, readme_content)
+    ui_interface = initialize_ui_interface(
+        config_manager, kwargs.get("headless", False), release_info, readme_content, classic=kwargs.get("classic", False)
+    )
 
     # Construct launch parameters using dictionary comprehension
     # Gradio 6: theme and css belong to launch(), not the Blocks constructor.
@@ -157,13 +194,23 @@ def UI(**kwargs):
             neutral_hue="slate",
             radius_size=gr.themes.sizes.radius_lg,
         ),
-        "css": read_file_content("./assets/style.css"),
+        # next to this file, wherever the app is started from (a missing unified.css breaks the whole layout)
+        "css": read_file_content(os.path.join(project_dir, "assets", "style.css")) + "\n" + read_file_content(os.path.join(project_dir, "assets", "unified.css")),
+        # Gradio's run history serializes every event's inputs/outputs (200+ settings per trainer tab) into
+        # localStorage on each click; it filled the 5 MB quota and slowed the whole UI. False also clears it.
+        "run_history": False,
+        # run_history=False only clears the current app id's key; drop the ones older launches left behind.
+        "head": (
+            "<script>try{Object.keys(localStorage).filter(function(k){return k.indexOf('gradio:run-history:')===0;})"
+            ".forEach(function(k){localStorage.removeItem(k);});}catch(e){}</script>"
+        ),
     }
   
     # This line filters out any key-value pairs from `launch_params` where the value is `None`, ensuring only valid parameters are passed to the `launch` function.
     launch_params = {k: v for k, v in launch_params.items() if v is not None}
 
     # Launch the Gradio interface with the specified parameters
+    use_patient_localhost_check()
     ui_interface.launch(**launch_params)
 
 # Function to initialize argument parser for command-line arguments
@@ -175,7 +222,7 @@ def initialize_arg_parser():
     parser.add_argument("--username", type=str, default="", help="Username for authentication")
     parser.add_argument("--password", type=str, default="", help="Password for authentication")
     parser.add_argument("--server_port", type=int, default=0, help="Port to run the server listener on")
-    parser.add_argument("--inbrowser", action="store_true", default=True, help="Open in browser")
+    parser.add_argument("--inbrowser", action=argparse.BooleanOptionalAction, default=True, help="Open in browser (--no-inbrowser: don't)")
     parser.add_argument("--share", action="store_true", help="Share the gradio UI")
     parser.add_argument("--headless", action="store_true", help="Is the server headless")
     parser.add_argument("--language", type=str, default=None, help="Set custom language")
@@ -186,6 +233,7 @@ def initialize_arg_parser():
     parser.add_argument("--requirements", type=str, default=None, help="requirements file to use for validation")
     parser.add_argument("--root_path", type=str, default=None, help="`root_path` for Gradio to enable reverse proxy support. e.g. /kohya_ss")
     parser.add_argument("--noverify", action="store_true", help="Disable requirements verification")
+    parser.add_argument("--classic", action="store_true", help="Use the classic one-tab-per-trainer interface")
     return parser
 
 if __name__ == "__main__":

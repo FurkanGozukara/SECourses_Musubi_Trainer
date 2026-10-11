@@ -100,6 +100,13 @@ class TestValidation:
                 validate_paths=False,
             )
 
+    def test_lora_rejects_exactly_one_swapped_block(self):
+        # one swapped block corrupted LTX-2.3 LoRA weights in the standard block swap (loss ~0.3 -> ~1.8)
+        with pytest.raises(ValueError, match="cannot swap exactly 1 block"):
+            _normalize_ltx2_parameters(_params(blocks_to_swap=1), validate_paths=False)
+        for allowed in ({"blocks_to_swap": 0}, {"blocks_to_swap": 2}, {"blocks_to_swap": 1, "block_swap_h2d_only": True, "sample_with_offloading": False}):
+            _normalize_ltx2_parameters(_params(gradient_checkpointing=True, **allowed), validate_paths=False)
+
     def test_single_attention_backend_required(self):
         with pytest.raises(ValueError, match="only one attention"):
             _normalize_ltx2_parameters(
@@ -118,6 +125,19 @@ class TestValidation:
     def test_defaults_are_valid(self):
         param_dict, _ = _normalize_ltx2_parameters(_params(), validate_paths=False)
         assert param_dict["ltx_version"] == "2.3"
+
+    def test_fractional_alpha_and_warmup_ratio_survive(self):
+        # int() made alpha 0.5 into 0 (= alpha equal to the rank) and a 10% warmup into no warmup; the backend
+        # reads a TOML float warmup as a ratio, so whole step counts must stay ints
+        param_dict, parameters = _normalize_ltx2_parameters(
+            _params(network_alpha=0.5, lr_warmup_steps=0.1, lr_decay_steps=100.0), validate_paths=False
+        )
+        assert param_dict["network_alpha"] == 0.5
+        assert param_dict["lr_warmup_steps"] == 0.1 and isinstance(param_dict["lr_warmup_steps"], float)
+        assert param_dict["lr_decay_steps"] == 100 and isinstance(param_dict["lr_decay_steps"], int)
+        assert dict(parameters)["network_alpha"] == 0.5
+        param_dict, _ = _normalize_ltx2_parameters(_params(network_alpha=32.0), validate_paths=False)
+        assert param_dict["network_alpha"] == 32 and isinstance(param_dict["network_alpha"], int)
 
 
 class TestCacheCommands:
@@ -150,6 +170,16 @@ class TestCacheCommands:
         )
         latent, text = build_ltx2_cache_commands(param_dict, python_cmd="python")
         assert latent is None and text is None
+
+    def test_low_vram_text_caching_reaches_the_text_command_only(self):
+        param_dict, _ = _normalize_ltx2_parameters(_params(), validate_paths=False)
+        _latent, text = build_ltx2_cache_commands(param_dict, python_cmd="python")
+        assert "--low_vram_text_encoding" not in text
+        param_dict, _ = _normalize_ltx2_parameters(_params(caching_teo_low_vram=True), validate_paths=False)
+        latent, text = build_ltx2_cache_commands(param_dict, python_cmd="python")
+        assert "--low_vram_text_encoding" in text and "--low_vram_text_encoding" not in latent
+        # GUI-only caching key: never part of the training TOML
+        assert "caching_teo_low_vram" in LTX2_RUN_EXCLUSIONS
 
 
 class TestWorkflow:
@@ -206,16 +236,28 @@ class TestWorkflow:
         assert "ltx2_train_network.py" in " ".join(map(str, commands[2]))
 
 
-class TestDemoPreset:
-    PRESET = "G:/SECourses_Musubi_Trainer_v29/Demo_Training_Configs_FLUX-2_Z-Image_FLUX-Klein_WAN-21_Krea2_Ideogram4/LTX_2.3_LoRA_Demo.toml"
+def _shipped_lora_presets():
+    from musubi_tuner_gui.preset_library import preset_root
 
-    @pytest.mark.skipif(not os.path.isfile(PRESET), reason="demo preset not present")
-    def test_demo_preset_loads_and_validates(self):
-        preset = toml.load(self.PRESET)
-        params = [(key, preset.get(key, LTX2_DEFAULTS[key])) for key in LTX2_PARAM_KEYS]
-        param_dict, _ = _normalize_ltx2_parameters(params, validate_paths=False)
-        assert param_dict["network_dim"] == 128
-        assert param_dict["network_alpha"] == 128
-        assert param_dict["int8_convrot_dynamic"] is True
-        assert param_dict["ltx_version"] == "2.3"
-        assert param_dict["timestep_sampling"] == "shifted_logit_normal"
+    folder = os.path.join(preset_root(), "LTX_2.3_Training_Configs", "LoRA_Training")
+    if not os.path.isdir(folder):
+        return []
+    return sorted(os.path.join(folder, name) for name in os.listdir(folder) if name.endswith(".toml"))
+
+
+class TestShippedLoraPresets:
+    PRESETS = _shipped_lora_presets()
+
+    @pytest.mark.skipif(not PRESETS, reason="LTX 2.3 GPU presets not present")
+    def test_shipped_lora_presets_load_and_validate(self):
+        for path in self.PRESETS:
+            preset = toml.load(path)
+            params = [(key, preset.get(key, LTX2_DEFAULTS[key])) for key in LTX2_PARAM_KEYS]
+            param_dict, _ = _normalize_ltx2_parameters(params, validate_paths=False)
+            assert param_dict["training_mode"] == "LoRA Training", path
+            assert param_dict["int8_convrot_dynamic"] is True, path
+            assert param_dict["ltx_version"] == "2.3", path
+            assert param_dict["timestep_sampling"] == "shifted_logit_normal", path
+            if os.path.basename(path).startswith("32_GB_GPUs_"):
+                assert param_dict["network_dim"] == 128, path
+                assert param_dict["network_alpha"] == 128, path

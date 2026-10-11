@@ -13,6 +13,7 @@ from .class_accelerate_launch import AccelerateLaunch
 from .class_advanced_training import AdvancedTraining
 from .class_command_executor import CommandExecutor
 from .class_configuration_file import ConfigurationFile
+from .preset_library import PresetLibrary
 from .class_gui_config import GUIConfig
 from .class_huggingface import HuggingFace
 from .class_metadata import MetaData
@@ -21,6 +22,9 @@ from .class_optimizer_and_scheduler import OptimizerAndScheduler
 from .class_save_load import SaveLoadSettings
 from .class_training import TrainingSettings
 from .common_gui import (
+    text_for_list,
+    strip_path_parameters,
+    strip_path_text,
     SaveConfigFile,
     SaveConfigFileToRun,
     generate_script_content,
@@ -43,7 +47,7 @@ from .common_gui import (
     validate_block_swap_options,
 )
 from .custom_logging import setup_logging
-from .dataset_config_generator import generate_dataset_config_from_folders, save_dataset_config, validate_dataset_config
+from .dataset_config_generator import dataset_toml_matches, generate_dataset_config_from_folders, save_dataset_config, validate_dataset_config
 from .full_finetune_gui import (
     LORA_TRAINING_MODE,
     TRAINING_MODE_CHOICES,
@@ -114,7 +118,7 @@ def _generate_flux_dataset_toml(
     output_dir: str,
 ):
     try:
-        parent_folder_path = (parent_folder_path or "").strip()
+        parent_folder_path = strip_path_text(parent_folder_path)
         if not parent_folder_path:
             raise ValueError("Parent folder path is required.")
         if not os.path.isdir(parent_folder_path):
@@ -330,7 +334,7 @@ def open_flux_configuration(ask_for_file, file_path, parameters):
         "compile_cache_size_limit",
     }
 
-    list_to_str_fields = {"optimizer_args", "lr_scheduler_args", "network_args"}
+    list_to_str_fields = {"optimizer_args", "lr_scheduler_args", "network_args", "base_weights", "base_weights_multiplier"}
 
     loaded_values = []
     for key, default_value in parameters:
@@ -359,7 +363,7 @@ def open_flux_configuration(ask_for_file, file_path, parameters):
             if isinstance(v, list) and key in numeric_fields:
                 v = v[0] if v else None
             elif isinstance(v, list) and key in list_to_str_fields:
-                v = " ".join(str(x) for x in v)
+                v = text_for_list(key, v)
             loaded_values.append(v)
         else:
             loaded_values.append(resolve_portable_model_value(key, default_value))
@@ -510,6 +514,7 @@ def _maybe_create_enhanced_sample_prompts(param_dict: dict, parameters: list[tup
 
 
 def train_flux_model(headless: bool, print_only: bool, parameters):
+    parameters = strip_path_parameters(parameters)  # quoted / padded paths (Explorer's "Copy as path")
     global train_state_value
 
     python_cmd = sys.executable
@@ -530,6 +535,12 @@ def train_flux_model(headless: bool, print_only: bool, parameters):
     dataset_config_mode = (param_dict.get("dataset_config_mode") or "").strip()
     if dataset_config_mode == "Generate from Folder Structure":
         gen_path = (param_dict.get("generated_toml_path") or "").strip()
+        resolution = (param_dict.get("dataset_resolution_width"), param_dict.get("dataset_resolution_height"))
+        if gen_path and not dataset_toml_matches(gen_path, param_dict.get("parent_folder_path"), resolution):
+            # generated for another folder or resolution: build a fresh one below instead of training the old dataset
+            gen_path = ""
+            param_dict["dataset_config"] = ""
+            parameters = [(k, ("" if k == "dataset_config" else v)) for k, v in parameters]
         if gen_path:
             param_dict["dataset_config"] = gen_path
             parameters = [(k, (gen_path if k == "dataset_config" else v)) for k, v in parameters]
@@ -1155,8 +1166,13 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
     if initial_model_family not in {"FLUX.2", "FLUX Klein"}:
         initial_model_family = "FLUX.2"
 
-    with gr.Accordion("Configuration file Settings", open=True):
+    with gr.Accordion("Configuration & GPU Presets", open=True, elem_classes=["config-presets"]):
         configuration = ConfigurationFile(headless=headless, config=config)
+        presets = PresetLibrary(
+            ("FLUX_2_Training_Configs", "FLUX_Klein_9B_Training_Configs", "FLUX_Klein_4B_Training_Configs"),
+            model_name="FLUX.2 / Klein",
+            headless=headless,
+        )
 
     # Model Family Selector (Top level)
     with gr.Row():
@@ -1403,6 +1419,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                 value=initial_training_mode,
                 info="LoRA trains adapters; Full Fine-Tuning updates the complete FLUX DiT.",
             )
+            presets.follow_training_mode(training_mode)
         with gr.Row():
             model_version = gr.Dropdown(
                 label="model_version",
@@ -1410,6 +1427,10 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                 value=initial_model_version,
                 interactive=(initial_model_family == "FLUX Klein"),
                 info="Model version (changes based on Model Family selection above)",
+                # Loading a preset of the other family switches the choices and the value in one update, but the
+                # family's change event can still send the previous value ("dev" vs the Klein list); Gradio would
+                # reject it before update_model_settings repairs it. Training validates the version itself.
+                allow_custom_value=True,
             )
         with gr.Row():
             dit = gr.Textbox(
@@ -1487,7 +1508,7 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
                 minimum=0,
                 step=1,
                 interactive=True,
-                info="Offload N transformer blocks to CPU for VRAM savings. Max recommended: FLUX.2 dev = 29; FLUX Klein 9B = 16; FLUX Klein 4B = 13.",
+                info="Offload N transformer blocks to CPU for VRAM savings. Maximum: FLUX.2 dev = 30; FLUX Klein 9B = 18; FLUX Klein 4B = 13.",
             )
             use_pinned_memory_for_block_swap = gr.Checkbox(
                 label="use_pinned_memory_for_block_swap",
@@ -2476,6 +2497,15 @@ def flux_lora_tab(headless=False, config: GUIConfig = {}):
         inputs=[training_mode],
         outputs=[network_accordion, full_finetune_accordion],
         show_progress=False,
+    )
+    presets.bind(
+        configuration.config_file_name,
+        flux_gui_actions,
+        [gr.Textbox(value="open_configuration", visible=False), dummy_false, configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
+        [configuration.config_file_name, configuration.config_status] + settings_list,
+        then_fn=toggle_training_mode,
+        then_inputs=[training_mode],
+        then_outputs=[network_accordion, full_finetune_accordion],
     )
     configuration.button_save_config.click(
         flux_gui_actions,

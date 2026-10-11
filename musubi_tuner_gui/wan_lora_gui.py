@@ -12,6 +12,7 @@ from .class_accelerate_launch import AccelerateLaunch
 from .class_advanced_training import AdvancedTraining
 from .class_command_executor import CommandExecutor
 from .class_configuration_file import ConfigurationFile
+from .preset_library import PresetLibrary
 from .class_gui_config import GUIConfig
 from .class_latent_caching import LatentCaching
 from .class_network import Network
@@ -21,6 +22,9 @@ from .class_save_load import SaveLoadSettings
 from .class_text_encoder_outputs_caching import TextEncoderOutputsCaching
 from .class_training import TrainingSettings
 from .common_gui import (
+    text_for_list,
+    strip_path_parameters,
+    strip_path_text,
     get_file_path,
     get_file_path_or_save_as,
     get_folder_path,
@@ -51,6 +55,7 @@ from .class_huggingface import HuggingFace
 from .class_metadata import MetaData
 from .custom_logging import setup_logging
 from .dataset_config_generator import (
+    owned_subfolder_names,
     extract_repeat_count,
     generate_wan_dataset_config_from_folders,
     save_dataset_config,
@@ -125,11 +130,26 @@ def wan_config_has_compile_residency_override(
         return bool(current_value)
 
 
+def wan_max_blocks_to_swap(task: object) -> int:
+    """Two blocks stay on the GPU (Guardrail 9): the 1.3B models have 30 blocks, the 14B / A14B models 40."""
+    return 28 if "1.3B" in str(task or "") else 38
+
+
 def validate_wan_block_swap_options(param_dict: dict) -> None:
     validate_block_swap_options(
         param_dict,
         lora_training=(param_dict.get("training_mode", "LoRA Training") == "LoRA Training"),
     )
+    # the field accepts up to 59; a larger value than the model's only failed in the trainer, after caching
+    try:
+        blocks_to_swap = int(float(param_dict.get("blocks_to_swap") or 0))
+    except (TypeError, ValueError):
+        blocks_to_swap = 0
+    maximum = wan_max_blocks_to_swap(param_dict.get("task"))
+    if blocks_to_swap > maximum:
+        raise ValueError(
+            f"Wan {param_dict.get('task')} can swap at most {maximum} blocks (two stay on the GPU); Blocks to Swap is {blocks_to_swap}."
+        )
     if param_dict.get("block_swap_h2d_only") and str(param_dict.get("dit_high_noise") or "").strip():
         raise ValueError(
             "H2D-only block swap is not compatible with Wan 2.2 dual-DiT training. "
@@ -319,7 +339,7 @@ def find_min_video_frames_in_wan_dataset(parent_folder: str, cache_directory_nam
             has_subdirs = any(
                 os.path.isdir(os.path.join(subdir_path, item))
                 for item in os.listdir(subdir_path)
-                if not item.startswith(".") and item not in [cache_directory_name]
+                if not item.startswith(".") and item not in owned_subfolder_names(cache_directory_name)
             )
         except Exception:
             has_subdirs = False
@@ -976,6 +996,7 @@ class WanDataset:
         ):
             """Generate WAN dataset configuration from folder structure"""
             try:
+                parent_folder = strip_path_text(parent_folder)
                 if not parent_folder:
                     return "", "", "[ERROR] Please specify a parent folder path containing your dataset folders", gr.update()
 
@@ -2509,6 +2530,7 @@ def wan_gui_actions(
 
 
 def train_wan_model(headless, print_only, parameters):
+    parameters = strip_path_parameters(parameters)  # quoted / padded paths (Explorer's "Copy as path")
     import sys
     import json
     import os
@@ -3326,8 +3348,9 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
         "max_timestep", "min_timestep",
         "network_dim", "num_layers",  # These can be None for auto-detection
         "max_train_epochs",  # 0 means use max_train_steps instead
-        "dit_in_channels", "sample_num_frames", "num_timestep_buckets",  # WAN-specific optional params
-        "blocks_to_swap", "vae_chunk_size", "vae_spatial_tile_sample_min_size",  # Memory optimization params
+        "dit_in_channels", "sample_num_frames",  # WAN-specific optional params
+        # blocks_to_swap, vae_chunk_size, vae_spatial_tile_sample_min_size and num_timestep_buckets accept 0 (their
+        # fields have minimum 0): a saved 0 must load back as 0, not as an empty field
         # Removed: "ddp_timeout" (0 = use default 30min timeout - VALID)
         # Removed: "save_every_n_*", "sample_every_n_*", "save_last_n_*" (0 is a valid value to display and use)
     }
@@ -3336,7 +3359,7 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
     numeric_fields = [
         'learning_rate', 'max_grad_norm', 'guidance_scale', 'logit_mean', 'logit_std',
         'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
-        'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',
+        'lr_scheduler_min_lr_ratio', 'network_alpha',  # base_weights_multiplier: a Textbox, one value per base weight
         'vae_chunk_size', 'blocks_to_swap', 'min_timestep', 'max_timestep', 'discrete_flow_shift', 'flow_shift',
         'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
         'dataset_batch_size', 'max_train_steps', 'max_train_epochs', 'seed',
@@ -3368,6 +3391,9 @@ def open_wan_configuration(ask_for_file, file_path, parameters):
             if key == "resume_from_huggingface" and not toml_value:
                 toml_value = ""
             if toml_value is not None:
+                # runtime TOMLs store these nargs="*" options as lists; their Textboxes take one entry per base weight
+                if key in ("base_weights", "base_weights_multiplier") and isinstance(toml_value, list):
+                    toml_value = text_for_list(key, toml_value)
                 # Handle list values that should be single values
                 if isinstance(toml_value, list) and key in numeric_fields:
                     log.info(f"[CONFIG] Converting list to single value for numeric field '{key}': {toml_value} -> {toml_value[0] if toml_value else None}")
@@ -3555,7 +3581,7 @@ def save_wan_configuration(save_as_bool, file_path, parameters):
     numeric_fields = [
         'learning_rate', 'max_grad_norm', 'guidance_scale', 'logit_mean', 'logit_std',
         'mode_scale', 'sigmoid_scale', 'lr_scheduler_power', 'lr_scheduler_timescale',
-        'lr_scheduler_min_lr_ratio', 'network_alpha', 'base_weights_multiplier',
+        'lr_scheduler_min_lr_ratio', 'network_alpha',  # base_weights_multiplier: a Textbox, one value per base weight
         'vae_chunk_size', 'blocks_to_swap', 'min_timestep', 'max_timestep', 'discrete_flow_shift', 'flow_shift',
         'scale_weight_norms', 'dataset_resolution_width', 'dataset_resolution_height',
         'dataset_batch_size', 'max_train_steps', 'max_train_epochs', 'seed',
@@ -3799,8 +3825,9 @@ def wan_lora_tab(
             config.config.update({k: v for k, v in wan_defaults.items() if k not in config.config})
 
     # Setup Configuration Files Gradio
-    with gr.Accordion("Configuration file Settings", open=True):
+    with gr.Accordion("Configuration & GPU Presets", open=True, elem_classes=["config-presets"]):
         configuration = ConfigurationFile(headless=headless, config=config)
+        presets = PresetLibrary(("Wan22_Training_Configs", "Wan_21_Training_Configs"), model_name="Wan 2.1 / 2.2", headless=headless)
 
     # Add search functionality and unified toggle button
     with gr.Row():
@@ -4282,6 +4309,15 @@ def wan_lora_tab(
         ],
         outputs=[wan_model_settings.compile_resident_blocks_only_overridden],
         show_progress=False,
+    )
+    presets.bind(
+        configuration.config_file_name,
+        wan_gui_actions,
+        [gr.Textbox(value="reload_configuration", visible=False), configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
+        [configuration.config_file_name, configuration.config_status] + settings_list,
+        then_fn=wan_config_has_compile_residency_override,
+        then_inputs=[configuration.config_file_name, wan_model_settings.compile_resident_blocks_only_overridden],
+        then_outputs=[wan_model_settings.compile_resident_blocks_only_overridden],
     )
 
     configuration.button_save_config.click(

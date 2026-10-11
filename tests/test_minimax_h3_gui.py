@@ -130,6 +130,17 @@ def test_runtime_toml_core_contents(tmp_path):
     assert "fp8_base" not in data
 
 
+def test_runtime_toml_keeps_fractional_alpha_and_warmup_ratio(tmp_path):
+    # int() made alpha 0.5 into 0 (= alpha equal to the rank) and a 10% warmup into no warmup; the backend
+    # reads a TOML float warmup as a ratio, so whole step counts must stay ints
+    _workflow, data = _run_toml(
+        tmp_path, _base_parameters(tmp_path, network_alpha=0.5, lr_warmup_steps=0.1, lr_decay_steps=50.0)
+    )
+    assert data["network_alpha"] == 0.5
+    assert data["lr_warmup_steps"] == 0.1
+    assert data["lr_decay_steps"] == 50 and isinstance(data["lr_decay_steps"], int)
+
+
 def test_cache_commands_default_flow(tmp_path):
     param_dict = dict(_base_parameters(tmp_path))
     latent, text = build_minimax_h3_cache_commands(param_dict, python_cmd="python")

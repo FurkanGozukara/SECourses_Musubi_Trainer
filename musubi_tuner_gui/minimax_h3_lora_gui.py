@@ -40,8 +40,12 @@ import toml
 from .class_accelerate_launch import AccelerateLaunch
 from .class_command_executor import CommandExecutor
 from .class_configuration_file import ConfigurationFile
+from .preset_library import PresetLibrary
 from .class_gui_config import GUIConfig
 from .common_gui import (
+    number_keeping_fraction,
+    steps_or_ratio,
+    strip_path_parameters,
     SaveConfigFile,
     SaveConfigFileToRun,
     get_file_path,
@@ -56,6 +60,7 @@ from .common_gui import (
 )
 from .custom_logging import setup_logging
 from .dataset_config_generator import (
+    dataset_toml_matches,
     generate_minimax_h3_dataset_config_from_folders,
     round_frames_to_minimax_h3,
     save_dataset_config,
@@ -348,9 +353,6 @@ MINIMAX_H3_INT_KEYS = {
     "blocks_to_swap",
     "block_swap_ring_size",
     "network_dim",
-    "network_alpha",
-    "lr_warmup_steps",
-    "lr_decay_steps",
     "lr_scheduler_num_cycles",
     "gradient_accumulation_steps",
     "max_train_steps",
@@ -789,6 +791,11 @@ def _normalize_minimax_h3_parameters(parameters, *, validate_paths: bool = True)
             coerced = _to_int(param_dict[key], 0)
             param_dict[key] = coerced
             parameters = _replace_parameter(parameters, key, coerced)
+    # int() turned a fractional alpha into 0 (= alpha equal to the rank) and a warmup / decay ratio into 0
+    for key, coerce in (("network_alpha", number_keeping_fraction), ("lr_warmup_steps", steps_or_ratio), ("lr_decay_steps", steps_or_ratio)):
+        if param_dict.get(key) is not None and not isinstance(param_dict[key], bool):
+            param_dict[key] = coerce(param_dict[key])
+            parameters = _replace_parameter(parameters, key, param_dict[key])
 
     _validate_minimax_h3_parameters(param_dict, validate_paths=validate_paths)
     return param_dict, parameters
@@ -972,6 +979,7 @@ def _enhance_sample_prompts(param_dict: dict, parameters):
 def prepare_minimax_h3_workflow(
     parameters, config_path: str, *, validate_paths: bool = True, python_cmd: str | None = None
 ) -> MinimaxH3Workflow:
+    parameters = strip_path_parameters(parameters)  # quoted / padded paths (Explorer's "Copy as path")
     param_dict, parameters = _normalize_minimax_h3_parameters(parameters, validate_paths=validate_paths)
     python_cmd = python_cmd or sys.executable
 
@@ -1111,13 +1119,18 @@ def generate_minimax_h3_dataset_toml(*args):
 
 
 def train_minimax_h3_model(headless: bool, print_only: bool, parameters):
+    parameters = strip_path_parameters(parameters)  # quoted / padded paths (Explorer's "Copy as path")
     global train_state_value
     param_dict = dict(parameters)
     validate_automagic_configuration(param_dict, warning_callback=None if headless else gr.Warning)
 
     if str(param_dict.get("dataset_config_mode") or "") == "Generate from Folder Structure":
         generated = str(param_dict.get("generated_toml_path") or "").strip()
-        if not generated or not os.path.isfile(generated):
+        # reuse the generated TOML only while it still describes the chosen folder and resolution
+        if not generated or not os.path.isfile(generated) or not dataset_toml_matches(
+            generated, param_dict.get("parent_folder_path"),
+            (param_dict.get("dataset_resolution_width"), param_dict.get("dataset_resolution_height")),
+        ):
             generated, _ = _create_minimax_h3_dataset_config(param_dict)
         param_dict["dataset_config"] = generated
         parameters = _replace_parameter(parameters, "dataset_config", generated)
@@ -1299,8 +1312,9 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
         "Pruned ConvRot INT8 checkpoints (~21 GB) and the NVFP4 text encoder are auto-detected: no extra flags needed."
     )
 
-    with gr.Accordion("Configuration File", open=True):
+    with gr.Accordion("Configuration & GPU Presets", open=True, elem_classes=["config-presets"]):
         configuration = ConfigurationFile(headless=headless, config=config)
+        presets = PresetLibrary(("MiniMax_H3_Training_Configs",), model_name="MiniMax H3", headless=headless)
 
     with gr.Row():
         search_input = gr.Textbox(
@@ -1328,7 +1342,7 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
     with tracked_panel(
         "Accelerate launch Settings",
         keywords="resource gpu precision distributed multi gpu dynamo cpu threads port",
-        open=True,
+        open=False,
         elem_classes="flux1_background",
     ):
         accelerate_launch = AccelerateLaunch(config=config)
@@ -1359,7 +1373,7 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                     info="Full/pruned BF16 or full/pruned ConvRot INT8 from Comfy-Org/MiniMax-H3 - format auto-detected. FP8 files are rejected.",
                 ),
             )
-            dit_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-blue"], visible=(not headless))
+            dit_button = gr.Button("📂", size="sm", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-blue"], visible=(not headless))
             dit_button.click(get_file_path, inputs=[dit], outputs=[dit], show_progress=False)
         with gr.Row():
             text_encoder = reg(
@@ -1372,7 +1386,7 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                     "Used for text embedding caching and training-time sampling.",
                 ),
             )
-            text_encoder_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-lime"], visible=(not headless))
+            text_encoder_button = gr.Button("📂", size="sm", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-lime"], visible=(not headless))
             text_encoder_button.click(get_file_path, inputs=[text_encoder], outputs=[text_encoder], show_progress=False)
         with gr.Row():
             video_vae = reg(
@@ -1384,7 +1398,7 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                     info="Always required for latent caching (encoding is upcast to FP32 internally).",
                 ),
             )
-            video_vae_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-fuchsia"], visible=(not headless))
+            video_vae_button = gr.Button("📂", size="sm", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-fuchsia"], visible=(not headless))
             video_vae_button.click(get_file_path, inputs=[video_vae], outputs=[video_vae], show_progress=False)
             audio_vae = reg(
                 "audio_vae",
@@ -1395,7 +1409,7 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                     info="Always required - H3 caches audio latents even for silent videos.",
                 ),
             )
-            audio_vae_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-pink"], visible=(not headless))
+            audio_vae_button = gr.Button("📂", size="sm", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-pink"], visible=(not headless))
             audio_vae_button.click(get_file_path, inputs=[audio_vae], outputs=[audio_vae], show_progress=False)
         with gr.Row():
             disable_mmap = reg(
@@ -1556,7 +1570,7 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                         "Audio comes from the video track, a same-stem .wav/.flac sidecar, or silence.",
                     ),
                 )
-                parent_folder_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-pink"], visible=(not headless))
+                parent_folder_button = gr.Button("📂", size="sm", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-pink"], visible=(not headless))
                 parent_folder_button.click(get_folder_path, inputs=[parent_folder_path], outputs=[parent_folder_path], show_progress=False)
             with gr.Row():
                 dataset_resolution_width = reg(
@@ -1658,7 +1672,7 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                     info="The dataset TOML used by caching and training. batch_size is forced to 1 by the architecture.",
                 ),
             )
-            dataset_config_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-gold"], visible=(not headless))
+            dataset_config_button = gr.Button("📂", size="sm", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-gold"], visible=(not headless))
             dataset_config_button.click(get_file_path, inputs=[dataset_config], outputs=[dataset_config], show_progress=False)
             generated_toml_path = reg(
                 "generated_toml_path",
@@ -1971,8 +1985,8 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
             )
             network_alpha = reg(
                 "network_alpha",
-                gr.Slider(label="Network Alpha", minimum=1, maximum=256, step=1, value=get_value("network_alpha"),
-                          info="LoRA alpha. Common practice: alpha = rank."),
+                gr.Number(label="Network Alpha", minimum=0, step=1, value=get_value("network_alpha"),
+                          info="LoRA alpha (fractions allowed; 0 = rank). Common practice: alpha = rank."),
             )
             network_dropout = reg(
                 "network_dropout",
@@ -2060,11 +2074,13 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
             )
             lr_warmup_steps = reg(
                 "lr_warmup_steps",
-                gr.Number(label="Warmup Steps", value=get_value("lr_warmup_steps"), precision=0, minimum=0),
+                gr.Number(label="Warmup Steps", value=get_value("lr_warmup_steps"), minimum=0, step=1,
+                          info="Steps, or below 1 a fraction of all steps (0.1 = 10%)."),
             )
             lr_decay_steps = reg(
                 "lr_decay_steps",
-                gr.Number(label="Decay Steps", value=get_value("lr_decay_steps"), precision=0, minimum=0),
+                gr.Number(label="Decay Steps", value=get_value("lr_decay_steps"), minimum=0, step=1,
+                          info="Steps, or below 1 a fraction of all steps (0.1 = 10%)."),
             )
             lr_scheduler_num_cycles = reg(
                 "lr_scheduler_num_cycles",
@@ -2128,7 +2144,7 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                 "output_dir",
                 gr.Textbox(label="Output Directory", value=get_value("output_dir"), placeholder="Where checkpoints and run configs are written"),
             )
-            output_dir_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-teal"], visible=(not headless))
+            output_dir_button = gr.Button("📂", size="sm", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-teal"], visible=(not headless))
             output_dir_button.click(get_folder_path, inputs=[output_dir], outputs=[output_dir], show_progress=False)
             output_name = reg(
                 "output_name",
@@ -2212,7 +2228,7 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
                 gr.Textbox(label="Sample Prompts File", value=get_value("sample_prompts"),
                            placeholder="Path to a .txt (one prompt per line) or .json prompt file"),
             )
-            sample_prompts_button = gr.Button("📂", size="sm", elem_classes=["mbtn", "mbtn-forest"], visible=(not headless))
+            sample_prompts_button = gr.Button("📂", size="sm", scale=0, min_width=60, elem_classes=["mbtn", "mbtn-forest"], visible=(not headless))
             sample_prompts_button.click(get_file_path, inputs=[sample_prompts], outputs=[sample_prompts], show_progress=False)
         with gr.Row():
             width = reg("width", gr.Number(label="Sample Width", value=get_value("width"), precision=0, minimum=64, step=32))
@@ -2448,6 +2464,12 @@ def minimax_h3_lora_tab(headless=False, config: GUIConfig = {}):
         outputs=[configuration.config_file_name, configuration.config_status] + settings_list,
         show_progress=False,
         queue=False,
+    )
+    presets.bind(
+        configuration.config_file_name,
+        minimax_h3_gui_actions,
+        [gr.Textbox(value="open_configuration", visible=False), dummy_false, configuration.config_file_name, dummy_headless, dummy_false] + settings_list,
+        [configuration.config_file_name, configuration.config_status] + settings_list,
     )
     configuration.button_save_config.click(
         minimax_h3_gui_actions,

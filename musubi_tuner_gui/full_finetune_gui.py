@@ -149,7 +149,11 @@ def normalize_image_training_parameters(
             )
             raise ValueError(f"The separate Fused Backward Pass option is Adafactor-only; {detail}. Turn it off.")
         if optimizer_type != "adafactor":
-            raise ValueError("Fused backward pass requires the Adafactor optimizer.")
+            # e.g. Qwen Image switched to DreamBooth with its LoRA defaults (AdamW8bit): say how to get a working setup
+            raise ValueError(
+                "Fused backward pass requires the Adafactor optimizer. Apply a Full Fine-Tuning / DreamBooth GPU preset "
+                "(they use Adafactor), set Optimizer Type to AdaFactor, or turn Fused Backward Pass off."
+            )
         if num_processes != 1:
             raise ValueError("Fused backward pass is not supported for multi-process full-DiT fine-tuning.")
         if gradient_accumulation_steps != 1:

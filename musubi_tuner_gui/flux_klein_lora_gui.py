@@ -18,6 +18,7 @@ from .class_optimizer_and_scheduler import OptimizerAndScheduler
 from .class_save_load import SaveLoadSettings
 from .class_training import TrainingSettings
 from .common_gui import (
+    strip_path_parameters,
     SaveConfigFileToRun,
     generate_script_content,
     get_file_path,
@@ -62,6 +63,7 @@ _KLEIN_MODEL_VERSIONS = [
 
 
 def train_flux_klein_model(headless: bool, print_only: bool, parameters):
+    parameters = strip_path_parameters(parameters)  # quoted / padded paths (Explorer's "Copy as path")
     global train_state_value
 
     python_cmd = sys.executable
@@ -545,7 +547,7 @@ def flux_klein_lora_tab(headless=False, config: GUIConfig = {}):
                 minimum=0,
                 step=1,
                 interactive=True,
-                info="Offload N transformer blocks to CPU for VRAM savings. Max recommended: Klein 9B = 16, Klein 4B = 13.",
+                info="Offload N transformer blocks to CPU for VRAM savings. Maximum: Klein 9B = 18, Klein 4B = 13.",
             )
             use_pinned_memory_for_block_swap = gr.Checkbox(label="use_pinned_memory_for_block_swap", value=bool(config.get("use_pinned_memory_for_block_swap", False)))
             img_in_txt_in_offloading = gr.Checkbox(label="img_in_txt_in_offloading", value=bool(config.get("img_in_txt_in_offloading", False)))

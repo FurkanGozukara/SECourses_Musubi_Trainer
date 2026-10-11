@@ -55,6 +55,10 @@ PORTABLE_MODEL_PATH_KEYS = frozenset(
         "vae",
         "video_vae",
         "audio_vae",
+        # Kandinsky 6 snapshot folders
+        "vocoder",
+        "text_encoder_qwen",
+        "text_encoder_clip",
     }
 )
 
@@ -108,26 +112,45 @@ def resolve_portable_model_path(value):
     if not expanded:
         return original
     try:
-        if Path(expanded).is_file():
+        if Path(expanded).exists():
             return original
     except (OSError, ValueError):
         pass
 
-    filename = expanded.replace("\\", "/").rsplit("/", 1)[-1]
+    parts = [part for part in expanded.replace("\\", "/").split("/") if part]
+    filename = parts[-1] if parts else ""
     if not filename:
         return original
 
     matches: list[Path] = []
-    filename_folded = filename.casefold()
-    for directory in _training_model_directories():
-        try:
-            matches.extend(
-                path
-                for path in directory.rglob("*")
-                if path.is_file() and path.name.casefold() == filename_folded
-            )
-        except OSError:
+    directories = _training_model_directories()
+    # Snapshot folders (e.g. Kandinsky 6 Diffusers) repeat generic names such as "vae" or
+    # "diffusion_pytorch_model.safetensors", so first try the longest tail of the original path.
+    for tail_length in (3, 2):
+        if len(parts) < tail_length:
             continue
+        tail = Path(*parts[-tail_length:])
+        for directory in directories:
+            candidate = directory / tail
+            try:
+                if candidate.exists():
+                    matches.append(candidate)
+            except OSError:
+                continue
+        if matches:
+            break
+
+    filename_folded = filename.casefold()
+    if not matches:
+        for directory in directories:
+            try:
+                matches.extend(
+                    path
+                    for path in directory.rglob("*")
+                    if path.is_file() and path.name.casefold() == filename_folded
+                )
+            except OSError:
+                continue
 
     unique_matches = {
         os.path.normcase(str(path.resolve())): path.resolve() for path in matches
@@ -212,6 +235,111 @@ def _looks_like_local_resume_path(value: str) -> bool:
         or value.startswith(("~/", "~\\"))
         or os.path.exists(value)
     )
+
+
+def strip_path_text(value) -> str:
+    """'  "C:\\data\\set"  ' -> 'C:\\data\\set': Explorer's "Copy as path" wraps paths in quotes."""
+    text = str(value if value is not None else "").strip()
+    while len(text) >= 2 and text[0] == text[-1] and text[0] in "\"'":
+        text = text[1:-1].strip()
+    return text
+
+
+# keys whose values are paths in every tab (besides *_dir / *_path / *_folder / *_file keys)
+_PATH_KEYS = {
+    "dit", "dit_high_noise", "vae", "text_encoder", "text_encoder1", "text_encoder2", "t5", "clip",
+    "network_weights", "dataset_config", "sample_prompts", "resume", "log_tracker_config",
+    "ltx2_checkpoint", "gemma_root", "gemma_safetensors", "video_vae", "audio_vae", "vocoder",
+    "text_encoder_qwen", "text_encoder_clip", "h3_guidance_loss_uncond_cache", "image_encoder",
+}
+
+
+def is_path_parameter(name: str) -> bool:
+    return name in _PATH_KEYS or name.endswith(("_dir", "_path", "_folder", "_file"))
+
+
+def strip_path_parameters(parameters):
+    """Clean surrounding quotes/whitespace from every path-like string parameter (list of (name, value))."""
+    return [
+        (name, strip_path_text(value) if isinstance(value, str) and is_path_parameter(name) else value)
+        for name, value in parameters
+    ]
+
+
+def split_path_list(value) -> list[str]:
+    """Paths typed into one textbox: one per line, ';'-separated, or space-separated with quotes around paths
+    that contain spaces. A single existing path is kept whole even when it contains spaces."""
+    if value is None:
+        return []
+    if isinstance(value, (list, tuple)):
+        return [text for text in (strip_path_text(item) for item in value) if text]
+    paths: list[str] = []
+    segments = re.split(r"[\r\n;]+", str(value))
+    for segment in segments:
+        whole = strip_path_text(segment)
+        if not whole:
+            continue
+        # one path per line / per ';' entry; space-separated lists only when no such separator was used
+        if len(segments) > 1 or os.path.exists(whole) or not any(ch.isspace() for ch in whole):
+            paths.append(whole)
+            continue
+        try:
+            parts = shlex.split(segment, posix=False)
+        except ValueError:
+            parts = segment.split()
+        paths.extend(text for text in (strip_path_text(part) for part in parts) if text)
+    return paths
+
+
+def split_float_list(value) -> list[float]:
+    """1, 1.0, "1.0", "1 0.5", "1;0.5", "1,0.5", [1, "0.5"] -> list of floats (unparsable items are dropped).
+
+    A lone comma between digits is a decimal comma ("0,5" -> [0.5]), as typed with European number settings.
+    """
+    if value is None or value == "":
+        return []
+    if isinstance(value, (list, tuple)):
+        tokens = [str(item) for item in value]
+    else:
+        tokens = [token for token in re.split(r"[\s;]+", str(value).strip()) if token]
+    numbers: list[float] = []
+    for token in tokens:
+        parts = [token.replace(",", ".")] if re.fullmatch(r"[+-]?\d+,\d+", token.strip()) else token.split(",")
+        for part in parts:
+            try:
+                numbers.append(float(part))
+            except (TypeError, ValueError):
+                continue
+    return numbers
+
+
+def text_for_list(key: str, value) -> str:
+    """A TOML list shown in one textbox, in the form the runtime parsers read back: base weight paths joined with
+    "; " (split_path_list keeps each entry whole, spaces included), multipliers and argument lists with spaces."""
+    if key == "base_weights":
+        return "; ".join(strip_path_text(item) for item in value)
+    if key == "base_weights_multiplier":
+        return " ".join(f"{float(item):g}" if isinstance(item, (int, float)) else str(item) for item in value)
+    return " ".join(str(item) for item in value)
+
+
+def number_keeping_fraction(value, default=0):
+    """A float setting (network_alpha) for the runtime TOML: whole numbers as int (32.0 -> 32), fractions kept."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return int(number) if number.is_integer() else number
+
+
+def steps_or_ratio(value, default=0):
+    """lr_warmup_steps / lr_decay_steps: the backend reads a TOML float as a fraction of the total steps and an
+    int as a step count, so 100.0 is written as 100 and only a value below 1 stays a fraction (0.1 = 10%)."""
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return default
+    return number if 0 < number < 1 else int(round(number))
 
 
 def _normalize_resume_parameters(parameters):
@@ -2157,6 +2285,8 @@ def SaveConfigFileToRun(
         "ltx2_checkpoint", "gemma_root", "gemma_safetensors",
         # MiniMax H3 model paths
         "video_vae", "audio_vae", "h3_guidance_loss_uncond_cache",
+        # Kandinsky 6 snapshot folders
+        "vocoder", "text_encoder_qwen", "text_encoder_clip",
         
         # Text encoder paths
         "text_encoder1", "text_encoder2", 
@@ -2182,9 +2312,18 @@ def SaveConfigFileToRun(
     ]
     
     variables = {}
-    for name, value in sorted(parameters, key=lambda x: x[0]):
+    has_base_weights = False
+    for name, value in sorted(strip_path_parameters(parameters), key=lambda x: x[0]):
         if name in exclusion:
             continue
+        # nargs="*" options must reach argparse as lists: read_config_from_file passes TOML values through
+        # unconverted, so a single string made the backend iterate over its characters
+        # ("base_weights" sorts before "base_weights_multiplier")
+        if name == "base_weights":
+            value = split_path_list(value) or None
+            has_base_weights = bool(value)
+        elif name == "base_weights_multiplier":
+            value = (split_float_list(value) or None) if has_base_weights else None
         # Optional string-valued parameters must be omitted when blank so argparse
         # can apply the model-specific default instead of receiving an invalid value.
         if _is_empty_optional_parameter(name, value):
@@ -2306,6 +2445,8 @@ def SaveConfigFileToRun(
             "validate_caption_structure", "warn_on_caption_issues", "log_loss_stats",
             # Torch compile parameters - store_true flags
             "compile", "compile_fullgraph", "compile_resident_blocks_only",
+            # Mage-Flow / HiDream-O1 / Kandinsky 6 store_true flags - omit from run TOML when False
+            "is_edit", "skip_t2i_visual_dummy", "quantized_qwen",
             # MiniMax H3 store_true flags - omit from run TOML when False
             "prune_adaln", "video_only", "h3_teacher_matching",
             "h3_allow_experimental_sample_duration", "nvfp4_scaled_mm", "disable_mmap",
@@ -2645,6 +2786,11 @@ def validate_block_swap_options(param_dict: dict, *, lora_training: bool = True)
         raise ValueError("H2D-only block swap requires blocks_to_swap to be greater than 0.")
     if not bool(param_dict.get("gradient_checkpointing", False)):
         raise ValueError("H2D-only block swap requires gradient checkpointing during training.")
+    # the backend rejects both at start-up (they move streamed blocks to the CPU and corrupt the H2D ring)
+    if bool(param_dict.get("gradient_checkpointing_cpu_offload", False)):
+        raise ValueError("H2D-only block swap cannot be combined with activation CPU offload (Gradient Checkpointing CPU Offload): disable one of them.")
+    if bool(param_dict.get("sample_with_offloading", False)):
+        raise ValueError("H2D-only block swap cannot be combined with Sample With Offloading: disable one of them.")
 
 
 _DISABLED_COMPILE_BACKENDS = {"", "0", "false", "no", "none", "off"}

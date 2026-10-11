@@ -21,6 +21,9 @@ from .class_optimizer_and_scheduler import OptimizerAndScheduler
 from .class_save_load import SaveLoadSettings
 from .class_training import TrainingSettings
 from .common_gui import (
+    text_for_list,
+    strip_path_parameters,
+    strip_path_text,
     SaveConfigFile,
     SaveConfigFileToRun,
     generate_script_content,
@@ -96,7 +99,7 @@ def _generate_flux2_dataset_toml(
     output_dir: str,
 ):
     try:
-        parent_folder_path = (parent_folder_path or "").strip()
+        parent_folder_path = strip_path_text(parent_folder_path)
         if not parent_folder_path:
             raise ValueError("Parent folder path is required.")
         if not os.path.isdir(parent_folder_path):
@@ -258,7 +261,7 @@ def open_flux2_configuration(ask_for_file, file_path, parameters):
         "ddp_timeout",
     }
 
-    list_to_str_fields = {"optimizer_args", "lr_scheduler_args", "network_args"}
+    list_to_str_fields = {"optimizer_args", "lr_scheduler_args", "network_args", "base_weights", "base_weights_multiplier"}
 
     loaded_values = []
     for key, default_value in parameters:
@@ -277,7 +280,7 @@ def open_flux2_configuration(ask_for_file, file_path, parameters):
             if isinstance(v, list) and key in numeric_fields:
                 v = v[0] if v else None
             elif isinstance(v, list) and key in list_to_str_fields:
-                v = " ".join(str(x) for x in v)
+                v = text_for_list(key, v)
             loaded_values.append(v)
         else:
             loaded_values.append(default_value)
@@ -356,6 +359,7 @@ def _maybe_create_enhanced_sample_prompts(param_dict: dict, parameters: list[tup
 
 
 def train_flux2_model(headless: bool, print_only: bool, parameters):
+    parameters = strip_path_parameters(parameters)  # quoted / padded paths (Explorer's "Copy as path")
     global train_state_value
 
     python_cmd = sys.executable
@@ -1095,7 +1099,7 @@ def flux2_lora_tab(headless=False, config: GUIConfig = {}):
                 minimum=0,
                 step=1,
                 interactive=True,
-                info="Offload N transformer blocks to CPU for VRAM savings. Max recommended: FLUX.2 dev = 29.",
+                info="Offload N transformer blocks to CPU for VRAM savings. Maximum: FLUX.2 dev = 30.",
             )
             use_pinned_memory_for_block_swap = gr.Checkbox(
                 label="use_pinned_memory_for_block_swap",

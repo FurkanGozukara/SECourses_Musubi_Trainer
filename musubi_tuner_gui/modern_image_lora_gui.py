@@ -26,6 +26,9 @@ from .class_optimizer_and_scheduler import OptimizerAndScheduler
 from .class_save_load import SaveLoadSettings
 from .class_training import TrainingSettings
 from .common_gui import (
+    text_for_list,
+    strip_path_parameters,
+    strip_path_text,
     SaveConfigFile,
     SaveConfigFileToRun,
     get_file_path,
@@ -42,6 +45,7 @@ from .common_gui import (
 )
 from .custom_logging import setup_logging
 from .dataset_config_generator import (
+    dataset_toml_matches,
     generate_dataset_config_from_folders,
     save_dataset_config,
     validate_dataset_config,
@@ -56,6 +60,7 @@ from .full_finetune_gui import (
     training_mode_runtime_exclusions,
 )
 from .optimizer_catalog import validate_automagic_configuration
+from .preset_library import PresetLibrary, is_shipped_preset
 
 log = setup_logging()
 
@@ -73,6 +78,7 @@ class ModernImageArchitecture:
     max_blocks_to_swap: int
     model_folder: str
     model_filenames: dict[str, str]
+    preset_folders: tuple = ()
 
     @property
     def is_ideogram(self) -> bool:
@@ -95,6 +101,7 @@ ARCHITECTURES = {
         text_cache_script="ideogram4_cache_text_encoder_outputs.py",
         max_blocks_to_swap=33,
         model_folder="Training_Models_Ideogram_4",
+        preset_folders=("Ideogram_4_Training_Configs",),
         model_filenames={
             "dit": "ideogram4_fp8_scaled.safetensors",
             "vae": "flux2-vae.safetensors",
@@ -113,6 +120,7 @@ ARCHITECTURES = {
         text_cache_script="krea2_cache_text_encoder_outputs.py",
         max_blocks_to_swap=26,
         model_folder="Training_Models_Krea_2",
+        preset_folders=("Krea_2_Training_Configs",),
         model_filenames={
             "dit": "Krea_2_Raw_Base.safetensors",
             "vae": "qwen_image_vae.safetensors",
@@ -445,9 +453,13 @@ def _normalize_modern_parameters(
         blocks_to_swap = int(param_dict.get("blocks_to_swap", 0) or 0)
     except (TypeError, ValueError) as exc:
         raise ValueError("blocks_to_swap must be an integer.") from exc
-    max_blocks_to_swap = spec.max_blocks_to_swap - 1 if full_finetune and spec.is_ideogram else spec.max_blocks_to_swap
+    # Ideogram 4 keeps 2 of its 34 blocks resident whenever gradients flow through the swapped blocks; only LoRA
+    # with H2D-only streaming gets by with 1, so its 33rd block needs that mode (the backend asserts otherwise)
+    h2d_only = bool(param_dict.get("block_swap_h2d_only")) and not full_finetune
+    max_blocks_to_swap = spec.max_blocks_to_swap - 1 if spec.is_ideogram and not h2d_only else spec.max_blocks_to_swap
     if not 0 <= blocks_to_swap <= max_blocks_to_swap:
-        raise ValueError(f"blocks_to_swap for {spec.display_name} must be between 0 and {max_blocks_to_swap}.")
+        hint = f" ({spec.max_blocks_to_swap} needs H2D-only block swap)" if spec.is_ideogram and not full_finetune else ""
+        raise ValueError(f"blocks_to_swap for {spec.display_name} must be between 0 and {max_blocks_to_swap}{hint}.")
     param_dict["blocks_to_swap"] = blocks_to_swap
     parameters = _replace_parameter(parameters, "blocks_to_swap", blocks_to_swap)
     validate_block_swap_options(param_dict, lora_training=not full_finetune)
@@ -761,6 +773,7 @@ def prepare_modern_image_workflow(
     validate_paths: bool = True,
     python_cmd: str | None = None,
 ) -> ModernImageWorkflow:
+    parameters = strip_path_parameters(parameters)  # quoted / padded paths (Explorer's "Copy as path")
     spec = get_architecture(spec_key)
     param_dict, parameters = _normalize_modern_parameters(spec, parameters, validate_paths=validate_paths)
     python_cmd = python_cmd or sys.executable
@@ -772,6 +785,17 @@ def prepare_modern_image_workflow(
     mandatory_keys = ["dataset_config", "dit", "vae", "output_dir", "output_name"]
     if not full_finetune:
         mandatory_keys.append("network_module")
+
+    debug_log_with = {
+        "Enable Logging (TensorBoard)": "tensorboard",
+        "Enable Logging (WandB)": "wandb",
+        "Enable Logging (All)": "all",
+    }.get(str(param_dict.get("debug_mode") or ""))
+    if debug_log_with and not str(param_dict.get("log_with") or "").strip():
+        # Guardrail 1: debug_mode is excluded from the run TOML before logging normalization, so a
+        # bare --log_with CLI flag would reach the backend without logging_dir. Put it in the TOML.
+        param_dict["log_with"] = debug_log_with
+        parameters = _replace_parameter(parameters, "log_with", debug_log_with)
 
     SaveConfigFileToRun(
         parameters=parameters,
@@ -803,7 +827,7 @@ def prepare_modern_image_workflow(
 
     additional = str(param_dict.get("additional_parameters") or "").strip()
     debug = _debug_parameters(param_dict.get("debug_mode"))
-    if debug:
+    if debug and not debug.startswith("--log_with"):
         additional = f"{additional} {debug}".strip()
     train_command = run_cmd_advanced_training(run_cmd=train_command, additional_parameters=additional)
 
@@ -831,7 +855,7 @@ def _create_dataset_config(
     cache_directory: object,
     output_dir: object,
 ) -> tuple[str, list[str]]:
-    parent = str(parent_folder_path or "").strip()
+    parent = strip_path_text(parent_folder_path)
     if not parent or not os.path.isdir(parent):
         raise ValueError(f"Dataset parent folder does not exist: {parent or '(empty)'}")
     save_dir = str(output_dir or "").strip() or parent
@@ -984,6 +1008,10 @@ def save_modern_configuration(
         return original_path, gr.update(value="No file selected.", visible=True)
     if not file_path.lower().endswith(".toml"):
         file_path = os.path.splitext(file_path)[0] + ".toml"
+    if is_shipped_preset(file_path):
+        message = "Shipped GPU presets are read-only. Type a new file name and click Save."
+        gr.Warning(message)
+        return original_path, gr.update(value=message, visible=True)
 
     try:
         _, parameters = _normalize_modern_parameters(spec, parameters, validate_paths=False)
@@ -1016,10 +1044,8 @@ def _config_value_for_component(key: str, value: object, default: object, spec: 
     if key == "save_precision" and value in (None, ""):
         return "bf16"
     if isinstance(value, list):
-        if key in {"optimizer_args", "lr_scheduler_args", "network_args"}:
-            return " ".join(str(item) for item in value)
-        if key in {"base_weights", "base_weights_multiplier"}:
-            return " ".join(str(item) for item in value)
+        if key in {"optimizer_args", "lr_scheduler_args", "network_args", "base_weights", "base_weights_multiplier"}:
+            return text_for_list(key, value)
         if not isinstance(default, list):
             return value[0] if value else default
     return value
@@ -1104,13 +1130,18 @@ def train_modern_image_model(
     print_only: bool,
     parameters: list[tuple[str, object]],
 ):
+    parameters = strip_path_parameters(parameters)  # quoted / padded paths (Explorer's "Copy as path")
     spec = get_architecture(spec_key)
     param_dict = dict(parameters)
     validate_automagic_configuration(param_dict, warning_callback=None if headless else gr.Warning)
 
     if str(param_dict.get("dataset_config_mode") or "") == "Generate from Folder Structure":
         generated = str(param_dict.get("generated_toml_path") or "").strip()
-        if not generated or not os.path.isfile(generated):
+        # reuse the generated TOML only while it still describes the chosen folder and resolution
+        if not generated or not os.path.isfile(generated) or not dataset_toml_matches(
+            generated, param_dict.get("parent_folder_path"),
+            (param_dict.get("dataset_resolution_width"), param_dict.get("dataset_resolution_height")),
+        ):
             generated, _ = _create_dataset_config(
                 spec,
                 parent_folder_path=param_dict.get("parent_folder_path"),
@@ -1376,8 +1407,9 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
     dummy_false = gr.Checkbox(value=False, visible=False)
     dummy_headless = gr.Checkbox(value=headless, visible=False)
 
-    with gr.Accordion("Configuration file Settings", open=True):
+    with gr.Accordion("Configuration & GPU Presets", open=True, elem_classes=["config-presets"]):
         configuration = ConfigurationFile(headless=headless, config=config)
+        presets = PresetLibrary(spec.preset_folders, model_name=spec.display_name, headless=headless)
 
     training_mode = gr.Radio(
         label="Training Mode",
@@ -1385,6 +1417,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         value=initial_training_mode,
         info="LoRA trains adapters; Full Fine-Tuning updates the complete DiT and needs substantially more memory.",
     )
+    presets.follow_training_mode(training_mode)
 
     with gr.Row():
         search_input = gr.Textbox(
@@ -1724,7 +1757,11 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 minimum=0,
                 maximum=initial_max_blocks_to_swap,
                 step=1,
-                info=f"Maximum for this training mode: {initial_max_blocks_to_swap}.",
+                info=(
+                    f"Maximum: {spec.max_blocks_to_swap - 1} ({spec.max_blocks_to_swap} with H2D-only block swap in LoRA mode)."
+                    if spec.is_ideogram
+                    else f"Maximum: {spec.max_blocks_to_swap}."
+                ),
             )
             use_pinned_memory_for_block_swap = gr.Checkbox(
                 label="Pinned Memory for Block Swap",
@@ -2470,6 +2507,22 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         inputs=[training_mode],
         outputs=[network_accordion, full_finetune_accordion],
         show_progress=False,
+    )
+    presets.bind(
+        configuration.config_file_name,
+        action,
+        [
+            gr.Textbox(value="open_configuration", visible=False),
+            dummy_false,
+            configuration.config_file_name,
+            dummy_headless,
+            dummy_false,
+        ]
+        + settings_list,
+        [configuration.config_file_name, configuration.config_status] + settings_list,
+        then_fn=sync_training_mode_visibility,
+        then_inputs=[training_mode],
+        then_outputs=[network_accordion, full_finetune_accordion],
     )
     configuration.button_save_config.click(
         action,
