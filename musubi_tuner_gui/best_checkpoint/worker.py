@@ -29,7 +29,10 @@ FOLDER = "best_checkpoint"
 def run_folder(output_dir: str, output_name: str) -> str:
     """<output_dir>/best_checkpoint/<output_name>: the finder's files of one run (several runs can share a folder)."""
     return os.path.join(output_dir, FOLDER, output_name)
-LEAK_DELTA = 0.15  # face similarity a prompt without the trigger may gain over the base model before it is flagged
+LEAK_DELTA = 0.15  # face similarity a prompt without the trigger may gain over the base model before it is noted
+# signals compared with the base model's sample of the same prompt and seed (True: as a log ratio)
+PAIRED = {"face_mean": False, "prompt": False, "dino_nearest_train": False, "saturation": True, "colourfulness": True,
+          "hf_energy": True, "gray_std": True, "clipped": False}
 MAX_REFERENCES = 400
 
 
@@ -52,9 +55,16 @@ def analyze(output_dir: str, output_name: str, settings: dict, device: str = "au
         samples = {point: kept for point, items in samples.items() if (kept := [s for s in items if s["prompt_index"] < lines])}
     if not samples:
         return {"error": f"no samples of '{output_name}' in {os.path.join(output_dir, 'sample')}: train with the finder (or sampling) on first"}
+    kind = point_kind(samples)
+    partial = ""
+    points = sorted(samples)
+    if len(points) > 1 and len(samples[points[-1]]) < len(samples[points[-2]]):  # still sampling, or stopped while sampling
+        last = points[-1]
+        partial = f"{point_label(last, kind)} was left out: {len(samples[last])} of its {len(samples[points[-2]])} samples were found"
+        log(f"Best checkpoint finder: {partial} (still being generated?)")
+        samples.pop(last)
     if not [point for point in samples if point]:
         return {"error": "only the base model's samples were found: the finder compares the samples of saved checkpoints"}
-    kind = point_kind(samples)
     references = [path for path in settings.get("references") or [] if os.path.isfile(path)]
     if not references and dataset:
         references = scoring.dataset_files(dataset)
@@ -83,10 +93,15 @@ def analyze(output_dir: str, output_name: str, settings: dict, device: str = "au
         write = tqdm.write
     except ImportError:
         progress, write = samples.items(), log
-    for point, items in progress:
+    base_main = None
+    for point, items in progress:  # the base model (0) comes first
         scored = scoring.score_samples(scorer, items, prompts, references_set, subject, class_word(subject), cache)
         main = [s for s in scored if s["prompt_index"] not in leak and not s.get("error")]
         summary = scoring.summarize(main or [s for s in scored if not s.get("error")])
+        if point == 0:
+            base_main = main
+        elif base_main:
+            summary["vs_base"] = {key: change for key, ratio in PAIRED.items() if (change := scoring.paired_change(main, base_main, key, ratio))}
         leaking = [s.get("face_mean") for s in scored if s["prompt_index"] in leak and s.get("face_mean") is not None]
         summary["leakage_face"] = statistics.median(leaking) if leaking else None
         checkpoints[point] = {"summary": summary, "samples": [{k: v for k, v in s.items() if k != "dino_embedding"} for s in scored]}
@@ -108,17 +123,24 @@ def analyze(output_dir: str, output_name: str, settings: dict, device: str = "au
     result = ranking.rank(report, label=lambda point: point_label(point, kind))
     if result.get("error"):
         return {"error": result["error"]}
-    base = checkpoints.get(0, {}).get("summary", {})
+    # leakage is a property of the run (no regularization images), not of one checkpoint: one note, not a flag on every row
+    base_leak = checkpoints.get(0, {}).get("summary", {}).get("leakage_face")
     for row in result.get("rows", []):
-        leak_face = checkpoints[row["epoch"]]["summary"].get("leakage_face")
-        if leak_face is not None and base.get("leakage_face") is not None and leak_face > base["leakage_face"] + LEAK_DELTA:
-            row["flags"].append(f"the subject appears in a prompt without the trigger (face match {leak_face:.2f}, base model {base['leakage_face']:.2f})")
+        row["leakage"] = checkpoints[row["epoch"]]["summary"].get("leakage_face")
+    leaking = [row for row in result.get("rows", []) if row["leakage"] is not None and base_leak is not None and row["leakage"] > base_leak + LEAK_DELTA]
+    if leaking:
+        result["reasons"].append(
+            f"Without the trigger word, the class prompt looks like your subject from {leaking[0]['label']} on (face match "
+            f"{leaking[0]['leakage']:.2f}, base model {base_leak:.2f}); usual without regularization images, so expect it when you generate other people."
+        )
     best = result["best_epoch"]
     checkpoint = checkpoint_for(output_dir, output_name, best, kind)
     result["checkpoint"] = os.path.abspath(checkpoint) if checkpoint else None
     result["label"] = point_label(best, kind)
     if not checkpoint:
         result["reasons"].append(f"The checkpoint of {result['label']} is no longer in the output folder (removed by a Save Last N setting?).")
+    if partial:
+        result["reasons"].append(partial[0].upper() + partial[1:] + "; analyze again once they are all written.")
     report["result"] = result
     os.makedirs(folder, exist_ok=True)
     with open(os.path.join(folder, "report.json"), "w", encoding="utf-8") as handle:

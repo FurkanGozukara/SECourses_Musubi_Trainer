@@ -128,6 +128,84 @@ def test_without_faces_the_rule_uses_image_similarity():
     assert result["likeness_signal"] == "dino_nearest_train" and result["best_epoch"] in (20, 40)
 
 
+def test_paired_changes_ignore_the_prompt_mix_and_flag_real_damage():
+    from musubi_tuner_gui.best_checkpoint import scoring
+
+    def samples(sharpness, prompts):
+        return [{"prompt_index": i, "seed": "1", "hf_energy": h, "prompt": p} for i, (h, p) in enumerate(zip(sharpness, prompts))]
+
+    # sharpness differs 25x between prompts: the median over a checkpoint's samples moved -41% although no prompt changed
+    base = samples([20, 60, 230, 500, 650], [0.15, 0.20, 0.22, 0.25, 0.28])
+    same = samples([25, 66, 200, 520, 700], [0.152, 0.198, 0.221, 0.251, 0.279])
+    change, agree = scoring.paired_change(same, base, "hf_energy", ratio=True)
+    assert abs(change) < 0.15 and agree >= 0.6
+    worse = samples([25, 66, 200, 520, 700], [0.13, 0.18, 0.20, 0.23, 0.26])
+    assert scoring.paired_change(worse, base, "prompt") == pytest.approx((-0.02, 1.0))
+    assert scoring.paired_change(worse, [], "prompt") is None
+
+    def point(face, vs_base):
+        return {"summary": {"face_mean": face, "prompt": 0.21, "variety": 0.9, "hf_energy": 120.0, "face_found": 1.0,
+                            "dino_nearest_train": 0.2, "vs_base": vs_base}}
+
+    calm = {"prompt": (0.001, 0.5), "hf_energy": (0.05, 0.6), "saturation": (0.02, 0.6)}
+    report = {"training_faces": 13, "checkpoints": {
+        0: {"summary": {"face_mean": 0.09, "prompt": 0.21, "variety": 0.9, "hf_energy": 230.0, "face_found": 1.0}},
+        20: point(0.45, calm), 40: point(0.55, calm), 60: point(0.58, calm),
+        80: point(0.60, {"prompt": (-0.02, 0.9), "hf_energy": (0.6, 0.8), "saturation": (0.3, 0.9)}),
+    }}
+    result = ranking.rank(report)
+    rows = {row["epoch"]: row for row in result["rows"]}
+    assert not rows[20]["flags"] and not rows[60]["flags"]  # the unpaired medians would call every checkpoint 48% less sharp
+    assert any("prompt following" in f for f in rows[80]["flags"]) and any("saturation drift (+35%" in f for f in rows[80]["flags"])
+    assert result["best_epoch"] == 60 and rows[80]["prompt"] == pytest.approx(0.19)
+
+
+def test_long_prompts_are_scored_in_sentence_groups_that_fit_the_text_encoder(tmp_path):
+    from musubi_tuner_gui.best_checkpoint import scoring
+
+    class Words:  # one token per word
+        def __call__(self, text):
+            return {"input_ids": text.split()}
+
+    text = "One two three four. Five six seven. Eight nine ten eleven twelve! Thirteen"
+    assert scoring.prompt_chunks(text, Words(), limit=7) == ["One two three four. Five six seven.", "Eight nine ten eleven twelve! Thirteen"]
+    assert scoring.prompt_chunks(text, Words(), limit=3, most=2) == ["One two three four.", "Five six seven."]
+    assert scoring.prompt_chunks("a photo", Words()) == ["a photo"]
+    cache = str(tmp_path / "scores_cache.json")
+    scoring.save_cache(cache, {"a.png|1|2": {"prompt": 0.2}})
+    assert scoring.load_cache(cache) == {"a.png|1|2": {"prompt": 0.2}}
+    with open(cache, "w", encoding="utf-8") as handle:
+        json.dump({"a.png|1|2": {"prompt": 0.2}}, handle)  # the first format (no version): scored again
+    assert scoring.load_cache(cache) == {}
+
+
+def test_a_checkpoint_still_being_sampled_is_left_out(tmp_path, monkeypatch):
+    from musubi_tuner_gui.best_checkpoint import scoring, worker
+
+    sample = tmp_path / "sample"
+    sample.mkdir()
+    for point in (0, 20, 40):
+        for index in range(3):
+            (sample / f"run_e{point:06d}_{index:02d}_20261012120000_1001_000.png").touch()
+    (sample / "run_e000060_00_20261012130000_1001_000.png").touch()  # Analyze while epoch 60 is being sampled
+    for point in (20, 40, 60):
+        (tmp_path / f"run-{point:06d}.safetensors").touch()
+    (tmp_path / "train.png").touch()
+    likeness = {0: 0.1, 20: 0.5, 40: 0.55, 60: 0.9}
+
+    def fake_scores(scorer, items, *args):
+        point = int(os.path.basename(items[0]["path"]).split("_")[1][1:])
+        return [{**item, "face_mean": likeness[point], "prompt": 0.2, "dino_nearest_train": 0.5} for item in items]
+
+    monkeypatch.setattr(scoring, "Scorer", lambda device: None)
+    monkeypatch.setattr(scoring, "reference_set", lambda scorer, paths: {"count": 1, "faces": [0]})
+    monkeypatch.setattr(scoring, "score_samples", fake_scores)
+    settings = {"prompts": ["a", "b", "c"], "references": [str(tmp_path / "train.png")]}
+    report = worker.analyze(str(tmp_path), "run", settings, device="cpu", log=lambda *a: None)
+    assert sorted(report["checkpoints"]) == [0, 20, 40] and report["result"]["best_epoch"] == 40
+    assert "Epoch 60 was left out: 1 of its 3 samples were found" in report["result"]["reasons"][-1]
+
+
 # ------------------------------------------------------------------ unified UI
 def test_settings_survive_ui_state_and_a_preset_header(tmp_path):
     settings = CF.normalize({"enabled": True, "subject": "  sks   woman ", "prompts": "a \"quoted\" prompt\nünïcode 🙂 prompt\n", "seeds": "9"}, "image")

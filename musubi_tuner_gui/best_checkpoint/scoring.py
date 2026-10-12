@@ -27,6 +27,9 @@ SIGLIP = "google/siglip2-so400m-patch14-384"
 IMAGE_EXT = (".png", ".jpg", ".jpeg", ".webp", ".bmp")
 VIDEO_EXT = (".mp4", ".webm", ".mov", ".mkv", ".avi")
 VIDEO_FRAMES = 8
+SIGLIP_TOKENS = 64  # SigLIP2's text length
+PROMPT_CHUNKS = 4  # sentence groups of a long prompt that are scored (mean)
+SCORES_VERSION = 2  # raise when a signal changes: the cached scores of other versions are computed again
 
 
 def models_dir() -> str:
@@ -140,22 +143,62 @@ class Scorer:
         return torch.nn.functional.normalize(pooled, dim=-1).cpu()
 
     # SigLIP2 --------------------------------------------------------------------------------------------------
-    def prompt_scores(self, images: list[np.ndarray], texts: list[str]) -> list[float]:
+    def _siglip_model(self):
         import torch
         from transformers import AutoModel, AutoProcessor
 
         if self._siglip is None:
             path = _hf(SIGLIP)
             dtype = torch.float16 if self.device.startswith("cuda") else torch.float32
-            self._siglip = (AutoProcessor.from_pretrained(path), AutoModel.from_pretrained(path, dtype=dtype).to(self.device).eval(), dtype)
-        processor, model, dtype = self._siglip
+            self._siglip = (AutoProcessor.from_pretrained(path), AutoModel.from_pretrained(path, dtype=dtype).to(self.device).eval(), dtype, {})
+        return self._siglip
+
+    def text_features(self, text: str):
+        """Normalized SigLIP2 embeddings of the prompt's chunks (``prompt_chunks``), computed once per prompt."""
+        import torch
+
+        processor, model, _dtype, cache = self._siglip_model()
+        if text not in cache:
+            chunks = prompt_chunks(text, processor.tokenizer)
+            with torch.no_grad():
+                ids = processor(text=chunks, padding="max_length", max_length=SIGLIP_TOKENS, truncation=True, return_tensors="pt")["input_ids"]
+                features = _pooled(model.get_text_features(input_ids=ids.to(self.device)))
+            cache[text] = torch.nn.functional.normalize(features.float(), dim=-1).cpu()
+        return cache[text]
+
+    def prompt_scores(self, images: list[np.ndarray], text: str) -> list[float]:
+        """Image-text cosine of each image with the prompt: the mean over the prompt's chunks, so a long prompt counts
+        beyond the text encoder's 64 tokens."""
+        import torch
+
+        processor, model, dtype, _cache = self._siglip_model()
+        chunks = self.text_features(text)
         with torch.no_grad():
-            inputs = processor(text=texts, images=[Image.fromarray(i) for i in images], padding="max_length", max_length=64, truncation=True, return_tensors="pt")
-            inputs = {k: (v.to(self.device, dtype) if v.is_floating_point() else v.to(self.device)) for k, v in inputs.items()}
-            out = model(**inputs)
-            image = torch.nn.functional.normalize(out.image_embeds.float(), dim=-1)
-            text = torch.nn.functional.normalize(out.text_embeds.float(), dim=-1)
-        return (image * text).sum(-1).cpu().tolist()
+            pixels = processor(images=[Image.fromarray(i) for i in images], return_tensors="pt")["pixel_values"].to(self.device, dtype)
+            image = torch.nn.functional.normalize(_pooled(model.get_image_features(pixel_values=pixels)).float(), dim=-1).cpu()
+        return (image @ chunks.t()).mean(dim=1).tolist()
+
+
+def _pooled(output):
+    """transformers 5 returns a model output from get_*_features (the projected embedding is its pooler_output)."""
+    return output if not hasattr(output, "pooler_output") else output.pooler_output
+
+
+def prompt_chunks(text: str, tokenizer, limit: int = SIGLIP_TOKENS, most: int = PROMPT_CHUNKS) -> list[str]:
+    """The prompt as consecutive groups of whole sentences that each fit the text encoder (a longer sentence is cut
+    there); at most ``most`` groups."""
+    sentences = [s.strip() for s in re.split(r"(?<=[.!?;])\s+", text.strip()) if s.strip()]
+    chunks, current = [], ""
+    for sentence in sentences:
+        joined = f"{current} {sentence}".strip()
+        if current and len(tokenizer(joined)["input_ids"]) > limit:
+            chunks.append(current)
+            current = sentence
+        else:
+            current = joined
+    if current:
+        chunks.append(current)
+    return chunks[:most] or [text]
 
 
 def clean_prompt(prompt: str, subject: str, class_word: str) -> str:
@@ -228,8 +271,7 @@ def _score_one(scorer: Scorer, item: dict, prompts: list[str], references: dict,
     stats = [colour_stats(frame) for frame in frames]
     scores = {key: statistics.mean(s[key] for s in stats) for key in stats[0]}
     if prompt:
-        texts = [clean_prompt(prompt, subject, class_word)] * len(frames)
-        scores["prompt"] = float(statistics.mean(scorer.prompt_scores(frames, texts)))
+        scores["prompt"] = float(statistics.mean(scorer.prompt_scores(frames, clean_prompt(prompt, subject, class_word))))
     found = [f for f in (scorer.face(frame) for frame in frames) if f is not None]
     scores["face_found"] = len(found) / len(frames)
     if found and references["mean_face"] is not None:
@@ -273,15 +315,40 @@ def summarize(samples: list[dict]) -> dict:
 
 
 def load_cache(path: str) -> dict:
+    """Sample file -> scores; scores of another SCORES_VERSION (or a file of the first, unversioned format) are dropped."""
     try:
         with open(path, encoding="utf-8") as handle:
-            return json.load(handle)
+            data = json.load(handle)
     except (OSError, ValueError):
         return {}
+    return data.get("scores", {}) if isinstance(data, dict) and data.get("version") == SCORES_VERSION else {}
 
 
 def save_cache(path: str, cache: dict) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
     with open(path + ".tmp", "w", encoding="utf-8") as handle:
-        json.dump(cache, handle)
+        json.dump({"version": SCORES_VERSION, "scores": cache}, handle)
     os.replace(path + ".tmp", path)
+
+
+def paired_change(samples: list[dict], base_samples: list[dict], key: str, ratio: bool = False) -> tuple[float, float] | None:
+    """How a signal moved from the base model's sample of the same prompt and seed: the median change (log ratio for
+    scale-like signals) and the share of pairs that moved that way. Pairing removes the differences between prompts,
+    which are far larger than a checkpoint's own change (sharpness differs 30x between a studio portrait and a starship
+    bridge). None without pairs."""
+    base = {(s["prompt_index"], s.get("seed", "")): s.get(key) for s in base_samples}
+    changes = []
+    for sample in samples:
+        before, value = base.get((sample["prompt_index"], sample.get("seed", ""))), sample.get(key)
+        if before is None or value is None:
+            continue
+        if ratio:
+            if before > 0 and value > 0:
+                changes.append(math.log(value / before))
+        else:
+            changes.append(value - before)
+    if not changes:
+        return None
+    middle = statistics.median(changes)
+    agree = sum(1 for change in changes if change and (change > 0) == (middle > 0)) / len(changes)
+    return middle, agree
