@@ -154,11 +154,13 @@ def rank(report: dict, label=_epoch_label) -> dict:
     top = max(smooth.values())
     knee = trained[-1] if undertrained or top <= 0 else next(p for p in trained if smooth[p] >= KNEE_FRACTION * top)
     identity = [_paired(checkpoints[p], "identity") for p in trained]
+    identity_knee = False
     if like_key == "face_mean" and not undertrained and all(identity):
         margins = dict(zip(trained, _smooth([value[0] for value in identity])))
         margin_top = max(margins.values())
         if margin_top > 0:
             knee = max(knee, next(p for p in trained if margins[p] >= KNEE_FRACTION * margin_top))
+            identity_knee = True
     unpaired = _unpaired_drift(checkpoints, trained, base)
 
     rows = []
@@ -187,7 +189,8 @@ def rank(report: dict, label=_epoch_label) -> dict:
                      "score": smooth[p] / top if top > 0 else 0.0})
     onset = next((r for r in rows if r["flags"]), None)
     name = LIKENESS_NAMES.get(like_key, like_key)
-    level_line = f"Likeness levels off from {label(knee)} ({name} {likeness[knee]:.3f}; base model {base_like:.3f}, highest {best_like:.3f})."
+    level_line = (f"Likeness levels off from {label(knee)}" + (": the faces match the training photos and have left the base model's own person" if identity_knee else "")
+                  + f" ({name} {likeness[knee]:.3f}; base model {base_like:.3f}, highest {best_like:.3f}).")
     if undertrained:
         best = rows[-1]
         reasons = [
@@ -235,4 +238,4 @@ def rank(report: dict, label=_epoch_label) -> dict:
     for row in rows:  # the likeness level as shown: from the knee, or from an earlier pick
         row["plateau"] = row["epoch"] >= min(knee, best["epoch"])
     return {"best_epoch": best["epoch"], "likeness_signal": like_key, "plateau_start": knee, "undertrained": undertrained,
-            "onset": onset["epoch"] if onset else None, "reasons": [r for r in reasons if r], "rows": rows}
+            "onset": onset["epoch"] if onset else None, "reasons": [r[0].upper() + r[1:] for r in reasons if r], "rows": rows}
