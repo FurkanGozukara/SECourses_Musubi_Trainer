@@ -95,7 +95,8 @@ def test_the_rule_picks_the_plateau_and_explains_the_overcooked_end():
         100: _checkpoint(0.65, 0.17, 0.37, 0.60, 0.95, found=0.6),
     }}
     result = ranking.rank(report)
-    assert result["best_epoch"] == 60 and result["plateau_start"] == 60
+    # likeness levels off from epoch 60; epoch 100 shows the over-training signs: the most likeness before them
+    assert result["best_epoch"] == 80 and result["plateau_start"] == 60 and result["onset"] == 100
     flags = next(row for row in result["rows"] if row["epoch"] == 100)["flags"]
     assert any("prompt following" in f for f in flags) and any("variety" in f for f in flags)
     assert any("copies training photos" in f for f in flags)
@@ -151,13 +152,68 @@ def test_paired_changes_ignore_the_prompt_mix_and_flag_real_damage():
     report = {"training_faces": 13, "checkpoints": {
         0: {"summary": {"face_mean": 0.09, "prompt": 0.21, "variety": 0.9, "hf_energy": 230.0, "face_found": 1.0}},
         20: point(0.45, calm), 40: point(0.55, calm), 60: point(0.58, calm),
-        80: point(0.60, {"prompt": (-0.02, 0.9), "hf_energy": (0.6, 0.8), "saturation": (0.3, 0.9)}),
+        80: point(0.60, {"prompt": (-0.02, 0.9), "hf_energy": (0.6, 0.8), "saturation": (0.3, 0.9), "face_area": (0.75, 1.0)}),
     }}
     result = ranking.rank(report)
     rows = {row["epoch"]: row for row in result["rows"]}
     assert not rows[20]["flags"] and not rows[60]["flags"]  # the unpaired medians would call every checkpoint 48% less sharp
     assert any("prompt following" in f for f in rows[80]["flags"]) and any("saturation drift (+35%" in f for f in rows[80]["flags"])
+    assert any("drawn closer than the prompts ask, as in the training photos (faces 2.12x" in f for f in rows[80]["flags"])
     assert result["best_epoch"] == 60 and rows[80]["prompt"] == pytest.approx(0.19)
+
+
+def test_the_pick_is_the_most_likeness_before_the_training_photos_framing_takes_over():
+    # Krea 2 LoRA at its preset learning rate, 200 epochs (2026-10-12 research): paired face match gain and face size over
+    # the base model per save. Looked at by eye: likeness full by epoch 60-80, the news anchor drawn closer from epoch 100-140
+    gains = [0.407, 0.492, 0.544, 0.565, 0.571, 0.511, 0.518, 0.546, 0.628, 0.635]
+    areas = [-0.005, 0.078, 0.130, 0.160, 0.224, 0.162, 0.278, 0.270, 0.275, 0.278]
+    agree = [0.64, 0.55, 0.73, 0.82, 0.91, 0.91, 0.91, 1.0, 1.0, 0.82]
+    checkpoints = {0: {"summary": {"face_mean": 0.089, "prompt": 0.1345, "variety": 0.909, "face_found": 1.0, "face_area": 0.0168}}}
+    for index, (gain, area, share) in enumerate(zip(gains, areas, agree)):
+        checkpoints[20 * (index + 1)] = {"summary": {
+            "face_mean": 0.089 + gain, "prompt": 0.1345, "variety": 0.9, "face_found": 1.0, "dino_nearest_train": 0.2,
+            "vs_base": {"face_mean": (gain, 1.0), "face_area": (area, share), "prompt": (0.0, 0.5)}}}
+    result = ranking.rank({"training_faces": 12, "training_face_area": 0.113, "checkpoints": checkpoints})
+    assert (result["plateau_start"], result["onset"], result["best_epoch"]) == (80, 140, 80)
+    assert "Over-training signs from epoch 140: drawn closer than the prompts ask" in result["reasons"][1]
+    # a dataset framed wider than the prompts (full-body photos): faces drifting smaller are the training framing
+    result = ranking.rank({"training_faces": 12, "training_face_area": 0.004, "checkpoints": checkpoints})
+    assert result["onset"] is None and result["best_epoch"] == 180  # within PICK_TOLERANCE of epoch 200, earlier
+
+
+def test_the_likeness_level_waits_until_the_faces_leave_the_base_models_identity():
+    # Krea 2 DoRA at half its learning rate (2026-10-12 research): until epoch 80 the headshots kept the base model's own
+    # face with the subject's glasses and hair, which SFace already rates 0.55-0.65 against the training faces; from
+    # epoch 100 they are the subject's. The identity margin (training faces minus the base model's face of the same
+    # prompt and seed) jumps there; the face match alone levels off at epoch 60.
+    gains = [0.188, 0.369, 0.46, 0.485, 0.546, 0.477, 0.524, 0.487, 0.515, 0.518]
+    margins = [-0.195, 0.073, 0.174, 0.202, 0.327, 0.353, 0.330, 0.350, 0.350, 0.364]
+    areas = [0.039, 0.022, 0.094, 0.135, 0.116, 0.135, 0.191, 0.191, 0.172, 0.255]
+
+    def report(with_identity: bool) -> dict:
+        checkpoints = {0: {"summary": {"face_mean": 0.091, "prompt": 0.134, "variety": 0.9, "face_found": 1.0, "face_area": 0.0169}}}
+        for index, (gain, margin, area) in enumerate(zip(gains, margins, areas)):
+            vs_base = {"face_mean": (gain, 1.0), "face_area": (area, 0.82), "prompt": (0.0, 0.5)}
+            if with_identity:
+                vs_base["identity"] = (margin, 0.9)
+            checkpoints[20 * (index + 1)] = {"summary": {"face_mean": 0.091 + gain, "prompt": 0.134, "variety": 0.9, "face_found": 1.0,
+                                                         "dino_nearest_train": 0.2, "vs_base": vs_base}}
+        return {"training_faces": 12, "training_face_area": 0.113, "checkpoints": checkpoints}
+
+    result = ranking.rank(report(True))
+    assert (result["plateau_start"], result["best_epoch"]) == (120, 120)  # by eye: e100-e160, best e120
+    assert ranking.rank(report(False))["plateau_start"] == 60
+
+    from musubi_tuner_gui.best_checkpoint import scoring
+    import numpy as np
+
+    subject, base_face = np.array([1.0, 0.0]), np.array([0.0, 1.0])
+    base = [{"prompt_index": 0, "seed": "1", "face_embedding": base_face.tolist()}, {"prompt_index": 1, "seed": "1", "face_embedding": None}]
+    early = [{"prompt_index": 0, "seed": "1", "face_embedding": [0.6, 0.8]}, {"prompt_index": 1, "seed": "1", "face_embedding": [1.0, 0.0]}]
+    assert scoring.identity_margin(early, base, subject) == pytest.approx((-0.2, 0.0))  # still nearer the base face
+    late = [{"prompt_index": 0, "seed": "1", "face_embedding": [0.8, 0.6]}]
+    assert scoring.identity_margin(late, base, subject) == pytest.approx((0.2, 1.0))
+    assert scoring.identity_margin(late, base, None) is None
 
 
 def test_long_prompts_are_scored_in_sentence_groups_that_fit_the_text_encoder(tmp_path):
@@ -191,7 +247,7 @@ def test_a_checkpoint_still_being_sampled_is_left_out(tmp_path, monkeypatch):
     for point in (20, 40, 60):
         (tmp_path / f"run-{point:06d}.safetensors").touch()
     (tmp_path / "train.png").touch()
-    likeness = {0: 0.1, 20: 0.5, 40: 0.55, 60: 0.9}
+    likeness = {0: 0.1, 20: 0.3, 40: 0.6, 60: 0.9}
 
     def fake_scores(scorer, items, *args):
         point = int(os.path.basename(items[0]["path"]).split("_")[1][1:])

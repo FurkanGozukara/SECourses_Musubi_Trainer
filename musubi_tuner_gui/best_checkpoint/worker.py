@@ -31,8 +31,8 @@ def run_folder(output_dir: str, output_name: str) -> str:
     return os.path.join(output_dir, FOLDER, output_name)
 LEAK_DELTA = 0.15  # face similarity a prompt without the trigger may gain over the base model before it is noted
 # signals compared with the base model's sample of the same prompt and seed (True: as a log ratio)
-PAIRED = {"face_mean": False, "prompt": False, "dino_nearest_train": False, "saturation": True, "colourfulness": True,
-          "hf_energy": True, "gray_std": True, "clipped": False}
+PAIRED = {"face_mean": False, "face_area": True, "prompt": False, "dino_nearest_train": False, "saturation": True,
+          "colourfulness": True, "hf_energy": True, "gray_std": True, "clipped": False}
 MAX_REFERENCES = 400
 
 
@@ -102,9 +102,12 @@ def analyze(output_dir: str, output_name: str, settings: dict, device: str = "au
             base_main = main
         elif base_main:
             summary["vs_base"] = {key: change for key, ratio in PAIRED.items() if (change := scoring.paired_change(main, base_main, key, ratio))}
+            identity = scoring.identity_margin(main, base_main, references_set.get("mean_face"))
+            if identity:
+                summary["vs_base"]["identity"] = identity
         leaking = [s.get("face_mean") for s in scored if s["prompt_index"] in leak and s.get("face_mean") is not None]
         summary["leakage_face"] = statistics.median(leaking) if leaking else None
-        checkpoints[point] = {"summary": summary, "samples": [{k: v for k, v in s.items() if k != "dino_embedding"} for s in scored]}
+        checkpoints[point] = {"summary": summary, "samples": [{k: v for k, v in s.items() if k not in ("dino_embedding", "face_embedding")} for s in scored]}
         write(
             f"  {point_label(point, kind)}: likeness {_num(summary.get('face_mean') if summary.get('face_mean') is not None else summary.get('dino_nearest_train'))}"
             f" · prompt {_num(summary.get('prompt'))} · variety {_num(summary.get('variety'))}"
@@ -117,6 +120,7 @@ def analyze(output_dir: str, output_name: str, settings: dict, device: str = "au
         "kind": kind,
         "training_images": references_set["count"],
         "training_faces": len(references_set["faces"]),
+        "training_face_area": references_set.get("face_area"),
         "checkpoints": checkpoints,
         "settings": {key: value for key, value in settings.items() if key != "references"},
     }
@@ -153,6 +157,10 @@ def _num(value) -> str:
     return "—" if value is None else f"{value:.3f}"
 
 
+def _times(value) -> str:
+    return "—" if value is None else f"×{value:.2f}"
+
+
 def write_html(path: str, report: dict) -> None:
     """A self-contained page: the recommendation and why, the ranked table and the prompt x checkpoint grid (images
     linked relative to the report, so the output folder can be moved as a whole)."""
@@ -167,7 +175,7 @@ def write_html(path: str, report: dict) -> None:
 
     rows = "".join(
         f"<tr class='{'best' if r['epoch'] == best else ''}'><td>{html.escape(r['label'])}{' 🏆' if r['epoch'] == best else ''}</td>"
-        f"<td>{_num(r['likeness'])}</td><td>{_num(r['prompt'])}</td><td>{_num(r['variety'])}</td>"
+        f"<td>{_num(r['likeness'])}</td><td>{_num(r['prompt'])}</td><td>{_num(r['variety'])}</td><td>{_times(r.get('framing'))}</td>"
         f"<td>{'✓' if r['plateau'] else ''}</td><td>{html.escape('; '.join(r['flags']))}</td></tr>"
         for r in result.get("rows", [])
     )
@@ -204,7 +212,7 @@ td,th{{padding:5px 9px;border-bottom:1px solid #2a3050;text-align:left;vertical-
 small{{color:#9aa3c7}}</style></head><body>
 <h1>🏆 Best checkpoint: {html.escape(result.get('label', ''))}</h1><div class="card"><div><code>{checkpoint}</code></div><ul>{reasons}</ul>
 <small>Likeness signal: {html.escape(ranking.LIKENESS_NAMES.get(result.get('likeness_signal', ''), ''))} · {report.get('training_images')} training images / frames, {report.get('training_faces')} with a face</small></div>
-<div class="card"><table><tr><th>Checkpoint</th><th>Likeness</th><th>Prompt following</th><th>Variety</th><th>Likeness level</th><th>Warning signs</th></tr>{rows}</table></div>
+<div class="card"><table><tr><th>Checkpoint</th><th>Likeness</th><th>Prompt following</th><th>Variety</th><th>Face size vs base</th><th>Likeness level</th><th>Warning signs</th></tr>{rows}</table></div>
 <div class="card grid"><table><tr><th>Prompt</th>{header}</tr>{grid}</table></div></body></html>"""
     with open(path, "w", encoding="utf-8") as handle:
         handle.write(page)

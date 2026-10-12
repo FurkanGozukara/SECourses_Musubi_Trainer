@@ -1,22 +1,31 @@
 """The best-checkpoint finder's rule (LITERATURE: likeness plateaus early; overtraining shows as lost prompt following,
-lost variety, copied training photos and colour / sharpness drift, not as lower likeness).
+lost variety, copied training photos, colour / sharpness drift and the training photos' framing, not as lower likeness).
 
   likeness     median face similarity to the mean training face (DINOv2 similarity to the training images when the
-               training images or samples have no faces)
+               training images or samples have no faces); its gain over the base model is paired (the base model's
+               sample of the same prompt and seed) when the report has ``vs_base``, and smoothed over neighbouring saves
   undertrained the best likeness gains less than LIKENESS_MIN_GAIN over the base model: the latest checkpoint is
                picked and the user is told to train longer
-  plateau      first checkpoint within PLATEAU_FRACTION of the gap between base and best likeness
-  paired       prompt following and colour / sharpness are compared with the base model's sample of the same prompt and
-               seed (``summary["vs_base"]``: the median change and the share of pairs that moved that way); a change
-               counts when at least AGREE of the pairs agree. The prompts of a run differ far more from each other than a
-               checkpoint changes them, so medians over all samples drift with the prompt mix (no base model samples:
-               the medians are compared, PROMPT_DROP and z-scores over the checkpoints' spread with DRIFT_MIN)
+  knee         the likeness level: the first checkpoint whose smoothed gain reaches KNEE_FRACTION of the highest (later
+               checkpoints keep creeping up while the model copies more of its training photos) and, with faces, whose
+               smoothed identity margin (``vs_base["identity"]``: similarity to the training faces minus similarity to
+               the base model's face for the same prompt and seed) does too: a face that only took the subject's glasses
+               and hair still scores high against the training faces
+  paired       prompt following, colour / sharpness and framing are compared with the base model's sample of the same
+               prompt and seed (``summary["vs_base"]``: the median change and the share of pairs that moved that way); a
+               change counts when at least AGREE of the pairs agree. The prompts of a run differ far more from each other
+               than a checkpoint changes them, so medians over all samples drift with the prompt mix (no base model
+               samples: the medians are compared, PROMPT_DROP and z-scores over the checkpoints' spread with DRIFT_MIN)
   flags        prompt following PAIRED_PROMPT_DROP below the base model, variety below VARIETY_RATIO x base, a sample
                nearer than COPY_LIMIT to a training photo, colour / sharpness drift beyond DRIFT_LOG (log ratio; clipped
-               highlights / shadows: DRIFT_MIN), faces in fewer samples than FACE_FOUND_DROP x base
-  pick         among plateau checkpoints without flags (else those with the fewest flags): the best harmonic mean of
-               likeness (0 = base model, 1 = highest) and prompt following (1 = the best checkpoint's, 0 = PROMPT_SCALE
-               below it), times min(1, variety ratio); ties -> the earlier one
+               highlights / shadows: DRIFT_MIN), faces in fewer samples than FACE_FOUND_DROP x base, faces FRAMING times
+               the base model's size in the direction of the training photos' framing (the subject drawn as close, or as
+               far, as in its training photos, whatever the prompt asks)
+  pick         the onset of over-training is the first checkpoint with a flag. From the knee up to the onset (or,
+               when the onset comes first, among the checkpoints before it that reach EARLY_LEVEL of the highest
+               likeness): the earliest checkpoint within PICK_TOLERANCE of that window's most likeness (later ones
+               add little likeness and copy more of the training photos). No such checkpoint: the earliest level
+               checkpoint with the fewest flags
 Thresholds are research values (dont_upload/best_checkpoint_research) and may change with the calibration."""
 
 from __future__ import annotations
@@ -24,10 +33,12 @@ from __future__ import annotations
 import math
 import statistics
 
-PLATEAU_FRACTION = 0.10
+KNEE_FRACTION = 0.85
+EARLY_LEVEL = 0.70  # smoothed likeness gain (share of the highest) a checkpoint before an early onset needs
+PICK_TOLERANCE = 0.05  # share of the highest smoothed gain within which the earliest checkpoint is preferred
+STILL_RISING = 0.03  # smoothed likeness gain over the last two saves that counts as still learning
 PROMPT_DROP = 0.02  # unpaired: median SigLIP2 cosine below the base model's
 PAIRED_PROMPT_DROP = 0.01  # paired: median SigLIP2 cosine lost on the same prompts and seeds
-PROMPT_SCALE = 0.03  # prompt following this far below the best checkpoint's scores 0 in the pick
 AGREE = 0.70
 VARIETY_RATIO = 0.80
 COPY_LIMIT = 0.92
@@ -39,6 +50,10 @@ LIKENESS_MIN_GAIN = {"face_mean": 0.15, "dino_nearest_train": 0.05}
 DRIFT_MIN = {"saturation": 0.12, "colourfulness": 0.12, "hf_energy": 0.30, "clipped": 0.05}
 # paired: |median log ratio| to the base model's sample of the same prompt and seed
 DRIFT_LOG = {"saturation": math.log(1.20), "colourfulness": math.log(1.20), "hf_energy": math.log(1.50)}
+# paired: face box area / the base model's. Krea 2 (13 photos, 200 epochs): x1.3 where the news anchor and the
+# headshots were visibly drawn closer (LoRA epoch 140, DoRA epoch 160); x1.2-1.25 also at checkpoints that still
+# looked right (DoRA epoch 100)
+FRAMING = 1.3
 
 LIKENESS_NAMES = {"face_mean": "face match", "dino_nearest_train": "image similarity"}
 DRIFT_NAMES = {"saturation": "saturation", "colourfulness": "colourfulness", "hf_energy": "sharpness", "clipped": "clipped highlights / shadows"}
@@ -93,6 +108,27 @@ def _drift_flags(summary: dict, base: dict, unpaired: dict) -> list[str]:
     return flags
 
 
+def _smooth(values: list[float]) -> list[float]:
+    """Each value weighted 1/2 with 1/4 of each neighbour (2/3 and 1/3 at the ends): saves are noisy, a face match
+    moves 0.03-0.06 between them, and a checkpoint's own value still decides between two."""
+    if len(values) < 2:
+        return list(values)
+    inner = [0.25 * values[i - 1] + 0.5 * values[i] + 0.25 * values[i + 1] for i in range(1, len(values) - 1)]
+    return [(2 * values[0] + values[1]) / 3, *inner, (2 * values[-1] + values[-2]) / 3]
+
+
+def _framing_flag(summary: dict, base: dict, training_area: float | None) -> str | None:
+    """Faces FRAMING times the base model's size (paired) towards the training photos' own framing."""
+    change = _paired(summary, "face_area")
+    if not change or change[1] < AGREE:
+        return None
+    toward = 1.0 if not training_area or not base.get("face_area") or training_area >= base["face_area"] else -1.0
+    if toward * change[0] < math.log(FRAMING):
+        return None
+    word = "closer" if change[0] > 0 else "farther away"
+    return f"drawn {word} than the prompts ask, as in the training photos (faces {math.exp(change[0]):.2f}x the base model's size)"
+
+
 def rank(report: dict, label=_epoch_label) -> dict:
     """``report["checkpoints"]``: point (epoch or step; 0 = the base model) -> {"summary": ...}. ``label`` names a point
     in the reasons and flags."""
@@ -112,16 +148,20 @@ def rank(report: dict, label=_epoch_label) -> dict:
         prompt[p] = base["prompt"] + change[0] if change and base.get("prompt") is not None else checkpoints[p].get("prompt") or 0.0
     base_like = base.get(like_key) if base.get(like_key) is not None else min(likeness.values())
     best_like = max(likeness.values())
-    undertrained = best_like - base_like < LIKENESS_MIN_GAIN.get(like_key, 0.1)
-    if undertrained:  # no plateau yet: the most trained checkpoint is the closest to one
-        plateau_start = trained[-1]
-    else:
-        threshold = best_like - PLATEAU_FRACTION * (best_like - base_like)
-        plateau_start = next((p for p in trained if likeness[p] >= threshold), trained[-1])
+    gains = [(_paired(checkpoints[p], like_key) or (likeness[p] - base_like, 1.0))[0] for p in trained]
+    smooth = dict(zip(trained, _smooth(gains)))
+    undertrained = max(best_like - base_like, max(gains)) < LIKENESS_MIN_GAIN.get(like_key, 0.1)
+    top = max(smooth.values())
+    knee = trained[-1] if undertrained or top <= 0 else next(p for p in trained if smooth[p] >= KNEE_FRACTION * top)
+    identity = [_paired(checkpoints[p], "identity") for p in trained]
+    if like_key == "face_mean" and not undertrained and all(identity):
+        margins = dict(zip(trained, _smooth([value[0] for value in identity])))
+        margin_top = max(margins.values())
+        if margin_top > 0:
+            knee = max(knee, next(p for p in trained if margins[p] >= KNEE_FRACTION * margin_top))
     unpaired = _unpaired_drift(checkpoints, trained, base)
 
     rows = []
-    best_prompt = max(prompt.values())
     for p in trained:
         s = checkpoints[p]
         flags = []
@@ -136,37 +176,63 @@ def rank(report: dict, label=_epoch_label) -> dict:
         if s.get("dino_nearest_train") is not None and s["dino_nearest_train"] > COPY_LIMIT:
             flags.append(f"copies training photos (similarity {s['dino_nearest_train']:.3f})")
         flags += _drift_flags(s, base, unpaired.get(p, {}))
+        framing = _framing_flag(s, base, report.get("training_face_area"))
+        if framing:
+            flags.append(framing)
         if base.get("face_found") and s.get("face_found") is not None and s["face_found"] < FACE_FOUND_DROP * base["face_found"]:
             flags.append(f"faces found in {s['face_found']:.0%} of samples (base model {base['face_found']:.0%})")
-        gap = best_like - base_like
-        like_n = min(1.0, max(0.0, (likeness[p] - base_like) / gap)) if gap > 0 else 1.0
-        prompt_n = min(1.0, max(0.0, 1.0 - (best_prompt - prompt[p]) / PROMPT_SCALE))
-        harmonic = 0.0 if like_n + prompt_n == 0 else 2 * like_n * prompt_n / (like_n + prompt_n)
-        variety_ratio = (s.get("variety") or 0) / base["variety"] if base.get("variety") else 1.0
+        area = _paired(s, "face_area")
         rows.append({"epoch": p, "label": label(p), "likeness": likeness[p], "prompt": prompt[p], "variety": s.get("variety"),
-                     "plateau": p >= plateau_start, "flags": flags, "score": harmonic * min(1.0, variety_ratio)})
-    level = [r for r in rows if r["plateau"]]
-    fewest = min(len(r["flags"]) for r in level)
-    candidates = [r for r in level if len(r["flags"]) == fewest]
-    best = max(candidates, key=lambda r: (round(r["score"], 3), -r["epoch"]))
+                     "framing": math.exp(area[0]) if area else None, "gain": smooth[p], "plateau": p >= knee, "flags": flags,
+                     "score": smooth[p] / top if top > 0 else 0.0})
+    onset = next((r for r in rows if r["flags"]), None)
     name = LIKENESS_NAMES.get(like_key, like_key)
+    level_line = f"Likeness levels off from {label(knee)} ({name} {likeness[knee]:.3f}; base model {base_like:.3f}, highest {best_like:.3f})."
     if undertrained:
+        best = rows[-1]
         reasons = [
             f"Likeness has not risen above the base model yet ({name}: base model {base_like:.3f}, best {best_like:.3f}): the run "
             f"looks undertrained. Train longer or with a higher learning rate; until then the latest checkpoint, {label(best['epoch'])}, is the pick."
         ]
+        if onset:
+            reasons.append(f"Warning signs from {onset['label']}: " + "; ".join(onset["flags"]) + ".")
     else:
-        reasons = [
-            f"Likeness levels off from {label(plateau_start)} ({name} {likeness[plateau_start]:.3f}; "
-            f"base model {base_like:.3f}, highest {best_like:.3f})."
-        ]
-        if len(candidates) > 1:
-            reasons.append(f"Of the {len(candidates)} checkpoints on that level, {label(best['epoch'])} balances likeness and prompt following best.")
-    if best["flags"]:
-        reasons.append("Every checkpoint on the likeness level shows a warning sign; this one the fewest: " + "; ".join(best["flags"]) + ".")
-    later_flagged = [r for r in rows if r["epoch"] > best["epoch"] and r["flags"]]
-    if later_flagged:
-        first = later_flagged[0]
-        reasons.append(f"Over-training signs from {first['label']}: " + "; ".join(first["flags"]) + ".")
-    return {"best_epoch": best["epoch"], "likeness_signal": like_key, "plateau_start": plateau_start, "undertrained": undertrained,
-            "reasons": reasons, "rows": rows}
+        early = onset is not None and onset["epoch"] <= knee
+        if early:
+            window = [r for r in rows if r["epoch"] < onset["epoch"] and r["gain"] >= EARLY_LEVEL * top]
+        else:
+            window = [r for r in rows if r["epoch"] >= knee and (onset is None or r["epoch"] < onset["epoch"])]
+        signs = f"Over-training signs from {onset['label']}: " + "; ".join(onset["flags"]) + "." if onset else ""
+        if window:
+            peak = max(r["gain"] for r in window)
+            best = next(r for r in window if r["gain"] >= peak - PICK_TOLERANCE * top)
+            later = "" if best is window[-1] else " (the later ones add little likeness and copy more of the training photos)"
+            if early:
+                reasons = [
+                    signs,
+                    f"They start before likeness levels off ({label(knee)}): {label(best['epoch'])} has nearly the most likeness before them"
+                    f"{later}. A lower learning rate would reach the full likeness before them.",
+                ]
+            else:
+                reasons = [level_line] + ([signs] if signs else [])
+                if len(window) > 1:
+                    where = "before them" if onset else "on that level, with no over-training signs"
+                    reasons.append(f"{label(best['epoch'])} has nearly the most likeness of the {len(window)} checkpoints {where}{later}.")
+                else:
+                    reasons.append(f"{label(best['epoch'])} is the checkpoint with the full likeness before them." if onset
+                                   else f"{label(best['epoch'])} is the only checkpoint on that level.")
+        else:  # over-trained from the first saves on: the least of it
+            level = [r for r in rows if r["epoch"] >= knee]
+            fewest = min(len(r["flags"]) for r in level)
+            best = next(r for r in level if len(r["flags"]) == fewest)
+            reasons = [
+                level_line,
+                f"Every checkpoint on that level shows over-training signs; {label(best['epoch'])} is the earliest with the fewest: "
+                + "; ".join(best["flags"]) + ". A lower learning rate (or saving more often) would reach the likeness before them.",
+            ]
+        if onset is None and best is rows[-1] and len(trained) >= 3 and smooth[trained[-1]] - smooth[trained[-3]] >= STILL_RISING:
+            reasons.append(f"Likeness was still rising at {label(best['epoch'])} and nothing shows over-training yet: more epochs could add likeness.")
+    for row in rows:  # the likeness level as shown: from the knee, or from an earlier pick
+        row["plateau"] = row["epoch"] >= min(knee, best["epoch"])
+    return {"best_epoch": best["epoch"], "likeness_signal": like_key, "plateau_start": knee, "undertrained": undertrained,
+            "onset": onset["epoch"] if onset else None, "reasons": [r for r in reasons if r], "rows": rows}

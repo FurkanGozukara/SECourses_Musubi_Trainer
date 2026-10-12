@@ -29,7 +29,7 @@ VIDEO_EXT = (".mp4", ".webm", ".mov", ".mkv", ".avi")
 VIDEO_FRAMES = 8
 SIGLIP_TOKENS = 64  # SigLIP2's text length
 PROMPT_CHUNKS = 4  # sentence groups of a long prompt that are scored (mean)
-SCORES_VERSION = 2  # raise when a signal changes: the cached scores of other versions are computed again
+SCORES_VERSION = 4  # raise when a signal changes: the cached scores of other versions are computed again
 
 
 def models_dir() -> str:
@@ -110,6 +110,11 @@ class Scorer:
 
     # faces ----------------------------------------------------------------------------------------------------
     def face(self, rgb: np.ndarray):
+        return self.face_and_area(rgb)[0]
+
+    def face_and_area(self, rgb: np.ndarray):
+        """The normalized SFace embedding of the largest face and the share of the image its box covers (None, None
+        without a face)."""
         import cv2
 
         if self._faces is None:
@@ -122,10 +127,10 @@ class Scorer:
         detector.setInputSize((bgr.shape[1], bgr.shape[0]))
         _, faces = detector.detect(bgr)
         if faces is None or len(faces) == 0:
-            return None
+            return None, None
         face = max(faces, key=lambda f: f[2] * f[3])
         feature = recognizer.feature(recognizer.alignCrop(bgr, face)).reshape(-1).astype(np.float32)
-        return feature / (np.linalg.norm(feature) + 1e-12)
+        return feature / (np.linalg.norm(feature) + 1e-12), float(face[2] * face[3]) / (bgr.shape[0] * bgr.shape[1])
 
     # DINOv2 ---------------------------------------------------------------------------------------------------
     def dino(self, images: list[np.ndarray]):
@@ -226,14 +231,16 @@ def _frames_of(path: str, video_frames_count: int) -> list[np.ndarray]:
 
 def reference_set(scorer: Scorer, paths: list[str], batch: int = 16) -> dict:
     """Face and DINOv2 embeddings of the training images (three frames of each training video), streamed in
-    batches so a large dataset never sits in memory at once."""
-    faces, dino, pending, count = [], [], [], 0
+    batches so a large dataset never sits in memory at once, and their median face box area (the framing an
+    overtrained model drifts towards)."""
+    faces, areas, dino, pending, count = [], [], [], [], 0
     for path in paths:
         for frame in _frames_of(path, 3):
             count += 1
-            face = scorer.face(frame)
+            face, area = scorer.face_and_area(frame)
             if face is not None:
                 faces.append(face)
+                areas.append(area)
             pending.append(frame)
             if len(pending) == batch:
                 dino.append(scorer.dino(pending))
@@ -246,7 +253,8 @@ def reference_set(scorer: Scorer, paths: list[str], batch: int = 16) -> dict:
         mean_face = mean_face / (np.linalg.norm(mean_face) + 1e-12)
     import torch
 
-    return {"count": count, "faces": faces, "mean_face": mean_face, "dino": torch.cat(dino) if dino else None}
+    return {"count": count, "faces": faces, "mean_face": mean_face, "dino": torch.cat(dino) if dino else None,
+            "face_area": statistics.median(areas) if areas else None}
 
 
 def score_samples(scorer: Scorer, samples: list[dict], prompts: list[str], references: dict, subject: str, class_word: str,
@@ -272,11 +280,17 @@ def _score_one(scorer: Scorer, item: dict, prompts: list[str], references: dict,
     scores = {key: statistics.mean(s[key] for s in stats) for key in stats[0]}
     if prompt:
         scores["prompt"] = float(statistics.mean(scorer.prompt_scores(frames, clean_prompt(prompt, subject, class_word))))
-    found = [f for f in (scorer.face(frame) for frame in frames) if f is not None]
-    scores["face_found"] = len(found) / len(frames)
+    faces = [found for found in (scorer.face_and_area(frame) for frame in frames) if found[0] is not None]
+    scores["face_found"] = len(faces) / len(frames)
+    found = [face for face, _area in faces]
+    if faces:  # framing: an overtrained subject is drawn as close as in its training photos, whatever the prompt asks
+        scores["face_area"] = float(statistics.mean(area for _face, area in faces))
     if found and references["mean_face"] is not None:
         scores["face_mean"] = float(statistics.mean(float(f @ references["mean_face"]) for f in found))
         scores["face_nearest"] = float(max(max(float(f @ r) for r in references["faces"]) for f in found))
+    if found:  # for the identity margin against the base model's face of the same prompt and seed
+        mean = np.mean(found, axis=0)
+        scores["face_embedding"] = (mean / (np.linalg.norm(mean) + 1e-12)).astype(np.float32).round(5).tolist()
     if references["dino"] is not None:
         scores["dino_nearest_train"] = float(statistics.mean(float((references["dino"] @ d).max()) for d in dino))
     if len(frames) > 1:
@@ -294,7 +308,7 @@ def summarize(samples: list[dict]) -> dict:
         values = [s[key] for s in samples if s.get(key) is not None]
         return statistics.median(values) if values else None
 
-    summary = {key: median(key) for key in ("face_mean", "face_nearest", "dino_nearest_train", "prompt", "saturation",
+    summary = {key: median(key) for key in ("face_mean", "face_nearest", "face_area", "dino_nearest_train", "prompt", "saturation",
                                             "colourfulness", "gray_std", "clipped", "hf_energy", "temporal")}
     found = [s.get("face_found") for s in samples if s.get("face_found") is not None]
     summary["face_found"] = statistics.mean(found) if found else None
@@ -329,6 +343,27 @@ def save_cache(path: str, cache: dict) -> None:
     with open(path + ".tmp", "w", encoding="utf-8") as handle:
         json.dump({"version": SCORES_VERSION, "scores": cache}, handle)
     os.replace(path + ".tmp", path)
+
+
+def identity_margin(samples: list[dict], base_samples: list[dict], mean_face) -> tuple[float, float] | None:
+    """How far each face moved from the base model's identity towards the subject: its similarity to the mean training
+    face minus its similarity to the base model's face for the same prompt and seed (median), and the share of pairs
+    where the subject's side wins. SFace still rates a base-model face that only took the subject's glasses and hair
+    0.55-0.65 against the training faces (DoRA at half its learning rate, epochs 60-80 of a Krea 2 run); the margin
+    jumps where the face visibly becomes the subject's. None without pairs."""
+    if mean_face is None:
+        return None
+    base = {(s["prompt_index"], s.get("seed", "")): s.get("face_embedding") for s in base_samples}
+    margins = []
+    for sample in samples:
+        before, face = base.get((sample["prompt_index"], sample.get("seed", ""))), sample.get("face_embedding")
+        if before is None or face is None:
+            continue
+        face = np.asarray(face, dtype=np.float32)
+        margins.append(float(face @ mean_face) - float(face @ np.asarray(before, dtype=np.float32)))
+    if not margins:
+        return None
+    return statistics.median(margins), sum(1 for margin in margins if margin > 0) / len(margins)
 
 
 def paired_change(samples: list[dict], base_samples: list[dict], key: str, ratio: bool = False) -> tuple[float, float] | None:

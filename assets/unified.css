@@ -480,6 +480,8 @@
 .bcf-trend-plot { position: relative; padding-top: 18px; }
 .bcf-trend-plot svg { width: 100%; height: 150px; display: block; overflow: visible; }
 .bcf-trend-best { stroke: #f59e0b; stroke-width: 1.5; stroke-dasharray: 5 5; }
+.bcf-trend-onset { stroke: #ef4444; stroke-width: 1.5; stroke-dasharray: 2 4; }
+.bcf-trend-legend i.bcf-onset-key { width: 3px; height: 14px; border-radius: 0; background: repeating-linear-gradient(#ef4444 0 2px, transparent 2px 5px); }
 .bcf-trend-trophy { position: absolute; top: -4px; transform: translateX(-50%); font-size: 15px; }
 .bcf-trend-x { position: relative; height: 20px; margin-top: 6px; }
 .bcf-trend-x span { position: absolute; transform: translateX(-50%); font-size: .78em; color: var(--body-text-color-subdued); white-space: nowrap; }

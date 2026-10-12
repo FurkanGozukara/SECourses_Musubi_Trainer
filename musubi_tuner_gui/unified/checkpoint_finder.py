@@ -277,18 +277,20 @@ def result_summary(output_dir: str, output_name: str) -> dict | None:
     }
 
 
-def _bar(value, low, high, best: bool = False) -> str:
+def _bar(value, low, high, best: bool = False, fmt: str = "{:.3f}") -> str:
     if value is None:
         return '<span class="bcf-na">—</span>'
     fraction = 0.0 if high is None or low is None or high <= low else (value - low) / (high - low)
     width = 6 + 94 * max(0.0, min(1.0, fraction))
     return (f'<div class="bcf-meter{" bcf-meter-best" if best else ""}"><span style="width:{width:.1f}%"></span></div>'
-            f'<span class="bcf-num">{value:.3f}</span>')
+            f'<span class="bcf-num">{fmt.format(value)}</span>')
 
 
-TREND_SERIES = (("likeness", "Likeness", "#10b981"), ("prompt", "Prompt following", "#8b5cf6"), ("variety", "Variety", "#f59e0b"))
+# face size: the samples' faces vs the base model's on the same prompts (1 = the same); an overtrained model draws its
+# subject as close as in the training photos, whatever the prompt asks (ranking.FRAMING)
+TREND_SERIES = (("likeness", "Likeness", "#10b981"), ("prompt", "Prompt following", "#8b5cf6"), ("framing", "Face size vs base model", "#ef4444"))
 # the smallest range each score is drawn over: a change smaller than a meaningful one stays small on screen
-MIN_SPAN = {"prompt": 2 * ranking.PROMPT_DROP, "variety": 0.10}
+MIN_SPAN = {"prompt": 2 * ranking.PROMPT_DROP, "variety": 0.10, "framing": 2 * (ranking.FRAMING - 1)}
 
 
 def _span(values: list, minimum: float) -> tuple:
@@ -302,9 +304,9 @@ def _span(values: list, minimum: float) -> tuple:
     return low, high
 
 
-def _trend_svg(points: list[dict], best, spans: dict) -> str:
-    """Each score over the checkpoints (the base model first) with the pick marked, over ``spans`` (each score's own
-    range, at least a meaningful change wide). The SVG stretches to the card's width (non-scaling strokes, round-capped
+def _trend_svg(points: list[dict], best, spans: dict, onset=None) -> str:
+    """Each score over the checkpoints (the base model first) with the pick and the first over-training signs marked,
+    over ``spans`` (each score's own range, at least a meaningful change wide). The SVG stretches to the card's width (non-scaling strokes, round-capped
     dots); labels and the 🏆 are HTML at the same percentages, so text is never stretched."""
     if len(points) < 2:
         return ""
@@ -314,6 +316,9 @@ def _trend_svg(points: list[dict], best, spans: dict) -> str:
     best_index = next((i for i, point in enumerate(points) if point["epoch"] == best), None)
     if best_index is not None:
         lines.append(f'<line x1="{x[best_index]:.1f}" y1="0" x2="{x[best_index]:.1f}" y2="{height}" class="bcf-trend-best" vector-effect="non-scaling-stroke"/>')
+    onset_index = next((i for i, point in enumerate(points) if onset is not None and point["epoch"] == onset), None)
+    if onset_index is not None:
+        lines.append(f'<line x1="{x[onset_index]:.1f}" y1="0" x2="{x[onset_index]:.1f}" y2="{height}" class="bcf-trend-onset" vector-effect="non-scaling-stroke"/>')
     for key, _name, color in TREND_SERIES:
         values = [point.get(key) for point in points]
         known = [value for value in values if value is not None]
@@ -329,6 +334,8 @@ def _trend_svg(points: list[dict], best, spans: dict) -> str:
     labels = "".join(f'<span style="left:{left:.2f}%">{html.escape(point["short"])}</span>' for left, point in zip(position, points))
     trophy = f'<span class="bcf-trend-trophy" style="left:{position[best_index]:.2f}%">🏆</span>' if best_index is not None else ""
     legend = "".join(f'<span><i style="background:{color}"></i>{name}</span>' for _key, name, color in TREND_SERIES)
+    if onset_index is not None:
+        legend += '<span><i class="bcf-onset-key"></i>over-training signs</span>'
     return (
         f'<div class="bcf-trend"><div class="bcf-trend-legend">{legend}<em>each score on its own scale</em></div>'
         f'<div class="bcf-trend-plot">{trophy}<svg viewBox="0 0 {width} {height}" preserveAspectRatio="none" role="img" '
@@ -353,14 +360,15 @@ def results_html(report: dict | None, output_dir: str = "", output_name: str = "
         minimum = ranking.LIKENESS_MIN_GAIN.get(result.get("likeness_signal") or "", 0.1) if key == "likeness" else MIN_SPAN[key]
         return _span(values, minimum)
 
-    spans = {key: span(key) for key in ("likeness", "prompt", "variety")}
+    spans = {key: span(key) for key in ("likeness", "prompt", "framing")}
+    framing = any(row.get("framing") is not None for row in rows)
     body = ""
     if base:
         like = base.get(result.get("likeness_signal") or "")
         body += (
             '<tr class="bcf-base"><td>base model</td>'
             f'<td>{_bar(like, *spans["likeness"])}</td><td>{_bar(base.get("prompt"), *spans["prompt"])}</td>'
-            f'<td>{_bar(base.get("variety"), *spans["variety"])}</td><td class="bcf-flags">reference</td></tr>'
+            f'<td>{_bar(1.0 if framing else None, *spans["framing"], fmt="×{:.2f}")}</td><td class="bcf-flags">reference</td></tr>'
         )
     for row in rows:
         is_best = row["epoch"] == best
@@ -369,16 +377,17 @@ def results_html(report: dict | None, output_dir: str = "", output_name: str = "
         body += (
             f'<tr class="{"bcf-best" if is_best else ""}"><td>{html.escape(row.get("label") or point_label(row["epoch"], kind))}{" 🏆" if is_best else ""}</td>'
             f'<td>{_bar(row.get("likeness"), *spans["likeness"], is_best)}</td><td>{_bar(row.get("prompt"), *spans["prompt"], is_best)}</td>'
-            f'<td>{_bar(row.get("variety"), *spans["variety"], is_best)}</td><td class="bcf-flags">{level}{flags}</td></tr>'
+            f'<td>{_bar(row.get("framing"), *spans["framing"], is_best, fmt="×{:.2f}")}</td><td class="bcf-flags">{level}{flags}</td></tr>'
         )
     reasons = "".join(f"<li>{html.escape(reason)}</li>" for reason in result.get("reasons") or [])
     trend_points = []
     if base:
-        trend_points.append({"epoch": 0, "short": "base", "likeness": base.get(result.get("likeness_signal") or ""), "prompt": base.get("prompt"), "variety": base.get("variety")})
+        trend_points.append({"epoch": 0, "short": "base", "likeness": base.get(result.get("likeness_signal") or ""), "prompt": base.get("prompt"),
+                             "framing": 1.0 if framing else None})
     for row in rows:
         label = row.get("label") or point_label(row["epoch"], kind)
-        trend_points.append({"epoch": row["epoch"], "short": label.replace("epoch ", "e").replace("step ", "s"), **{key: row.get(key) for key in ("likeness", "prompt", "variety")}})
-    trend = _trend_svg(trend_points, best, spans)
+        trend_points.append({"epoch": row["epoch"], "short": label.replace("epoch ", "e").replace("step ", "s"), **{key: row.get(key) for key in ("likeness", "prompt", "framing")}})
+    trend = _trend_svg(trend_points, best, spans, result.get("onset"))
     checkpoint = result.get("checkpoint") or ""
     samples = sum(len(data.get("samples") or []) for data in checkpoints.values())
     created = time.strftime("%Y-%m-%d %H:%M", time.localtime(report.get("created") or time.time()))
@@ -397,7 +406,7 @@ def results_html(report: dict | None, output_dir: str = "", output_name: str = "
         f'<ul class="bcf-reasons">{reasons}</ul>'
         + trend
         + '<div class="bcf-table-wrap"><table class="bcf-table"><thead><tr><th>Checkpoint</th><th>Likeness</th>'
-        "<th>Prompt following</th><th>Variety</th><th>Notes</th></tr></thead>"
+        "<th>Prompt following</th><th>Face size</th><th>Notes</th></tr></thead>"
         f"<tbody>{body}</tbody></table></div>"
         f'<div class="bcf-foot">Every sample of every checkpoint side by side: <code>{html.escape(report_path)}</code></div>'
         "</div>"
