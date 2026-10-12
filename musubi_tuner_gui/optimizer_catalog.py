@@ -6,7 +6,9 @@ import ast
 import shlex
 from collections.abc import Callable, Mapping
 
-AUTOMAGIC_OPTIMIZER_CHOICES = ("Automagic", "Automagic2", "Automagic3")
+AUTOMAGIC_OPTIMIZER_CHOICES = ("Automagic", "Automagic2", "Automagic3", "AutomagicEXPERIMENT")
+# Automagic3-style optimizers: fused automatically when safe, else their compatible non-fused mode
+AUTOMATIC_FUSED_TYPES = frozenset({"automagic3", "automagicexperiment"})
 
 _OPTIMIZER_GUIDANCE = {
     "adamw": (
@@ -52,6 +54,16 @@ _OPTIMIZER_GUIDANCE = {
         "(`scale_parameter`, `relative_step`, and `warmup_init`) are ignored automatically. Keep the separate Fused Backward Pass option "
         "off; that option is only for Adafactor. Block swapping is supported. In full fine-tuning, selecting Patch Optimizer for Block Swap "
         "forces Automagic3 into its compatible non-fused mode; otherwise its normal automatic fused-mode decision is used."
+    ),
+    "automagicexperiment": (
+        "**AutomagicEXPERIMENT (experimental):** Automagic3's learning-rate controller with a full per-element second moment "
+        "(AdamW-style, bias-corrected, no momentum) stored as ConvRot int8 instead of Adafactor's factored estimate: about 2 "
+        "bytes of optimizer state per trained value. The Learning Rate field is its starting rate and external LR schedulers are "
+        "bypassed. Fused or non-fused mode is chosen exactly like Automagic3 (set `fused=False` / `fused=True` to force it). Useful "
+        "arguments: `min_lr`, `max_lr`, `betas=(0.0,0.999)` or `beta2`, `eps`, `clip_threshold`, `weight_decay` and "
+        "`polarity_history`; the first beta must stay 0. Adafactor-only preset arguments are ignored automatically. Keep the "
+        "separate Fused Backward Pass option off; that option is only for Adafactor. Block swapping and Patch Optimizer for "
+        "Block Swap are supported."
     ),
 }
 
@@ -171,7 +183,7 @@ def validate_automagic_configuration(
 ) -> tuple[str, ...]:
     """Reject unsafe fused combinations and announce automatic safe fallbacks."""
     optimizer_type = str(config.get("optimizer_type") or "").strip().casefold()
-    if optimizer_type not in {"automagic", "automagic2", "automagic3"}:
+    if optimizer_type not in {"automagic", "automagic2", *AUTOMATIC_FUSED_TYPES}:
         return ()
 
     if _is_full_finetune(config) and _as_bool(config.get("fused_backward_pass", False)):
@@ -210,10 +222,11 @@ def validate_automagic_configuration(
             f"{detail}\n"
             "Set `fused=False`, or remove `fused=True` and let Automagic3 select its safe mode automatically."
         )
-    elif optimizer_type == "automagic3" and not fused_configured and conflicts:
+    elif optimizer_type in AUTOMATIC_FUSED_TYPES and not fused_configured and conflicts:
         reason = "; ".join(conflicts)
+        name = "AutomagicEXPERIMENT" if optimizer_type == "automagicexperiment" else "Automagic3"
         warnings.append(
-            "Automagic3 will use its safe non-fused mode for this run because "
+            f"{name} will use its safe non-fused mode for this run because "
             f"{reason}. This preserves the selected training behavior. Set `fused=False` in Optimizer Arguments to make that intent explicit."
         )
 

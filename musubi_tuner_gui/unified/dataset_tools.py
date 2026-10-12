@@ -514,12 +514,14 @@ def scan_dataset(
     cache_directory: str = "cache_dir",
     allowed_folders: tuple = (),
     probe_audio: bool = True,
+    report_inner: bool = True,
 ) -> str:
     """Markdown summary of a parent dataset folder (sub-folders, repeats, media and captions), with
     what the selected model will do with it. ``control_directory``: control images are on and every
-    folder needs one; ``allowed_folders``: inner folders the trainer's generator accepts anyway;
+    folder needs one; ``allowed_folders``: inner folders the trainer itself uses (not listed as ignored);
     ``probe_audio``: open every video to tell whether it has sound (audio mode; the dataset check
-    measures that itself, within its time limit)."""
+    measures that itself, within its time limit); ``report_inner``: name the inner folders the trainer
+    ignores (the dataset check describes them itself, in more detail)."""
     from .values import clean_path
 
     parent = clean_path(parent)
@@ -529,6 +531,13 @@ def scan_dataset(
         return f"❌ Folder not found: `{parent}`"
     folders = [folder for folder in _subfolders(parent) if not os.path.basename(folder).startswith(".")]
     if not folders:
+        direct = [name for name in os.listdir(parent) if os.path.isfile(os.path.join(parent, name)) and name.lower().endswith(IMAGE_EXTENSIONS + VIDEO_EXTENSIONS + AUDIO_EXTENSIONS)]
+        if direct:
+            return (
+                f"❌ `{parent}` holds {len(direct)} media file(s) directly but no training folders. The **Parent Dataset Folder** "
+                f"is the folder *above* your training folders: put the files in a sub-folder such as `1_ohwx man` "
+                f"(or select the folder that contains `{os.path.basename(parent)}`, after renaming it to e.g. `1_{os.path.basename(parent)}`)."
+            )
         return (
             f"⚠️ `{parent}` has no sub-folders. Put your media in sub-folders such as `1_ohwx man` "
             "(the optional number prefix is the repeat count)."
@@ -539,12 +548,12 @@ def scan_dataset(
     owned = owned_subfolder_names(clean_path(cache_directory) or "cache_dir", control_directory, *allowed_folders)
     for folder in folders:
         repeats, _name = extract_repeat_count(os.path.basename(folder))
-        # the image / video generators skip a folder that holds other folders (audio mode reads only the clips)
-        inner = sorted(name for name in os.listdir(folder) if not name.startswith(".") and name not in owned and os.path.isdir(os.path.join(folder, name)))
-        if inner and profile != "audio":
-            nested.append(f"`{os.path.basename(folder)}` (has `{inner[0]}`{' …' if len(inner) > 1 else ''})")
-            rows.append(f"| `{os.path.basename(folder)}` ⏭️ skipped | {repeats} | | | | | |")
-            continue
+        # the trainers read only the files directly inside a training folder: inner folders are ignored
+        try:
+            inner = sorted(name for name in os.listdir(folder) if not name.startswith(".") and name not in owned and os.path.isdir(os.path.join(folder, name)))
+        except OSError:
+            inner = []
+        nested.extend(f"`{os.path.basename(folder)}/{name}`" for name in inner)
         images = videos = audio = captions = missing = 0
         for file_name in os.listdir(folder):
             path = os.path.join(folder, file_name)
@@ -574,10 +583,10 @@ def scan_dataset(
         rows.append(f"| `{os.path.basename(folder)}` | {repeats} | {images} | {videos} | {audio} | {captions} | {missing}{flag} |")
     rows.append(f"| **Total** | | **{totals[0]}** | **{totals[1]}** | **{totals[2]}** | **{totals[3]}** | **{totals[4]}** |")
     notes = []
-    if nested:
+    if nested and report_inner:
         notes.append(
-            f"⚠️ Start skips folders that contain other folders: {', '.join(nested[:6])}{' …' if len(nested) > 6 else ''}. "
-            "Move those inner folders out of the dataset (only the cache and control-image folders may stay)."
+            f"ℹ️ Inner folders are ignored (only the files directly inside a training folder are trained): "
+            f"{', '.join(nested[:6])}{' …' if len(nested) > 6 else ''}."
         )
     if totals[4]:
         notes.append(f"⚠️ {totals[4]} file(s) have no `{caption_extension}` caption. Enable **Create Missing Captions** or caption them in 🧰 Tools → Image Captioning.")

@@ -289,3 +289,22 @@ transformers 5 flattened `CLIPTextModel` (no `text_model` sub-module, keys witho
 ### Why this exists
 
 The unified UI shipped without any of these couplings. Choosing HiDream-O1 "dev" kept the full checkpoint and the full model's noise schedule (the trainer accepts either file, so nothing failed); Mage-Flow Edit without a preset trained the text-to-image checkpoint; turning Wan's FP8 Base on left FP8 Scaled off (a plain FP8 cast), and turning it off after a Wan 2.2 preset hit the backend's `fp8_scaled requires fp8_base` assertion through a hidden setting; Wan 2.2 lost its resident-blocks-only compile default. Tests: `tests/test_unified_links.py` (every link's keys exist in its trainer, load-time and edit-time behaviour).
+
+## Guardrail 18: DoRA files stay input-axis, and conversions keep each module's scale with it
+
+### Rule
+
+- DoRA (`network_args` `use_dora=True`; the unified UI's Adapter Type) is the input-axis form: `<module>.dora_scale` of shape `(1, in)` (`(1, in, 1, ...)` for convolutions), saved in fp32. Musubi's `DoRAInputModule` (`networks/lora.py`) and sd-scripts' `networks/dora.py` share the math in `musubi_tuner/networks/lora_shared.py`.
+- A converter or key map may rename a DoRA module but never fuse modules that carry their own `dora_scale` (Z-Image `to_q` / `to_k` / `to_v`, Qwen-Image 2.1 `gate_layer` / `proj`): each magnitude belongs to its own module's column norms. ComfyUI decomposes a sliced target (fused qkv / gate_up loaded with an offset) on that slice alone, which matches separate modules exactly; a fused LoRA with one scale does not.
+- A new base-weight format (quantization, packing, rotation) must be readable by `DoRABaseWeight` in the original basis; its one-time check against the layer's own output must pass (`tests/test_dora_input_axis.py`).
+- One DoRA network trains magnitudes for one base model. Training that shares a network between several base models (Wan 2.2 high + low noise experts, swapped in with `load_state_dict(assign=True)`) must refuse DoRA, in the trainer and in the UI check; such presets stay LoRA. A replaced base weight re-reads its cached column norms (`DoRAInputModule._dora_base_norm_sq`).
+- A DoRA (or LoRA) forward sets no attributes while `torch.compile` traces it. Dynamo refuses side effects inside an activation-checkpointed region and then runs that block eagerly for the rest of the run, without an error: Z-Image DoRA trained at 2.27 s/step instead of 1.46. Per-call values go through arguments (`_add_lora_output(x, org_forwarded, down_factor)`), caches are stored only when `torch.compiler.is_compiling()` is false, and one-time work runs before the compiled blocks (`run_dora_base_checks`, a forward pre-hook of the model; one layer per storage format checks the others).
+- Base weights merged before the network is created (`--base_weights`, the Z-Image Turbo training adapter) are part of the base whose column norms DoRA learns, so a training-only adapter leaves its share in the saved magnitudes. Check its size before adding such an adapter: the Turbo adapter changes the column norms by 0.01% on average (fused q / k / v 0.001%, at most 2.7% in a few adaLN columns).
+
+### Why this exists
+
+ComfyUI picks the DoRA axis from the `dora_scale` shape, and its output-axis branch divides by the norm of the base weight, not of the merged weight: PEFT-style magnitudes (`lora_magnitude_vector`, the old musubi default) only load approximately and needed base weights to convert. The input-axis branch is exact, as in Forge and A1111. Z-Image's converter fused q, k and v into one LoRA for ComfyUI, which would have mixed three separately trained magnitudes into one. ConvRot INT8 stores weights in a rotated basis; reading them unrotated gives wrong column norms with no error.
+
+### Regression check
+
+`musubi-tuner/tests/test_dora_input_axis.py` (dense definition, ComfyUI's own `weight_decompose`, fp8 / ConvRot bases, block swap, compiled checkpointed blocks with `fullgraph=True`, save and load, the generation scripts' merge) and `tests/test_kohya_dora.py`; `dont_upload/vram_lab/comfy_dora_check.py` loads a trained file with ComfyUI's code and lists every key it would skip.

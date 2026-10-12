@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-12T00:33:20",
+ "generated": "2026-10-12T07:27:47",
  "gradio": "6.30.0",
  "backends": {
   "qwen_image": {
@@ -1696,6 +1696,10 @@
       [
        "Automagic3",
        "Automagic3"
+      ],
+      [
+       "AutomagicEXPERIMENT",
+       "AutomagicEXPERIMENT"
       ]
      ],
      "interactive": null,
@@ -5477,6 +5481,10 @@
       [
        "Automagic3",
        "Automagic3"
+      ],
+      [
+       "AutomagicEXPERIMENT",
+       "AutomagicEXPERIMENT"
       ]
      ],
      "interactive": true,
@@ -8338,6 +8346,10 @@
       [
        "Automagic3",
        "Automagic3"
+      ],
+      [
+       "AutomagicEXPERIMENT",
+       "AutomagicEXPERIMENT"
       ]
      ],
      "interactive": true,
@@ -11117,6 +11129,10 @@
       [
        "Automagic3",
        "Automagic3"
+      ],
+      [
+       "AutomagicEXPERIMENT",
+       "AutomagicEXPERIMENT"
       ]
      ],
      "interactive": true,
@@ -13520,7 +13536,7 @@
     "block_swap_optimizer_patch_params": {
      "cls": "Checkbox",
      "label": "Patch Optimizer for Block Swap",
-     "info": "Full fine-tuning only. Use with block swap and Adafactor, AdamW, Automagic, or non-fused Automagic3. Automagic handles this automatically when needed. Do not combine with fused backward.",
+     "info": "Full fine-tuning only. Use with block swap and Adafactor, AdamW, Automagic, or non-fused Automagic3 / AutomagicEXPERIMENT. Automagic handles this automatically when needed. Do not combine with fused backward.",
      "value": false,
      "interactive": null,
      "visible": true,
@@ -14121,6 +14137,10 @@
       [
        "Automagic3",
        "Automagic3"
+      ],
+      [
+       "AutomagicEXPERIMENT",
+       "AutomagicEXPERIMENT"
       ]
      ],
      "interactive": true,
@@ -16509,7 +16529,7 @@
     "block_swap_optimizer_patch_params": {
      "cls": "Checkbox",
      "label": "Patch Optimizer for Block Swap",
-     "info": "Full fine-tuning only. Use with block swap and Adafactor, AdamW, Automagic, or non-fused Automagic3. Automagic handles this automatically when needed. Do not combine with fused backward.",
+     "info": "Full fine-tuning only. Use with block swap and Adafactor, AdamW, Automagic, or non-fused Automagic3 / AutomagicEXPERIMENT. Automagic handles this automatically when needed. Do not combine with fused backward.",
      "value": false,
      "interactive": null,
      "visible": true,
@@ -17110,6 +17130,10 @@
       [
        "Automagic3",
        "Automagic3"
+      ],
+      [
+       "AutomagicEXPERIMENT",
+       "AutomagicEXPERIMENT"
       ]
      ],
      "interactive": true,
@@ -19901,6 +19925,10 @@
       [
        "Automagic3",
        "Automagic3"
+      ],
+      [
+       "AutomagicEXPERIMENT",
+       "AutomagicEXPERIMENT"
       ]
      ],
      "interactive": true,
@@ -22761,6 +22789,10 @@
       [
        "Automagic3",
        "Automagic3"
+      ],
+      [
+       "AutomagicEXPERIMENT",
+       "AutomagicEXPERIMENT"
       ]
      ],
      "interactive": true,
@@ -25721,6 +25753,10 @@
       [
        "Automagic3",
        "Automagic3"
+      ],
+      [
+       "AutomagicEXPERIMENT",
+       "AutomagicEXPERIMENT"
       ]
      ],
      "interactive": true,
@@ -29175,6 +29211,10 @@
       [
        "Automagic3",
        "Automagic3"
+      ],
+      [
+       "AutomagicEXPERIMENT",
+       "AutomagicEXPERIMENT"
       ]
      ],
      "interactive": true,
@@ -32149,6 +32189,10 @@
       [
        "Automagic3",
        "Automagic3"
+      ],
+      [
+       "AutomagicEXPERIMENT",
+       "AutomagicEXPERIMENT"
       ]
      ],
      "interactive": null,
@@ -35328,6 +35372,10 @@
       [
        "Automagic3",
        "Automagic3"
+      ],
+      [
+       "AutomagicEXPERIMENT",
+       "AutomagicEXPERIMENT"
       ]
      ],
      "interactive": null,
@@ -38731,6 +38779,10 @@
       [
        "Automagic3",
        "Automagic3"
+      ],
+      [
+       "AutomagicEXPERIMENT",
+       "AutomagicEXPERIMENT"
       ]
      ],
      "interactive": true,

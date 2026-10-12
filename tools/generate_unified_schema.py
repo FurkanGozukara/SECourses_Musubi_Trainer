@@ -192,7 +192,19 @@ def trainer_arg_types(schema: dict) -> dict:
     return result
 
 
+def _without_local_models() -> None:
+    """The schema must not depend on which models this machine has downloaded: the classic tabs pre-fill a model path
+    only when its file exists, and the unified UI fills them at run time anyway (backends._runtime_defaults)."""
+    from musubi_tuner_gui import image_models_gui, ltx2_lora_gui, minimax_h3_lora_gui, modern_image_lora_gui
+
+    image_models_gui._default_model_paths = lambda spec: {item.key: "" for item in spec.model_paths}
+    modern_image_lora_gui._default_model_paths = lambda spec: {key: "" for key in spec.model_filenames}
+    ltx2_lora_gui._default_model_paths = lambda: {"ltx2_checkpoint": "", "gemma_safetensors": "", "gemma_root": ""}
+    minimax_h3_lora_gui._default_model_paths = lambda: {"dit": "", "text_encoder": "", "video_vae": "", "audio_vae": ""}
+
+
 def main() -> None:
+    _without_local_models()
     schema = {
         "generated": datetime.datetime.now().isoformat(timespec="seconds"),
         "gradio": gr.__version__,

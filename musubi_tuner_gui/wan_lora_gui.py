@@ -55,7 +55,6 @@ from .class_huggingface import HuggingFace
 from .class_metadata import MetaData
 from .custom_logging import setup_logging
 from .dataset_config_generator import (
-    owned_subfolder_names,
     extract_repeat_count,
     generate_wan_dataset_config_from_folders,
     save_dataset_config,
@@ -334,20 +333,7 @@ def find_min_video_frames_in_wan_dataset(parent_folder: str, cache_directory_nam
     for subdir in subdirs:
         subdir_path = os.path.join(parent_folder, subdir)
 
-        # Skip datasets with nested subfolders (except cache dir) - matches generator behavior
-        try:
-            has_subdirs = any(
-                os.path.isdir(os.path.join(subdir_path, item))
-                for item in os.listdir(subdir_path)
-                if not item.startswith(".") and item not in owned_subfolder_names(cache_directory_name)
-            )
-        except Exception:
-            has_subdirs = False
-
-        if has_subdirs:
-            continue
-
-        # Non-recursive video search
+        # Non-recursive video search (the generators train the files directly inside; inner folders are ignored)
         try:
             file_names = os.listdir(subdir_path)
         except Exception:
@@ -600,41 +586,41 @@ class WanDataset:
                 <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px; margin: 20px 0;">
                     <div style="background: rgba(59, 130, 246, 0.2); padding: 15px; border-radius: 8px; border-left: 4px solid #3b82f6;">
                         <h4 style="color: #60a5fa; margin-top: 0;">🎬 81-Frame Video</h4>
-                        <p style="color: #9ca3af; font-size: 14px; margin: 5px 0;"><strong>Input:</strong> 81-frame video (960×960, 16fps)</p>
-                        <p style="color: #9ca3af; font-size: 14px; margin: 5px 0;"><strong>Processing:</strong></p>
-                        <ul style="color: #6b7280; font-size: 13px; margin: 5px 0; padding-left: 15px;">
+                        <p style="color: #9ca3af; font-size: 16px; margin: 5px 0;"><strong>Input:</strong> 81-frame video (960×960, 16fps)</p>
+                        <p style="color: #9ca3af; font-size: 16px; margin: 5px 0;"><strong>Processing:</strong></p>
+                        <ul style="color: #6b7280; font-size: 15px; margin: 5px 0; padding-left: 15px;">
                             <li>Loads all 81 frames as sequence</li>
                             <li>Latent: [1, 16, 81, 90, 160]</li>
                             <li>Learns full temporal patterns</li>
                             <li>Most comprehensive training</li>
                         </ul>
-                        <p style="color: #10b981; font-size: 13px; margin: 5px 0;"><strong>Best for:</strong> T2V, I2V models requiring long video generation</p>
+                        <p style="color: #10b981; font-size: 15px; margin: 5px 0;"><strong>Best for:</strong> T2V, I2V models requiring long video generation</p>
                     </div>
                     
                     <div style="background: rgba(168, 85, 247, 0.2); padding: 15px; border-radius: 8px; border-left: 4px solid #a855f7;">
                         <h4 style="color: #c084fc; margin-top: 0;">📸 Single JPG Image</h4>
-                        <p style="color: #9ca3af; font-size: 14px; margin: 5px 0;"><strong>Input:</strong> Single image (960×960)</p>
-                        <p style="color: #9ca3af; font-size: 14px; margin: 5px 0;"><strong>Processing:</strong></p>
-                        <ul style="color: #6b7280; font-size: 13px; margin: 5px 0; padding-left: 15px;">
+                        <p style="color: #9ca3af; font-size: 16px; margin: 5px 0;"><strong>Input:</strong> Single image (960×960)</p>
+                        <p style="color: #9ca3af; font-size: 16px; margin: 5px 0;"><strong>Processing:</strong></p>
+                        <ul style="color: #6b7280; font-size: 15px; margin: 5px 0; padding-left: 15px;">
                             <li>Treated as 1-frame video</li>
                             <li>Latent: [1, 16, 1, 90, 160]</li>
                             <li>No temporal learning</li>
                             <li>Most efficient training</li>
                         </ul>
-                        <p style="color: #10b981; font-size: 13px; margin: 5px 0;"><strong>Best for:</strong> T2I models, style training, fast training</p>
+                        <p style="color: #10b981; font-size: 15px; margin: 5px 0;"><strong>Best for:</strong> T2I models, style training, fast training</p>
                     </div>
                     
                     <div style="background: rgba(245, 158, 11, 0.2); padding: 15px; border-radius: 8px; border-left: 4px solid #f59e0b;">
                         <h4 style="color: #fbbf24; margin-top: 0;">⚡ 17-Frame Video</h4>
-                        <p style="color: #9ca3af; font-size: 14px; margin: 5px 0;"><strong>Input:</strong> 17-frame video (960×960, 16fps)</p>
-                        <p style="color: #9ca3af; font-size: 14px; margin: 5px 0;"><strong>Processing:</strong></p>
-                        <ul style="color: #6b7280; font-size: 13px; margin: 5px 0; padding-left: 15px;">
+                        <p style="color: #9ca3af; font-size: 16px; margin: 5px 0;"><strong>Input:</strong> 17-frame video (960×960, 16fps)</p>
+                        <p style="color: #9ca3af; font-size: 16px; margin: 5px 0;"><strong>Processing:</strong></p>
+                        <ul style="color: #6b7280; font-size: 15px; margin: 5px 0; padding-left: 15px;">
                             <li>Uses all 17 frames</li>
                             <li>Latent: [1, 16, 17, 90, 160]</li>
                             <li>Limited temporal context</li>
                             <li>Balanced training approach</li>
                         </ul>
-                        <p style="color: #10b981; font-size: 13px; margin: 5px 0;"><strong>Best for:</strong> Quick motions, transitions, efficient training</p>
+                        <p style="color: #10b981; font-size: 15px; margin: 5px 0;"><strong>Best for:</strong> Quick motions, transitions, efficient training</p>
                     </div>
                 </div>
 
@@ -643,7 +629,7 @@ class WanDataset:
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <div>
                             <p style="color: #fbbf24; margin: 8px 0;"><strong>🎬 Wan 2.1 & 2.2 Requirements:</strong></p>
-                            <ul style="color: #6b7280; font-size: 14px; margin: 5px 0; padding-left: 15px;">
+                            <ul style="color: #6b7280; font-size: 16px; margin: 5px 0; padding-left: 15px;">
                                 <li><strong>Frame Rate:</strong> 16 FPS recommended</li>
                                 <li><strong>Frame Count:</strong> N×4+1 format (1, 5, 9, 17, 81...)</li>
                                 <li><strong>Default Training:</strong> 81 frames (5.06 seconds)</li>
@@ -652,7 +638,7 @@ class WanDataset:
                         </div>
                         <div>
                             <p style="color: #059669; margin: 8px 0;"><strong>📐 Supported Resolutions:</strong></p>
-                            <ul style="color: #6b7280; font-size: 14px; margin: 5px 0; padding-left: 15px;">
+                            <ul style="color: #6b7280; font-size: 16px; margin: 5px 0; padding-left: 15px;">
                                 <li><strong>Optimal:</strong> 960×960 (square), 1280×720 (landscape), 720×1280 (portrait)</li>
                                 <li><strong>Standard:</strong> 720×1280, 1280×720</li>
                                 <li><strong>Small:</strong> 480×832, 832×480</li>
@@ -667,7 +653,7 @@ class WanDataset:
                         <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 15px;">
                             <div>
                                 <p style="color: #fbbf24; margin: 5px 0;"><strong>🏗️ Model Architecture:</strong></p>
-                                <ul style="color: #6b7280; font-size: 12px; margin: 5px 0; padding-left: 15px;">
+                                <ul style="color: #6b7280; font-size: 14px; margin: 5px 0; padding-left: 15px;">
                                     <li><strong>14B Models:</strong> 40 layers, 5120 dim</li>
                                     <li><strong>1.3B Models:</strong> 30 layers, 1536 dim</li>
                                     <li><strong>Patch Size:</strong> (1, 2, 2) temporal-spatial</li>
@@ -676,7 +662,7 @@ class WanDataset:
                             </div>
                             <div>
                                 <p style="color: #7c3aed; margin: 5px 0;"><strong>🎯 Wan 2.2 Boundaries:</strong></p>
-                                <ul style="color: #6b7280; font-size: 12px; margin: 5px 0; padding-left: 15px;">
+                                <ul style="color: #6b7280; font-size: 14px; margin: 5px 0; padding-left: 15px;">
                                     <li><strong>t2v-A14B:</strong> 0.875 (87.5%)</li>
                                     <li><strong>i2v-A14B:</strong> 0.900 (90%)</li>
                                     <li><strong>Wan 2.1:</strong> No boundary (single model)</li>
@@ -685,7 +671,7 @@ class WanDataset:
                             </div>
                             <div>
                                 <p style="color: #d97706; margin: 5px 0;"><strong>⚙️ Input Dimensions:</strong></p>
-                                <ul style="color: #6b7280; font-size: 12px; margin: 5px 0; padding-left: 15px;">
+                                <ul style="color: #6b7280; font-size: 14px; margin: 5px 0; padding-left: 15px;">
                                     <li><strong>T2V Models:</strong> 16 channels</li>
                                     <li><strong>I2V Models:</strong> 36 channels (image+video)</li>
                                     <li><strong>Fun-Control:</strong> 48 channels (enhanced)</li>
@@ -711,13 +697,13 @@ class WanDataset:
                     
                     <div style="background: rgba(239, 68, 68, 0.2); padding: 10px; border-radius: 6px; margin: 10px 0; border-left: 4px solid #ef4444;">
                         <p style="color: #fbbf24; margin: 5px 0;"><strong>⚠️ IMPORTANT:</strong> Caption files MUST be in the SAME folder as media files with matching names!</p>
-                        <p style="color: #d1d5db; font-size: 13px; margin: 5px 0;">❌ Separate folders (videos/ + captions/) are NOT supported by musubi backend</p>
+                        <p style="color: #d1d5db; font-size: 15px; margin: 5px 0;">❌ Separate folders (videos/ + captions/) are NOT supported by musubi backend</p>
                     </div>
                     
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin: 15px 0;">
                         <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px;">
                             <h4 style="color: #60a5fa; margin-top: 0;">🎬 Video Dataset Structure</h4>
-                            <pre style="color: #d1d5db; font-size: 12px; margin: 0; line-height: 1.4;">training_data/
+                            <pre style="color: #d1d5db; font-size: 14px; margin: 0; line-height: 1.4;">training_data/
 └── 1_ohwx man/
     ├── video1.mp4 (81 frames, 960×960, 16fps)
     ├── video1.txt
@@ -726,12 +712,12 @@ class WanDataset:
     ├── video3.mp4 (81 frames, 960×960, 16fps)
     ├── video3.txt
     └── cache_dir/ (auto-generated)</pre>
-                            <p style="color: #10b981; font-size: 11px; margin: 5px 0;">✅ Simple: Just one folder with videos + captions together</p>
+                            <p style="color: #10b981; font-size: 13px; margin: 5px 0;">✅ Simple: Just one folder with videos + captions together</p>
                         </div>
                         
                         <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px;">
                             <h4 style="color: #c084fc; margin-top: 0;">📸 Image Dataset Structure</h4>
-                            <pre style="color: #d1d5db; font-size: 12px; margin: 0; line-height: 1.4;">training_data/
+                            <pre style="color: #d1d5db; font-size: 14px; margin: 0; line-height: 1.4;">training_data/
 └── 1_ohwx style/
     ├── image1.jpg (960×960)
     ├── image1.txt
@@ -740,13 +726,13 @@ class WanDataset:
     ├── image3.jpg (960×960)
     ├── image3.txt
     └── cache_dir/ (auto-generated)</pre>
-                            <p style="color: #10b981; font-size: 11px; margin: 5px 0;">✅ Simple: Just one folder with images + captions together</p>
+                            <p style="color: #10b981; font-size: 13px; margin: 5px 0;">✅ Simple: Just one folder with images + captions together</p>
                         </div>
                     </div>
                     
                     <div style="background: rgba(34, 197, 94, 0.2); padding: 10px; border-radius: 6px; margin: 10px 0;">
                         <p style="color: #4ade80; margin: 5px 0;"><strong>💡 Folder Name Format:</strong></p>
-                        <ul style="color: #d1d5db; font-size: 13px; margin: 5px 0; padding-left: 15px;">
+                        <ul style="color: #d1d5db; font-size: 15px; margin: 5px 0; padding-left: 15px;">
                             <li><strong>Start with "1_"</strong> - Keep it simple! (e.g., <code style="background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 3px;">1_ohwx man</code>, <code style="background: rgba(0,0,0,0.5); padding: 2px 6px; border-radius: 3px;">1_my_dataset</code>)</li>
                             <li>You can have <strong>just ONE folder</strong> or multiple folders if needed</li>
                             <li>The number before "_" is repeat count (use 1 for normal training, higher numbers to oversample specific data)</li>
@@ -755,8 +741,8 @@ class WanDataset:
                     
                     <div style="background: rgba(168, 85, 247, 0.2); padding: 10px; border-radius: 6px; margin: 10px 0; border-left: 4px solid #a855f7;">
                         <p style="color: #c084fc; margin: 5px 0;"><strong>🎨 Mixed Datasets (Videos + Images):</strong></p>
-                        <p style="color: #d1d5db; font-size: 13px; margin: 5px 0;">✅ You CAN mix videos and images, but use SEPARATE folders for each type:</p>
-                        <pre style="color: #d1d5db; font-size: 11px; margin: 5px 0; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 4px;">training_data/
+                        <p style="color: #d1d5db; font-size: 15px; margin: 5px 0;">✅ You CAN mix videos and images, but use SEPARATE folders for each type:</p>
+                        <pre style="color: #d1d5db; font-size: 13px; margin: 5px 0; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 4px;">training_data/
 ├── 1_ohwx videos/     ← Only videos here
 │   ├── clip1.mp4
 │   ├── clip1.txt
@@ -765,12 +751,12 @@ class WanDataset:
     ├── img1.jpg
     ├── img1.txt
     └── cache_dir/</pre>
-                        <p style="color: #fbbf24; font-size: 12px; margin: 5px 0;">⚠️ Don't mix videos and images in the same folder - use separate folders!</p>
+                        <p style="color: #fbbf24; font-size: 14px; margin: 5px 0;">⚠️ Don't mix videos and images in the same folder - use separate folders!</p>
                     </div>
                     
                     <div style="background: rgba(59, 130, 246, 0.2); padding: 10px; border-radius: 6px; margin: 10px 0;">
                         <p style="color: #60a5fa; margin: 5px 0;"><strong>📂 Advanced: Multiple Datasets with Different Repeat Counts:</strong></p>
-                        <pre style="color: #d1d5db; font-size: 11px; margin: 5px 0; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 4px;">training_data/
+                        <pre style="color: #d1d5db; font-size: 13px; margin: 5px 0; padding: 8px; background: rgba(0,0,0,0.3); border-radius: 4px;">training_data/
 ├── 3_main_character/  ← Repeat 3x (important videos)
 ├── 1_backgrounds/     ← Repeat 1x (normal images)
 └── 5_key_scenes/      ← Repeat 5x (very important videos)</pre>
@@ -783,7 +769,7 @@ class WanDataset:
                     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 15px; margin: 15px 0;">
                         <div style="background: rgba(59, 130, 246, 0.2); padding: 12px; border-radius: 6px;">
                             <h4 style="color: #60a5fa; margin-top: 0;">📹 T2V (Text-to-Video)</h4>
-                            <ul style="color: #d1d5db; font-size: 13px; margin: 5px 0; padding-left: 15px;">
+                            <ul style="color: #d1d5db; font-size: 15px; margin: 5px 0; padding-left: 15px;">
                                 <li><strong>Primary:</strong> Video datasets (81 frames)</li>
                                 <li><strong>Secondary:</strong> Images (1 frame) for variety</li>
                                 <li><strong>Best:</strong> Mixed dataset for versatility</li>
@@ -792,7 +778,7 @@ class WanDataset:
                         
                         <div style="background: rgba(168, 85, 247, 0.2); padding: 12px; border-radius: 6px;">
                             <h4 style="color: #c084fc; margin-top: 0;">🖼️ I2V (Image-to-Video)</h4>
-                            <ul style="color: #d1d5db; font-size: 13px; margin: 5px 0; padding-left: 15px;">
+                            <ul style="color: #d1d5db; font-size: 15px; margin: 5px 0; padding-left: 15px;">
                                 <li><strong>Primary:</strong> Video datasets with first frames</li>
                                 <li><strong>Requires:</strong> Control/reference images</li>
                                 <li><strong>Structure:</strong> video + conditioning image</li>
@@ -801,7 +787,7 @@ class WanDataset:
                         
                         <div style="background: rgba(245, 158, 11, 0.2); padding: 12px; border-radius: 6px;">
                             <h4 style="color: #fbbf24; margin-top: 0;">🎨 T2I (Text-to-Image)</h4>
-                            <ul style="color: #d1d5db; font-size: 13px; margin: 5px 0; padding-left: 15px;">
+                            <ul style="color: #d1d5db; font-size: 15px; margin: 5px 0; padding-left: 15px;">
                                 <li><strong>Primary:</strong> Image datasets (1 frame)</li>
                                 <li><strong>Optional:</strong> Mix with video first frames</li>
                                 <li><strong>Efficient:</strong> Memory efficient, fast training</li>
@@ -810,7 +796,7 @@ class WanDataset:
                         
                         <div style="background: rgba(16, 185, 129, 0.2); padding: 12px; border-radius: 6px;">
                             <h4 style="color: #10b981; margin-top: 0;">🎬 FLF2V (First-Last-Frame)</h4>
-                            <ul style="color: #d1d5db; font-size: 13px; margin: 5px 0; padding-left: 15px;">
+                            <ul style="color: #d1d5db; font-size: 15px; margin: 5px 0; padding-left: 15px;">
                                 <li><strong>Primary:</strong> Video datasets (81 frames)</li>
                                 <li><strong>Special:</strong> Uses first & last frames as guides</li>
                                 <li><strong>Advanced:</strong> Interpolation training</li>
@@ -819,7 +805,7 @@ class WanDataset:
                         
                         <div style="background: rgba(236, 72, 153, 0.2); padding: 12px; border-radius: 6px;">
                             <h4 style="color: #ec4899; margin-top: 0;">🎮 Fun-Control Models</h4>
-                            <ul style="color: #d1d5db; font-size: 13px; margin: 5px 0; padding-left: 15px;">
+                            <ul style="color: #d1d5db; font-size: 15px; margin: 5px 0; padding-left: 15px;">
                                 <li><strong>Required:</strong> Video + control video pairs</li>
                                 <li><strong>Structure:</strong> Matching control directory</li>
                                 <li><strong>Advanced:</strong> Enhanced controllability</li>
@@ -834,7 +820,7 @@ class WanDataset:
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <div>
                             <p style="color: #fbbf24; margin: 8px 0;"><strong>🎯 For Best Results:</strong></p>
-                            <ul style="color: #d1d5db; font-size: 14px; margin: 5px 0; padding-left: 15px;">
+                            <ul style="color: #d1d5db; font-size: 16px; margin: 5px 0; padding-left: 15px;">
                                 <li><strong>Consistent Frames:</strong> Same count across dataset</li>
                                 <li><strong>81 Frames:</strong> Optimal for full video capability</li>
                                 <li><strong>Mixed Training:</strong> Images + videos for versatility</li>
@@ -843,7 +829,7 @@ class WanDataset:
                         </div>
                         <div>
                             <p style="color: #f87171; margin: 8px 0;"><strong>⚠️ Processing Considerations:</strong></p>
-                            <ul style="color: #d1d5db; font-size: 14px; margin: 5px 0; padding-left: 15px;">
+                            <ul style="color: #d1d5db; font-size: 16px; margin: 5px 0; padding-left: 15px;">
                                 <li><strong>81 frames:</strong> More computational load than shorter sequences</li>
                                 <li><strong>1 frame:</strong> Lightest computational load</li>
                                 <li><strong>Batch size:</strong> Usually 1 for video training</li>
@@ -856,7 +842,7 @@ class WanDataset:
                 <div style="background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px; margin: 15px 0;">
                     <h3 style="color: #ffffff; margin-top: 0;">🔄 Automatic Frame Processing</h3>
                     <p style="color: #e5e7eb; margin: 8px 0;"><strong>What happens during training:</strong></p>
-                    <ol style="color: #d1d5db; font-size: 14px; margin: 5px 0; padding-left: 20px;">
+                    <ol style="color: #d1d5db; font-size: 16px; margin: 5px 0; padding-left: 20px;">
                         <li>Videos extracted frame-by-frame (no additional processing)</li>
                         <li>Frame rate conversion: 30fps → 16fps (automatic frame skipping)</li>
                         <li>Frame count validation: Non-N×4+1 counts truncated to nearest valid</li>
@@ -872,7 +858,7 @@ class WanDataset:
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
                         <div>
                             <p style="color: #fbbf24; margin: 8px 0;"><strong>✅ SafeTensors Support (.safetensors):</strong></p>
-                            <ul style="color: #6b7280; font-size: 14px; margin: 5px 0; padding-left: 15px;">
+                            <ul style="color: #6b7280; font-size: 16px; margin: 5px 0; padding-left: 15px;">
                                 <li><strong>DiT Models:</strong> .safetensors (recommended)</li>
                                 <li><strong>T5 Text Encoder:</strong> .safetensors (recommended) or .pth</li>
                                 <li><strong>VAE Models:</strong> .safetensors or .pth</li>
@@ -881,7 +867,7 @@ class WanDataset:
                         </div>
                         <div>
                             <p style="color: #7c3aed; margin: 8px 0;"><strong>🔧 VAE Compatibility:</strong></p>
-                            <ul style="color: #6b7280; font-size: 14px; margin: 5px 0; padding-left: 15px;">
+                            <ul style="color: #6b7280; font-size: 16px; margin: 5px 0; padding-left: 15px;">
                                 <li><strong>ALL Models:</strong> Use Wan2.1_VAE.pth</li>
                                 <li><strong>Wan 2.2 Advanced:</strong> Still uses Wan2.1_VAE.pth</li>
                                 <li><strong>Wan2.2_VAE.pth:</strong> Only for 5B models (unsupported)</li>
@@ -896,13 +882,13 @@ class WanDataset:
                     
                     <div style="background: rgba(0,0,0,0.3); padding: 12px; border-radius: 6px; margin: 10px 0;">
                         <h4 style="color: #fbbf24; margin-top: 0;">❓ What is One Frame Training?</h4>
-                        <p style="color: #6b7280; font-size: 14px; margin: 5px 0;">A special mode that makes video models behave like image models for image-to-image transformations.</p>
+                        <p style="color: #6b7280; font-size: 16px; margin: 5px 0;">A special mode that makes video models behave like image models for image-to-image transformations.</p>
                     </div>
 
                     <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 15px 0;">
                         <div>
                             <h4 style="color: #10b981; margin-top: 0;">✅ When to Use:</h4>
-                            <ul style="color: #6b7280; font-size: 13px; margin: 5px 0; padding-left: 15px;">
+                            <ul style="color: #6b7280; font-size: 15px; margin: 5px 0; padding-left: 15px;">
                                 <li><strong>Image-to-image transformations</strong></li>
                                 <li><strong>Style transfer</strong> with video models</li>
                                 <li><strong>Image editing</strong> tasks</li>
@@ -910,7 +896,7 @@ class WanDataset:
                             </ul>
                             
                             <h4 style="color: #059669; margin-top: 15px;">📋 Requirements:</h4>
-                            <ul style="color: #6b7280; font-size: 13px; margin: 5px 0; padding-left: 15px;">
+                            <ul style="color: #6b7280; font-size: 15px; margin: 5px 0; padding-left: 15px;">
                                 <li><strong>I2V models</strong> (i2v-14B) for basic</li>
                                 <li><strong>FLF2V models</strong> (flf2v-14B) for intermediate</li>
                                 <li><strong>LoRA training</strong> (required for effectiveness)</li>
@@ -920,7 +906,7 @@ class WanDataset:
                         
                         <div>
                             <h4 style="color: #dc2626; margin-top: 0;">❌ When NOT to Use:</h4>
-                            <ul style="color: #6b7280; font-size: 13px; margin: 5px 0; padding-left: 15px;">
+                            <ul style="color: #6b7280; font-size: 15px; margin: 5px 0; padding-left: 15px;">
                                 <li><strong>Standard video generation</strong></li>
                                 <li><strong>Learning temporal patterns</strong></li>
                                 <li><strong>Mixed video+image datasets</strong> (auto-handled)</li>
@@ -928,7 +914,7 @@ class WanDataset:
                             </ul>
                             
                             <h4 style="color: #d97706; margin-top: 15px;">⚠️ Important Notes:</h4>
-                            <ul style="color: #6b7280; font-size: 13px; margin: 5px 0; padding-left: 15px;">
+                            <ul style="color: #6b7280; font-size: 15px; margin: 5px 0; padding-left: 15px;">
                                 <li><strong>Highly experimental</strong> feature</li>
                                 <li><strong>Not officially supported</strong></li>
                                 <li><strong>Requires special setup</strong></li>
@@ -939,13 +925,13 @@ class WanDataset:
 
                     <div style="background: rgba(34, 197, 94, 0.2); padding: 12px; border-radius: 6px; margin: 10px 0;">
                         <h4 style="color: #10b981; margin-top: 0;">💡 Mixed Dataset Answer:</h4>
-                        <p style="color: #6b7280; font-size: 14px; margin: 5px 0;"><strong>For mixed video + image datasets:</strong> You typically <strong>DON'T need</strong> One Frame Training. Normal training automatically handles:</p>
-                        <ul style="color: #6b7280; font-size: 13px; margin: 5px 0; padding-left: 15px;">
+                        <p style="color: #6b7280; font-size: 16px; margin: 5px 0;"><strong>For mixed video + image datasets:</strong> You typically <strong>DON'T need</strong> One Frame Training. Normal training automatically handles:</p>
+                        <ul style="color: #6b7280; font-size: 15px; margin: 5px 0; padding-left: 15px;">
                             <li>Videos → Processed as multi-frame sequences (e.g., 81 frames)</li>
                             <li>Images → Processed as 1-frame sequences automatically</li>
                             <li>Model learns both temporal (video) and static (image) patterns</li>
                         </ul>
-                        <p style="color: #d97706; font-size: 14px; margin: 8px 0;"><strong>Use One Frame Training only for specialized image transformation tasks, not general mixed training.</strong></p>
+                        <p style="color: #d97706; font-size: 16px; margin: 8px 0;"><strong>Use One Frame Training only for specialized image transformation tasks, not general mixed training.</strong></p>
                     </div>
                 </div>
             </div>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import inspect
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -523,12 +524,14 @@ def test_zimage_dreambooth_preview_normalizes_full_model_runtime_config(tmp_path
 
 
 def test_flux_accelerate_lookup_prefers_the_active_python_environment(tmp_path: Path, monkeypatch):
-    scripts = tmp_path / "venv" / "Scripts"
+    windows = sys.platform == "win32"
+    scripts = tmp_path / "venv" / ("Scripts" if windows else "bin")
     scripts.mkdir(parents=True)
-    python = scripts / "python.exe"
-    accelerate = scripts / "accelerate.exe"
+    python = scripts / ("python.exe" if windows else "python")
+    accelerate = scripts / ("accelerate.exe" if windows else "accelerate")
     python.touch()
     accelerate.touch()
+    accelerate.chmod(0o755)
     monkeypatch.setattr(flux2_lora_gui.shutil, "which", lambda _name: r"C:\Python310\Scripts\accelerate.exe")
 
     command = flux2_lora_gui._find_accelerate_launch(str(python))

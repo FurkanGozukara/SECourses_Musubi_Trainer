@@ -439,8 +439,9 @@ def test_relocate_model_paths(tmp_path, monkeypatch):
     for folder in (flux_dir, legacy):
         (folder / "ae.safetensors").write_bytes(b"x")  # ambiguous name
     values = {
-        "pretrained_model_name_or_path": "/home/Ubuntu/Downloads/flux1-dev.safetensors",
-        "ae": "/home/Ubuntu/Downloads/ae.safetensors",
+        # a path of the machine the preset was made on (never present here, also not on the Linux server)
+        "pretrained_model_name_or_path": "/no/such/machine/Downloads/flux1-dev.safetensors",
+        "ae": "/no/such/machine/Downloads/ae.safetensors",
         "clip_l": "/somewhere/else/clip_l.safetensors",
         "vae": "stabilityai/sdxl-vae",
         "learning_rate": 1e-4,
@@ -498,12 +499,12 @@ def test_sample_prompt_text_is_written_to_a_file(tmp_path):
         # sd-scripts builds the 'adafactor' scheduler only for Adafactor with relative_step (IndexError otherwise)
         ("flux1_dev", "lora", {"lr_scheduler": "adafactor"}, "needs relative_step=True"),
         ("sdxl", "lora", {"lr_scheduler": "adafactor", "optimizer_type": "AdamW", "optimizer_args": ""}, "works only with the Adafactor optimizer"),
-        # what sd-scripts fails on only after loading the models (the kohya_ss GUI refused malformed arguments first)
-        ("flux1_dev", "lora", {"optimizer_args": "weight_decay = 0.01"}, "Not usable: weight_decay, =, 0.01"),
-        ("flux1_dev", "lora", {"optimizer_type": "AdamW", "optimizer_args": "betas=0.9, 0.999"}, "Not usable: 0.999"),
+        # what sd-scripts fails on only after loading the models (the kohya_ss GUI refused malformed arguments first);
+        # "weight_decay = 0.01", "betas=0.9, 0.999" and "conv_dim = 4" are read as meant (test_argument_lists_are_cleaned)
         ("flux1_dev", "lora", {"optimizer_args": "foo='a=b'"}, "one '=' each"),
+        ("flux1_dev", "lora", {"optimizer_args": "weight_decay=0.01 oops"}, "Not usable: oops"),
         ("flux1_dev", "lora", {"lr_scheduler_type": "CyclicLR", "lr_scheduler_args": "mode=triangular2"}, "Not readable: mode=triangular2"),
-        ("sdxl", "lora", {"network_args": "conv_dim = 4"}, "Network Arguments: write key=value items"),
+        ("sdxl", "lora", {"network_args": "conv_dim=4 =3"}, "Network Arguments: write key=value items"),
         ("flux1_dev", "lora", {"lr_warmup_steps": 10}, "LR Warmup Steps must be 0 with the constant LR Scheduler"),
         ("flux1_dev", "lora", {"lr_scheduler": "constant_with_warmup", "lr_warmup_steps": 10, "optimizer_args": ""}, "Adafactor's relative_step"),
         ("flux1_dev", "lora", {"lr_scheduler_type": "CosineAnnealingLR", "lr_scheduler_args": "T_max=100", "lr_warmup_steps": 0.05}, "Custom Scheduler Class"),
@@ -532,6 +533,20 @@ def test_validation_errors(tmp_path, model, kind, overrides, message):
     with pytest.raises(ValueError, match=re.escape(message)):
         kb.train_kohya_model(model, values, print_only=True)
     assert any(message in problem for problem in kb.kohya_validation_problems(model, values))
+
+
+def test_argument_lists_are_cleaned(tmp_path):
+    """Spaces around '=', commas, new lines and lowercase booleans reach sd-scripts as the key=value items it reads."""
+    values = _values(
+        tmp_path, "flux1_dev", "lora",
+        optimizer_type="AdamW",
+        optimizer_args="weight_decay = 0.01,\nbetas=0.9, 0.999  amsgrad=false",
+        network_args="conv_dim = 4; train_blocks=single",
+    )
+    assert kb.kohya_validation_problems("flux1_dev", values) == []
+    _path, data = _runtime_toml(kb.train_kohya_model("flux1_dev", values, print_only=True))
+    assert data["optimizer_args"] == ["weight_decay=0.01", "betas=0.9,0.999", "amsgrad=False"]
+    assert "conv_dim=4" in data["network_args"] and "train_blocks=single" in data["network_args"]
 
 
 def test_valid_settings_that_look_unusual(tmp_path):
@@ -1079,3 +1094,54 @@ def test_whole_number_settings_follow_sd_scripts_argparse():
             else:
                 assert kb.kohya_whole_number(model, spec.key) == (spec.key in kb._WHOLE_NUMBER_KEYS), (script, spec.key)
     assert checked > 100
+
+
+# --------------------------------------------------------------------------------------------- Automagic on sd-scripts
+@pytest.mark.parametrize("optimizer", ["Automagic3", "AutomagicEXPERIMENT"])
+def test_automagic_reaches_sd_scripts_as_its_musubi_class(tmp_path, optimizer):
+    values = _values(tmp_path, "flux1_dev", "lora", optimizer_type=optimizer, max_grad_norm=0, gradient_accumulation_steps=1)
+    assert kb.kohya_validation_problems("flux1_dev", values) == []
+    _path, data = _runtime_toml(kb.train_kohya_model("flux1_dev", values, print_only=True))
+    assert data["optimizer_type"] == f"musubi_tuner.optimizers.{optimizer}"
+    # the preset's Adafactor-only arguments go, weight decay stays; fused only when sd-scripts' loop allows it
+    assert data["optimizer_args"] == ["weight_decay=0.01", "fused=True"]
+    values = _values(tmp_path, "flux1_dev", "lora", optimizer_type=optimizer, max_grad_norm=1.0)
+    _path, data = _runtime_toml(kb.train_kohya_model("flux1_dev", values, print_only=True))
+    assert data["optimizer_args"][-1] == "fused=False"
+    values = _values(tmp_path, "flux1_dev", "lora", optimizer_type=optimizer, optimizer_args="fused=False weight_decay=0")
+    _path, data = _runtime_toml(kb.train_kohya_model("flux1_dev", values, print_only=True))
+    assert data["optimizer_args"] == ["fused=False", "weight_decay=0"]
+
+
+def test_automagic_refuses_an_lr_warmup(tmp_path):
+    values = _values(tmp_path, "sdxl", "lora", optimizer_type="Automagic3", lr_scheduler="constant_with_warmup", lr_warmup_steps=50)
+    assert any("manages its own learning rate" in problem for problem in kb.kohya_validation_problems("sdxl", values))
+
+
+_OPTIMIZER_CHILD = r"""
+import sys, json, argparse
+sys.path.insert(0, sys.argv[1])
+import torch
+from library import train_util
+parser = argparse.ArgumentParser()
+train_util.add_optimizer_arguments(parser)
+args = parser.parse_args([])
+for key, value in json.loads(sys.argv[2]).items():
+    setattr(args, key, value)
+params = [torch.nn.Parameter(torch.ones(4, 8))]
+name, text, optimizer = train_util.get_optimizer(args, params)
+print("OPTIMIZER", type(optimizer).__module__, type(optimizer).__name__, optimizer.fused, flush=True)
+"""
+
+
+@pytest.mark.skipif(not (kb.SD_SCRIPTS_DIR / "flux_train_network.py").is_file(), reason="sd-scripts not installed")
+@pytest.mark.parametrize("optimizer", ["Automagic3", "AutomagicEXPERIMENT"])
+def test_sd_scripts_constructs_the_musubi_automagic(optimizer):
+    """sd-scripts' own get_optimizer imports the class from musubi-tuner (installed in the same venv)."""
+    args = {"optimizer_type": f"musubi_tuner.optimizers.{optimizer}", "optimizer_args": ["weight_decay=0.01", "fused=False"], "learning_rate": 1e-4,
+            "max_grad_norm": 0.0, "lr_scheduler": "constant", "fused_backward_pass": False}
+    env = dict(os.environ, CUDA_VISIBLE_DEVICES="-1", PYTHONUTF8="1")
+    env["PYTHONPATH"] = os.pathsep.join([str(kb.SD_SCRIPTS_DIR), env.get("PYTHONPATH", "")])
+    result = subprocess.run([sys.executable, "-c", _OPTIMIZER_CHILD, str(kb.SD_SCRIPTS_DIR), json.dumps(args)], env=env, capture_output=True,
+                            text=True, encoding="utf-8", errors="replace", timeout=600)
+    assert f"OPTIMIZER musubi_tuner.optimizers" in result.stdout and f" {optimizer} False" in result.stdout, result.stdout[-1500:] + result.stderr[-3000:]

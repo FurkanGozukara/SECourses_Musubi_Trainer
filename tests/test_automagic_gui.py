@@ -36,7 +36,7 @@ def test_add_automagic_choices_preserves_defaults_and_avoids_duplicates():
 def test_automagic_guidance_explains_adaptive_lr_and_scheduler(optimizer_type):
     guidance = optimizer_guidance(optimizer_type)
 
-    expected_version = "v1" if optimizer_type == "Automagic" else optimizer_type.replace("Automagic", "v")
+    expected_version = {"Automagic": "v1", "AutomagicEXPERIMENT": "EXPERIMENT"}.get(optimizer_type) or optimizer_type.replace("Automagic", "v")
     assert expected_version in guidance
     assert "starting rate" in guidance
     assert "scheduler" in guidance.casefold()

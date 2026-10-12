@@ -727,6 +727,9 @@ MEMORY_KEYS = [
 ]
 COMPILE_KEYS = ["compile", "compile_backend", "compile_mode", "compile_dynamic", "compile_fullgraph", "compile_cache_size_limit"]
 SCHEDULE_KEYS = ["timestep_sampling", "weighting_scheme", "discrete_flow_shift", "sigmoid_scale", "mode_scale", "min_timestep", "max_timestep"]
+# timestep samplings that multiply their normal draw by --sigmoid_scale (musubi training/timestep_sampling.py: sigmoid,
+# every "*shift" except ideogram4_shift, and the qinglong mixes)
+SIGMOID_SCALE_SAMPLINGS = frozenset({"sigmoid", "shift", "flux_shift", "flux2_shift", "qwen_shift", "krea2_shift", "qinglong_flux", "qinglong_qwen"})
 TRAINING_KEYS = [
     "sdpa",
     "flash_attn",
@@ -1308,7 +1311,7 @@ def run_config_exclusions(spec: ImageArchSpec, parameters: list[tuple[str, objec
         exclusions.update({"fp8_base", "fp8_scaled"})
     if not spec.model_path("vae"):
         exclusions.add("vae_dtype")
-    if str(param_dict.get("timestep_sampling") or "") not in {"sigmoid", "shift", "qinglong_flux", "qinglong_qwen"}:
+    if str(param_dict.get("timestep_sampling") or "") not in SIGMOID_SCALE_SAMPLINGS:
         exclusions.add("sigmoid_scale")
     if str(param_dict.get("weighting_scheme") or "") != "mode":
         exclusions.add("mode_scale")

@@ -81,14 +81,39 @@ def extract_repeat_count(folder_name: str) -> Tuple[int, str]:
 
 def owned_subfolder_names(cache_directory_name, *others) -> set:
     """Sub-folders the trainer itself creates or expects inside a dataset folder: the relative cache folder, the
-    separate image cache of a mixed image/video folder ("<cache>_images") and e.g. the control-image folder.
-    They must not make the folder look like a nested dataset ("Contains subdirectories") on the next run."""
+    separate image cache of a mixed image/video folder ("<cache>_images") and e.g. the control-image folder."""
     names = set()
     if cache_directory_name and not os.path.isabs(str(cache_directory_name)):
         name = os.path.basename(os.path.normpath(str(cache_directory_name)))
         names.update({name, name + "_images"})
     names.update(str(other) for other in others if other)
     return names
+
+
+def ignored_inner_folders(folder: str, cache_directory_name, *others) -> List[str]:
+    """Folders inside a training folder that the trainers never read: they load only the files directly inside a
+    training folder (non-recursive glob), so an old cache folder, a backup or any other inner folder is simply
+    ignored. Earlier versions skipped the whole training folder for it, which trained nothing."""
+    owned = owned_subfolder_names(cache_directory_name, *others)
+    try:
+        names = os.listdir(folder)
+    except OSError:
+        return []
+    return sorted(name for name in names if not name.startswith('.') and name not in owned and os.path.isdir(os.path.join(folder, name)))
+
+
+def _inner_folders_note(subdir: str, inner: List[str]) -> str:
+    shown = ", ".join(inner[:3]) + (f" and {len(inner) - 3} more" if len(inner) > 3 else "")
+    return f"[INFO] '{subdir}': inner folder(s) {shown} are ignored (only the files directly inside a training folder are trained)"
+
+
+def _no_media_message(subdir: str, inner: List[str], what: str) -> str:
+    """Why a folder trains nothing; a folder that only holds other folders is usually one level too high."""
+    if inner:
+        shown = ", ".join(inner[:3]) + (" …" if len(inner) > 3 else "")
+        return (f"[WARNING] Skipping '{subdir}': No {what} directly inside (it only holds the folder(s) {shown}; "
+                f"training folders must hold their files directly)")
+    return f"[WARNING] Skipping '{subdir}': No {what} found"
 
 
 def _get_files_by_extensions(directory: str, extensions: List[str]) -> List[str]:
@@ -204,22 +229,18 @@ def generate_wan_dataset_config_from_folders(
     for subdir in subdirs:
         subdir_path = os.path.join(parent_folder, subdir)
 
-        # Check if this directory has subdirectories (which we don't want to scan)
-        has_subdirs = any(os.path.isdir(os.path.join(subdir_path, item))
-                         for item in os.listdir(subdir_path)
-                         if not item.startswith('.') and item not in owned_subfolder_names(cache_directory_name))
-
-        if has_subdirs:
-            messages.append(f"[WARNING] Skipping '{subdir}': Contains subdirectories (only direct media files are supported)")
-            continue
+        # inner folders are never read by the trainer (only the files directly inside)
+        inner = ignored_inner_folders(subdir_path, cache_directory_name)
 
         # Get media files (both images and videos)
         image_files, video_files = get_media_files(subdir_path)
         all_media_files = image_files + video_files
 
         if not all_media_files:
-            messages.append(f"[WARNING] Skipping '{subdir}': No image or video files found")
+            messages.append(_no_media_message(subdir, inner, "image or video files"))
             continue
+        if inner:
+            messages.append(_inner_folders_note(subdir, inner))
 
         # Extract repeat count and clean name, informing the user when the
         # folder name deviates from the "N_name" convention
@@ -397,20 +418,16 @@ def generate_ltx2_dataset_config_from_folders(
     for subdir in subdirs:
         subdir_path = os.path.join(parent_folder, subdir)
 
-        has_subdirs = any(os.path.isdir(os.path.join(subdir_path, item))
-                         for item in os.listdir(subdir_path)
-                         if not item.startswith('.') and item not in owned_subfolder_names(cache_directory_name))
-
-        if has_subdirs:
-            messages.append(f"[WARNING] Skipping '{subdir}': Contains subdirectories (only direct media files are supported)")
-            continue
+        inner = ignored_inner_folders(subdir_path, cache_directory_name)
 
         image_files, video_files = get_media_files(subdir_path)
         all_media_files = image_files + video_files
 
         if not all_media_files:
-            messages.append(f"[WARNING] Skipping '{subdir}': No image or video files found")
+            messages.append(_no_media_message(subdir, inner, "image or video files"))
             continue
+        if inner:
+            messages.append(_inner_folders_note(subdir, inner))
 
         repeat_count, clean_name, repeat_notice = parse_repeat_count(subdir)
         if repeat_notice:
@@ -600,13 +617,7 @@ def generate_minimax_h3_dataset_config_from_folders(
     for subdir in subdirs:
         subdir_path = os.path.join(parent_folder, subdir)
 
-        has_subdirs = any(os.path.isdir(os.path.join(subdir_path, item))
-                         for item in os.listdir(subdir_path)
-                         if not item.startswith('.') and item not in owned_subfolder_names(cache_directory_name))
-
-        if has_subdirs:
-            messages.append(f"[WARNING] Skipping '{subdir}': Contains subdirectories (only direct video files are supported)")
-            continue
+        inner = ignored_inner_folders(subdir_path, cache_directory_name)
 
         image_files, video_files = get_media_files(subdir_path)
 
@@ -617,8 +628,10 @@ def generate_minimax_h3_dataset_config_from_folders(
                     f"(frame counts 17*n+5); single images cannot satisfy the packing rule yet."
                 )
             else:
-                messages.append(f"[WARNING] Skipping '{subdir}': No video files found")
+                messages.append(_no_media_message(subdir, inner, "video files"))
             continue
+        if inner:
+            messages.append(_inner_folders_note(subdir, inner))
 
         repeat_count, clean_name, repeat_notice = parse_repeat_count(subdir)
         if repeat_notice:
@@ -742,18 +755,13 @@ def generate_kandinsky6_dataset_config_from_folders(
 
     for subdir in subdirs:
         subdir_path = os.path.join(parent_folder, subdir)
-        has_subdirs = any(
-            os.path.isdir(os.path.join(subdir_path, item))
-            for item in os.listdir(subdir_path)
-            if not item.startswith(".") and item not in owned_subfolder_names(cache_directory_name)
-        )
-        if has_subdirs:
-            messages.append(f"[WARNING] Skipping '{subdir}': Contains subdirectories (only direct media files are supported)")
-            continue
+        inner = ignored_inner_folders(subdir_path, cache_directory_name)
         image_files, video_files = get_media_files(subdir_path)
         if not image_files and not video_files:
-            messages.append(f"[WARNING] Skipping '{subdir}': No images or videos found")
+            messages.append(_no_media_message(subdir, inner, "images or videos"))
             continue
+        if inner:
+            messages.append(_inner_folders_note(subdir, inner))
         repeat_count, clean_name, repeat_notice = parse_repeat_count(subdir)
         if repeat_notice:
             messages.append(repeat_notice)
@@ -865,22 +873,18 @@ def generate_dataset_config_from_folders(
     
     for subdir in subdirs:
         subdir_path = os.path.join(parent_folder, subdir)
-        
-        # Check if this directory has subdirectories (which we don't want to scan)
-        has_subdirs = any(os.path.isdir(os.path.join(subdir_path, item)) 
-                         for item in os.listdir(subdir_path)
-                         if not item.startswith('.') and item not in owned_subfolder_names(cache_directory_name, control_directory_name))
-        
-        if has_subdirs:
-            messages.append(f"[WARNING] Skipping '{subdir}': Contains subdirectories (only direct image files are supported)")
-            continue
-        
+
+        # inner folders other than the cache and control folders are never read by the trainer
+        inner = ignored_inner_folders(subdir_path, cache_directory_name, control_directory_name)
+
         # Get image files
         image_files = get_image_files(subdir_path)
-        
+
         if not image_files:
-            messages.append(f"[WARNING] Skipping '{subdir}': No image files found")
+            messages.append(_no_media_message(subdir, inner, "image files"))
             continue
+        if inner:
+            messages.append(_inner_folders_note(subdir, inner))
         
         # Extract repeat count and clean name, informing the user when the
         # folder name deviates from the "N_name" convention

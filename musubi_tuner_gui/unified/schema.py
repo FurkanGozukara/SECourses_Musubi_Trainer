@@ -539,6 +539,18 @@ ADVANCED_KEYS = frozenset(
 # Settings shown only for one training type even though the original tab kept them visible.
 LORA_ONLY_KEYS = frozenset(SECTION_KEYS["network"])
 FULL_ONLY_KEYS = frozenset(SECTION_KEYS["finetune"]) - {"mem_eff_save", "full_fp16"}
+# Full fine-tuning trains the base weights themselves, so every trainer's full path turns these off
+# (full_finetune_gui.normalize_image_training_parameters; Krea 2's full-DiT script has no Turbo DiT sampling):
+# shown in Fine-Tuning they would look active while the run silently ignored them.
+LORA_ONLY_EVERYWHERE = frozenset(
+    {
+        "fp8_base", "fp8_scaled", "convrot_int8", "convrot_int8_bwd", "block_swap_h2d_only", "turbo_dit", "turbo_dit_cache",
+        "use_unconditional_dit_for_lora_sampling",
+    }
+)
+# ...and the reverse: every LoRA path drops these (training_mode_runtime_exclusions), except where the backend
+# also uses them for LoRA (LTX 2.3 writes its LoRA EMA / teacher weights with the memory-efficient saver).
+FULL_ONLY_EXCEPT = {"mem_eff_save": frozenset({"ltx2"})}
 
 # Fine-tuning derives these from Full BF16 (full_finetune_gui.normalize_image_training_parameters sets the
 # trained dtype bfloat16 / float32 and the save precision bf16 / fp32): only LoRA lets the user choose them.
@@ -605,6 +617,13 @@ TEXTAREA_KEYS = frozenset({"network_args", "additional_parameters", "sample_nega
 # Help texts where a classic tab's own text is wrong in the unified UI (one text serves every trainer).
 INFO_OVERRIDES = {
     "create_missing_captions": "When Start builds the dataset, write a caption for every image or video that has none (Missing Caption Strategy decides the text).",
+    # the classic tabs said "no commas": the unified UI reads every way of typing these lists (unified/arguments.py)
+    "optimizer_args": (
+        "key=value items separated by spaces, commas or new lines, e.g. weight_decay=0.01 betas=(0.9,0.999). "
+        "Values are Python literals; true / false work too."
+    ),
+    "lr_scheduler_args": "key=value items separated by spaces, commas or new lines, e.g. T_max=100 eta_min=1e-6.",
+    "network_args": "key=value items separated by spaces, commas or new lines, e.g. conv_dim=4 conv_alpha=1.",
 }
 
 LABEL_OVERRIDES = {
@@ -743,7 +762,7 @@ def priority_for(key: str, section: str, legacy_index: int) -> int:
 
 def modes_for(key: str, entry: dict) -> frozenset:
     parents = " / ".join(entry.get("parents") or []).lower()
-    if key in LORA_ONLY_KEYS or "lora settings" in parents:
+    if key in LORA_ONLY_KEYS or key in LORA_ONLY_EVERYWHERE or "lora settings" in parents:
         return frozenset({LORA})
     if key in FULL_ONLY_KEYS or "full fine-tuning" in parents:
         return frozenset({FULL})
@@ -816,6 +835,9 @@ def build_param_specs(backend: str) -> list[ParamSpec]:
         minimum, maximum, step = entry.get("minimum"), entry.get("maximum"), entry.get("step")
         precision = entry.get("precision")
         extras = {"family": family, "legacy_cls": entry.get("cls"), "precision": precision, "interactive": entry.get("interactive")}
+        modes = frozenset({LORA}) if supports_full and key in DERIVED_IN_FULL else modes_for(key, entry)
+        if supports_full and key in FULL_ONLY_EXCEPT and backend not in FULL_ONLY_EXCEPT[key]:
+            modes = frozenset({FULL})
         specs.append(
             ParamSpec(
                 key=key,
@@ -829,7 +851,7 @@ def build_param_specs(backend: str) -> list[ParamSpec]:
                 step=step,
                 section=section if section in SECTION_IDS else "model_specific",
                 priority=priority_for(key, section, index),
-                modes=frozenset({LORA}) if supports_full and key in DERIVED_IN_FULL else modes_for(key, entry),
+                modes=modes,
                 visible=visible,
                 advanced=key in ADVANCED_KEYS,
                 allow_custom_value=allow_custom,

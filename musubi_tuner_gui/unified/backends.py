@@ -23,6 +23,9 @@ import gradio as gr
 import toml
 
 from ..custom_logging import setup_logging
+from .adapter import ADAPTER_KEY, DORA_ADAPTER, NETWORK_KEY, adapter_spec, fold_adapter, is_synthetic, unfold_adapter
+from .arguments import ARGUMENT_KEYS, argument_problems, normalize_items
+from .arguments import LITERAL_KEYS as LITERAL_ARGUMENT_KEYS
 from .legacy_tabs import LEGACY_BACKENDS, actions_callable, legacy_module
 from .param_spec import FULL, LORA, ParamSpec
 from .schema import PATH_KINDS, PATH_TEXT_KEYS, WHOLE_NUMBER_KEYS, ZERO_MEANS_UNSET, arg_type, build_param_specs, resolve_placeholders
@@ -187,11 +190,18 @@ def enforce_trainer_types(name: str, parameters):
         arg = arg_type(name, key)
         if arg is not None:
             try:
-                value = to_trainer_value(value, label=key, kind="", arg=arg, is_path=_is_path(key))
+                value = _literal_arguments(key, to_trainer_value(value, label=key, kind="", arg=arg, is_path=_is_path(key)))
             except ValueProblem:
                 pass
         fixed.append((key, value))
     return fixed
+
+
+def _literal_arguments(key: str, value):
+    """Optimizer / scheduler arguments are read with ast.literal_eval by the trainers: true -> True, 0,01 -> 0.01."""
+    if key in LITERAL_ARGUMENT_KEYS and isinstance(value, list):
+        return normalize_items(value, literal=True)
+    return value
 
 
 def install_toml_type_gate() -> None:
@@ -254,13 +264,16 @@ class Backend:
         spec = self.spec_map().get(key)
         if spec is None:
             return value
-        return to_trainer_value(
-            value,
-            label=spec.label or key,
-            kind=spec.kind,
-            arg=arg_type(self.name, key),
-            is_path=_is_path(key, spec),
-            whole=self.whole_number(key),
+        return _literal_arguments(
+            key,
+            to_trainer_value(
+                value,
+                label=spec.label or key,
+                kind=spec.kind,
+                arg=arg_type(self.name, key),
+                is_path=_is_path(key, spec),
+                whole=self.whole_number(key),
+            ),
         )
 
     def whole_number(self, key: str) -> bool:
@@ -290,6 +303,25 @@ class Backend:
             elif _is_path(spec.key, spec) and isinstance(converted, str) and "\n" in converted and spec.kind != "textarea":
                 if not (self.engine == "kohya" and spec.key == "sample_prompts"):  # kohya also takes the prompts themselves
                     problems.append(f"{spec.label or spec.key}: one path per field (it contains line breaks).")
+            elif spec.key in ARGUMENT_KEYS and self.engine != "kohya":  # kohya_backend checks its own (sd-scripts rules)
+                problems.extend(argument_problems(spec.label or spec.key, value, literal=spec.key in LITERAL_ARGUMENT_KEYS))
+            elif spec.key == "gpu_ids":
+                from ..class_accelerate_launch import normalize_gpu_ids
+
+                try:
+                    normalize_gpu_ids(value)
+                except ValueError as exc:
+                    problems.append(f"{spec.label or spec.key}: {exc}")
+        if (
+            ADAPTER_KEY in self.spec_map()
+            and mode in (None, LORA)
+            and str(values.get(ADAPTER_KEY) or "").strip().casefold() == DORA_ADAPTER.casefold()
+            and str(values.get("dit_high_noise") or "").strip()
+        ):
+            problems.append(
+                "Adapter Type DoRA cannot train Wan 2.2's high and low noise experts together: one network would need "
+                "magnitudes for two base models. Choose LoRA, or clear the High Noise DiT to train one expert."
+            )
         return problems
 
     def check(self, values: dict, mode: str | None = None) -> list[str]:
@@ -333,7 +365,10 @@ class LegacyMusubiBackend(Backend):
     @property
     def specs(self) -> list[ParamSpec]:
         if self._specs is None:
-            self._specs = build_param_specs(self.name)
+            specs = build_param_specs(self.name)
+            if any(spec.key == NETWORK_KEY and LORA in spec.modes for spec in specs):
+                specs.append(adapter_spec())  # last: the classic trainer's positional arguments end before it
+            self._specs = specs
         return self._specs
 
     @property
@@ -388,7 +423,10 @@ class LegacyMusubiBackend(Backend):
         return converted
 
     def ordered_args(self, values: dict) -> list:
-        return [self.coerce(spec.key, values.get(spec.key, spec.default)) for spec in self.specs]
+        """The classic trainer's positional arguments (the LoRA / DoRA switch folded into Network Arguments)."""
+        if self.mode_of_value(values.get("training_mode", self.mode_value(LORA))) == LORA:
+            values = fold_adapter(values)
+        return [self.coerce(spec.key, values.get(spec.key, spec.default)) for spec in self.specs if not is_synthetic(spec)]
 
     def normalized(self, values: dict) -> dict:
         """All values converted for the trainer (cleaned paths, argparse types); keys it does not know are kept."""
@@ -469,6 +507,8 @@ class LegacyMusubiBackend(Backend):
             if isinstance(stored, list) and len(stored) > 1 and _is_path(spec.key, spec) and isinstance(value, str):
                 value = stored  # "../my loras/a.safetensors ../b.safetensors" cannot be split back reliably
             loaded[spec.key] = value
+        if ADAPTER_KEY in self.spec_map():
+            loaded = unfold_adapter(loaded)
         status = result[1] if len(result) > 1 else None
         status_text = status.get("value") if _is_update(status) else (status if isinstance(status, str) else "")
         warnings = [text for level, text in messages if level == "warning"]
@@ -600,8 +640,19 @@ class KohyaBackend(Backend):
     @property
     def specs(self) -> list[ParamSpec]:
         if self._specs is None:
-            self._specs = list(self.module.kohya_param_specs(self.model_key))
+            specs = list(self.module.kohya_param_specs(self.model_key))
+            if any(spec.key == NETWORK_KEY and LORA in spec.modes for spec in specs):
+                specs.append(adapter_spec())
+            self._specs = specs
         return self._specs
+
+    def _for_trainer(self, values: dict) -> dict:
+        """The values sd-scripts and the preset file get: the LoRA / DoRA switch folded into Network Arguments."""
+        if ADAPTER_KEY not in self.spec_map():
+            return values
+        if self.mode_of_value(values.get("training_mode")) == LORA:
+            values = fold_adapter(values)
+        return {key: value for key, value in values.items() if key != ADAPTER_KEY}
 
     def trainer_value(self, key: str, value: Any) -> Any:
         """Clean what the user typed by field kind only. kohya_backend builds the sd-scripts config itself
@@ -680,6 +731,8 @@ class KohyaBackend(Backend):
     def load(self, path: str, values: dict) -> LoadResult:
         with quiet() as messages:
             loaded, notes = self.module.load_kohya_preset(path, self.model_key, dict(values))
+        if ADAPTER_KEY in self.spec_map():
+            loaded = unfold_adapter(loaded)
         file_keys, matched = _count_matching_keys(path, set(self.keys()))
         if path.lower().endswith(".json"):
             matched = file_keys  # raw kohya_ss GUI configs use their own key names; conversion reports leftovers
@@ -692,6 +745,7 @@ class KohyaBackend(Backend):
         )
 
     def save(self, path: str, values: dict) -> None:
+        values = self._for_trainer(values)
         known = self.spec_map()
         data = {}
         for key, value in sorted(values.items()):
@@ -712,13 +766,13 @@ class KohyaBackend(Backend):
         from .runner import RUNNER
 
         with quiet():
-            return str(self.module.train_kohya_model(self.model_key, dict(values), print_only=True, runner=RUNNER) or "")
+            return str(self.module.train_kohya_model(self.model_key, self._for_trainer(dict(values)), print_only=True, runner=RUNNER) or "")
 
     def train(self, values: dict, *, title: str, meta: dict) -> tuple[bool, str]:
         from .runner import RUNNER
 
         meta = {**meta, "engine": self.engine}
-        payload = dict(values)
+        payload = self._for_trainer(dict(values))
 
         def target():
             with quiet():

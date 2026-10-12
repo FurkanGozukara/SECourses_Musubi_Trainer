@@ -193,6 +193,8 @@ def UI(**kwargs):
             secondary_hue="violet",
             neutral_hue="slate",
             radius_size=gr.themes.sizes.radius_lg,
+            # every theme text size 2px above Gradio's text_md scale (12px labels / info were too small to read)
+            text_size=gr.themes.Size(name="text_md_plus_2", xxs="11px", xs="12px", sm="14px", md="16px", lg="18px", xl="24px", xxl="28px"),
         ),
         # next to this file, wherever the app is started from (a missing unified.css breaks the whole layout)
         "css": read_file_content(os.path.join(project_dir, "assets", "style.css")) + "\n" + read_file_content(os.path.join(project_dir, "assets", "unified.css")),

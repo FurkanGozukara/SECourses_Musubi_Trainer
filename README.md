@@ -12,6 +12,31 @@
 
 ---
 
+## 12 October 2026 Version 37.0 Update
+
+- **🧬 DoRA training for every model** — Qwen-Image, Qwen-Image 2.1, FLUX.2 Dev / Klein, Z-Image, Krea 2, Ideogram 4, ERNIE-Image, Mage-Flow, HiDream-O1, Wan 2.1 / 2.2, LTX 2.3, MiniMax H3, Kandinsky 6, FLUX.1 and SDXL.
+  - **Adapter Type (LoRA / DoRA)** is the first setting of the LoRA Network section. Every shipped LoRA preset now trains DoRA; switch back to LoRA with one click at any time.
+  - DoRA (Weight-Decomposed LoRA) learns a magnitude for every input channel next to the LoRA matrices, which usually follows the trained subject more faithfully at the same rank. Measured on every model's 32 GB preset: about 10% more time per step than LoRA (median of 18 models; the small fast Mage-Flow, HiDream-O1 and LTX 2.3 presets 29-43%) and the same VRAM within about half a GB.
+  - **DoRA files load directly in ComfyUI and SwarmUI** (input-axis `dora_scale`, applied exactly by ComfyUI, Forge and A1111), checked with ComfyUI's own LoRA loader for every model it supports. Z-Image, Qwen-Image 2.1 and HiDream-O1 need the updated **SECoursesAudioTools** ComfyUI nodes, which also load layer names ComfyUI used to skip for LoRA files: Qwen-Image 2.1's MLP layers, Z-Image's q / k / v and every HiDream-O1 layer. Kandinsky 6 has no ComfyUI support yet.
+  - Works with BF16, FP8, FP8-scaled and ConvRot INT8 base models, block swap, gradient checkpointing and torch.compile. Wan 2.2 presets that train the high- and low-noise experts in one run stay LoRA (one DoRA learns its magnitudes for one base model).
+- **AutomagicEXPERIMENT optimizer** (from Ostris AI Toolkit) next to Automagic v1-v3 on every training pipeline, including FLUX.1 / SDXL: Automagic v3's learning-rate controller with a full per-element second moment stored as ConvRot INT8.
+- **🔍 Check dataset improvements** — folders inside a training folder are no longer reported as skipped, a **🔁 Repeats & steps** panel explains repeats and computes steps per epoch and total steps, and **🧹 Clean old caches** removes caches left by other resolutions or models (never images or captions).
+- **Arguments typed any way** — Optimizer, LR Scheduler and Network Arguments accept spaces, commas, new lines, quotes and `key = value`.
+- **Presets** — model paths are filled from the `Training_Models_*` folders next to the app on Windows and Linux (relative paths included), the last preset loads at start and older presets are recognized correctly.
+- **2 px larger fonts** everywhere, and updated libraries: transformers 5.19, diffusers 0.41, newer accelerate / safetensors / huggingface_hub / PyAV.
+
+---
+
+## 12 October 2026 Version 36.0 Update
+
+- **New unified interface** — 🖼️ Image Models, 🎬 Video Models, 🔊 Audio Models, 🧰 Tools and 📜 Version History. Pick the base model, choose LoRA or Fine-Tuning, and the measured preset for your GPU loads; every setting is grouped in searchable sections. The classic per-model tabs are still available with `python gui.py --classic`.
+- **SDXL and FLUX.1 Dev training** through kohya sd-scripts, with the proven DreamBooth / LoRA presets for every GPU tier.
+- **Presets in `Training_Presets`**, your own presets saved by name, the last preset per model reloaded at start, and presets of another model or training type detected before they are applied.
+- **Live Training Monitor** (stages, step progress, loss chart, learning rate, speed, ETA, VRAM, log), **🔍 Check dataset** with problems and previews of what the model trains on, and a **⚡ VRAM panel** that shows what a changed setting does to VRAM before Start.
+- **Settings reach the trainer exactly**: values are written in the types the trainer reads, pasted paths are cleaned, and Start / Print Command list every unusable setting by name before anything runs.
+
+---
+
 ## 11 October 2026 Version 35.0 Update
 
 - **Five new model families, each in its own tab**

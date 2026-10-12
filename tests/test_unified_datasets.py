@@ -299,21 +299,34 @@ def test_the_next_start_after_caching_still_finds_every_folder(tmp_path, backend
     assert len(_load(second)["datasets"]) == len(_load(first)["datasets"])
 
 
-def test_check_dataset_names_the_folders_start_would_skip(tmp_path):
+def test_check_dataset_ignores_inner_folders_instead_of_skipping_the_folder(tmp_path):
+    """The trainers read only the files directly inside a training folder, so an inner folder (an old
+    cache_dir_lab_1024x1024, a backup) is ignored; it once made Start skip the whole folder."""
     from musubi_tuner_gui.unified.dataset_tools import scan_dataset
 
     root, mixed, images, _videos = _mixed_dataset(tmp_path)
     (mixed / "cache_dir_images").mkdir()
     (mixed / "cache_dir").mkdir()
-    assert "Dataset looks good" in scan_dataset(str(root), profile="video")
+    report = scan_dataset(str(root), profile="video")
+    assert "Dataset looks good" in report and "Inner folders are ignored" not in report  # the current cache is no inner folder
     (images / "originals").mkdir()
     report = scan_dataset(str(root), profile="video")
-    assert "Start skips folders that contain other folders: `3_images` (has `originals`)" in report
-    assert "Dataset looks good" not in report and "`3_images` ⏭️ skipped" in report
-    assert "skips folders" not in scan_dataset(str(root), profile="audio")  # audio mode reads only the clips
-    (images / "my_cache").mkdir()  # a cache folder of its own name is fine once the check knows it
-    assert "(has `my_cache` …)" in scan_dataset(str(root), profile="video")
-    assert "(has `originals`)" in scan_dataset(str(root), profile="video", cache_directory="my_cache")
+    assert "Inner folders are ignored (only the files directly inside a training folder are trained): `3_images/originals`" in report
+    assert "skipped" not in report and "Dataset looks good" in report
+    assert "`3_images/originals`" not in scan_dataset(str(root), profile="video", report_inner=False)
+    (images / "my_cache").mkdir()  # a cache folder of its own name is not listed once the check knows it
+    assert "`3_images/my_cache`" in scan_dataset(str(root), profile="video")
+    assert "`3_images/my_cache`" not in scan_dataset(str(root), profile="video", cache_directory="my_cache")
+
+
+def test_check_dataset_explains_a_parent_folder_that_holds_the_files_itself(tmp_path):
+    from musubi_tuner_gui.unified.dataset_tools import scan_dataset
+
+    folder = tmp_path / "ohwx"
+    folder.mkdir()
+    (folder / "a.png").write_bytes(b"")
+    report = scan_dataset(str(folder), profile="image")
+    assert "holds 1 media file(s) directly but no training folders" in report and "1_ohwx" in report
 
 
 def test_ltx_audio_video_mode_keeps_videos_only_in_mixed_folders(tmp_path):
@@ -410,7 +423,8 @@ def test_edit_dataset_check_pairs_every_target_with_its_controls(tmp_path):
 
     report = inspect_dataset(_edit_dataset(tmp_path), profile="image", control_name="control_images", control_required=True, resolution=(1024, 1024))
     folders = {folder.name: folder for folder in report.folders}
-    assert folders["1_nested"].skipped == "contains the folder originals"
+    # an inner folder is ignored by the trainer, never a reason to skip its training folder
+    assert not folders["1_nested"].skipped and [(item.name, item.kind) for item in folders["1_nested"].inner] == [("originals", "empty")]
     edits = folders["2_ohwx edits"]
     # nocap.jpg has no caption: musubi does not train it, so it is no edit target either
     assert (edits.images, edits.paired, edits.unpaired, edits.unused_controls, edits.missing_captions) == (4, 2, 1, 1, 1)
@@ -422,7 +436,7 @@ def test_edit_dataset_check_pairs_every_target_with_its_controls(tmp_path):
     by_name = {os.path.basename(item.path): item for item in report.items}
     assert [os.path.basename(path) for path in by_name["t2.png"].controls] == ["t2_0.png", "t2_1.png"]
     html_text = report_html(report, "Mage-Flow Edit")
-    assert "Edit pairs" in html_text and "2 / 3" in html_text and "⏭️ 1_nested" in html_text and "NOT trained" in html_text
+    assert "Edit pairs" in html_text and "2 / 3" in html_text and "+1 inner folder (ignored)" in html_text and "NOT trained" in html_text
     previews = sample_previews(report, count=8)
     assert len(previews) == 3 and all(os.path.isfile(path) for path, _caption in previews)
     from PIL import Image
@@ -489,7 +503,7 @@ def test_dataset_check_html_escapes_names_and_captions(tmp_path):
 
 
 def test_control_image_rules_per_model():
-    """As each model's dataset generator uses control folders (a folder it does not use makes Start skip the folder)."""
+    """As each model's dataset generator uses control folders (a folder it does not use is ignored like any inner folder)."""
     from musubi_tuner_gui.unified.dataset_inspector import control_settings
 
     assert control_settings("qwen_image", {"model_version": "edit-2511", "dataset_control_directory": "edit_images"}) == ("edit_images", True)
@@ -502,7 +516,7 @@ def test_control_image_rules_per_model():
     assert control_settings("krea2", {}) == ("", False) and control_settings("zimage", {}) == ("", False)
 
 
-def test_a_control_folder_the_model_does_not_use_makes_start_skip_the_folder(tmp_path):
+def test_a_control_folder_the_model_does_not_use_is_ignored(tmp_path):
     from musubi_tuner_gui.unified.dataset_inspector import inspect_dataset
 
     folder = tmp_path / "1_ohwx"
@@ -510,7 +524,9 @@ def test_a_control_folder_the_model_does_not_use_makes_start_skip_the_folder(tmp
     caption(write_image(str(folder / "a.png")), "a photo")
     write_image(str(folder / "control_images" / "a.png"))
     report = inspect_dataset(str(tmp_path), profile="image", control_name="")  # Krea 2: no control images
-    assert report.folders[0].skipped == "contains the folder control_images" and not report.used
+    assert not report.folders[0].skipped and [os.path.basename(item.path) for item in report.used] == ["a.png"]
+    assert [(item.name, item.kind) for item in report.folders[0].inner] == [("control_images", "media")]
+    assert any(level == "warn" and "NOT trained" in text for level, text, _examples in report.problems)
 
 
 def test_kohya_folder_rules(tmp_path):

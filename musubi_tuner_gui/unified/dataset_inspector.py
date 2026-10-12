@@ -1,8 +1,9 @@
 """Dataset inspector for the unified workspaces: statistics, problems and sample previews.
 
 ``inspect_dataset`` reproduces what the trainer will read and returns a ``DatasetReport``:
-* musubi folder mode: the dataset generators' ``<repeats>_<name>`` folders (a folder holding another
-  folder is skipped), then musubi's own file selection: its extension lists, no dot files, an image
+* musubi folder mode: the dataset generators' ``<repeats>_<name>`` folders (folders inside them are ignored:
+  the trainers read only the files directly inside; old cache folders can be deleted with 🧹 Clean old
+  caches, see dataset_cleanup.py), then musubi's own file selection: its extension lists, no dot files, an image
   is trained only when a caption with exactly its stem exists, a video or audio clip without one
   stops caching, control images paired by musubi's rule (``photo.png`` -> ``photo.png``,
   ``photo_0.png``, ``photo_1.png``; any captioned target without one stops caching);
@@ -31,6 +32,7 @@ from dataclasses import dataclass, field
 from functools import lru_cache
 
 from ..dataset_config_generator import extract_repeat_count, owned_subfolder_names
+from .dataset_cleanup import classify_folder, human_size, inner_folders
 from .dataset_tools import AUDIO_EXTENSIONS, _subfolders, scan_dataset
 from .values import clean_path
 
@@ -38,6 +40,7 @@ PREVIEW_DIRNAME = "secourses_dataset_previews"
 MAX_PREVIEW_FILES = 400
 PROBE_SECONDS = 6.0  # opening every file of a big dataset (size, length, readable to the end) stops after this
 PREVIEW_SECONDS = 6.0
+INNER_SCAN_SECONDS = 3.0  # sizing the inner folders (old caches can hold thousands of files)
 CAPTION_READ_LIMIT = 20000
 EXAMPLES = 4
 PROFILE_ITEMS = {  # media each profile trains on in folder mode (dataset_tools.dataset_profile)
@@ -114,6 +117,9 @@ class FolderSummary:
     unused_controls: int = 0
     regularization: bool = False
     skipped: str = ""  # why the trainer leaves this folder out
+    repeat_source: str = "name"  # "name" (<repeats>_<name>), "none" (no prefix: 1), "zero" (0_: counted as 1), "toml", "kohya"
+    inner: list = field(default_factory=list)  # dataset_cleanup.InnerFolder: folders inside it the trainer ignores
+    active_caches: list = field(default_factory=list)  # the cache folders the current settings use, when they exist
 
 
 @dataclass
@@ -134,6 +140,14 @@ class DatasetReport:
     kohya: bool = False
     unknown_sound: int = 0  # audio mode: videos the time limit left unchecked (counted as having sound)
     error: str = ""  # the folder itself is unusable (not set, missing)
+    epochs: int | None = None  # Max Train Epochs (the trainers prefer it over Max Train Steps)
+    max_steps: int | None = None
+    gradient_accumulation: int = 1
+    cache_directory: str = "cache_dir"
+
+    @property
+    def inner_folders(self) -> list:
+        return [inner for folder in self.folders for inner in folder.inner]
 
     @property
     def used(self) -> list:
@@ -201,8 +215,8 @@ def match_controls(targets: list, controls: list) -> tuple[dict, list, list]:
 
 def control_settings(backend: str, values: dict) -> tuple[str, bool]:
     """(control folder name, whether every image needs one) the way the selected model's dataset generator uses
-    control images. "" when it takes none: the generators then treat a control folder like any other inner
-    folder and skip the training folder that holds it (Krea 2, Ideogram 4, Z-Image pass a dummy name)."""
+    control images. "" when it takes none: the generators then ignore a control folder like any other inner
+    folder (Krea 2, Ideogram 4, Z-Image pass a dummy name); its images are not trained."""
     from .dataset_tools import qwen_control_directory
 
     if backend == "qwen_image":  # paired whenever the folder exists; the Edit versions train with them
@@ -300,15 +314,23 @@ def inspect_dataset(
     kohya: bool = False,
     regularization_folder: str = "",
     probe_seconds: float = PROBE_SECONDS,
+    epochs=None,
+    max_steps=None,
+    gradient_accumulation=1,
 ) -> DatasetReport:
     """Folder mode (``parent``: <repeats>_<name> sub-folders), a dataset TOML (``dataset_toml``: musubi
-    ``[[datasets]]`` or kohya ``[[datasets.subsets]]``) or kohya's folder rule (``kohya``)."""
+    ``[[datasets]]`` or kohya ``[[datasets.subsets]]``) or kohya's folder rule (``kohya``). ``epochs`` /
+    ``max_steps`` / ``gradient_accumulation`` only feed the repeats & steps summary."""
     report = DatasetReport(clean_path(dataset_toml or parent), profile, str(caption_extension or ""), control_name, control_required)
     report.kohya = kohya
+    report.cache_directory = clean_path(cache_directory) or "cache_dir"
     try:
         report.batch_size = max(1, int(float(batch_size or 1)))
     except (TypeError, ValueError):
         report.batch_size = 1
+    report.epochs = _positive_int(epochs)
+    report.max_steps = _positive_int(max_steps)
+    report.gradient_accumulation = _positive_int(gradient_accumulation) or 1
     report.resolution = resolution
     if report.caption_extension and not report.caption_extension.startswith("."):
         report.problems.append(("error", f"Caption Extension '{report.caption_extension}' has no leading dot: the trainer would look for 'photo{report.caption_extension}'. Use '.{report.caption_extension}'.", []))
@@ -333,8 +355,8 @@ def _folder_sources(report: DatasetReport, cache_directory: str) -> list:
         return []
     profile, control_name = report.profile, report.control_name
     pairs_possible = profile == "image" and bool(control_name)
-    # what the selected model trains on and which folders Start skips: one rule set (scan_dataset). Sound,
-    # control folders and missing captions are measured below, with example files.
+    # what the selected model trains on: one rule set (scan_dataset). Sound, control folders, missing captions
+    # and inner folders are measured below, with example files.
     try:
         report.notes_markdown = scan_dataset(
             report.parent,
@@ -344,33 +366,54 @@ def _folder_sources(report: DatasetReport, cache_directory: str) -> list:
             cache_directory=cache_directory,
             allowed_folders=(control_name,) if pairs_possible else (),
             probe_audio=False,
+            report_inner=False,
         ).split("\n\n", 1)[-1]
     except OSError as exc:
         report.problems.append(("warn", f"Part of the dataset folder cannot be read: {exc.strerror or exc}", []))
-    owned = owned_subfolder_names(clean_path(cache_directory) or "cache_dir", control_name if pairs_possible else "")
+    cache = clean_path(cache_directory) or "cache_dir"
+    owned = owned_subfolder_names(cache, control_name if pairs_possible else "")
     try:
         folders = _subfolders(report.parent)
     except OSError as exc:
         report.error = f"The dataset folder cannot be read: {exc.strerror or exc}"
         return []
     sources = []
+    deadline = time.monotonic() + INNER_SCAN_SECONDS
     for folder in folders:
         name = os.path.basename(folder)
         if name.startswith("."):
             continue
-        summary = FolderSummary(name, folder, extract_repeat_count(name)[0])
+        summary = FolderSummary(name, folder, extract_repeat_count(name)[0], repeat_source=_repeat_source(name))
         report.folders.append(summary)
         try:
-            inner = [entry for entry in os.listdir(folder) if not entry.startswith(".") and entry not in owned and os.path.isdir(os.path.join(folder, entry))]
+            os.listdir(folder)
         except OSError as exc:
             summary.skipped = f"cannot be read ({exc.strerror or exc})"
             continue
-        if inner and profile != "audio":  # the generators skip a folder that holds other folders
-            summary.skipped = f"contains the folder {sorted(inner)[0]}"
-            continue
+        # the trainers read only the files directly inside a training folder: inner folders are ignored, never a
+        # reason to skip the folder (an old cache_dir_<W>x<H> next to the current cache is common)
+        summary.inner = inner_folders(folder, owned, deadline)
+        if not os.path.isabs(cache):
+            summary.active_caches = [path for path in (os.path.join(folder, cache), os.path.join(folder, cache + "_images")) if os.path.isdir(path)]
         kinds = PROFILE_ITEMS.get(profile, ("image",))
         sources.append(_Source(summary, kinds, os.path.join(folder, control_name) if pairs_possible else "", caption_extension=report.caption_extension))
     return sources
+
+
+def _repeat_source(folder_name: str) -> str:
+    """Where a musubi folder's repeat count comes from (dataset_config_generator.parse_repeat_count's rule)."""
+    match = re.match(r"^(\d+)_(.+)$", folder_name)
+    if match:
+        return "zero" if int(match.group(1)) < 1 else "name"
+    return "none"
+
+
+def _positive_int(value) -> int | None:
+    try:
+        number = int(float(str(value).replace(",", "").strip()))
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
 
 
 def _kohya_repeats(name: str) -> int:
@@ -406,16 +449,18 @@ def _kohya_sources(report: DatasetReport, regularization_folder: str = "") -> li
         except OSError as exc:
             report.problems.append(("warn", f"{root} cannot be read: {exc.strerror or exc}", []))
             continue
+        deadline = time.monotonic() + INNER_SCAN_SECONDS
         for folder in folders:
             name = os.path.basename(folder)
             if name.startswith("."):
                 continue
             repeats = _kohya_repeats(name)
-            summary = FolderSummary(("reg: " if regularization else "") + name, folder, repeats, regularization=regularization)
+            summary = FolderSummary(("reg: " if regularization else "") + name, folder, repeats, regularization=regularization, repeat_source="kohya")
             report.folders.append(summary)
             if repeats < 1:
                 summary.skipped = "ignored by kohya: the name must start with the repeat count, e.g. 10_ohwx man"
                 continue
+            summary.inner = inner_folders(folder, set(), deadline)  # kohya reads the files directly inside only
             sources.append(_Source(summary, ("image",), caption_extension=report.caption_extension, class_captions=True))
     return sources
 
@@ -471,13 +516,23 @@ def _toml_sources(report: DatasetReport) -> list:
             repeats = 1
             report.problems.append(("error", f"Dataset {index}: num_repeats '{entry.get('num_repeats')}' is not a whole number.", []))
         name = f"{index}: {os.path.basename(folder.rstrip(os.sep)) or folder} ({kinds[0]}s)"
-        summary = FolderSummary(name, folder, repeats)
+        summary = FolderSummary(name, folder, repeats, repeat_source="toml")
         report.folders.append(summary)
         if not os.path.isdir(folder):
             summary.skipped = f"folder not found: {folder}"
             continue
         control = entry.get("control_directory")
         extension = str(entry.get("caption_extension") or default_extension)
+        # the folders this dataset itself uses (its cache, its control images) are not "ignored inner folders"
+        owned = set()
+        for used_folder in (entry.get("cache_directory"), control):
+            if used_folder:
+                used_path = _toml_path(used_folder, base)
+                if os.path.normcase(os.path.dirname(os.path.normpath(used_path))) == os.path.normcase(os.path.normpath(folder)):
+                    owned.add(os.path.basename(os.path.normpath(used_path)))
+                    if used_folder == entry.get("cache_directory") and os.path.isdir(used_path):
+                        summary.active_caches.append(used_path)
+        summary.inner = inner_folders(folder, owned, time.monotonic() + INNER_SCAN_SECONDS)
         sources.append(_Source(summary, kinds, _toml_path(control, base) if control else "", bool(control), extension, class_captions=kohya))
         if entry.get("resolution") and not report.resolution:
             report.resolution = _toml_resolution(entry.get("resolution"))
@@ -599,7 +654,108 @@ def _examples(names: list) -> list:
     return names[:EXAMPLES] + ([f"… and {len(names) - EXAMPLES} more"] if len(names) > EXAMPLES else [])
 
 
+def _media_counts(media: dict) -> str:
+    names = {"image": "image", "video": "video", "audio": "audio clip"}
+    return ", ".join(f"{count} {names[kind]}{'s' if count != 1 else ''}" for kind, count in media.items() if count)
+
+
+def _inner_folder_problems(report: DatasetReport) -> None:
+    """Folders inside training folders: never a reason to skip a folder, but media in them is not trained."""
+    inner = report.inner_folders
+    if not inner:
+        return
+    add = report.problems.append
+    media = [item for item in inner if item.kind == "media"]
+    caches = [item for item in inner if item.kind == "cache"]
+    others = [item for item in inner if item.kind not in ("media", "cache")]
+    if media:
+        add((
+            "warn",
+            f"{len(media)} folder(s) inside training folders hold media that is NOT trained: a training folder trains only the files "
+            f"directly inside it. To train them, move each one next to your training folders (for example as `1_{media[0].name}`).",
+            _examples([f"{item.label} ({_media_counts(item.media)})" for item in media]),
+        ))
+    if caches:
+        size = sum(item.size for item in caches)
+        add((
+            "info",
+            f"{len(caches)} old cache folder(s) ({human_size(size)}) inside the training folders are ignored: this run caches into "
+            f"`{report.cache_directory}`. **🧹 Clean old caches** deletes them.",
+            _examples([f"{item.label} ({item.files} files, {human_size(item.size)})" for item in caches]),
+        ))
+    if others:
+        reasons = {"linked": "a link", "empty": "empty", "other": "no media"}
+        add((
+            "info",
+            f"{len(others)} other folder(s) inside training folders are ignored by the trainer.",
+            _examples([f"{item.label} ({reasons.get(item.kind, item.kind)})" for item in others]),
+        ))
+
+
+def clean_plan(report: DatasetReport) -> dict:
+    """What 🧹 Clean old caches may delete: the old cache folders inside the training folders and, only when the user
+    ticks it, the cache folders the current settings use. Each target carries its training folder (the only folder
+    it may be deleted from)."""
+    old = [(inner.path, folder.path, inner) for folder in report.folders for inner in folder.inner if inner.kind == "cache"]
+    current = []
+    for folder in report.folders:
+        for path in folder.active_caches:
+            item = classify_folder(path, folder.name)
+            if item.kind == "cache":
+                current.append((path, folder.path, item))
+    return {
+        "old": [(path, root) for path, root, _item in old],
+        "current": [(path, root) for path, root, _item in current],
+        "old_items": [item for _path, _root, item in old],
+        "current_items": [item for _path, _root, item in current],
+    }
+
+
+def clean_question_html(report: DatasetReport, plan: dict) -> tuple[str, str]:
+    """(question, result): the question lists what Delete removes; with nothing to delete only a result is shown."""
+    if report.error:
+        return "", f'<div class="ds-problem ds-error">❌ {html.escape(report.error)}</div>'
+    old, current = plan["old_items"], plan["current_items"]
+    if not old and not current:
+        others = [inner for inner in report.inner_folders if inner.kind != "cache"]
+        extra = f" {len(others)} other inner folder(s) hold no cache files and are never deleted." if others else ""
+        return "", f'<div class="ds-problem ds-ok">✅ No old cache folders inside the training folders: nothing to clean.{html.escape(extra)}</div>'
+
+    def listing(items) -> str:
+        shown = "".join(f"<li>{html.escape(item.label)} — {item.files} files, {human_size(item.size)}</li>" for item in items[:40])
+        more = f"<li>… and {len(items) - 40} more</li>" if len(items) > 40 else ""
+        return f"<ul>{shown}{more}</ul>"
+
+    parts = [f'<div data-clean-count="{len(old) + len(current)}">']
+    if old:
+        parts.append(f"<b>🧹 Delete {len(old)} old cache folder(s) ({human_size(sum(item.size for item in old))})?</b> "
+                     "They hold only cache files the current settings do not use; nothing else is touched.")
+        parts.append(listing(old))
+    else:
+        parts.append("<b>No old cache folders.</b>")
+    if current:
+        parts.append(f"<div>The current cache folder(s) ({len(current)}, {human_size(sum(item.size for item in current))}) are kept "
+                     "unless you tick <i>Also delete the current cache folder</i>.</div>")
+        parts.append(listing(current))
+    parts.append("</div>")
+    return "".join(parts), ""
+
+
+def clean_result_html(removed: list, problems: list, freed: int) -> str:
+    parts = []
+    if removed:
+        names = ", ".join(removed[:8]) + (f" and {len(removed) - 8} more" if len(removed) > 8 else "")
+        parts.append(f'<div class="ds-problem ds-ok">🧹 Deleted {len(removed)} cache folder(s), {human_size(freed)} freed: {html.escape(names)}</div>')
+    if problems:
+        items = "".join(f"<li>{html.escape(problem)}</li>" for problem in problems[:12])
+        parts.append(f'<div class="ds-problem ds-warn">⚠️ {len(problems)} folder(s) were not deleted:<ul>{items}</ul></div>')
+    if not parts:
+        parts.append('<div class="ds-problem ds-info">Nothing was deleted.</div>')
+    return "".join(parts)
+
+
 def _collect_problems(report: DatasetReport, found: dict, create_missing_captions: bool) -> None:
+    _inner_folder_problems(report)
     add = report.problems.append
     control = report.control_name or "control_images"
     if found["rejected"]:
@@ -721,6 +877,72 @@ def steps_per_epoch(report: DatasetReport) -> float:
     return trained / report.batch_size
 
 
+REPEAT_SOURCES = {
+    "name": "from the folder name: <repeats>_<name>",
+    "none": "the folder name has no repeat prefix: trained once per epoch",
+    "zero": "a 0_ prefix would train nothing: counted as 1",
+    "toml": "num_repeats in the dataset TOML",
+    "kohya": "kohya: the number before the first _ of the folder name",
+}
+
+
+def _inner_badge(folder: FolderSummary) -> str:
+    if not folder.inner:
+        return ""
+    names = ", ".join(inner.name for inner in folder.inner[:6]) + (" …" if len(folder.inner) > 6 else "")
+    return f' <span class="ds-inner" title="Ignored inner folders: {html.escape(names)}">+{len(folder.inner)} inner folder{"s" if len(folder.inner) != 1 else ""} (ignored)</span>'
+
+
+def _repeats_html(report: DatasetReport, trained_by_folder: dict) -> str:
+    """How the repeat counts turn files into samples and steps (folder names, batch size, epochs)."""
+    active = [folder for folder in report.folders if not folder.skipped and not folder.regularization]
+    if not active:
+        return ""
+    samples = sum(trained_by_folder.get(folder.name, 0) * folder.repeats for folder in active)
+    if report.kohya:
+        rule = (
+            "kohya reads every folder whose name starts with its repeat count: <code>10_ohwx man</code> shows each of its images "
+            "10 times per epoch; a folder without that number is ignored."
+        )
+    elif any(folder.repeat_source == "toml" for folder in active):
+        rule = "Each dataset of the TOML file is repeated <code>num_repeats</code> times per epoch."
+    else:
+        rule = (
+            "The number before the first <code>_</code> of a training folder's name is its repeat count: <code>5_ohwx</code> shows each "
+            "of its files 5 times per epoch. Use it to balance folders (10 images × 3 repeats weigh as much as 30 images × 1). "
+            "A folder without the number trains once per epoch; <code>0_</code> would train nothing and counts as 1."
+        )
+    lines = [f"<b>{samples:,}</b> sample(s) per epoch (trained files × repeats)"]
+    regularization = report.kohya and report.regularization_images
+    if regularization:
+        lines.append("regularization images double that (kohya repeats them up to the number of training images)")
+    per_epoch = steps_per_epoch(report)
+    accumulation = max(1, report.gradient_accumulation or 1)
+    optimizer_steps = math.ceil(per_epoch / accumulation) if per_epoch else 0
+    batch_text = f"÷ batch size {report.batch_size}"
+    if accumulation > 1:
+        batch_text += f" ÷ gradient accumulation {accumulation}"
+    lines.append(f"{batch_text} = <b>≈ {optimizer_steps:,}</b> step(s) per epoch (buckets of different sizes can add a few)")
+    if report.epochs and optimizer_steps:
+        lines.append(f"× {report.epochs:,} epochs = <b>≈ {optimizer_steps * report.epochs:,}</b> steps in total (Max Train Epochs decides; Max Train Steps is ignored then)")
+    elif report.max_steps and optimizer_steps:
+        lines.append(f"Max Train Steps {report.max_steps:,} ≈ {report.max_steps / optimizer_steps:,.1f} epochs")
+    zero = [folder.name for folder in active if folder.repeat_source == "zero"]
+    unnamed = [folder.name for folder in active if folder.repeat_source == "none"]
+    notes = []
+    if zero:
+        notes.append(f"⚠️ {html.escape(', '.join(zero[:4]))}: a <code>0_</code> prefix trains nothing; it is counted as 1. Rename it to e.g. <code>1_…</code>.")
+    if unnamed:
+        notes.append(f"ℹ️ {html.escape(', '.join(unnamed[:4]))}{' …' if len(unnamed) > 4 else ''}: no repeat prefix, trained once per epoch (rename to e.g. <code>3_{html.escape(unnamed[0])}</code> to repeat it).")
+    return (
+        '<div class="ds-repeats"><div class="ds-chart-title">🔁 Repeats &amp; steps</div>'
+        f'<div class="ds-repeats-rule">{rule}</div>'
+        '<div class="ds-repeats-math">' + " · ".join(lines) + "</div>"
+        + "".join(f'<div class="ds-repeats-note">{note}</div>' for note in notes)
+        + "</div>"
+    )
+
+
 def report_html(report: DatasetReport, model_name: str = "") -> str:
     if report.error:
         return f'<div class="ds-report"><div class="ds-problem ds-error">❌ {html.escape(report.error)}</div></div>'
@@ -773,21 +995,33 @@ def report_html(report: DatasetReport, model_name: str = "") -> str:
     for level, text, examples in sorted(report.problems, key=lambda problem: ("error", "warn", "info").index(problem[0])):
         details = "".join(f"<li>{html.escape(example)}</li>" for example in examples)
         parts.append(f'<div class="ds-problem ds-{level}">{icons[level]} {markdown_inline(text)}' + (f"<ul>{details}</ul>" if details else "") + "</div>")
-    # per-folder table
-    head = "<tr><th>Folder</th><th>Repeats</th><th>Images</th><th>Videos</th><th>Audio</th><th>Missing captions</th>" + ("<th>Pairs</th>" if paired_folders else "") + "</tr>"
+    # per-folder table: what each folder holds, how often it is repeated and what that weighs in one epoch
+    head = (
+        "<tr><th>Folder</th><th>Images</th><th>Videos</th><th>Audio</th><th>Missing captions</th>"
+        + ("<th>Pairs</th>" if paired_folders else "")
+        + "<th>Trained files</th><th>Repeats</th><th>Samples / epoch</th></tr>"
+    )
+    columns = 8 + bool(paired_folders)
+    trained_by_folder: dict = {}
+    for item in used:
+        trained_by_folder[item.folder] = trained_by_folder.get(item.folder, 0) + 1
     rows = []
     for folder in report.folders:
         if folder.skipped:
-            rows.append(f'<tr class="ds-skipped"><td>⏭️ {html.escape(folder.name)}</td><td colspan="{6 if paired_folders else 5}">skipped: {html.escape(folder.skipped)}</td></tr>')
+            rows.append(f'<tr class="ds-skipped"><td>⏭️ {html.escape(folder.name)}</td><td colspan="{columns}">skipped: {html.escape(folder.skipped)}</td></tr>')
             continue
         pairs = ""
         if paired_folders:
             pairs = f"<td>{folder.paired}/{folder.paired + folder.unpaired}{' ⚠️' if folder.unpaired else ''}</td>" if folder.control_folder else "<td>—</td>"
+        trained_files = trained_by_folder.get(folder.name, 0)
         rows.append(
-            f"<tr><td>{html.escape(folder.name)}</td><td>{folder.repeats}</td><td>{folder.images}</td><td>{folder.videos}</td><td>{folder.audio}</td>"
-            f"<td>{folder.missing_captions}{' ⚠️' if folder.missing_captions else ''}</td>{pairs}</tr>"
+            f"<tr><td>{html.escape(folder.name)}{_inner_badge(folder)}</td><td>{folder.images}</td><td>{folder.videos}</td><td>{folder.audio}</td>"
+            f"<td>{folder.missing_captions}{' ⚠️' if folder.missing_captions else ''}</td>{pairs}"
+            f"<td>{trained_files}</td><td title=\"{html.escape(REPEAT_SOURCES.get(folder.repeat_source, ''))}\">×{folder.repeats}{' ⚠️' if folder.repeat_source == 'zero' else ''}</td>"
+            f"<td>{trained_files * folder.repeats:,}</td></tr>"
         )
     parts.append(f'<div class="ds-table-wrap"><table class="ds-table">{head}{"".join(rows)}</table></div>')
+    parts.append(_repeats_html(report, trained_by_folder))
     # distributions
     charts = []
     if sizes:

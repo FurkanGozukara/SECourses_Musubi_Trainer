@@ -233,3 +233,10 @@ tests/*
 !tests/test_unified_ui.py
 !tests/test_unified_values.py
 !tests/test_unified_vram.py
+!tests/test_unified_adapter.py
+!tests/test_kohya_dora.py
+!tests/test_lora_merge_dora.py
+!tests/test_dataset_cleanup.py
+!tests/test_portable_model_paths.py
+!tests/test_argument_lists.py
+!tests/test_preset_identity.py

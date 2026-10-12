@@ -123,10 +123,37 @@ def resolve_portable_model_path(value):
         return original
 
     matches: list[Path] = []
+    # A relative path ("Training_Models_Qwen/x.safetensors", "../Training_Models_Qwen/x.safetensors") is
+    # relative to the install folder or the app folder, wherever the app was started from.
+    if not os.path.isabs(expanded) and not re.match(r"^[A-Za-z]:", expanded) and not expanded.startswith(("/", "\\")):
+        install_root = Path(scriptdir).resolve()
+        for base in (install_root.parent, install_root):
+            candidate = Path(os.path.normpath(os.path.join(str(base), *parts)))
+            try:
+                if candidate.exists():
+                    matches.append(candidate)
+                    break
+            except (OSError, ValueError):
+                continue
+
     directories = _training_model_directories()
+    # A path inside a Training_Models* folder of any machine (Windows, Linux, another drive): the part below
+    # that folder, inside the same-named folder here.
+    if not matches:
+        anchor = next((index for index in range(len(parts) - 2, -1, -1) if parts[index].casefold().startswith("training_models")), None)
+        if anchor is not None:
+            for directory in directories:
+                if directory.name.casefold() != parts[anchor].casefold():
+                    continue
+                candidate = directory.joinpath(*parts[anchor + 1:])
+                try:
+                    if candidate.exists():
+                        matches.append(candidate)
+                except (OSError, ValueError):
+                    continue
     # Snapshot folders (e.g. Kandinsky 6 Diffusers) repeat generic names such as "vae" or
     # "diffusion_pytorch_model.safetensors", so first try the longest tail of the original path.
-    for tail_length in (3, 2):
+    for tail_length in (3, 2) if not matches else ():
         if len(parts) < tail_length:
             continue
         tail = Path(*parts[-tail_length:])

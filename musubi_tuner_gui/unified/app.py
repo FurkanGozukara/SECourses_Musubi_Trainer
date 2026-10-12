@@ -16,7 +16,7 @@ from .workspace import Workspace
 
 log = setup_logging()
 
-APP_VERSION = "V36 · Unified UI"
+APP_VERSION = "V37 · DoRA"
 
 
 def _hero() -> str:
@@ -162,18 +162,15 @@ def _unavailable_card(category: str) -> str:
 
 WHATS_NEW_HTML = """
 <div class="ud-whatsnew">
-  <h3>✨ V36 — New unified interface</h3>
+  <h3>✨ V37 — DoRA for every model</h3>
   <ul>
-    <li><b>One workspace per category</b> — Image, Video and Audio models share one layout: pick the base model, choose LoRA or Fine-Tuning, and a GPU preset for your card loads automatically.</li>
-    <li><b>Presets everywhere</b> — shipped presets live in <code>Training_Presets</code>; save your own by name (stored in <code>user_presets</code>) or by full path; the last used preset reloads when the app starts.</li>
-    <li><b>Guardrails</b> — a preset made for another model, training type or category is detected before it is applied.</li>
-    <li><b>Live Training Monitor</b> — stages, step progress, epoch, loss chart, learning rate, speed, ETA, VRAM and the last 100 log lines, built to stay smooth for runs of any length.</li>
-    <li><b>SDXL and FLUX.1 Dev</b> training (kohya sd-scripts) with the proven presets: SDXL DreamBooth fine-tuning, FLUX.1 Dev LoRA and DreamBooth fine-tuning.</li>
-    <li><b>Model tips and checks</b> — every model shows its own tips; Start and Print Command list every setting that needs attention by name (dataset folder, numbers that are empty or not whole, …).</li>
-    <li><b>Settings reach the trainer exactly</b> — paths pasted with quotes, spaces or either slash are cleaned, numbers like <code>1e-4</code>, <code>0,0001</code> or <code>10,000</code> are understood, and every value is written in the type the trainer expects.</li>
-    <li><b>Every dataset a model supports</b> — video models train images, videos or both (also from one folder); LTX 2.3 Audio trains on audio clips and on the sound of your videos (extracted automatically).</li>
-    <li><b>🔍 Check dataset</b> — statistics, every problem with example files and sample previews of what the selected model will train on: edit models show each target beside its reference images (and flag images without one or misnamed references), videos their first frame and length, audio its waveform. Works for dataset folders and dataset TOML files.</li>
-    <li><b>⚡ VRAM panel</b> — changing resolution, frames, frame rate, batch size, control / edit images, block swap, checkpointing or FP8 shows what it does to VRAM, compared with the preset's measured peak and your GPU, before you press Start.</li>
+    <li><b>🧬 DoRA training for every model</b> — <b>Adapter Type</b> (LoRA / DoRA) is the first setting of the LoRA Network section. Every shipped LoRA preset now trains DoRA (Wan 2.2 presets that train both experts stay LoRA); switch back to LoRA at any time. Measured on every model's 32 GB preset: about 10% more time per step than LoRA and the same VRAM within about half a GB.</li>
+    <li><b>Works in ComfyUI and SwarmUI</b> — DoRA files use the input-axis <code>dora_scale</code> that ComfyUI applies exactly; Z-Image, Qwen-Image 2.1 and HiDream-O1 need the updated <b>SECoursesAudioTools</b> nodes.</li>
+    <li><b>AutomagicEXPERIMENT optimizer</b> (from Ostris AI Toolkit) next to Automagic v1-v3 on every training pipeline, including FLUX.1 / SDXL.</li>
+    <li><b>Better training samples</b> — Krea 2 and Qwen-Image 2.1 samples use CFG like the official samplers, and samples show the trained weights without LoRA dropout.</li>
+    <li><b>🔍 Check dataset</b> — inner folders are listed instead of reported as skipped, a <b>🔁 Repeats &amp; steps</b> panel computes steps per epoch and total steps, and <b>🧹 Clean old caches</b> removes caches of other resolutions or models.</li>
+    <li><b>Arguments typed any way</b> — optimizer, scheduler and network arguments accept spaces, commas, new lines, quotes and <code>key = value</code>.</li>
+    <li><b>Linux</b> — paths pasted from Windows are normalized and the same seed trains the same batches as on Windows. The full version history is below.</li>
   </ul>
 </div>
 """

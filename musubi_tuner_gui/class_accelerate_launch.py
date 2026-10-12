@@ -1,5 +1,6 @@
 import gradio as gr
 import os
+import re
 import shlex
 
 from .class_gui_config import GUIConfig
@@ -7,6 +8,40 @@ from .custom_logging import setup_logging
 
 # Set up logging
 log = setup_logging()
+
+
+def normalize_gpu_ids(value) -> str:
+    """accelerate's --gpu_ids: "0", "0,1". Spaces, ';' or a list / brackets as typed are accepted; anything that is not a
+    GPU number is refused (accelerate would otherwise fail after the run started, or use other GPUs)."""
+    if isinstance(value, (list, tuple)):
+        value = ",".join(str(item) for item in value)
+    text = str(value or "").strip().strip("'\"[](){}").strip()
+    if not text:
+        return ""
+    parts = [part for part in re.split(r"[\s,;]+", text) if part]
+    bad = [part for part in parts if not part.isdigit() or int(part) > 128]
+    if bad:
+        raise ValueError(f"GPU IDs must be GPU numbers separated by commas (for example 0 or 0,1), got: {value}")
+    return ",".join(dict.fromkeys(str(int(part)) for part in parts))
+
+
+def split_launch_args(value) -> list:
+    """Extra accelerate launch arguments as separate list items (quotes group a value with spaces)."""
+    text = str(value or "").strip()
+    if not text:
+        return []
+    try:
+        tokens = shlex.split(text, posix=os.name != "nt")  # Windows: backslashes in paths are not escapes
+    except ValueError:
+        tokens = text.split()
+    cleaned = []
+    for token in tokens:
+        token = token.strip()
+        if os.name == "nt" and len(token) >= 2 and token[0] == token[-1] and token[0] in "\"'":
+            token = token[1:-1]
+        if token:
+            cleaned.append(token)
+    return cleaned
 
 
 class AccelerateLaunch:
@@ -161,30 +196,24 @@ class AccelerateLaunch:
         if "dynamo_use_dynamic" in kwargs and kwargs.get("dynamo_use_dynamic"):
             run_cmd.append("--dynamo_use_dynamic")
 
-        if (
-            "extra_accelerate_launch_args" in kwargs
-            and kwargs["extra_accelerate_launch_args"]
-        ):
-            extra_accelerate_launch_args = kwargs[
-                "extra_accelerate_launch_args"
-            ].replace('"', "")
-            for arg in extra_accelerate_launch_args.split():
-                run_cmd.append(shlex.quote(arg))
+        # run_cmd is started as an argument list (no shell): every item reaches accelerate exactly as written, so
+        # nothing may be shell-quoted here (a quoted '0, 1' or a quoted path would arrive with its quotes)
+        run_cmd.extend(split_launch_args(kwargs.get("extra_accelerate_launch_args")))
 
         # Only pass gpu_ids if it's actually specified (not empty)
-        gpu_ids = str(kwargs.get("gpu_ids") or "").strip()
+        gpu_ids = normalize_gpu_ids(kwargs.get("gpu_ids"))
         if gpu_ids:
             run_cmd.append("--gpu_ids")
-            run_cmd.append(shlex.quote(gpu_ids))
+            run_cmd.append(gpu_ids)
 
-        main_process_port = int(kwargs.get("main_process_port") or 0)
+        main_process_port = int(float(kwargs.get("main_process_port") or 0))
         if main_process_port > 0:
             run_cmd.append("--main_process_port")
             run_cmd.append(str(main_process_port))
 
         if "mixed_precision" in kwargs and kwargs.get("mixed_precision"):
             run_cmd.append("--mixed_precision")
-            run_cmd.append(shlex.quote(kwargs["mixed_precision"]))
+            run_cmd.append(str(kwargs["mixed_precision"]).strip())
 
         if "multi_gpu" in kwargs and kwargs.get("multi_gpu"):
             run_cmd.append("--multi_gpu")

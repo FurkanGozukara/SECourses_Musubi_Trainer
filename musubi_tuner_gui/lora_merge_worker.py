@@ -233,6 +233,11 @@ def _merge_loras_only(
                     merged_metadata = {}
 
             weights_sd = load_file(lora_path)
+            if any(key.endswith((".dora_scale", ".lora_magnitude_vector.weight")) for key in weights_sd):
+                return "error", (
+                    f"{os.path.basename(lora_path)} is a DoRA: its magnitudes rescale the whole base weight and cannot be "
+                    "added key by key. Merge DoRA files into the base model instead (DiT merge mode)."
+                )
             for key, tensor in weights_sd.items():
                 original_dtype = tensor.dtype
                 if key not in dtype_map:

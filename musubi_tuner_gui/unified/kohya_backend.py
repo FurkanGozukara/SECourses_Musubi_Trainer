@@ -169,7 +169,12 @@ OPTIMIZER_CHOICES = (
     "DAdaptLion",
     "SGDNesterov",
     "SGDNesterov8bit",
+    "Automagic3",
+    "AutomagicEXPERIMENT",
 )
+# musubi-tuner's adaptive-lr optimizers (installed in the same venv); sd-scripts imports any "module.Class" optimizer
+AUTOMAGIC_KOHYA_CLASSES = {"automagic3": "musubi_tuner.optimizers.Automagic3", "automagicexperiment": "musubi_tuner.optimizers.AutomagicEXPERIMENT"}
+_ADAFACTOR_ONLY_ARGS = ("scale_parameter", "relative_step", "warmup_init")
 LR_SCHEDULER_CHOICES = (
     "constant",
     "constant_with_warmup",
@@ -1468,68 +1473,22 @@ def _split_args(text: object) -> list[str]:
         return raw.split()
 
 
-def _arg_items(text: object) -> list[str]:
-    """Whitespace-separated items of an argument list. Quotes stay, because sd-scripts reads optimizer and scheduler
-    values with ast.literal_eval (mode='triangular2', step_rules='1:10,0.1:20,0.01'); only one layer of quotes around
-    a whole item goes, which keeps the space in "betas=(0.9, 0.999)"."""
-    if isinstance(text, (list, tuple)):
-        words = [str(item) for item in text]
-    else:
-        raw = str(text or "").strip()
-        lexer = shlex.shlex(raw, posix=False)
-        lexer.whitespace_split = True
-        lexer.commenters = ""
-        try:
-            words = list(lexer)
-        except ValueError:  # an unclosed quote: plain words (the argument check names the broken item)
-            words = raw.split()
-    items = []
-    for word in words:
-        word = word.strip()
-        if len(word) >= 2 and word[0] == word[-1] and word[0] in "\"'":
-            word = word[1:-1].strip()
-        if word:
-            items.append(word)
-    return items
-
-
-# a comma separates two key=value items only where the next key starts ("a=1,b=2", "a=1, b=2")
-_NEXT_KEY_RE = re.compile(r",\s*(?=[A-Za-z_][\w.]*=)")
-
-
-def _split_at_item_commas(word: str) -> list[str]:
-    """'a=1,b=2' -> 'a=1', 'b=2', but only after a complete key=value (one '=' outside quotes): sd-scripts' own
-    network_reg_lrs=single_blocks_(\\d|10)_=1e-3,double_blocks=2e-3 and quoted values stay one item."""
-    parts, start, quote, equals = [], 0, "", 0
-    for index, char in enumerate(word):
-        if quote:
-            if char == quote:
-                quote = ""
-        elif char in "\"'":
-            quote = char
-        elif char == "=":
-            equals += 1
-        elif char == "," and equals == 1 and _NEXT_KEY_RE.match(word, index):
-            parts.append(word[start:index])
-            start, equals = index + 1, 0
-    parts.append(word[start:])
-    return parts
-
-
 def _split_key_value_args(text: object, raw_values: bool = False) -> list[str]:
     """``key=value`` items of sd-scripts' optimizer / scheduler / network arguments. Like the kohya_ss GUI one item per
     whitespace-separated word, and a comma also separates items where the next ``key=`` follows a complete one. Commas
     inside a value stay: ``betas=0.9,0.999`` is one tuple argument (sd-scripts reads each value with
     ``ast.literal_eval``). ``raw_values``: network modules read their values as plain text, so double quotes go (the
     kohya_ss GUI removed them all)."""
+    from .arguments import argument_items
+
+    # one parser for every trainer: new lines, ';', "key = value", "a=1,b=2", brackets and quotes (arguments.py);
+    # optimizer / scheduler values become Python literals (true -> True, 0,01 -> 0.01)
     items = []
-    for word in _arg_items(text):
-        for part in _split_at_item_commas(word):
-            part = part.strip().strip(",").strip()
-            if raw_values:
-                part = part.replace('"', "")
-            if part:
-                items.append(part)
+    for part in argument_items(text, literal=not raw_values):
+        if raw_values:
+            part = part.replace('"', "")
+        if part:
+            items.append(part)
     return items
 
 
@@ -1592,6 +1551,23 @@ def _argument_problems(label: str, text: object, literal: bool) -> list[str]:
             f"Not readable: {', '.join(unreadable)}"
         )
     return problems
+
+
+def _automagic_for_sd_scripts(optimizer_type: str, optimizer_args: list[str], v: dict) -> tuple[str, list[str]]:
+    """musubi-tuner's Automagic3 / AutomagicEXPERIMENT for sd-scripts: the "module.Class" name it imports, without the
+    Adafactor-only arguments a preset carries (their constructors refuse them), and fused updates (during backward)
+    only where sd-scripts' loop allows them: one backward per step, no clipping, no fp16 GradScaler, one process."""
+    kept = [item for item in optimizer_args if item.split("=", 1)[0].strip() not in _ADAFACTOR_ONLY_ARGS]
+    if not any(item.split("=", 1)[0].strip() == "fused" for item in kept):
+        safe = (
+            max(_int(v["gradient_accumulation_steps"], 1), 1) == 1
+            and _number(v["max_grad_norm"]) == 0
+            and str(v["mixed_precision"] or "").strip().lower() != "fp16"
+            and _int(v["num_processes"], 1) <= 1
+            and not v.get("multi_gpu")
+        )
+        kept.append(f"fused={safe}")
+    return AUTOMAGIC_KOHYA_CLASSES[optimizer_type.casefold()], kept
 
 
 def _adafactor_relative_step(optimizer_args: object) -> bool:
@@ -2525,6 +2501,12 @@ def _validated_values(model_key: str, values: dict) -> tuple[dict, str, list[str
             elif not isinstance(_literal_value(options["step_rules"], ""), str):
                 errors.append("step_rules must be text in quotes, e.g. step_rules='1:10,0.1:20,0.01'.")
 
+    # Automagic3 / AutomagicEXPERIMENT run their own learning rate from the param group's rate at their first update:
+    # an LR warmup (which starts that rate at 0) would leave them at min_lr
+    if optimizer.casefold() in AUTOMAGIC_KOHYA_CLASSES:
+        if custom_scheduler or scheduler not in ("constant", "constant_with_warmup") or _number(v["lr_warmup_steps"]) > 0:
+            errors.append(f"{optimizer} manages its own learning rate: use the constant LR Scheduler with LR Warmup Steps 0.")
+
     # full fine-tuning
     if training_type == FULL and v.get("fused_backward_pass"):
         if optimizer.casefold() != "adafactor":
@@ -2637,8 +2619,11 @@ def _build_sd_scripts_config(model_key: str, v: dict, training_type: str) -> lis
     put("max_train_epochs", _int(v["max_train_epochs"]), _int(v["max_train_epochs"]) > 0)
     put("max_train_steps", _int(v["max_train_steps"]), _int(v["max_train_steps"]) > 0)
     put("learning_rate", _number(v["learning_rate"]))
-    put("optimizer_type", str(v["optimizer_type"]).strip())
+    optimizer_type = str(v["optimizer_type"]).strip()
     optimizer_args = _split_key_value_args(v["optimizer_args"])
+    if optimizer_type.casefold() in AUTOMAGIC_KOHYA_CLASSES:
+        optimizer_type, optimizer_args = _automagic_for_sd_scripts(optimizer_type, optimizer_args, v)
+    put("optimizer_type", optimizer_type)
     put("optimizer_args", optimizer_args, bool(optimizer_args))
     put("lr_scheduler", v["lr_scheduler"])
     warmup = _number(v["lr_warmup_steps"])

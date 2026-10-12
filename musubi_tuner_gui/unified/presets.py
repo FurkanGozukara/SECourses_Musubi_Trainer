@@ -395,11 +395,54 @@ def identify_preset(path: str, data: dict | None = None) -> PresetIdentity:
         # a clear winner only: a few common settings (learning rate, epochs) fit every trainer equally
         if scores and scores[0][0] >= 0.6 and (len(scores) == 1 or scores[0][0] - scores[1][0] > 1e-9):
             backend = scores[0][1]
+        elif scores and scores[0][0] >= 0.6:
+            # trainers with the same settings (Krea 2 / Ideogram 4 share one tab module): the file or folder name decides
+            tied = {name for score, name in scores if scores[0][0] - score <= 1e-9}
+            hinted = _name_hint(path)
+            if hinted and ENTRY_BY_KEY[hinted].backend in tied:
+                backend = ENTRY_BY_KEY[hinted].backend
     if backend is None:
         return PresetIdentity(None, None, mode, "unknown")
     entry_key = _entry_for_backend(backend, data)
     entry = ENTRY_BY_KEY.get(entry_key) if entry_key else None
     return PresetIdentity(entry.category if entry else None, entry.key if entry else None, mode or _kohya_mode(backend, data), "content")
+
+
+# (pattern on the normalized file / folder names, entry key): most specific first
+_NAME_HINTS = (
+    (r"mage.?flow.?edit", "mage_flow_edit"),
+    (r"mage.?flow", "mage_flow"),
+    (r"klein.?4b|4b.?klein", "flux2_klein_4b"),
+    (r"klein", "flux2_klein_9b"),
+    (r"flux.?2", "flux2_dev"),
+    (r"flux.?1|flux.?dev", "flux1_dev"),
+    (r"qwen.?image.?2.?1|qwen.?2.?1", "qwen_image_21"),
+    (r"qwen", "qwen_image"),
+    (r"z.?image.?turbo", "zimage_turbo"),
+    (r"z.?image", "zimage_base"),
+    (r"krea", "krea2"),
+    (r"ideogram", "ideogram4"),
+    (r"hidream", "hidream_o1"),
+    (r"ernie", "ernie_image"),
+    (r"kandinsky", "kandinsky6"),
+    (r"ltx.*audio", "ltx23_audio"),
+    (r"ltx", "ltx23"),
+    (r"minimax|(^|[^a-z])h3([^a-z0-9]|$)", "minimax_h3"),
+    (r"wan.?2.?2|wan22", "wan22"),
+    (r"wan", "wan21"),
+    (r"sdxl", "sdxl"),
+)
+
+
+def _name_hint(path: str) -> str | None:
+    """The base model a preset's file name (then its folder names) mentions, e.g. Krea_2_Fine_Tuning_Demo.toml."""
+    parts = os.path.abspath(path).replace("\\", "/").split("/")
+    for part in [parts[-1], *reversed(parts[-4:-1])]:
+        text = part.lower()
+        for pattern, entry_key in _NAME_HINTS:
+            if entry_key in ENTRY_BY_KEY and re.search(pattern, text):
+                return entry_key
+    return None
 
 
 KOHYA_LORA_KEYS = ("LoRA_type", "network_dim", "network_alpha", "network_module")

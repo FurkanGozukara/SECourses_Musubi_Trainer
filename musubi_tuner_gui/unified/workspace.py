@@ -30,8 +30,12 @@ from ..custom_logging import setup_logging
 from . import links as L
 from . import presets as P
 from .backends import Backend, get_backend, read_preset_file
+from .dataset_cleanup import remove_cache_folders
 from .dataset_inspector import (
     DatasetReport,
+    clean_plan,
+    clean_question_html,
+    clean_result_html,
     control_settings,
     inspect_dataset,
     report_html,
@@ -49,7 +53,7 @@ from .registry import (
     entries_for,
     get_entry,
 )
-from .schema import HIDDEN_KEYS
+from .schema import HIDDEN_KEYS, ROOT_DIR
 from .values import clean_path
 from .vram_advice import WATCHED_KEYS as VRAM_KEYS
 from .vram_advice import advice_html, advise
@@ -97,6 +101,8 @@ DATASET_FOLDER_KEYS = (
     "auto_generate_black_control_images",
 )
 CLIP_TASKS = ("i2v-14B", "flf2v-14B", "i2v-14B-FC")
+# timestep samplings that use --sigmoid_scale (musubi training/timestep_sampling.py, sd-scripts flux_train_utils)
+SIGMOID_SCALE_SAMPLINGS = frozenset({"sigmoid", "shift", "flux_shift", "flux2_shift", "qwen_shift", "krea2_shift", "qinglong_flux", "qinglong_qwen"})
 
 
 def _as_float(value) -> float:
@@ -128,6 +134,17 @@ RULES: tuple = (
     ("control", "use_control_images", ("control_directory_name", "no_resize_control", "control_resolution_width", "control_resolution_height"), bool, "!!v"),
     # Ideogram 4: warning instead of failing only applies while captions are validated (the save turns it off)
     ("capwarn", "validate_caption_structure", ("warn_on_caption_issues",), bool, "!!v"),
+    # settings the trainers only read (or only write to the runtime TOML) in some cases (tools/audit_parameter_passthrough.py)
+    (
+        "sigscale",
+        "timestep_sampling",
+        ("sigmoid_scale",),
+        lambda v: str(v or "") in SIGMOID_SCALE_SAMPLINGS,
+        "['sigmoid','shift','flux_shift','flux2_shift','qwen_shift','krea2_shift','qinglong_flux','qinglong_qwen'].includes(String(v))",
+    ),
+    ("modescale", "weighting_scheme", ("mode_scale",), lambda v: str(v or "") == "mode", "String(v) === 'mode'"),
+    ("bweights", "base_weights", ("base_weights_multiplier",), lambda v: bool(str(v or "").strip()), "String(v || '').trim() !== ''"),
+    ("workers", "max_data_loader_n_workers", ("persistent_data_loader_workers",), lambda v: _as_float(v) > 0, "Number(v) > 0"),
 )
 RULES_BY_DEPENDENT: dict[str, list[str]] = {}
 for _rule_id, _controller, _dependents, _predicate, _js in RULES:
@@ -381,6 +398,7 @@ class Workspace:
         self._mirrors: "OrderedDict[str, dict]" = OrderedDict()
         self._session_locks: "OrderedDict[str, threading.RLock]" = OrderedDict()
         self._reports: "OrderedDict[str, tuple]" = OrderedDict()  # last dataset check per session (New samples)
+        self._clean_plans: "OrderedDict[str, dict]" = OrderedDict()  # what 🧹 Clean asked about, per session
         self._vram_base: "OrderedDict[str, tuple]" = OrderedDict()  # what each session loaded last (VRAM panel)
         self._mirror_lock = threading.Lock()
         self._seq = itertools.count(1)
@@ -723,6 +741,9 @@ class Workspace:
         values.update(entry.default_overrides)
         values.update(entry.fixed)
         values.update(L.on_load(backend.name, entry.fixed, entry.default_overrides, values, preset_loaded=False))
+        if "output_dir" in values and not str(values.get("output_dir") or "").strip() and entry.model_folder.startswith("Training_Models"):
+            # never start without an output folder: the shipped presets' place (../Training_Outputs_<Model>)
+            values["output_dir"] = os.path.join(ROOT_DIR, "Training_Outputs" + entry.model_folder[len("Training_Models"):])
         defaults = dict(values)
         warnings: list[str] = []
         error = ""
@@ -998,8 +1019,8 @@ class Workspace:
                             container=False,
                             elem_classes=["preset-name"],
                         )
-                        self.save_btn = gr.Button("💾 Save", scale=0, min_width=96, elem_classes=["ws-btn", "ws-btn-save"])
-                        self.load_btn = gr.Button("📂 Load", scale=0, min_width=96, elem_classes=["ws-btn", "ws-btn-load"])
+                        self.save_btn = gr.Button("💾 Save", scale=0, min_width=124, elem_classes=["ws-btn", "ws-btn-save"])
+                        self.load_btn = gr.Button("📂 Load", scale=0, min_width=124, elem_classes=["ws-btn", "ws-btn-load"])
             self.banner_html = gr.HTML("", elem_classes=["ws-banner"])  # CSS hides it while empty
             self._track(self.banner_html, value="")
             card = self.model_card(entry, mode)
@@ -1065,19 +1086,35 @@ class Workspace:
         bundles = [list(bundle) for bundle in entry.download_bundles]
         with gr.Row(equal_height=True, elem_classes=["download-row"]) as self.download_row:  # shown by data-dl (CSS)
             self.bundle_dd = gr.Dropdown(label="Download model files", choices=bundles or [["", ""]], value=bundles[0][1] if bundles else None, scale=4, min_width=220)
-            self.download_btn = gr.Button("⬇️ Download", scale=0, min_width=130, elem_classes=["ws-btn", "ws-btn-load"])
-            self.download_stop_btn = gr.Button("✖ Stop", scale=0, min_width=100, elem_classes=["ws-btn", "ws-btn-ghost"])
+            self.download_btn = gr.Button("⬇️ Download", scale=0, min_width=165, elem_classes=["ws-btn", "ws-btn-load"])
+            self.download_stop_btn = gr.Button("✖ Stop", scale=0, min_width=110, elem_classes=["ws-btn", "ws-btn-ghost"])
         self._track(self.bundle_dd, choices=bundles or [["", ""]], value=bundles[0][1] if bundles else None)
         self.download_log = gr.HTML('<pre class="dl-log"></pre>', elem_classes=["ws-download-log"])
 
     def _build_dataset_tools(self) -> None:
         with gr.Row(equal_height=True, elem_classes=["dataset-tools"]):
-            self.check_dataset_btn = gr.Button("🔍 Check dataset", scale=0, min_width=190, elem_classes=["ws-btn", "ws-btn-ghost"])
-            self.samples_btn = gr.Button("🎲 New samples", scale=0, min_width=170, elem_classes=["ws-btn", "ws-btn-ghost"])
+            self.check_dataset_btn = gr.Button("🔍 Check dataset", scale=0, min_width=215, elem_classes=["ws-btn", "ws-btn-ghost"])
+            self.samples_btn = gr.Button("🎲 New samples", scale=0, min_width=205, elem_classes=["ws-btn", "ws-btn-ghost"])
+            self.clean_btn = gr.Button("🧹 Clean old caches", scale=0, min_width=255, elem_classes=["ws-btn", "ws-btn-ghost"])
             gr.HTML(
-                '<div class="ds-hint">Statistics, problems with example files and sample previews (edit models: '
+                '<div class="ds-hint">Statistics, repeats and steps, problems with example files and sample previews (edit models: '
                 "each target image beside its control images) of the dataset the selected model will train on.</div>"
             )
+        # 🧹 asks first; the question is always mounted and shown from data-cleanask (CSS), like Stop's
+        with gr.Row(equal_height=True, elem_classes=["clean-confirm"]):
+            self.clean_question = gr.HTML("", elem_classes=["clean-question"])
+            with gr.Column(scale=0, min_width=300):
+                self.clean_current = gr.Checkbox(
+                    label="Also delete the current cache folder",
+                    info="Everything is cached again on the next Start",
+                    value=False,
+                )
+                with gr.Row():
+                    self.clean_yes = gr.Button("🗑️ Delete", scale=0, min_width=130, elem_classes=["ws-clean-yes"])
+                    self.clean_no = gr.Button("Cancel", scale=0, min_width=110, elem_classes=["ws-clean-no"])
+        self.clean_result = gr.HTML("", elem_classes=["clean-result"])
+        # "<1|0>:<seq>": shows / hides the question (a new seq re-applies it after Cancel hid it in the browser)
+        self.clean_state = gr.HTML("0:0", js_on_load=CLEAN_STATE_JS.replace("__ROOT__", self.root_id), elem_classes=["ws-state"])
         # shown once, by the first check: hidden components cost nothing until then
         self.dataset_report = gr.HTML("", visible=False, elem_classes=["dataset-report"])
         self.dataset_gallery = gr.Gallery(
@@ -1494,6 +1531,40 @@ class Workspace:
             button.click(None, js=checking_js)
             button.click(handler, inputs=[self.model_radio, *fields], outputs=dataset_outputs, **quiet).then(None, js=done_js)
 
+        # ------------------------------------------------------------ 🧹 clean old caches (asks first)
+        def on_clean(request: gr.Request, entry_key, *args):
+            entry = self.entry(entry_key)
+            client = self.client_values(args)
+            self._sync_values(request, client)
+            values = self.values_for(entry, client)
+            report = self.inspect(entry, values, probe_seconds=0)  # the folders only: no file is opened
+            plan = clean_plan(report)
+            self._store(self._clean_plans, request, plan)
+            question, result = clean_question_html(report, plan)
+            return question, result, f"{1 if question else 0}:{next(self._seq)}"
+
+        def on_clean_yes(request: gr.Request, include_current):
+            key = getattr(request, "session_hash", None) or "local"
+            with self._mirror_lock:
+                plan = self._clean_plans.pop(key, None)
+            if not plan:
+                return clean_result_html([], ["Nothing to delete: press 🧹 Clean old caches again."], 0), f"0:{next(self._seq)}"
+            targets = list(plan["old"]) + (list(plan["current"]) if include_current else [])
+            removed, problems, freed = remove_cache_folders(targets)
+            if removed:
+                log.info(f"Clean old caches: removed {len(removed)} folder(s), {freed} bytes")
+            return clean_result_html(removed, problems, freed), f"0:{next(self._seq)}"
+
+        clean_outputs = [self.clean_question, self.clean_result, self.clean_state]
+        self.clean_btn.click(None, js=checking_js)
+        self.clean_btn.click(on_clean, inputs=[self.model_radio, *fields], outputs=clean_outputs, **quiet).then(None, js=done_js)
+        self.clean_no.click(None, js=ATTR_JS.replace("__ROOT__", self.root_id).replace("__ATTR__", "cleanask").replace("__EXPR__", "false"))
+        self.clean_yes.click(
+            on_clean_yes, inputs=[self.clean_current], outputs=[self.clean_result, self.clean_state], **quiet
+        ).then(  # the check shows the dataset as it is now
+            on_check, inputs=[self.model_radio, *fields], outputs=dataset_outputs, **quiet
+        )
+
         # ------------------------------------------------------------ training actions
         def on_start(request: gr.Request, entry_key, mode, tier, preset, *args):
             from .runner import RUNNER
@@ -1574,10 +1645,11 @@ class Workspace:
         backend = self.backend_of(entry)
         keys = ("dataset_config_mode", "parent_folder_path", "dataset_config", "dataset_caption_extension", "create_missing_captions",
                 "dataset_cache_directory", "dataset_batch_size", "dataset_resolution_width", "dataset_resolution_height", "reg_data_dir",
-                "use_control_images", "control_directory_name", "dataset_control_directory", "model_version", "task", "ltx2_mode")
+                "use_control_images", "control_directory_name", "dataset_control_directory", "model_version", "task", "ltx2_mode",
+                "max_train_epochs", "max_train_steps", "gradient_accumulation_steps")
         return json.dumps([entry.key, backend.name, *[str(values.get(key, "")) for key in keys]])
 
-    def inspect(self, entry: ModelEntry, values: dict) -> DatasetReport:
+    def inspect(self, entry: ModelEntry, values: dict, probe_seconds: float | None = None) -> DatasetReport:
         """The dataset the selected model would train on: the folder structure, or the dataset TOML."""
         backend = self.backend_of(entry)
         profile = dataset_profile(backend.name, values)
@@ -1601,6 +1673,10 @@ class Workspace:
             dataset_toml=str(values.get("dataset_config") or "") if toml_mode else "",
             kohya=kohya,
             regularization_folder=str(values.get("reg_data_dir") or "") if kohya else "",
+            epochs=values.get("max_train_epochs"),
+            max_steps=values.get("max_train_steps"),
+            gradient_accumulation=values.get("gradient_accumulation_steps") or 1,
+            **({"probe_seconds": probe_seconds} if probe_seconds is not None else {}),
         )
 
     def _remember_report(self, request, report: DatasetReport, seed: int, inspection: str) -> None:
@@ -1828,6 +1904,15 @@ SECTIONS_JS = """() => {
 POKE_JS = """() => { const poll = window.__udPoll && window.__udPoll['__ROOT__']; if (poll) poll(); }"""
 
 ATTR_JS = """(v) => { const r = document.getElementById('__ROOT__'); if (r) r.setAttribute('data-__ATTR__', (__EXPR__) ? '1' : '0'); }"""
+
+CLEAN_STATE_JS = """
+const apply = () => {
+  const root = document.getElementById('__ROOT__');
+  if (root) root.setAttribute('data-cleanask', String(props.value || '0').startsWith('1') ? '1' : '0');
+};
+apply();
+watch('value', apply);
+"""
 
 # the dataset check can take seconds on a big dataset: show that it runs (CSS .ds-checking)
 DATASET_BUSY_JS = """() => { const r = document.querySelector('#__ROOT__ .dataset-tools'); if (r) r.classList.add('ds-checking'); }"""

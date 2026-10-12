@@ -74,6 +74,8 @@ def clean_path(value) -> str:
             text = text[1:]
         if parsed.netloc and parsed.netloc.lower() != "localhost":
             text = f"//{parsed.netloc}{text}"
+        elif os.name != "nt" and text.startswith("//"):
+            text = "/" + text.lstrip("/")  # file:////tmp/x ("file:///" + an absolute Linux path): Linux has no UNC
     elif re.match(r"^[a-z][a-z0-9+.-]*://", text, re.I):
         return text  # http(s):// and other URLs
     if HF_REPO_RE.match(text) and not os.path.exists(text):
@@ -97,8 +99,11 @@ def _portable(text: str) -> str:
         if text.startswith("/"):
             return posixpath.normpath(text)  # a Linux path: leave it a Linux path
         return posixpath.normpath(text.replace("\\", "/"))
-    if windows_absolute and not text.startswith("//"):
-        return text  # a Windows path on Linux: leave it as written
+    # Linux: a backslash is a separator typed or pasted on Windows (..\Training_Outputs, C:\data\, a trailing \),
+    # never part of a trainer file name. A Windows path stays one (C:/data) so model paths are still relocated.
+    text = text.replace("\\", "/")
+    if windows_absolute:
+        return posixpath.normpath(text)  # C:/data/set, //server/share (posixpath keeps the double slash)
     return os.path.normpath(text)
 
 
@@ -236,32 +241,13 @@ def parse_bool(value, *, label: str = "This setting") -> bool:
 
 # ------------------------------------------------------------------------------------------------ argument lists
 def split_args(value) -> list[str]:
-    """``key=value`` argument lists (optimizer / network / scheduler args): one item per whitespace-separated
-    token, quoted parts kept together. Commas inside a value stay (``betas=0.9,0.99`` is one tuple argument);
-    stray edge commas from ``a=1, b=2`` are dropped. The classic save removes every comma from text input,
-    which breaks tuple arguments, but keeps list items as they are."""
-    import shlex
+    """``key=value`` argument lists (optimizer / network / scheduler args) as clean items, however they were typed:
+    spaces, new lines, ``;`` or commas between items, ``key = value``, brackets and quotes (arguments.py). Commas
+    inside a value stay (``betas=0.9,0.99`` is one tuple argument). The classic save removes every comma from
+    text input, which breaks tuple arguments, but keeps list items as they are."""
+    from .arguments import argument_items
 
-    if value is None:
-        return []
-    if isinstance(value, (list, tuple)):
-        items = [str(item) for item in value]
-    else:
-        text = str(value).strip()
-        if text.startswith("[") and text.endswith("]"):
-            text = text[1:-1]
-        try:
-            items = shlex.split(text, posix=False)
-        except ValueError:
-            items = text.split()
-    cleaned = []
-    for item in items:
-        item = item.strip().strip(",").strip()
-        if len(item) >= 2 and item[0] == item[-1] and item[0] in "'\"" and "=" not in item[1:2]:
-            item = item[1:-1]
-        if item:
-            cleaned.append(item)
-    return cleaned
+    return argument_items(value, literal=False)
 
 
 # ------------------------------------------------------------------------------------------------ one setting

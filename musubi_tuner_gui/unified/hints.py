@@ -19,7 +19,7 @@ MODEL_HINTS: dict[str, dict] = {
         "about": "Photoreal and artistic text-to-image model with a full-step RAW checkpoint for training and a distilled Turbo checkpoint for fast inference.",
         "all": [
             "Keep timestep sampling on krea2_shift: it applies Krea's resolution-aware shift per image, so mixed resolutions need no fixed flow shift.",
-            "RAW samples need CFG and a negative prompt (tab default CFG 5.5, 28 steps); CFG-off RAW output is blurry by design.",
+            "RAW samples need CFG (tab default CFG 5.5, 28 steps; without a negative prompt an empty one is used, as in Krea's sampler); CFG-off RAW output is blurry by design.",
             "Up to 26 blocks can be swapped; lowering block swap is where most of the speed comes from when VRAM allows.",
         ],
         "lora": [
