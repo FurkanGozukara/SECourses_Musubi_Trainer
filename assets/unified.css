@@ -438,3 +438,80 @@
 .check-grid > .form > .vh { border: 1px solid var(--ud-card-border) !important; border-radius: 10px !important; padding: 6px 10px !important; background: var(--background-fill-secondary) !important; }
 /* clip instead of hidden: same look, but the page stays the scroll container, so the VRAM panel can stick */
 .gradio-container { overflow: clip !important; }
+
+/* ---- 🏆 Best Checkpoint Finder (workspace._build_finder, checkpoint_finder.results_html) ---- */
+.bcf-intro { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 10px; margin: 2px 0 6px; }
+.bcf-step { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 12px; border: 1px solid var(--ud-card-border);
+    background: linear-gradient(135deg, var(--ud-soft-2), transparent 75%), var(--ud-card-bg); }
+.bcf-step > span { flex: none; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; font-weight: 800; color: #fff;
+    background: linear-gradient(135deg, #f59e0b, #d97706); box-shadow: 0 4px 10px -4px #d97706; }
+.bcf-step b { display: block; font-size: 1em; }
+.bcf-step small { display: block; color: var(--body-text-color-subdued); font-size: .86em; line-height: 1.38; margin-top: 2px; }
+.bcf-enable { border: 1.5px solid color-mix(in srgb, #f59e0b 45%, transparent) !important; border-radius: 12px !important;
+    background: color-mix(in srgb, #f59e0b 7%, var(--ud-card-bg)) !important; padding: 10px 14px !important; }
+.bcf-enable label span { font-weight: 750 !important; font-size: 1.06em !important; }
+.bcf-subject-row { align-items: flex-end !important; }
+.bcf-from-ds { margin-bottom: 4px !important; min-height: 46px !important; }
+.bcf-prompts textarea { font-size: 14.5px !important; line-height: 1.45 !important; }
+.bcf-summary-line { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-radius: 10px; font-size: .92em;
+    border: 1px solid var(--ud-card-border); background: var(--background-fill-secondary); }
+.bcf-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ud-muted); flex: none; }
+.bcf-on .bcf-dot { background: var(--ud-ok); box-shadow: 0 0 0 3px color-mix(in srgb, var(--ud-ok) 25%, transparent); }
+.bcf-on { border-color: color-mix(in srgb, var(--ud-ok) 40%, transparent); }
+.bcf-actions { margin-top: 4px; }
+.bcf-empty { padding: 10px 14px; border-radius: 12px; border: 1px dashed var(--ud-card-border); color: var(--body-text-color-subdued); }
+.bcf-result { display: flex; flex-direction: column; gap: 10px; }
+.bcf-hero { display: flex; gap: 14px; align-items: center; padding: 14px 16px; border-radius: 14px;
+    border: 1px solid color-mix(in srgb, #f59e0b 45%, transparent);
+    background: linear-gradient(120deg, color-mix(in srgb, #f59e0b 16%, transparent), color-mix(in srgb, var(--ud-accent) 10%, transparent) 70%), var(--ud-card-bg); }
+.bcf-trophy { font-size: 40px; line-height: 1; filter: drop-shadow(0 4px 8px rgba(217, 119, 6, .45)); }
+.bcf-hero-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
+.bcf-hero-title { font-size: 1.28em; font-weight: 800; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; }
+.bcf-undertrained { font-size: .62em; font-weight: 700; padding: 3px 10px; border-radius: 999px;
+    background: color-mix(in srgb, var(--ud-warn) 18%, transparent); border: 1px solid color-mix(in srgb, var(--ud-warn) 55%, transparent); }
+.bcf-path { font-size: .86em; word-break: break-all; }
+.bcf-hero-sub { font-size: .84em; color: var(--body-text-color-subdued); }
+.bcf-reasons { margin: 0; padding: 10px 14px 10px 32px; border-radius: 12px; background: var(--ud-soft); border: 1px solid color-mix(in srgb, var(--ud-accent) 24%, transparent);
+    line-height: 1.5; font-size: .94em; }
+.bcf-trend { padding: 10px 22px 8px; border-radius: 12px; border: 1px solid var(--ud-card-border); background: var(--ud-card-bg); }
+.bcf-trend-legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: .84em; font-weight: 650; align-items: center; margin: 0 -8px 10px; }
+.bcf-trend-legend i { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+.bcf-trend-legend em { font-weight: 500; font-style: normal; color: var(--body-text-color-subdued); margin-left: auto; }
+.bcf-trend-plot { position: relative; padding-top: 18px; }
+.bcf-trend-plot svg { width: 100%; height: 150px; display: block; overflow: visible; }
+.bcf-trend-best { stroke: #f59e0b; stroke-width: 1.5; stroke-dasharray: 5 5; }
+.bcf-trend-trophy { position: absolute; top: -4px; transform: translateX(-50%); font-size: 15px; }
+.bcf-trend-x { position: relative; height: 20px; margin-top: 6px; }
+.bcf-trend-x span { position: absolute; transform: translateX(-50%); font-size: .78em; color: var(--body-text-color-subdued); white-space: nowrap; }
+.bcf-table-wrap { overflow: auto; border: 1px solid var(--ud-card-border); border-radius: 12px; max-height: 420px; }
+.bcf-table { width: 100%; border-collapse: collapse; font-size: .9em; }
+.bcf-table th, .bcf-table td { padding: 7px 10px; border-bottom: 1px solid var(--ud-card-border); text-align: left; vertical-align: middle; }
+.bcf-table th { position: sticky; top: 0; z-index: 1; background: var(--background-fill-secondary); font-weight: 700; white-space: nowrap; }
+.bcf-table td:first-child { white-space: nowrap; font-weight: 650; }
+.bcf-table td:nth-child(2), .bcf-table td:nth-child(3), .bcf-table td:nth-child(4) { min-width: 150px; }
+.bcf-best td { background: color-mix(in srgb, var(--ud-ok) 11%, transparent); }
+.bcf-base td { color: var(--body-text-color-subdued); }
+.bcf-meter { display: inline-block; vertical-align: middle; width: calc(100% - 52px); height: 9px; border-radius: 6px; background: var(--background-fill-secondary); overflow: hidden; }
+.bcf-meter span { display: block; height: 100%; border-radius: 6px; background: linear-gradient(90deg, var(--ud-accent), var(--ud-accent-2)); }
+.bcf-meter-best span { background: linear-gradient(90deg, #10b981, #059669); }
+.bcf-num { display: inline-block; width: 46px; text-align: right; font-variant-numeric: tabular-nums; font-size: .9em; }
+.bcf-na { color: var(--body-text-color-subdued); }
+.bcf-flags { display: flex; flex-wrap: wrap; gap: 4px; min-width: 220px; }
+.bcf-flag, .bcf-level { font-size: .8em; padding: 2px 7px; border-radius: 999px; line-height: 1.35; }
+.bcf-flag { background: color-mix(in srgb, var(--ud-warn) 15%, transparent); border: 1px solid color-mix(in srgb, var(--ud-warn) 45%, transparent); }
+.bcf-level { background: color-mix(in srgb, var(--ud-ok) 12%, transparent); border: 1px solid color-mix(in srgb, var(--ud-ok) 40%, transparent); }
+.bcf-foot { font-size: .84em; color: var(--body-text-color-subdued); }
+.bcf-foot code { word-break: break-all; }
+.bcf-gallery .caption-label { white-space: pre-line !important; max-width: calc(100% - 12px) !important; opacity: .94 !important;
+    display: -webkit-box !important; -webkit-line-clamp: 3; -webkit-box-orient: vertical; font-size: 13px !important; line-height: 1.35 !important; }
+.bcf-gallery, .bcf-gallery .gallery-container, .bcf-gallery .grid-wrap.fixed-height { height: auto !important; min-height: 0 !important; max-height: none !important; }
+@media (max-width: 640px) { .bcf-hero { flex-direction: column; align-items: flex-start; } .bcf-table td:nth-child(2), .bcf-table td:nth-child(3), .bcf-table td:nth-child(4) { min-width: 110px; } }
+/* the monitor's result card */
+.ud-best { margin: 6px 0; padding: 10px 14px; border-radius: 12px; border: 1px solid color-mix(in srgb, #f59e0b 50%, transparent);
+    background: linear-gradient(120deg, color-mix(in srgb, #f59e0b 14%, transparent), transparent 75%); }
+.ud-best-head { display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; justify-content: space-between; }
+.ud-best-title { font-weight: 800; font-size: 1.05em; }
+.ud-best-show { padding: 5px 12px; border-radius: 9px; border: none; cursor: pointer; font-weight: 700; color: #fff;
+    background: linear-gradient(135deg, var(--ud-accent), var(--ud-accent-2)); }
+.ud-best-path { display: block; margin-top: 5px; font-size: 13.5px; word-break: break-all; }
+.ud-best-reasons { margin: 6px 0 0 18px; padding: 0; font-size: 14px; line-height: 1.45; }

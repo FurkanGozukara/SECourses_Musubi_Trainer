@@ -169,6 +169,25 @@ if (copy) copy.addEventListener('click', async () => {
   copy.textContent = done ? '✅ Copied' : '⚠️ Copy failed';
   setTimeout(() => (copy.textContent = '📋 Copy'), 1500);
 });
+// 🏆 card: open the finder section and show its results (the section renders its content once opened)
+dash.addEventListener('click', (event) => {
+  if (!event.target.closest('.ud-best-show') || !root) return;
+  const section = root.querySelector('.sec-bcf');
+  if (!section) return;
+  const header = section.querySelector('button.label-wrap');
+  if (header && !header.classList.contains('open')) header.click();
+  const reveal = (tries) => {  // the results are on the page once the server answered
+    const result = section.querySelector('.bcf-result, .bcf-empty');
+    if (result) result.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    else if (tries > 0) setTimeout(() => reveal(tries - 1), 200);
+  };
+  const press = (tries) => {
+    const button = section.querySelector('.bcf-show-btn');
+    if (button) { button.click(); section.scrollIntoView({ behavior: 'smooth', block: 'start' }); setTimeout(() => reveal(50), 300); }
+    else if (tries > 0) setTimeout(() => press(tries - 1), 150);
+  };
+  press(20);
+});
 log.scrollTop = log.scrollHeight;
 window.__udPoll = window.__udPoll || {};
 window.__udPoll['__ROOT__'] = () => { tick(true); setTimeout(() => tick(true), 700); };

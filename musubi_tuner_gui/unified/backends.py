@@ -337,7 +337,7 @@ class Backend:
     def print_command(self, values: dict) -> str:
         raise NotImplementedError
 
-    def train(self, values: dict, *, title: str, meta: dict) -> tuple[bool, str]:
+    def train(self, values: dict, *, title: str, meta: dict, after=None) -> tuple[bool, str]:
         raise NotImplementedError
 
 
@@ -573,7 +573,7 @@ class LegacyMusubiBackend(Backend):
             self.actions("train_model", False, "", True, True, *args)
         return clean_preview("\n".join(notes) + "\n" + buffer.getvalue())
 
-    def train(self, values: dict, *, title: str, meta: dict) -> tuple[bool, str]:
+    def train(self, values: dict, *, title: str, meta: dict, after=None) -> tuple[bool, str]:
         from .runner import RUNNER
 
         from .dataset_tools import prepare_dataset
@@ -591,7 +591,7 @@ class LegacyMusubiBackend(Backend):
             with quiet(), trainer_scope(self.name):  # the job thread writes the runtime TOML
                 self.actions("train_model", False, "", True, False, *args)
 
-        return RUNNER.start_job(target, title=title, subtitle=meta.get("subtitle", ""), meta=meta)
+        return RUNNER.start_job(target, title=title, subtitle=meta.get("subtitle", ""), meta=meta, after=after)
 
 
 def _status_text(result) -> str:
@@ -768,7 +768,7 @@ class KohyaBackend(Backend):
         with quiet():
             return str(self.module.train_kohya_model(self.model_key, self._for_trainer(dict(values)), print_only=True, runner=RUNNER) or "")
 
-    def train(self, values: dict, *, title: str, meta: dict) -> tuple[bool, str]:
+    def train(self, values: dict, *, title: str, meta: dict, after=None) -> tuple[bool, str]:
         from .runner import RUNNER
 
         meta = {**meta, "engine": self.engine}
@@ -778,7 +778,7 @@ class KohyaBackend(Backend):
             with quiet():
                 self.module.train_kohya_model(self.model_key, payload, print_only=False, runner=RUNNER)
 
-        return RUNNER.start_job(target, title=title, subtitle=meta.get("subtitle", ""), meta=meta)
+        return RUNNER.start_job(target, title=title, subtitle=meta.get("subtitle", ""), meta=meta, after=after)
 
 
 class _StdoutRouter:

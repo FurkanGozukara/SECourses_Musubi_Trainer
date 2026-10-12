@@ -30,6 +30,7 @@ SECTIONS: tuple[tuple[str, str, str], ...] = (
     ("finetune", "🧬 Fine-Tuning", "Full fine-tuning (DreamBooth) specific options"),
     ("memory", "⚡ Memory & Speed", "Block swap, FP8, gradient checkpointing, attention and torch.compile"),
     ("samples", "🖼️ Sample Generation", "Preview images or videos rendered during training"),
+    ("bcf", "🏆 Best Checkpoint Finder", "Picks the best checkpoint from samples of your test prompts when training ends, so you do not have to compare grids by eye"),
     ("caching", "🧊 Caching", "Latent and text-encoder caching before training starts"),
     ("advanced", "🔬 Advanced Training", "Timestep sampling, flow shift, noise and loss options"),
     ("model_specific", "🧩 Model-Specific Options", "Settings that only this base model has"),

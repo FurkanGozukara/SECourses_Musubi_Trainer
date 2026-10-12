@@ -151,6 +151,19 @@ def _stages(snapshot: dict) -> str:
     return '<div class="ud-stages">' + '<div class="ud-stage-sep"></div>'.join(chips) + "</div>"
 
 
+def _best_checkpoint_card(result: dict) -> str:
+    reasons = "".join(f"<li>{_esc(reason)}</li>" for reason in (result.get("reasons") or [])[:4])
+    path = result.get("checkpoint") or ""
+    return (
+        '<div class="ud-best">'
+        f'<div class="ud-best-head"><span class="ud-best-title">🏆 {_esc(result.get("headline") or "")}</span>'
+        '<button type="button" class="ud-best-show" title="Open the finder\'s scores and the sample comparison">📊 Show the comparison</button></div>'
+        + (f'<code class="ud-best-path">{_esc(path)}</code>' if path else "")
+        + (f'<ul class="ud-best-reasons">{reasons}</ul>' if reasons else "")
+        + "</div>"
+    )
+
+
 def training_gpus(snapshot: dict) -> list[dict]:
     """The GPUs this run uses: the ones its processes opened, else its GPU IDs setting, else GPU 0."""
     gpus = snapshot.get("gpus") or []
@@ -245,6 +258,9 @@ def render_dashboard(snapshot: dict, now: float | None = None) -> str:
         )
     if status == "finished":
         alerts.append('<div class="ud-alert ud-alert-ok">✅ Training finished. Your model files are in the output directory.</div>')
+    result = snapshot.get("result")
+    if result and result.get("kind") == "best_checkpoint":
+        alerts.append(_best_checkpoint_card(result))
 
     activity = snapshot.get("activity") or ""
     checkpoints = snapshot.get("checkpoints") or []

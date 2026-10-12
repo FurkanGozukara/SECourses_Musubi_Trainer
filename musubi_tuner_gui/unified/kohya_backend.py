@@ -2170,7 +2170,7 @@ def load_kohya_preset(path: str, model_key: str, current: dict) -> tuple[dict, l
         unknown = sorted(
             key
             for key in data
-            if key not in spec_map and key not in _RUNTIME_TO_KEY and key not in _PRESET_META_KEYS
+            if key not in spec_map and key not in _RUNTIME_TO_KEY and key not in _PRESET_META_KEYS and not key.startswith("preset_")
             and key not in ("resolution", "network_train_unet_only", "network_train_text_encoder_only", "train_text_encoder", "optimizer", "console_log_simple")
         )
         if unknown:

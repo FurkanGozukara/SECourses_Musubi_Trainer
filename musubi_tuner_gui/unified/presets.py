@@ -533,8 +533,9 @@ def find_preset(text: str, entry: ModelEntry, mode: str) -> str:
     raise FileNotFoundError(f"No preset named '{text}' in {os.path.join(user_presets_root(), entry.key)} or the shipped presets.")
 
 
-def write_metadata_header(path: str, entry: ModelEntry, mode: str, description: str = "") -> None:
-    """Prepend the ``preset_*`` identity keys (top-level TOML keys must precede any table)."""
+def write_metadata_header(path: str, entry: ModelEntry, mode: str, description: str = "", extra: dict | None = None) -> None:
+    """Prepend the ``preset_*`` identity keys (top-level TOML keys must precede any table); ``extra``: more
+    ``preset_*`` string values (the best checkpoint finder's settings), one line each."""
     with open(path, "r", encoding="utf-8-sig") as handle:
         body = handle.read()
     body = "\n".join(line for line in body.splitlines() if not re.match(r"^\s*preset_\w+\s*=", line))
@@ -547,6 +548,9 @@ def write_metadata_header(path: str, entry: ModelEntry, mode: str, description: 
     ]
     if description:
         header.append("preset_description = " + json.dumps(description))
+    for key, value in (extra or {}).items():
+        if key.startswith("preset_") and isinstance(value, str):
+            header.append(f"{key} = " + json.dumps(value, ensure_ascii=False))  # a JSON string is a valid TOML basic string
     text = "\n".join(header) + "\n\n" + body.lstrip()
     if not text.endswith("\n"):
         text += "\n"

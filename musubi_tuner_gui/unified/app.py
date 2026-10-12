@@ -162,8 +162,9 @@ def _unavailable_card(category: str) -> str:
 
 WHATS_NEW_HTML = """
 <div class="ud-whatsnew">
-  <h3>✨ V37 — DoRA for every model</h3>
+  <h3>✨ V37 — DoRA for every model and the Best Checkpoint Finder</h3>
   <ul>
+    <li><b>🏆 Best Checkpoint Finder</b> (image and video models, off by default): turn it on and keep or edit the test prompts. The run samples them with the base model and at every checkpoint save. When training ends, local models score likeness, prompt following, variety and over-training signs, and the finder names the checkpoint to use with its reasons and a side-by-side comparison.</li>
     <li><b>🧬 DoRA training for every model</b> — <b>Adapter Type</b> (LoRA / DoRA) is the first setting of the LoRA Network section. Every shipped LoRA preset now trains DoRA (Wan 2.2 presets that train both experts stay LoRA); switch back to LoRA at any time. Measured on every model's 32 GB preset: about 10% more time per step than LoRA and the same VRAM within about half a GB.</li>
     <li><b>Works in ComfyUI and SwarmUI</b> — DoRA files use the input-axis <code>dora_scale</code> that ComfyUI applies exactly; Z-Image, Qwen-Image 2.1 and HiDream-O1 need the updated <b>SECoursesAudioTools</b> nodes.</li>
     <li><b>AutomagicEXPERIMENT optimizer</b> (from Ostris AI Toolkit) next to Automagic v1-v3 on every training pipeline, including FLUX.1 / SDXL.</li>

@@ -45,6 +45,7 @@ STAGES: tuple[tuple[str, str, str], ...] = (
     ("text", "Caching text encoder", "🔤"),
     ("train", "Training", "🏋️"),
     ("finish", "Saving & finishing", "💾"),
+    ("score", "Best checkpoint", "🏆"),  # only shown for a run with an after-step (AfterStep)
 )
 STAGE_INDEX = {stage_id: index for index, (stage_id, _label, _icon) in enumerate(STAGES)}
 
@@ -204,6 +205,19 @@ class DecimatedSeries:
 
 
 @dataclass
+class AfterStep:
+    """A process that runs once the training process exited successfully (the best checkpoint finder): the run stays
+    active and Stop ends it, but its failure never fails the training. ``read_result`` returns the small summary the
+    dashboard shows (``headline``, ``reasons``...) or None."""
+
+    label: str
+    cmd: list
+    cwd: str | None = None
+    env: dict | None = None
+    read_result: Callable[[], dict | None] | None = None
+
+
+@dataclass
 class RunState:
     job_id: int = 0
     status: str = "idle"  # idle | starting | running | stopping | finished | failed | stopped
@@ -238,6 +252,8 @@ class RunState:
     gpus: list = field(default_factory=list)
     peak_gb: dict = field(default_factory=dict)
     log_file: str = ""
+    after: AfterStep | None = None
+    result: dict | None = None  # the after-step's summary
 
 
 class _JobLogHandler(logging.Handler):
@@ -283,6 +299,7 @@ class TrainingRunner:
         self._job_thread_ident: int | None = None
         self._job_done = threading.Event()
         self._job_done.set()
+        self._after_pending = False  # a run with an after-step is active until that step ends
         self._readers: list[threading.Thread] = []
         self._monitor: threading.Thread | None = None
         self._log_handle = None
@@ -376,10 +393,19 @@ class TrainingRunner:
         return self.process is not None and self.process.poll() is None
 
     def is_active(self) -> bool:
-        return not self._job_done.is_set() or self.is_running()
+        return not self._job_done.is_set() or self.is_running() or self._after_pending
 
-    def start_job(self, target: Callable[[], Any], *, title: str, subtitle: str = "", meta: dict | None = None, wait: float = 2.5) -> tuple[bool, str]:
-        """Run ``target`` (a trainer's train function) in a worker thread.
+    def start_job(
+        self,
+        target: Callable[[], Any],
+        *,
+        title: str,
+        subtitle: str = "",
+        meta: dict | None = None,
+        wait: float = 2.5,
+        after: AfterStep | None = None,
+    ) -> tuple[bool, str]:
+        """Run ``target`` (a trainer's train function) in a worker thread; ``after`` runs once training succeeded.
 
         Returns (started, message). Fast failures (validation errors) are returned as messages so the
         caller can show them as an error toast; everything after that is reported through the state.
@@ -389,6 +415,8 @@ class TrainingRunner:
                 return False, "A training run is already in progress. Stop it first or wait until it finishes."
             self._job_counter += 1
             self._reset(title=title, subtitle=subtitle, meta=meta or {})
+            self.state.after = after
+            self._after_pending = after is not None
             self._job_done.clear()
             thread = threading.Thread(target=self._job_main, args=(target,), name=f"training-job-{self._job_counter}", daemon=True)
             self._job_thread = thread
@@ -402,6 +430,10 @@ class TrainingRunner:
             if self._job_done.is_set() and self.state.status == "failed":
                 return False, self.state.error or "Training could not start."
         return True, "Training started."
+
+    def start_after_step(self, after: AfterStep, *, title: str, meta: dict | None = None) -> tuple[bool, str]:
+        """Run only an after-step, as a job of its own (the finder on a folder that already holds a run's samples)."""
+        return self.start_job(lambda: self._run_after(after, ""), title=title, meta=meta, after=after)
 
     def stop(self) -> str:
         """Kill the running process tree (caching or training)."""
@@ -445,6 +477,7 @@ class TrainingRunner:
                         "detail": state.stage_detail.get(stage_id, ""),
                     }
                     for stage_id, label, icon in STAGES
+                    if stage_id != "score" or state.after is not None
                 ],
                 "current_stage": state.current_stage,
                 "stage_progress": dict(state.stage_progress) if state.stage_progress else None,
@@ -468,6 +501,7 @@ class TrainingRunner:
                 "loss_series": list(self.loss_series.points),
                 "lr_series": list(self.lr_series.points),
                 "log_file": state.log_file,
+                "result": dict(state.result) if state.result else None,
                 "log_version": self.log_version,
                 "progress_line": self.progress_line,
             }
@@ -601,6 +635,7 @@ class TrainingRunner:
 
     def _finish(self, status: str, exit_code: int | None, message: str) -> None:
         with self.lock:
+            self._after_pending = False
             if self.state.status in ("finished", "failed", "stopped") and self.state.ended_at:
                 return
             self.state.status = status
@@ -848,7 +883,11 @@ class TrainingRunner:
         if self._cancel_requested:
             self._finish("stopped", code, "Stopped by user")
         elif code == 0:
-            self._finish("finished", 0, "Training finished successfully ✓")
+            after = self.state.after
+            if after is not None:
+                self._run_after(after, "Training finished successfully ✓")
+            else:
+                self._finish("finished", 0, "Training finished successfully ✓")
         else:
             errors = list(self._error_lines)
             causes = [line for line in errors if "CalledProcessError" not in line] or errors  # accelerate's wrapper last
@@ -858,6 +897,48 @@ class TrainingRunner:
             with self.lock:
                 self.state.error = reason or f"The trainer exited with code {code}. See the Training Status log."
             self._finish("failed", code, f"Training failed (exit code {code})")
+
+    def _run_after(self, after: AfterStep, prefix: str) -> None:
+        """The after-step of a successful training (``prefix``: its message), or a job of its own (no prefix): streamed
+        into the run like training and ended by Stop."""
+        self._advance("score", after.label)
+        self._set_message(f"{after.label}…")
+        code, tail = None, collections.deque(maxlen=40)
+        if not self._cancel_requested:
+            self._add_line(f"[gui] {after.label}: {' '.join(str(part) for part in after.cmd)}")
+            try:
+                process = self._spawn(after.cmd, {"env": after.env, "cwd": after.cwd})
+            except OSError as exc:
+                tail.append(f"{type(exc).__name__}: {exc}")
+            else:
+                self._adopt(process, None)
+                self._ensure_monitor()
+                self._pump(process, False, tail)
+                code = process.returncode
+        result = None
+        if code == 0 and not self._cancel_requested and after.read_result is not None:
+            try:
+                result = after.read_result()
+            except Exception as exc:  # noqa: BLE001 - an unreadable result is the step's failure, never the run's
+                tail.append(f"{type(exc).__name__}: {exc}")
+        with self.lock:
+            self.state.result = result
+            if self._cancel_requested:
+                outcome, note = "stopped", f"{after.label} stopped"
+            elif result:
+                outcome, note = "done", str(result.get("headline") or f"{after.label}: done")
+            else:
+                lines = [line.strip() for line in tail if line.strip()]
+                reason = next((line.split(":", 1)[1].strip() for line in reversed(lines) if line.startswith("BEST_CHECKPOINT_ERROR:")), "")
+                reason = reason or next((line for line in reversed(lines) if ERROR_RE.match(line)), "") or (lines[-1] if lines else "")
+                outcome, note = "failed", f"{after.label} failed" + (f": {reason[:300]}" if reason else f" (exit code {code})")
+                self.state.stage_detail["score"] = reason[:300]
+            self.state.stage_states["score"] = outcome
+        if prefix:  # the training itself succeeded, whatever the after-step did
+            self._finish("finished", 0, f"{prefix} · {note}")
+        else:
+            status = {"done": "finished", "stopped": "stopped"}.get(outcome, "failed")
+            self._finish(status, 0 if status == "finished" else code, note)
 
     # ------------------------------------------------------------------ monitor thread (phase + GPU)
     def _ensure_monitor(self) -> None:

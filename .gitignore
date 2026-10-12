@@ -240,3 +240,4 @@ tests/*
 !tests/test_portable_model_paths.py
 !tests/test_argument_lists.py
 !tests/test_preset_identity.py
+!tests/test_best_checkpoint.py

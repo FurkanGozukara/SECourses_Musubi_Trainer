@@ -26,7 +26,10 @@ from dataclasses import dataclass, field
 
 import gradio as gr
 
+from ..best_checkpoint import prompts as BP
+from ..best_checkpoint.samples import index_samples
 from ..custom_logging import setup_logging
+from . import checkpoint_finder as CF
 from . import links as L
 from . import presets as P
 from .backends import Backend, get_backend, read_preset_file
@@ -402,6 +405,8 @@ class Workspace:
         self._vram_base: "OrderedDict[str, tuple]" = OrderedDict()  # what each session loaded last (VRAM panel)
         self._mirror_lock = threading.Lock()
         self._seq = itertools.count(1)
+        self.finder = CF.available(category)  # 🏆 Best Checkpoint Finder: image and video models
+        self.finder_inputs: list = []
 
     # ------------------------------------------------------------------ field union + CSS classes
     def _collect_fields(self) -> None:
@@ -496,7 +501,7 @@ class Workspace:
             b = token(name)
             for mode in (LORA, FULL):
                 for adv in (False, True):
-                    shown = section_id in ("dataset", "model") or any(
+                    shown = section_id in ("dataset", "model", "bcf") or any(
                         (spec := item.per_backend.get(name)) is not None and spec.visible and mode in spec.modes and (adv or not spec.advanced)
                         for item in items
                     )
@@ -872,6 +877,7 @@ class Workspace:
         warnings=None,
         keep_user_paths: bool = True,
         refuse_unreadable: bool = False,
+        finder_from_preset: bool = False,
     ) -> dict:
         """Show ``entry`` / ``mode`` with ``preset_path`` loaded. A preset that cannot be read is refused
         (``refuse_unreadable``: the user picked it) or replaced by the defaults (remembered / automatic)."""
@@ -916,6 +922,11 @@ class Workspace:
             lines.append("📌 Kept your " + " and ".join(kept))
         desired = self.desired_fields(entry, values)
         desired.update(self.desired_presets(entry, mode, tier, preset_path))
+        if finder_from_preset and user_preset and self.finder_inputs:
+            finder = CF.from_metadata(P.read_metadata(preset_path), self.category)
+            if finder is not None:
+                CF.remember(self.category, finder)
+                desired.update(self.desired_finder(finder))
         state = self.attrs(entry, mode, show_advanced, values)
         # always re-sent: a dependent-field rule the browser switched on its own (a dataset-mode change)
         # must follow the loaded values even when the server's last state reads the same
@@ -1048,6 +1059,8 @@ class Workspace:
 
             # ---------------------------------------------------------- sections
             for section_id, title, description in SECTIONS:
+                if section_id == "bcf" and not self.finder:
+                    continue
                 with gr.Accordion(title, open=section_id in OPEN_SECTIONS, elem_classes=self._section_classes(section_id)) as accordion:
                     self.sections[section_id] = accordion
                     gr.HTML(f'<div class="ws-section-desc">{html.escape(description)}</div>', elem_classes=["ws-section-desc-wrap"])
@@ -1056,6 +1069,8 @@ class Workspace:
                     self._build_section_fields(section_id, backend, entry, values)
                     if section_id == "dataset":
                         self._build_dataset_tools()
+                    if section_id == "bcf":
+                        self._build_finder()
 
             # ---------------------------------------------------------- VRAM advice (sticks to the bottom while scrolling)
             self.vram_html = gr.HTML("", elem_classes=["ws-vram"])
@@ -1127,6 +1142,117 @@ class Workspace:
             interactive=False,
             elem_classes=["dataset-gallery"],
         )
+
+    def _build_finder(self) -> None:
+        settings = CF.remembered(self.category)
+        gr.HTML(FINDER_INTRO, elem_classes=["bcf-intro-wrap"])
+        self.bcf_enable = gr.Checkbox(
+            label="🏆 Find the best checkpoint when training ends",
+            info="Off by default. Samples your test prompts with the base model and at every checkpoint save, then scores them.",
+            value=settings["enabled"],
+            elem_classes=["bcf-enable"],
+        )
+        with gr.Row(equal_height=False, elem_classes=["bcf-row", "bcf-subject-row"]):
+            self.bcf_subject = gr.Textbox(
+                label="Subject (trigger word and class)",
+                info="As your captions name it. A new subject is written into the prompts.",
+                value=settings["subject"],
+                placeholder="ohwx man",
+                lines=1,
+                max_lines=1,
+                scale=5,
+                min_width=260,
+            )
+            self.bcf_from_dataset = gr.Button("✨ From dataset folder", scale=0, min_width=280, elem_classes=["ws-btn", "ws-btn-ghost", "bcf-from-ds"])
+        with gr.Row(equal_height=True, elem_classes=["bcf-row"]):
+            self.bcf_seeds = gr.Radio(
+                choices=[1, 2, 3, 4],
+                value=settings["seeds"],
+                label="Seeds per prompt",
+                info="More seeds: steadier scores, longer sampling",
+                scale=2,
+                min_width=260,
+            )
+            self.bcf_leakage = gr.Checkbox(
+                label="Leakage check",
+                info="Adds a prompt without the trigger word: your subject should not appear in it",
+                value=settings["leakage"],
+                scale=3,
+                min_width=280,
+            )
+        self.bcf_prompts = gr.Textbox(
+            label="Test prompts · one per line (blank lines are ignored)",
+            info="Describe your subject in different scenes. Every checkpoint renders the same prompts and seeds, so only the weights differ.",
+            value=CF.prompts_text(settings),
+            lines=8,
+            max_lines=24,
+            elem_classes=["bcf-prompts"],
+        )
+        with gr.Row(equal_height=True, elem_classes=["bcf-row"]):
+            self.bcf_defaults_btn = gr.Button("↺ Default prompts", scale=0, min_width=200, elem_classes=["ws-btn", "ws-btn-ghost"])
+            summary = finder_summary_html(settings)
+            self.bcf_summary = gr.HTML(summary, elem_classes=["bcf-summary"])
+        with gr.Row(equal_height=True, elem_classes=["bcf-actions"]):
+            self.bcf_show_btn = gr.Button("📊 Show results", scale=0, min_width=190, elem_classes=["ws-btn", "ws-btn-load", "bcf-show-btn"])
+            self.bcf_analyze_btn = gr.Button("🔍 Analyze folder", scale=0, min_width=210, elem_classes=["ws-btn", "ws-btn-ghost"])
+            self.bcf_open_btn = gr.Button("🌐 Open full report", scale=0, min_width=220, elem_classes=["ws-btn", "ws-btn-ghost"], visible=not self.headless)
+            gr.HTML(
+                '<div class="ds-hint">For the Output Directory and Output Name set above. 🔍 Analyze also scores a run made without the '
+                "finder, from the samples it saved.</div>"
+            )
+        # shown by the first 📊: hidden components cost nothing until then
+        self.bcf_result = gr.HTML("", visible=False, elem_classes=["bcf-result-wrap"])
+        self.bcf_gallery = gr.Gallery(
+            label="Base model · 🏆 best · last checkpoint for each test prompt · click one to enlarge",
+            visible=False,
+            columns=3,
+            height="auto",
+            object_fit="contain",
+            allow_preview=True,
+            interactive=False,
+            elem_classes=["bcf-gallery"],
+        )
+        self.finder_inputs = [self.bcf_enable, self.bcf_subject, self.bcf_prompts, self.bcf_seeds, self.bcf_leakage]
+        for component, value in zip(self.finder_inputs, finder_values(settings)):
+            self._track(component, value=value)
+        self._track(self.bcf_summary, value=summary)
+
+    def finder_settings(self, args) -> dict | None:
+        """The finder's settings from its inputs' values (None: this category has no finder)."""
+        return CF.from_ui(self.category, *args) if self.finder_inputs else None
+
+    def desired_finder(self, settings: dict) -> dict:
+        if not self.finder_inputs:
+            return {}
+        desired = {component: {"value": value} for component, value in zip(self.finder_inputs, finder_values(settings))}
+        desired[self.bcf_summary] = {"value": finder_summary_html(settings)}
+        return desired
+
+    def finder_unavailable(self, entry: ModelEntry, values: dict) -> str:
+        """Why the finder cannot judge this run ('' when it can)."""
+        _control_name, control_required = control_settings(self.backend_of(entry).name, values)
+        if control_required:
+            return "🏆 Best Checkpoint Finder skipped: edit-model samples need control images, which its test prompts do not have."
+        return ""
+
+    def finder_references(self, entry: ModelEntry, values: dict) -> list[str]:
+        """The training images and videos the run reads (what the samples are compared with)."""
+        report = self.inspect(entry, values, probe_seconds=0)
+        regularization = {folder.name for folder in report.folders if folder.regularization}  # kohya: not the subject
+        return [item.path for item in report.used if item.kind in ("image", "video") and item.folder not in regularization]
+
+    def finder_run(self, entry: ModelEntry, values: dict, settings: dict | None) -> tuple[dict, object, str]:
+        """(run values, after-step or None, note) for Start and Print Command."""
+        if not settings or not settings["enabled"]:
+            return values, None, ""
+        reason = self.finder_unavailable(entry, values)
+        if reason:
+            return values, None, reason
+        try:
+            run, after = CF.prepare_run(values, settings, self.finder_references(entry, values))
+        except CF.FinderError as exc:
+            raise gr.Error(str(exc), title="Training could not start", duration=None)
+        return run, after, ""
 
     def _make_component(self, item: FieldDef, spec: ParamSpec, entry: ModelEntry, value):
         props = self.field_props(item, spec, entry, value)
@@ -1238,10 +1364,13 @@ class Workspace:
                     self.adv_toggle,
                     self.vram_html,
                     *fields,
+                    *self.finder_inputs,
+                    *([self.bcf_summary] if self.finder_inputs else []),
                 ]
             )
         )
         self.apply_outputs = tracked_outputs
+        finder_inputs = self.finder_inputs
         selection_inputs = [self.model_radio, self.mode_radio, self.tier_dd, self.preset_dd, self.adv_toggle]
         quiet = dict(show_progress="hidden", show_progress_on=[self.progress_sink])
         busy_js = BUSY_JS.replace("__ROOT__", self.root_id)
@@ -1377,7 +1506,8 @@ class Workspace:
         def on_save(request: gr.Request, *args):
             entry_key, mode, tier, current_preset, _show_adv = args[:5]
             name = args[5]
-            client = self.client_values(args[6:])
+            finder = self.finder_settings(args[6 + len(fields):])
+            client = self.client_values(args[6 : 6 + len(fields)])
             entry = self.entry(entry_key)
             try:
                 path = P.save_target(name, entry)
@@ -1396,7 +1526,7 @@ class Workspace:
             try:
                 os.makedirs(os.path.dirname(path), exist_ok=True)
                 backend.save(path, values)
-                P.write_metadata_header(path, entry, mode)
+                P.write_metadata_header(path, entry, mode, extra=finder_header(finder))
             except Exception as exc:
                 log.exception("Saving preset failed")
                 raise gr.Error(f"Could not save the preset: {exc}", duration=10)
@@ -1412,7 +1542,7 @@ class Workspace:
 
         self.save_btn.click(
             on_save,
-            inputs=selection_inputs + [self.name_tb] + fields,
+            inputs=selection_inputs + [self.name_tb] + fields + finder_inputs,
             outputs=[self.tier_dd, self.preset_dd, self.preset_desc, self.banner_html, self.name_tb],
             **quiet,
         )
@@ -1573,6 +1703,8 @@ class Workspace:
                 raise gr.Error("A training run is already in progress. Stop it first or wait until it finishes.", title="Training could not start", duration=None)
             entry = self.entry(entry_key)
             backend = self.backend_of(entry)
+            finder = self.finder_settings(args[len(fields):])
+            args = args[: len(fields)]
             client = self.client_values(args)
             self._sync_values(request, client)
             values = self.values_for(entry, client)
@@ -1593,17 +1725,25 @@ class Workspace:
                 autosave = os.path.join(P.user_presets_root(), entry.key, f"_last_run_{mode}.toml")
                 os.makedirs(os.path.dirname(autosave), exist_ok=True)
                 backend.save(autosave, values)
-                P.write_metadata_header(autosave, entry, mode, "Settings of the last training run (saved automatically on Start).")
+                P.write_metadata_header(autosave, entry, mode, "Settings of the last training run (saved automatically on Start).", extra=finder_header(finder))
             except Exception as exc:
                 log.debug(f"Could not auto-save the last run settings: {exc}")
-            started, message = backend.train(values, title=title, meta=meta)
+            user_values = values
+            values, after, note = self.finder_run(entry, values, finder)  # after the autosave: it keeps your own sampling
+            if note:
+                gr.Warning(note, duration=10)
+            started, message = backend.train(values, title=title, meta=meta, after=after)
             if not started:
                 raise gr.Error(message, title="Training could not start", duration=None)
-            gr.Info(f"Training started: {title}")
+            extra = ""
+            if after is not None:
+                samples = CF.sample_count(user_values, finder)
+                extra = " · 🏆 the best checkpoint is found when it ends" + (f" ({samples} finder samples)" if samples else "")
+            gr.Info(f"Training started: {title}{extra}")
 
         self.start_btn.click(
             on_start,
-            inputs=[self.model_radio, self.mode_radio, self.tier_dd, self.preset_dd, *fields],
+            inputs=[self.model_radio, self.mode_radio, self.tier_dd, self.preset_dd, *fields, *finder_inputs],
             concurrency_limit=1,
             **quiet,
         ).then(None, js=poke_js)
@@ -1611,21 +1751,31 @@ class Workspace:
         def on_print(request: gr.Request, entry_key, mode, *args):
             entry = self.entry(entry_key)
             backend = self.backend_of(entry)
+            finder = self.finder_settings(args[len(fields):])
+            args = args[: len(fields)]
             client = self.client_values(args)
             self._sync_values(request, client)
             values = self.values_for(entry, client)
             if "training_mode" in values:
                 values["training_mode"] = backend.mode_value(mode)
             preflight(values, backend, mode)
+            values, after, note = self.finder_run(entry, values, finder)
             try:
                 text = backend.print_command(values)
             except gr.Error:
                 raise
             except Exception as exc:
                 raise gr.Error(f"{type(exc).__name__}: {exc}", title="Command preview failed", duration=None)
-            return gr.update(value=text or "(The trainer printed nothing.)", visible=True)
+            text = text or "(The trainer printed nothing.)"
+            if after is not None:
+                text += "\n\n# 🏆 when training ends, the best checkpoint finder runs:\n# " + " ".join(after.cmd)
+            elif note:
+                text += f"\n\n# {note}"
+            return gr.update(value=text, visible=True)
 
-        self.print_btn.click(on_print, inputs=[self.model_radio, self.mode_radio, *fields], outputs=[self.command_code], **quiet)
+        self.print_btn.click(on_print, inputs=[self.model_radio, self.mode_radio, *fields, *finder_inputs], outputs=[self.command_code], **quiet)
+        if self.finder_inputs:
+            self._wire_finder(quiet, poke_js)
 
         ask_js = ATTR_JS.replace("__ROOT__", self.root_id).replace("__ATTR__", "stopask")
         self.stop_btn.click(None, js=ask_js.replace("__EXPR__", "true"))
@@ -1639,6 +1789,115 @@ class Workspace:
 
         # queued (unlike the instant UI events) so its toast reaches the browser; never waits behind other events
         self.stop_yes.click(on_stop, concurrency_limit=None, **quiet).then(None, js=poke_js)
+
+    def _wire_finder(self, quiet: dict, poke_js: str) -> None:
+        inputs = self.finder_inputs
+
+        def changed(request: gr.Request, *args):
+            settings = self.finder_settings(args)
+            CF.remember(self.category, settings)
+            with self.session(request):
+                self._sync_values(request, dict(zip(inputs, args)))
+                return self.emit(request, {self.bcf_summary: {"value": finder_summary_html(settings)}})
+
+        for component in (self.bcf_enable, self.bcf_seeds, self.bcf_leakage):
+            component.input(changed, inputs=inputs, outputs=[self.bcf_summary], queue=False, **quiet)
+        self.bcf_prompts.blur(changed, inputs=inputs, outputs=[self.bcf_summary], queue=False, **quiet)
+
+        def subject_changed(request: gr.Request, *args):
+            settings = self.finder_settings(args)
+            previous = CF.remembered(self.category)["subject"]
+            text = CF.replace_subject(CF.prompts_text(settings), previous, settings["subject"])
+            settings = CF.normalize({**settings, "prompts": text}, self.category)
+            CF.remember(self.category, settings)
+            with self.session(request):
+                self._sync_values(request, dict(zip(inputs, args)))
+                return self.emit(request, self.desired_finder(settings), dict(zip(inputs, args)))
+
+        for trigger in (self.bcf_subject.blur, self.bcf_subject.submit):
+            trigger(subject_changed, inputs=inputs, outputs=[*inputs, self.bcf_summary], queue=False, **quiet)
+
+        def default_prompts(request: gr.Request, *args):
+            settings = self.finder_settings(args)
+            settings["prompts"] = BP.apply_subject(CF.defaults(self.category)["prompts"], settings["subject"])
+            CF.remember(self.category, settings)
+            with self.session(request):
+                return self.emit(request, self.desired_finder(settings), dict(zip(inputs, args)))
+
+        self.bcf_defaults_btn.click(default_prompts, inputs=inputs, outputs=[*inputs, self.bcf_summary], **quiet)
+
+        def from_dataset(request: gr.Request, entry_key, *args):
+            settings = self.finder_settings(args)
+            entry = self.entry(entry_key)
+            values = self.mirror_values(request, entry)
+            report = self.inspect(entry, values, probe_seconds=0)
+            subject = CF.subject_from_folders([folder.name for folder in report.folders if not folder.regularization], settings["subject"])
+            if not subject:
+                gr.Warning("No training folder named '<repeats>_<trigger class>' (such as 10_ohwx man): type the subject.", duration=8)
+                return {self.bcf_summary: gr.skip()}
+            text = CF.replace_subject(CF.prompts_text(settings), settings["subject"], subject)
+            settings = CF.normalize({**settings, "subject": subject, "prompts": text}, self.category)
+            CF.remember(self.category, settings)
+            gr.Info(f"Subject: {subject}")
+            with self.session(request):
+                return self.emit(request, self.desired_finder(settings), dict(zip(inputs, args)))
+
+        self.bcf_from_dataset.click(from_dataset, inputs=[self.model_radio, *inputs], outputs=[*inputs, self.bcf_summary], **quiet)
+
+        def run_paths(request, entry_key) -> tuple[ModelEntry, dict, str, str]:
+            entry = self.entry(entry_key)
+            values = self.mirror_values(request, entry)
+            output_dir = os.path.abspath(str(values.get("output_dir") or "").strip() or ".")
+            return entry, values, output_dir, str(values.get("output_name") or "").strip()
+
+        def show(request: gr.Request, entry_key):
+            _entry, _values, output_dir, output_name = run_paths(request, entry_key)
+            report = CF.load_report(output_dir, output_name)
+            page = CF.results_html(report, output_dir, output_name)
+            if report is None:
+                status = CF.run_status(output_dir, output_name)
+                if status:
+                    page = page.replace("</div>", f" {html.escape(status)}</div>", 1)
+            items = CF.comparison_gallery(report)
+            columns = max(1, len(CF.comparison_points(report)))  # one row per prompt: base · best · last
+            return gr.update(value=page, visible=True), gr.update(value=items, visible=bool(items), columns=columns)
+
+        self.bcf_show_btn.click(show, inputs=[self.model_radio], outputs=[self.bcf_result, self.bcf_gallery], **quiet)
+
+        def analyze(request: gr.Request, entry_key, *args):
+            from .runner import RUNNER
+
+            if RUNNER.is_active():
+                raise gr.Error("A training run is in progress. Analyze when it has finished.", duration=8)
+            entry, values, output_dir, output_name = run_paths(request, entry_key)
+            if not output_name or not index_samples(output_dir, output_name):
+                raise gr.Error(f"No samples of '{output_name}' in {os.path.join(output_dir, 'sample')}. The finder scores the samples a run saved.", duration=10)
+            settings = self.finder_settings(args)
+            references = self.finder_references(entry, values)
+            if not references:
+                raise gr.Error("No training images found to compare the samples with: check the dataset settings.", duration=10)
+            settings_path = CF.analysis_settings(values, settings, references)
+            after = CF.after_step(output_dir, output_name, settings_path, values.get("gpu_ids"))
+            meta = {"model": f"{entry.icon} {entry.name}", "mode": "🏆 Best checkpoint", "category": self.category, "entry": entry.key,
+                    "gpu_ids": str(values.get("gpu_ids") or ""), "finder": "1"}
+            started, message = RUNNER.start_after_step(after, title=f"{entry.name} · Best checkpoint", meta=meta)
+            if not started:
+                raise gr.Error(message, duration=10)
+            gr.Info("Finding the best checkpoint: progress in the monitor below. 📊 Show results when it is done.")
+
+        self.bcf_analyze_btn.click(analyze, inputs=[self.model_radio, *inputs], concurrency_limit=1, **quiet).then(None, js=poke_js)
+
+        def open_report(request: gr.Request, entry_key):
+            _entry, _values, output_dir, output_name = run_paths(request, entry_key)
+            path = os.path.join(CF.run_folder(output_dir, output_name), "report.html")
+            if not os.path.isfile(path):
+                raise gr.Error(f"No report yet: {path}", duration=8)
+            import pathlib
+            import webbrowser
+
+            webbrowser.open(pathlib.Path(path).as_uri())
+
+        self.bcf_open_btn.click(open_report, inputs=[self.model_radio], **quiet)
 
     def inspection_key(self, entry: ModelEntry, values: dict) -> str:
         """Everything a dataset check depends on: the model and its dataset settings."""
@@ -1755,7 +2014,8 @@ class Workspace:
             if target_mode not in target_entry.modes:
                 target_mode = target_entry.modes[0]
             updates = self.apply(
-                request, client, target_entry.key, target_mode, tier, path, show_adv, messages=messages, warnings=warnings, refuse_unreadable=True
+                request, client, target_entry.key, target_mode, tier, path, show_adv, messages=messages, warnings=warnings, refuse_unreadable=True,
+                finder_from_preset=True,
             )
             applied = self.state_html in updates  # an applied preset always re-sends the state (its seq); a refusal never
             if applied and messages:
@@ -1778,11 +2038,39 @@ class Workspace:
         with self.session(request):
             entry, mode, tier, preset = self.remembered_selection()
             self.forget(request)  # a (re)loaded page shows the build-time state
+            finder = self.desired_finder(CF.remembered(self.category))
             if (entry.key, mode, tier, preset, _signature(preset)) == self.initial:
                 values = self.mirror_values(request, entry)
                 self._store(self._vram_base, request, (entry.key, mode, dict(values), preset))  # the VRAM panel's baseline
-                return self.emit(request, {self.files_html: {"value": self.files_status(entry, values)}})
-            return self.apply(request, {}, entry.key, mode, tier, preset, False, keep_user_paths=False)
+                return self.emit(request, {self.files_html: {"value": self.files_status(entry, values)}, **finder})
+            updates = self.apply(request, {}, entry.key, mode, tier, preset, False, keep_user_paths=False)
+            if finder:
+                updates.update(self.emit(request, finder))
+            return updates
+
+
+def finder_values(settings: dict) -> list:
+    """The finder's input values in ``Workspace.finder_inputs`` order."""
+    return [settings["enabled"], settings["subject"], CF.prompts_text(settings), settings["seeds"], settings["leakage"]]
+
+
+def finder_header(settings: dict | None) -> dict | None:
+    return {CF.HEADER_KEY: CF.header_value(settings)} if settings else None
+
+
+def finder_summary_html(settings: dict) -> str:
+    state = "on" if settings["enabled"] else "off"
+    return (
+        f'<div class="bcf-summary-line bcf-{state}"><span class="bcf-dot"></span><b>{"On" if settings["enabled"] else "Off"}</b> · '
+        f"{html.escape(CF.summary_line(settings))}</div>"
+    )
+
+
+FINDER_INTRO = """<div class="bcf-intro">
+<div class="bcf-step"><span>1</span><div><b>Sample</b><small>Your test prompts with the base model before training and at every checkpoint save (same seeds).</small></div></div>
+<div class="bcf-step"><span>2</span><div><b>Score</b><small>Likeness to your training photos, prompt following, variety and over-training signs, with local models.</small></div></div>
+<div class="bcf-step"><span>3</span><div><b>Recommend</b><small>The checkpoint where likeness levels off before over-training, with the reasons and a side-by-side report.</small></div></div>
+</div>"""
 
 
 # Your own data/output locations survive a model switch or a shipped preset (a shipped preset holds

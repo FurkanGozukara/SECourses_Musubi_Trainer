@@ -557,3 +557,46 @@ def test_metrics_hook_adds_learning_rate_to_steps_bar():
     bar.update(1)
     bar.close()
     assert "lr=0.0003" in stream.getvalue()
+
+
+def test_best_checkpoint_finder_settings_follow_your_presets_and_reach_the_run(tmp_path, workspaces):
+    from musubi_tuner_gui.unified import checkpoint_finder as CF
+
+    image = workspaces["image"]
+    assert image.finder_inputs and workspaces["video"].finder_inputs and not workspaces["audio"].finder_inputs
+    entry = ENTRY_BY_KEY["krea2"]
+    backend = image.backend_of(entry)
+    mine = CF.normalize({"enabled": True, "subject": "sks woman", "prompts": ["photo of sks woman"], "seeds": 3, "leakage": False}, "image")
+    path = P.save_target("finder test", entry)
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    backend.save(path, backend.defaults(LORA))
+    P.write_metadata_header(path, entry, LORA, extra={CF.HEADER_KEY: CF.header_value(mine)})
+    CF.remember("image", CF.defaults("image"))
+    request = _Request("finder")
+    image.forget(request)
+    updates = image.load_with_guardrails(request, {}, "krea2", LORA, P.AUTO_TIER, path, False)
+    assert _value(updates[image.bcf_subject]) == "sks woman" and _value(updates[image.bcf_prompts]) == "photo of sks woman"
+    assert _value(updates[image.bcf_seeds]) == 3 and CF.remembered("image") == mine  # a loaded preset's finder settings are remembered
+    # a shipped preset keeps them
+    shipped = P.recommended_preset(entry, LORA, P.AUTO_TIER)
+    if shipped:
+        updates = image.load_with_guardrails(request, {}, "krea2", LORA, P.AUTO_TIER, shipped, False)
+        assert image.bcf_subject not in updates or _value(updates[image.bcf_subject]) == "sks woman"
+    # Start: the finder's sampling and the after-step
+    data = tmp_path / "data" / "5_sks woman"
+    data.mkdir(parents=True)
+    from PIL import Image
+
+    Image.new("RGB", (64, 64)).save(data / "a.png")
+    (data / "a.txt").write_text("sks woman", encoding="utf-8")
+    values = backend.defaults(LORA)
+    values.update(parent_folder_path=str(tmp_path / "data"), dataset_config_mode="Generate from Folder Structure", output_dir=str(tmp_path / "out"),
+                  output_name="mine", save_every_n_epochs=5)
+    run, after, note = image.finder_run(entry, values, mine)
+    assert not note and after is not None and run["sample_every_n_epochs"] == 5 and run["sample_at_first"]
+    assert run["sample_prompts"].endswith("sample_prompts.txt") and values.get("sample_prompts") != run["sample_prompts"]
+    assert image.finder_run(entry, values, {**mine, "enabled": False})[1] is None
+    edit = ENTRY_BY_KEY["mage_flow_edit"]
+    edit_values = {**image.backend_of(edit).defaults(LORA), **edit.fixed, "output_dir": str(tmp_path / "out"), "output_name": "e", "save_every_n_epochs": 5}
+    _run, edit_after, edit_note = image.finder_run(edit, edit_values, mine)
+    assert edit_after is None and "control images" in edit_note
