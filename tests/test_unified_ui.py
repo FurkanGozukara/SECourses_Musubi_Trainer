@@ -421,6 +421,24 @@ def test_model_file_status_follows_the_whole_form(workspaces):
     assert html.escape(label) in video.files_status(entry, values)
 
 
+def test_a_model_downloaded_after_the_preset_loaded_is_found(tmp_path, monkeypatch, workspaces):
+    """A FLUX.1 preset loaded before ⬇️ Download keeps its relative Training_Models_FLUX_1/... paths (kohya relocates
+    only files that exist); training finds them under the install folder, and so must the file list."""
+    from musubi_tuner_gui.unified import workspace as W
+
+    image = workspaces["image"]
+    entry = image.entry("flux1_dev")
+    values = image.backend_of(entry).defaults(LORA)
+    values["ae"] = "Training_Models_FLUX_1/ae.safetensors"
+    monkeypatch.setattr(W, "ROOT_DIR", str(tmp_path))
+    monkeypatch.chdir(tmp_path / "..")
+    assert "FLUX VAE (AE) — not found" in image.files_status(entry, values)
+    (tmp_path / "Training_Models_FLUX_1").mkdir()
+    (tmp_path / "Training_Models_FLUX_1" / "ae.safetensors").write_bytes(b"0")  # the download
+    status = image.files_status(entry, values)
+    assert "✅ FLUX VAE (AE)" in status and "FLUX VAE (AE) — not found" not in status
+
+
 def test_fixed_settings_are_never_shown_as_editable():
     """A setting the base model fixes (Mage-Flow Edit's control images) must not show a control that does nothing."""
     from musubi_tuner_gui.unified.backends import get_backend

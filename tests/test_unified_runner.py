@@ -254,6 +254,25 @@ def test_monitor_sends_only_what_changed_and_long_lines_stay_small(monkeypatch):
     assert "log" in lines and "dash" not in lines and lines["log"].endswith("a new log line")
 
 
+def test_a_finished_download_reaches_the_browser_with_its_status(monkeypatch):
+    # the browser checks the model files again when a download finishes (the "— not found" chips)
+    from musubi_tuner_gui.unified import downloads
+
+    manager = downloads.DownloadManager()
+    monkeypatch.setattr(monitor, "DOWNLOADS", manager)
+    monkeypatch.setattr(monitor, "RUNNER", _fresh_runner())
+    first = monitor.monitor_poll([-1, -1, -1])
+    assert first["ds"] == "idle" and first["dl"] == ""
+    seen = [first["v"], first["dv"], first["lv"]]
+    assert "ds" not in monitor.monitor_poll(seen)  # unchanged: nothing about the download is sent
+    with manager.lock:
+        manager.status = "finished"
+        manager.lines.append("=== FLUX.1 Dev models: finished ===")
+        manager.version += 1
+    done = monitor.monitor_poll(seen)
+    assert done["ds"] == "finished" and done["dl"].endswith("finished ===")
+
+
 def test_the_elapsed_clock_and_ago_texts_tick_in_the_browser():
     runner = _fresh_runner()
     runner.state.status = "running"

@@ -346,6 +346,7 @@
 .ws-download-log { padding: 0 !important; }
 .dl-log { display: none; margin: 6px 0 0; padding: 8px 10px; max-height: 160px; overflow: auto; white-space: pre-wrap; font-size: 14px; border-radius: 10px; background: #0b1020 !important; color: #d6e2ff !important; font-family: var(--app-mono, ui-monospace, Consolas, monospace) !important; }
 .dl-log.has-text { display: block; }
+.ws-files-refresh { display: none !important; }  /* clicked by the monitor when a download finished */
 /* running state comes from the monitor (data-running on the workspace root) */
 .ws:not([data-running="1"]) .ws-stop,
 .ws:not([data-running="1"]) .stop-confirm,

@@ -56,7 +56,7 @@ from .registry import (
     entries_for,
     get_entry,
 )
-from .schema import HIDDEN_KEYS, ROOT_DIR
+from .schema import APP_DIR, HIDDEN_KEYS, ROOT_DIR
 from .values import clean_path
 from .vram_advice import WATCHED_KEYS as VRAM_KEYS
 from .vram_advice import advice_html, advise
@@ -364,6 +364,17 @@ def canonical_text(key: str, specs: dict) -> tuple[str, str, dict]:
         elif spec.info and MODEL_NAME_RE.search(spec.info):
             overrides[name] = (label, spec.info)
     return label, info, overrides
+
+
+def _model_file_exists(path: str) -> bool:
+    """A model path as training reads it: a relative one (the presets' Training_Models_*/... convention) is also found
+    under the app and install folders. A preset loaded before its models were downloaded keeps its relative paths, and
+    ⬇️ Download puts the files there."""
+    if os.path.exists(path):
+        return True
+    if os.path.isabs(os.path.expandvars(os.path.expanduser(path))):
+        return False
+    return any(os.path.exists(os.path.join(base, path)) for base in (APP_DIR, ROOT_DIR))
 
 
 class Workspace:
@@ -854,7 +865,7 @@ class Workspace:
             if not rules_allow(spec.key, values, backend_keys):
                 continue
             path = clean_path(values.get(spec.key))
-            if path and os.path.exists(path):
+            if path and _model_file_exists(path):
                 rows.append(f'<span class="ud-file ok">✅ {html.escape(spec.label)}</span>')
             elif path:
                 rows.append(f'<span class="ud-file bad" title="{html.escape(path)}">⚠️ {html.escape(spec.label)} — not found</span>')
@@ -1092,6 +1103,8 @@ class Workspace:
             from .monitor import build_monitor
 
             self.monitor = build_monitor(self.root_id)
+            # clicked by the monitor when a model download finished (CSS-hidden, outside the collapsible sections)
+            self.files_refresh_btn = gr.Button("files", elem_classes=["ws-files-refresh"])
         self._wire()
 
     def _build_model_tools(self, entry: ModelEntry, values: dict) -> None:
@@ -1628,6 +1641,13 @@ class Workspace:
 
         self.download_btn.click(on_download, inputs=[self.bundle_dd], **quiet).then(None, js=poke_js)
         self.download_stop_btn.click(lambda: gr.Info(DOWNLOADS.stop()), **quiet).then(None, js=poke_js)
+
+        def on_downloaded(request: gr.Request, entry_key):
+            with self.session(request):
+                entry = self.entry(entry_key)
+                return self.emit(request, {self.files_html: {"value": self.files_status(entry, self.mirror_values(request, entry))}})
+
+        self.files_refresh_btn.click(on_downloaded, inputs=[self.model_radio], outputs=[self.files_html], queue=False, **quiet)
 
         # ------------------------------------------------------------ dataset check
         def on_check(request: gr.Request, entry_key, *args):

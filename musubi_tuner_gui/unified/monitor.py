@@ -39,6 +39,7 @@ def monitor_poll(seen):
         reply["log"] = RUNNER.log_text(LOG_LINES)
     if download_version != seen_download:
         reply["dl"] = download_text if download_status != "idle" else ""
+        reply["ds"] = download_status
     return reply
 
 
@@ -70,7 +71,9 @@ let version = -1, logVersion = -1, downloadVersion = -1, inflight = false, infli
 let lines = '', progress = '';  // committed log lines + the live progress-bar line, shown together
 // The download log box sits in the Model Files section, which is not on the page while collapsed:
 // keep the latest text and write it whenever the box is there.
-let downloadText = null;
+let downloadText = null, downloadStatus = null;
+// a finished download: the model-file chips ("— not found") are checked again (a hidden button of the workspace)
+const refreshFiles = () => { const button = root ? root.querySelector('.ws-files-refresh') : null; if (button) button.click(); };
 const showDownload = () => {
   const box = downloadText !== null && root ? root.querySelector('.dl-log') : null;
   if (!box || box.textContent === downloadText) return;
@@ -142,6 +145,10 @@ const tick = async (force) => {
         if (!reply.active && root.getAttribute('data-stopask') === '1') root.setAttribute('data-stopask', '0');
       }
       if (reply.dl !== undefined) { downloadVersion = reply.dv; downloadText = reply.dl; }
+      if (reply.ds !== undefined) {
+        if (reply.ds === 'finished' && downloadStatus !== 'finished') refreshFiles();
+        downloadStatus = reply.ds;
+      }
       showDownload();
     }
   } catch (error) {
