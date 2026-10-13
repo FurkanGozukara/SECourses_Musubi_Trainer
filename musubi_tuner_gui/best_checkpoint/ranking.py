@@ -248,7 +248,12 @@ def rank(report: dict, label=_epoch_label) -> dict:
             else:
                 reasons = [level_line]
                 if isolated:
-                    reasons.append(f"A warning sign at {isolated['label']} (" + "; ".join(isolated["flags"]) + f") does not last: {window[0]['label']} shows none.")
+                    signed = [r for r in rows if r["flags"] and r["epoch"] < window[0]["epoch"]]
+                    if len(signed) == 1:
+                        reasons.append(f"A warning sign at {isolated['label']} (" + "; ".join(isolated["flags"]) + f") does not last: {window[0]['label']} shows none.")
+                    else:
+                        reasons.append(f"Warning signs at {', '.join(r['label'] for r in signed)} (from {isolated['label']}: "
+                                       + "; ".join(isolated["flags"]) + f"); {window[0]['label']} shows none.")
                 reasons += [signs] if signs else []
                 if len(window) > 1:
                     where = "before them" if onset else "on that level, with no over-training signs"
