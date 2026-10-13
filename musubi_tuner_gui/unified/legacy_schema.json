@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-13T10:53:09",
+ "generated": "2026-10-13T23:49:08",
  "gradio": "6.30.0",
  "backends": {
   "qwen_image": {
@@ -309,7 +309,7 @@
     "main_process_port": {
      "cls": "Number",
      "label": "Main process port",
-     "info": "Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
+     "info": "Port of the main process for multi-GPU runs (0 = accelerate's default 29500).",
      "value": 0,
      "minimum": 0,
      "maximum": 65535,
@@ -3691,7 +3691,7 @@
     "main_process_port": {
      "cls": "Number",
      "label": "Main process port",
-     "info": "Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
+     "info": "Port of the main process for multi-GPU runs (0 = accelerate's default 29500).",
      "value": 0,
      "minimum": 0,
      "maximum": 65535,
@@ -6600,7 +6600,7 @@
     "main_process_port": {
      "cls": "Number",
      "label": "Main process port",
-     "info": "Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
+     "info": "Port of the main process for multi-GPU runs (0 = accelerate's default 29500).",
      "value": 0,
      "minimum": 0,
      "maximum": 65535,
@@ -9439,7 +9439,7 @@
     "main_process_port": {
      "cls": "Number",
      "label": "Main process port",
-     "info": "Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
+     "info": "Port of the main process for multi-GPU runs (0 = accelerate's default 29500).",
      "value": 0,
      "minimum": 0,
      "maximum": 65535,
@@ -12245,7 +12245,7 @@
     "main_process_port": {
      "cls": "Number",
      "label": "Main process port",
-     "info": "Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
+     "info": "Port of the main process for multi-GPU runs (0 = accelerate's default 29500).",
      "value": 0,
      "minimum": 0,
      "maximum": 65535,
@@ -15242,7 +15242,7 @@
     "main_process_port": {
      "cls": "Number",
      "label": "Main process port",
-     "info": "Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
+     "info": "Port of the main process for multi-GPU runs (0 = accelerate's default 29500).",
      "value": 0,
      "minimum": 0,
      "maximum": 65535,
@@ -18222,7 +18222,7 @@
     "main_process_port": {
      "cls": "Number",
      "label": "Main process port",
-     "info": "Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
+     "info": "Port of the main process for multi-GPU runs (0 = accelerate's default 29500).",
      "value": 0,
      "minimum": 0,
      "maximum": 65535,
@@ -21021,7 +21021,7 @@
     "main_process_port": {
      "cls": "Number",
      "label": "Main process port",
-     "info": "Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
+     "info": "Port of the main process for multi-GPU runs (0 = accelerate's default 29500).",
      "value": 0,
      "minimum": 0,
      "maximum": 65535,
@@ -23891,7 +23891,7 @@
     "main_process_port": {
      "cls": "Number",
      "label": "Main process port",
-     "info": "Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
+     "info": "Port of the main process for multi-GPU runs (0 = accelerate's default 29500).",
      "value": 0,
      "minimum": 0,
      "maximum": 65535,
@@ -26881,7 +26881,7 @@
     "main_process_port": {
      "cls": "Number",
      "label": "Main process port",
-     "info": "Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
+     "info": "Port of the main process for multi-GPU runs (0 = accelerate's default 29500).",
      "value": 0,
      "minimum": 0,
      "maximum": 65535,
@@ -30472,7 +30472,7 @@
     "main_process_port": {
      "cls": "Number",
      "label": "Main process port",
-     "info": "Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
+     "info": "Port of the main process for multi-GPU runs (0 = accelerate's default 29500).",
      "value": 0,
      "minimum": 0,
      "maximum": 65535,
@@ -34024,7 +34024,7 @@
     "main_process_port": {
      "cls": "Number",
      "label": "Main process port",
-     "info": "Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
+     "info": "Port of the main process for multi-GPU runs (0 = accelerate's default 29500).",
      "value": 0,
      "minimum": 0,
      "maximum": 65535,
@@ -36756,7 +36756,7 @@
     "main_process_port": {
      "cls": "Number",
      "label": "Main process port",
-     "info": "Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
+     "info": "Port of the main process for multi-GPU runs (0 = accelerate's default 29500).",
      "value": 0,
      "minimum": 0,
      "maximum": 65535,

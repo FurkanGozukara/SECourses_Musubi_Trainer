@@ -169,7 +169,7 @@ class AccelerateLaunch:
                     step=1,
                     minimum=0,
                     maximum=65535,
-                    info="Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
+                    info="Port of the main process for multi-GPU runs (0 = accelerate's default 29500).",
                 )
         with gr.Row():
             self.extra_accelerate_launch_args = gr.Textbox(

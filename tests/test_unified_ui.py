@@ -441,6 +441,21 @@ def test_every_default_fits_its_number_fields_step(workspaces):
     assert not off, off
 
 
+def test_a_shared_field_shows_each_models_own_rule(workspaces):
+    """LTX 2.3 and MiniMax H3 share Target Frames: LTX showed H3's "17n+5 ... 124 = released minimum" (the longer
+    text won the tie) although its frames are 8k+1; a text that states numbers is each model's own."""
+    video = workspaces["video"]
+    frames = video.fields["dataset_num_frames"]
+
+    def shown(item, backend):
+        return item.text_overrides.get(backend, (item.label, item.info))[1]
+
+    assert "8k+1" in shown(frames, "ltx2") and "17n+5" not in shown(frames, "ltx2")
+    assert "17n+5" in shown(frames, "minimax_h3")
+    width = next(item for item in video.fields.values() if item.key == "dataset_resolution_width" and "kandinsky6" in item.per_backend)
+    assert shown(width, "kandinsky6") == video.backends["kandinsky6"].spec_map()["dataset_resolution_width"].info
+
+
 def test_a_hugging_face_id_is_not_reported_missing(workspaces):
     """The SDXL presets' VAE is stabilityai/sdxl-vae: sd-scripts downloads it, so the file list must not say "not found"."""
     image = workspaces["image"]

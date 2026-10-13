@@ -323,6 +323,7 @@ PER_BACKEND_TEXT_KEYS = frozenset(
         "ltx2_mode", "model_family", "zimage_variant", "pretrained_model_name_or_path", "ae", "clip_l", "t5xxl",
     }
 )
+DIGIT_RE = re.compile(r"\d")
 MODEL_NAME_RE = re.compile(r"\b(krea|qwen|wan|flux|klein|z-?image|ideogram|hidream|ernie|mage-?flow|kandinsky|ltx|minimax|h3|sdxl|gemma)\b", re.I)
 
 
@@ -361,7 +362,10 @@ def canonical_text(key: str, specs: dict) -> tuple[str, str, dict]:
         if key in PER_BACKEND_TEXT_KEYS:
             own_label = spec.label if spec.label and not _is_raw_key_label(spec.label, key) else label
             overrides[name] = (own_label, spec.info or info)
-        elif spec.info and MODEL_NAME_RE.search(spec.info):
+        elif spec.info and (MODEL_NAME_RE.search(spec.info) or (spec.info != info and (DIGIT_RE.search(spec.info) or DIGIT_RE.search(info)))):
+            # a model's own text when either text states numbers: a text without a model name can still be one
+            # model's rule (LTX 2.3 frames 8k+1 vs MiniMax H3 17n+5, Kandinsky 6 width "multiple of 16" vs "32 px
+            # steps"). Wording variants without numbers keep the shared text (fewer updates on a model switch)
             overrides[name] = (label, spec.info)
     return label, info, overrides
 
