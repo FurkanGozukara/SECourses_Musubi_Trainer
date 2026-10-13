@@ -245,6 +245,7 @@ ENTRIES: tuple[ModelEntry, ...] = (
         preset_folders=("FLUX_1_Dev_Training_Configs",),
         badges=("Kohya",),
         model_folder="Training_Models_FLUX_1",
+        download_bundles=(("FLUX.1 Dev models", "flux1_dev"),),
     ),
     ModelEntry(
         "sdxl",
@@ -256,6 +257,7 @@ ENTRIES: tuple[ModelEntry, ...] = (
         preset_folders=("SDXL_Training_Configs",),
         badges=("Kohya",),
         model_folder="Training_Models_SDXL",
+        download_bundles=(("SDXL RealVis v5 model", "sdxl_realvis"),),
     ),
     # ------------------------------------------------------------------ video models
     ModelEntry(

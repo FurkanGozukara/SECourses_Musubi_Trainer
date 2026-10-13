@@ -2372,9 +2372,9 @@ def _validated_values(model_key: str, values: dict) -> tuple[dict, str, list[str
     if not base:
         errors.append(f"{model['short_name']} base model path is empty.")
     elif flux and not os.path.isfile(base):
-        errors.append(f"FLUX.1 model file not found: {base} (download {model['model_files']['pretrained_model_name_or_path']} into {model['model_dir']}).")
+        errors.append(f"FLUX.1 model file not found: {base} (⬇️ Download in Model Files fetches the FLUX.1 Dev models, or put {model['model_files']['pretrained_model_name_or_path']} into {model['model_dir']}).")
     elif not flux and not (os.path.exists(base) or _looks_like_hf_repo_id(base)):
-        errors.append(f"SDXL model not found: {base} (download {model['model_files']['pretrained_model_name_or_path']} into {model['model_dir']}).")
+        errors.append(f"SDXL model not found: {base} (⬇️ Download in Model Files fetches RealVis v5, or put {model['model_files']['pretrained_model_name_or_path']} into {model['model_dir']}).")
     if flux:
         for key, label in (("ae", "FLUX VAE (ae)"), ("clip_l", "CLIP-L"), ("t5xxl", "T5-XXL")):
             if not v[key]:

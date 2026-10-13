@@ -98,3 +98,20 @@ def test_a_stopped_download_reads_as_stopped(tmp_path, monkeypatch):
         time.sleep(0.05)
     _version, status, text = manager.snapshot()
     assert status == "stopped" and "stopped" in text.splitlines()[-1] and "exit code" not in text
+
+
+def test_every_download_button_names_a_bundle_of_the_downloader():
+    # Download_Train_Models.py ships in the install root, next to this repository
+    import ast
+
+    from musubi_tuner_gui.unified import downloads as D
+    from musubi_tuner_gui.unified.registry import ENTRIES
+
+    if not os.path.isfile(D.DOWNLOADER):
+        pytest.skip("Download_Train_Models.py is not installed next to the app")
+    tree = ast.parse(open(D.DOWNLOADER, encoding="utf-8").read())
+    configs = next(node.value for node in tree.body if isinstance(node, ast.Assign) and any(getattr(t, "id", "") == "MODEL_CONFIGS" for t in node.targets))
+    known = {key.value for key in configs.keys}
+    named = {bundle for entry in ENTRIES for _label, bundle in entry.download_bundles}
+    assert named and named <= known, sorted(named - known)
+    assert {"flux1_dev", "sdxl_realvis"} <= named  # the kohya models download like the others
