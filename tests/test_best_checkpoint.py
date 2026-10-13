@@ -465,3 +465,22 @@ def test_an_after_step_can_run_as_its_own_job():
     _wait(runner)
     snapshot = runner.snapshot()
     assert snapshot["status"] == "finished" and snapshot["message"] == "Best checkpoint: step 500"
+    # 🔍 Analyze trains nothing: the monitor shows only the scoring, not empty training stages and loss tiles
+    assert snapshot["after_only"] and [stage["id"] for stage in snapshot["stages"]] == ["score"]
+    page = render_dashboard(snapshot)
+    assert "Best checkpoint: step 500" in page and "Training finished" not in page and "loss chart" not in page and "Avg loss" not in page
+
+
+def test_analyze_reuses_the_settings_a_finder_run_wrote(tmp_path):
+    # 🔍 Analyze after a restart: the run's own settings.json names its prompts and training images, so the dataset
+    # settings need not be filled in again
+    out = str(tmp_path / "out")
+    values = {"output_dir": out, "output_name": "mine"}
+    assert CF.run_settings(out, "mine") is None
+    folder = CF.run_folder(out, "mine")
+    os.makedirs(folder)
+    path = os.path.join(folder, "settings.json")
+    with open(path, "w", encoding="utf-8") as handle:
+        json.dump({"prompts": ["photo of sks woman"], "lines": 1, "references": [str(tmp_path / "a.png")]}, handle)
+    assert CF.run_settings(out, "mine") == path
+    assert CF.analysis_settings(values, CF.defaults("image"), []) == path

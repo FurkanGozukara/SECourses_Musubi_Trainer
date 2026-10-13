@@ -1873,8 +1873,10 @@ class Workspace:
             if not output_name or not index_samples(output_dir, output_name):
                 raise gr.Error(f"No samples of '{output_name}' in {os.path.join(output_dir, 'sample')}. The finder scores the samples a run saved.", duration=10)
             settings = self.finder_settings(args)
-            references = self.finder_references(entry, values)
-            if not references:
+            # a run made with the finder (or analyzed before) names its training images in its own settings.json
+            earlier = CF.run_settings(output_dir, output_name)
+            references = [] if earlier else self.finder_references(entry, values)
+            if not earlier and not references:
                 raise gr.Error("No training images found to compare the samples with: check the dataset settings.", duration=10)
             settings_path = CF.analysis_settings(values, settings, references)
             after = CF.after_step(output_dir, output_name, settings_path, values.get("gpu_ids"))

@@ -237,12 +237,20 @@ def after_step(output_dir: str, output_name: str, settings_path: str, gpu_ids=No
     return AfterStep(LABEL, cmd, cwd=APP_DIR, env=env, read_result=lambda: result_summary(output_dir, output_name))
 
 
+def run_settings(output_dir: str, output_name: str) -> str | None:
+    """The settings.json of an earlier finder run or analysis (prompts, seeds and the training images it compared
+    with), else None: 🔍 Analyze then needs no dataset settings."""
+    path = os.path.join(run_folder(output_dir, output_name), "settings.json")
+    return path if os.path.isfile(path) else None
+
+
 def analysis_settings(values: dict, settings: dict, references: list[str]) -> str:
     """settings.json for 🔍 Analyze: the one the run wrote, else one for the run's own sample prompts."""
     output_dir = os.path.abspath(str(values.get("output_dir") or "").strip() or ".")
-    path = os.path.join(run_folder(output_dir, str(values.get("output_name") or "").strip()), "settings.json")
-    if os.path.isfile(path):
+    path = run_settings(output_dir, str(values.get("output_name") or "").strip())
+    if path:
         return path
+    path = os.path.join(run_folder(output_dir, str(values.get("output_name") or "").strip()), "settings.json")
     prompts = [BP.prompt_text(line) for line in _own_prompt_lines(values.get("sample_prompts"))]
     os.makedirs(os.path.dirname(path), exist_ok=True)
     data = {"created": time.time(), "prompts": prompts, "lines": 0, "leakage_indices": [], "subject": settings["subject"],

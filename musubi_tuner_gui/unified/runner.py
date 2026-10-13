@@ -253,6 +253,7 @@ class RunState:
     peak_gb: dict = field(default_factory=dict)
     log_file: str = ""
     after: AfterStep | None = None
+    after_only: bool = False  # a job that runs only the after-step (🔍 Analyze): no training stages
     result: dict | None = None  # the after-step's summary
 
 
@@ -404,6 +405,7 @@ class TrainingRunner:
         meta: dict | None = None,
         wait: float = 2.5,
         after: AfterStep | None = None,
+        after_only: bool = False,
     ) -> tuple[bool, str]:
         """Run ``target`` (a trainer's train function) in a worker thread; ``after`` runs once training succeeded.
 
@@ -416,6 +418,7 @@ class TrainingRunner:
             self._job_counter += 1
             self._reset(title=title, subtitle=subtitle, meta=meta or {})
             self.state.after = after
+            self.state.after_only = after_only
             self._after_pending = after is not None
             self._job_done.clear()
             thread = threading.Thread(target=self._job_main, args=(target,), name=f"training-job-{self._job_counter}", daemon=True)
@@ -433,7 +436,7 @@ class TrainingRunner:
 
     def start_after_step(self, after: AfterStep, *, title: str, meta: dict | None = None) -> tuple[bool, str]:
         """Run only an after-step, as a job of its own (the finder on a folder that already holds a run's samples)."""
-        return self.start_job(lambda: self._run_after(after, ""), title=title, meta=meta, after=after)
+        return self.start_job(lambda: self._run_after(after, ""), title=title, meta=meta, after=after, after_only=True)
 
     def stop(self) -> str:
         """Kill the running process tree (caching or training)."""
@@ -477,8 +480,9 @@ class TrainingRunner:
                         "detail": state.stage_detail.get(stage_id, ""),
                     }
                     for stage_id, label, icon in STAGES
-                    if stage_id != "score" or state.after is not None
+                    if (stage_id == "score" and state.after is not None) or (stage_id != "score" and not state.after_only)
                 ],
+                "after_only": state.after_only,
                 "current_stage": state.current_stage,
                 "stage_progress": dict(state.stage_progress) if state.stage_progress else None,
                 "step": state.step,

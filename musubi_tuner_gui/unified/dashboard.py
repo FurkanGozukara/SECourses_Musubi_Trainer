@@ -246,6 +246,9 @@ def render_dashboard(snapshot: dict, now: float | None = None) -> str:
         _tile("ETA", format_duration(remaining) if live else "—", "remaining" if live else ""),
         _tile("VRAM", vram_value, vram_sub, hint=vram_hint),
     ]
+    after_only = bool(snapshot.get("after_only"))  # 🔍 Analyze: scoring a finished run, nothing is trained
+    if after_only:
+        tiles = [tiles[5], tiles[7]]
 
     alerts = []
     if snapshot.get("error"):
@@ -256,7 +259,7 @@ def render_dashboard(snapshot: dict, now: float | None = None) -> str:
             f'<div class="ud-alert ud-alert-warn">⏳ No step progress for {format_duration(now - last_progress)} — '
             "sampling or saving can take a while; check the log below if this persists.</div>"
         )
-    if status == "finished":
+    if status == "finished" and not after_only:
         alerts.append('<div class="ud-alert ud-alert-ok">✅ Training finished. Your model files are in the output directory.</div>')
     result = snapshot.get("result")
     if result and result.get("kind") == "best_checkpoint":
@@ -296,7 +299,7 @@ def render_dashboard(snapshot: dict, now: float | None = None) -> str:
         + '<div class="ud-tiles">'
         + "".join(tiles)
         + "</div>"
-        + _loss_chart(snapshot.get("loss_series") or [], snapshot.get("lr_series") or [])
+        + ("" if after_only else _loss_chart(snapshot.get("loss_series") or [], snapshot.get("lr_series") or []))
         + (f'<div class="ud-foot">{"".join(footer_bits)}</div>' if footer_bits else "")
         + "</div>"
     )
