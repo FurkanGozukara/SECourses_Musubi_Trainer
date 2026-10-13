@@ -515,8 +515,8 @@ def test_an_early_sign_that_does_not_last_keeps_the_full_likeness_after_it():
             "face_mean": 0.17 + gain, "prompt": 0.13, "variety": 0.9, "face_found": 1.0, "dino_nearest_train": 0.2,
             "vs_base": {"face_mean": (gain, 1.0), "identity": (margin, 1.0), "prompt": (change, 0.8)}}}
     result = ranking.rank({"training_faces": 13, "training_face_area": 0.113, "checkpoints": checkpoints})
-    assert not result["undertrained"] and result["plateau_start"] == 80 and result["best_epoch"] == 80
-    assert any("does not last: epoch 80 shows none" in reason for reason in result["reasons"])
+    assert not result["undertrained"] and result["plateau_start"] == 80 and result["best_epoch"] == 60  # judged 60-100
+    assert any("does not last: epoch 60 shows none" in reason for reason in result["reasons"])
 
 
 def test_the_finder_samples_at_the_step_saves_when_the_epochs_save_only_the_final_model(tmp_path):
@@ -531,3 +531,20 @@ def test_the_finder_samples_at_the_step_saves_when_the_epochs_save_only_the_fina
     values.update(max_train_epochs=100, save_every_n_epochs=25)
     run, _after = CF.prepare_run(values, settings, [str(tmp_path / "a.png")])
     assert run["sample_every_n_epochs"] == 25 and run["sample_every_n_steps"] == 0
+
+
+def test_a_lone_clean_checkpoint_among_lasting_signs_is_not_their_end():
+    # LTX 2.3 GUI run (2026-10-14): framing x1.3-1.7 at epochs 50 and 100-175, clean at 75 and at 200, where the training
+    # clip's garden replaced the prompts' scenes (no signal shows it); the subject from epoch 50: the pick is 75
+    gains = [0.17, 0.34, 0.41, 0.49, 0.50, 0.50, 0.51, 0.43]
+    margins = [0.05, 0.237, 0.356, 0.45, 0.50, 0.516, 0.548, 0.531]
+    areas = [0.0, 0.477, 0.236, 0.368, 0.40, 0.721, 0.421, 0.22]
+    checkpoints = {0: {"summary": {"face_mean": 0.126, "prompt": 0.09, "variety": 0.83, "face_found": 1.0, "face_area": 0.06}}}
+    for index, (gain, margin, area) in enumerate(zip(gains, margins, areas)):
+        checkpoints[25 * (index + 1)] = {"summary": {
+            "face_mean": 0.126 + gain, "prompt": 0.09, "variety": 0.83, "face_found": 1.0, "dino_nearest_train": 0.5,
+            "vs_base": {"face_mean": (gain, 1.0), "identity": (margin, 1.0), "face_area": (area, 1.0), "prompt": (0.0, 0.5)}}}
+    result = ranking.rank({"training_faces": 8, "training_face_area": 0.2, "checkpoints": checkpoints})
+    flagged = [row["epoch"] for row in result["rows"] if row["flags"]]
+    assert flagged == [50, 100, 125, 150, 175] and result["best_epoch"] == 75
+    assert any("the checkpoints after it carry them" in reason for reason in result["reasons"])

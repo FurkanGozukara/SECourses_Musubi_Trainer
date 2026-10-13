@@ -237,27 +237,27 @@ def rank(report: dict, label=_epoch_label) -> dict:
         early = onset is not None and onset["epoch"] <= knee
         isolated = None  # an early sign followed by clean checkpoints on the level
         if early:
-            # an early sign that does not last: the first stretch of level checkpoints without flags after it (FLUX
-            # Klein LoRA: framing x1.31 at the first save, x1.16 at the next; ERNIE-Image LoRA: prompt following -0.010
-            # at epoch 40 only, while epoch 20 had only half the likeness)
-            stretch = []
+            # the clean checkpoints with the likeness (EARLY_LEVEL of the most; with faces, past the identity switch:
+            # Mage-Flow LoRA's first save had the subject's glasses and hair but was the base model's man; not a share
+            # of the highest margin, which keeps rising while a run over-trains, Krea 2 at 2x), in runs of consecutive
+            # saves: the longest run, the earliest of equal ones. A sign that comes and goes is noise, but a lone clean
+            # save among signs is not their end. FLUX Klein LoRA (framing x1.31 at the first save only) and ERNIE-Image
+            # LoRA (prompt following -0.010 at epoch 40 only; epoch 20 had half the likeness): the clean run after the
+            # sign. LTX 2.3 GUI run (framing at 50 and 100-175, clean at 75 and at 200, where the training clip's
+            # garden replaced the prompts' scenes, which no signal shows): epoch 75
+            runs, current = [], []
             for r in rows:
-                if r["epoch"] < knee or (r["flags"] and not stretch):
-                    continue
-                if r["flags"]:
-                    break
-                stretch.append(r)
-            if stretch:
-                window, isolated, early = stretch, onset, False
-                onset = next((r for r in rows if r["epoch"] > stretch[-1]["epoch"] and r["flags"]), None)
-            else:
-                # signs that last: the checkpoints before them. With faces, only those whose faces have left the base
-                # model's own person (Mage-Flow LoRA: the first save had the subject's glasses and hair, so the face
-                # match rose, but it was still the base model's man). Not a share of the highest margin: it keeps
-                # rising while a run over-trains (Krea 2 at 2x: 0.35 at the first save, the subject by eye, 0.55 at
-                # the last)
-                window = [r for r in rows if r["epoch"] < onset["epoch"] and r["gain"] >= EARLY_LEVEL * top
-                          and (not margins or margins[r["epoch"]] >= IDENTITY_SWITCH)]
+                if not r["flags"] and r["gain"] >= EARLY_LEVEL * top and (not margins or margins[r["epoch"]] >= IDENTITY_SWITCH):
+                    current.append(r)
+                elif current:
+                    runs.append(current)
+                    current = []
+            if current:
+                runs.append(current)
+            window = max(runs, key=len) if runs else []
+            if window and window[0]["epoch"] > onset["epoch"]:  # after the first sign: it did not last
+                isolated, early = onset, False
+                onset = next((r for r in rows if r["epoch"] > window[-1]["epoch"] and r["flags"]), None)
         else:
             window = [r for r in rows if r["epoch"] >= knee and (onset is None or r["epoch"] < onset["epoch"])]
         signs = f"Over-training signs from {onset['label']}: " + "; ".join(onset["flags"]) + "." if onset else ""
@@ -282,8 +282,12 @@ def rank(report: dict, label=_epoch_label) -> dict:
                                        + "; ".join(isolated["flags"]) + f"); {window[0]['label']} shows none.")
                 reasons += [signs] if signs else []
                 if len(window) > 1:
-                    where = "before them" if onset else "on that level, with no over-training signs"
+                    where = "before them" if onset else ("on that level, with no over-training signs" if window[0]["epoch"] >= knee
+                                                         else "without warning signs")
                     reasons.append(f"{label(best['epoch'])} has nearly the most likeness of the {len(window)} checkpoints {where}{later}.")
+                elif best["epoch"] < knee:
+                    reasons.append(f"{label(best['epoch'])} has {best['gain'] / top:.0%} of the most likeness and no warning signs; "
+                                   + ("the checkpoints after it carry them." if onset else "the later ones add likeness with warning signs before them."))
                 else:
                     reasons.append(f"{label(best['epoch'])} is the checkpoint with the full likeness before them." if onset
                                    else f"{label(best['epoch'])} is the only checkpoint on that level.")
