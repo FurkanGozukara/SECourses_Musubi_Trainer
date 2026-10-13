@@ -266,6 +266,23 @@ def test_an_undertrained_run_with_damage_picks_the_last_checkpoint_before_it():
     assert "the last checkpoint before the warning signs, epoch 60, is the pick" in result["reasons"][0]
 
 
+def test_before_an_early_sign_the_pick_needs_faces_that_left_the_base_models_person():
+    # Mage-Flow LoRA (2026-10-13): epoch 20 matched the training faces almost as well as epoch 60 (the subject's
+    # glasses and hair) but was still the base model's man by eye; the subject from epoch 60, textures busier from 80
+    gains = [0.277, 0.227, 0.232, 0.369, 0.324]
+    margins = [-0.030, 0.062, 0.241, 0.191, 0.239]
+    sharpness = [0.628, 0.663, 0.973, 1.129, 1.198]
+    checkpoints = {0: {"summary": {"face_mean": 0.12, "prompt": 0.13, "variety": 0.93, "face_found": 1.0, "face_area": 0.03}}}
+    for index, (gain, margin, sharp) in enumerate(zip(gains, margins, sharpness)):
+        checkpoints[20 * (index + 1)] = {"summary": {
+            "face_mean": 0.12 + gain, "prompt": 0.13, "variety": 0.93, "face_found": 1.0, "dino_nearest_train": 0.2,
+            "vs_base": {"face_mean": (gain, 1.0), "identity": (margin, 1.0), "hf_energy": (sharp, 1.0), "prompt": (0.0, 0.5)}}}
+    result = ranking.rank({"training_faces": 13, "training_face_area": 0.12, "checkpoints": checkpoints})
+    assert not result["undertrained"] and result["onset"] == 80 and result["plateau_start"] == 80
+    assert result["best_epoch"] == 60
+    assert "epoch 60 has nearly the most likeness before them" in result["reasons"][1]
+
+
 def test_long_prompts_are_scored_in_sentence_groups_that_fit_the_text_encoder(tmp_path):
     from musubi_tuner_gui.best_checkpoint import scoring
 
