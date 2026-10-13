@@ -24,8 +24,10 @@ lost variety, copied training photos, colour / sharpness drift and the training 
   pick         the onset of over-training is the first checkpoint with a flag. From the knee up to the onset (or,
                when the onset comes first, among the checkpoints before it that reach EARLY_LEVEL of the highest
                likeness): the earliest checkpoint within PICK_TOLERANCE of that window's most likeness (later ones
-               add little likeness and copy more of the training photos). No such checkpoint: the earliest level
-               checkpoint with the fewest flags
+               add little likeness and copy more of the training photos). An early sign with nothing before it that
+               reaches the level (FLUX Klein LoRA: framing x1.31 at the first save, x1.16 at the next): the first stretch
+               of level checkpoints without flags. No such checkpoint: the earliest level checkpoint with the fewest
+               flags
 Thresholds are research values (dont_upload/best_checkpoint_research) and may change with the calibration."""
 
 from __future__ import annotations
@@ -201,8 +203,19 @@ def rank(report: dict, label=_epoch_label) -> dict:
             reasons.append(f"Warning signs from {onset['label']}: " + "; ".join(onset["flags"]) + ".")
     else:
         early = onset is not None and onset["epoch"] <= knee
+        isolated = None  # an early sign followed by clean checkpoints on the level
         if early:
             window = [r for r in rows if r["epoch"] < onset["epoch"] and r["gain"] >= EARLY_LEVEL * top]
+            if not window:
+                for r in rows:
+                    if r["epoch"] < knee or (r["flags"] and not window):
+                        continue
+                    if r["flags"]:
+                        break
+                    window.append(r)
+                if window:
+                    isolated, early = onset, False
+                    onset = next((r for r in rows if r["epoch"] > window[-1]["epoch"] and r["flags"]), None)
         else:
             window = [r for r in rows if r["epoch"] >= knee and (onset is None or r["epoch"] < onset["epoch"])]
         signs = f"Over-training signs from {onset['label']}: " + "; ".join(onset["flags"]) + "." if onset else ""
@@ -217,7 +230,10 @@ def rank(report: dict, label=_epoch_label) -> dict:
                     f"{later}. A lower learning rate would reach the full likeness before them.",
                 ]
             else:
-                reasons = [level_line] + ([signs] if signs else [])
+                reasons = [level_line]
+                if isolated:
+                    reasons.append(f"A warning sign at {isolated['label']} (" + "; ".join(isolated["flags"]) + f") does not last: {window[0]['label']} shows none.")
+                reasons += [signs] if signs else []
                 if len(window) > 1:
                     where = "before them" if onset else "on that level, with no over-training signs"
                     reasons.append(f"{label(best['epoch'])} has nearly the most likeness of the {len(window)} checkpoints {where}{later}.")

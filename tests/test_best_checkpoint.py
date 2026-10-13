@@ -216,6 +216,25 @@ def test_the_likeness_level_waits_until_the_faces_leave_the_base_models_identity
     assert scoring.identity_margin(late, base, None) is None
 
 
+def test_a_warning_sign_that_does_not_last_does_not_hide_the_clean_checkpoints_after_it():
+    # FLUX Klein 9B LoRA, 100 epochs (2026-10-13): faces x1.31 at the first save, x1.16 at the next, lasting signs from
+    # epoch 60 on. By eye: the subject from epoch 20, the selfie loses its muscles from epoch 40-60: best epoch 40
+    gains = [0.392, 0.456, 0.486, 0.500, 0.533]
+    margins = [0.368, 0.400, 0.468, 0.428, 0.504]
+    areas = [0.268, 0.152, 0.299, 0.250, 0.253]
+    saturation = [-0.109, -0.159, -0.221, -0.292, -0.341]  # colours muted from epoch 60 on (-20%)
+    checkpoints = {0: {"summary": {"face_mean": 0.287, "prompt": 0.13, "variety": 0.9, "face_found": 1.0, "face_area": 0.03}}}
+    for index, (gain, margin, area, muted) in enumerate(zip(gains, margins, areas, saturation)):
+        checkpoints[20 * (index + 1)] = {"summary": {
+            "face_mean": 0.287 + gain, "prompt": 0.13, "variety": 0.9, "face_found": 1.0, "dino_nearest_train": 0.2,
+            "vs_base": {"face_mean": (gain, 1.0), "identity": (margin, 1.0), "face_area": (area, 1.0), "prompt": (0.0, 0.5),
+                        "saturation": (muted, 0.83)}}}
+    result = ranking.rank({"training_faces": 13, "training_face_area": 0.113, "checkpoints": checkpoints})
+    assert (result["plateau_start"], result["onset"], result["best_epoch"]) == (40, 60, 40)
+    assert any("does not last: epoch 40 shows none" in reason for reason in result["reasons"])
+    assert not any(reason.endswith(": .") or ": ." in reason for reason in result["reasons"])
+
+
 def test_long_prompts_are_scored_in_sentence_groups_that_fit_the_text_encoder(tmp_path):
     from musubi_tuner_gui.best_checkpoint import scoring
 
