@@ -28,7 +28,9 @@ def adapter_spec() -> ParamSpec:
         kind="dropdown",
         label="Adapter Type",
         default=LORA_ADAPTER,
-        info="DoRA also learns a magnitude per input channel: more faithful at the same rank, a little slower. Both load in ComfyUI / SwarmUI.",
+        info="DoRA also learns a magnitude per input channel: more faithful at the same rank, about 10-15% slower per step, and at "
+        "the same learning rate it can need more epochs (Krea 2: best checkpoint at epoch 120 instead of 80; FLUX Klein: no "
+        "difference). Both load in ComfyUI / SwarmUI.",
         choices=(LORA_ADAPTER, DORA_ADAPTER),
         section="network",
         priority=-10,
