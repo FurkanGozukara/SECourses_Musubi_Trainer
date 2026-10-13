@@ -17,8 +17,10 @@ lost variety, copied training photos, colour / sharpness drift and the training 
                than a checkpoint changes them, so medians over all samples drift with the prompt mix (no base model
                samples: the medians are compared, PROMPT_DROP and z-scores over the checkpoints' spread with DRIFT_MIN)
   flags        prompt following PAIRED_PROMPT_DROP below the base model, variety below VARIETY_RATIO x base, a sample
-               nearer than COPY_LIMIT to a training photo, colour / sharpness drift beyond DRIFT_LOG (log ratio; clipped
-               highlights / shadows: DRIFT_MIN), faces in fewer samples than FACE_FOUND_DROP x base, faces FRAMING times
+               nearer than COPY_LIMIT to a training photo, colour / sharpness drift beyond DRIFT_LOG since the first
+               save (log ratio; clipped highlights / shadows: DRIFT_MIN; a shift already at the first save is the look of
+               the training photos, reported once: Qwen-Image 2.1 samples 40% softer than the base model's from epoch 20
+               on, unchanged after), faces in fewer samples than FACE_FOUND_DROP x base, faces FRAMING times
                the base model's size in the direction of the training photos' framing (the subject drawn as close, or as
                far, as in its training photos, whatever the prompt asks)
   pick         the onset of over-training is the first checkpoint with a flag. From the knee up to the onset (or,
@@ -91,16 +93,19 @@ def _unpaired_drift(checkpoints: dict, trained: list[int], base: dict) -> dict:
     return drift
 
 
-def _drift_flags(summary: dict, base: dict, unpaired: dict) -> list[str]:
+def _drift_flags(summary: dict, base: dict, unpaired: dict, first: dict | None = None, first_label: str = "") -> list[str]:
+    """Colour / sharpness drift. Paired: the change from the base model minus the change at the first save (``first``),
+    so only drift that grows with training counts."""
     flags = []
     if any(_paired(summary, key) for key in (*DRIFT_LOG, "clipped")):
         for key, limit in DRIFT_LOG.items():
-            change = _paired(summary, key)
-            if change and abs(change[0]) >= limit and change[1] >= AGREE:
-                flags.append(f"{DRIFT_NAMES[key]} drift ({math.exp(change[0]) - 1:+.0%} vs the base model on the same prompts)")
-        change = _paired(summary, "clipped")
-        if change and change[0] >= DRIFT_MIN["clipped"] and change[1] >= AGREE:
-            flags.append(f"{DRIFT_NAMES['clipped']} drift ({change[0]:+.0%} of the image clipped vs the base model)")
+            change, start = _paired(summary, key), _paired(first or {}, key)
+            growth = change[0] - (start[0] if start else 0.0) if change else 0.0
+            if change and abs(growth) >= limit and change[1] >= AGREE:
+                flags.append(f"{DRIFT_NAMES[key]} drift ({math.exp(growth) - 1:+.0%} since {first_label or 'the first save'})")
+        change, start = _paired(summary, "clipped"), _paired(first or {}, "clipped")
+        if change and change[0] - (start[0] if start else 0.0) >= DRIFT_MIN["clipped"] and change[1] >= AGREE:
+            flags.append(f"{DRIFT_NAMES['clipped']} drift ({change[0] - (start[0] if start else 0.0):+.0%} of the image clipped since {first_label or 'the first save'})")
         return flags
     for key, z in unpaired.items():
         if abs(z) > Z_LIMIT:
@@ -179,7 +184,7 @@ def rank(report: dict, label=_epoch_label) -> dict:
             flags.append(f"less variety between prompts ({s['variety']:.3f}, base {base['variety']:.3f})")
         if s.get("dino_nearest_train") is not None and s["dino_nearest_train"] > COPY_LIMIT:
             flags.append(f"copies training photos (similarity {s['dino_nearest_train']:.3f})")
-        flags += _drift_flags(s, base, unpaired.get(p, {}))
+        flags += _drift_flags(s, base, unpaired.get(p, {}), checkpoints[trained[0]], label(trained[0]))
         framing = _framing_flag(s, base, report.get("training_face_area"))
         if framing:
             flags.append(framing)
@@ -251,6 +256,14 @@ def rank(report: dict, label=_epoch_label) -> dict:
             ]
         if onset is None and best is rows[-1] and len(trained) >= 3 and smooth[trained[-1]] - smooth[trained[-3]] >= STILL_RISING:
             reasons.append(f"Likeness was still rising at {label(best['epoch'])} and nothing shows over-training yet: more epochs could add likeness.")
+    looks = []
+    for key, limit in DRIFT_LOG.items():
+        start = _paired(checkpoints[trained[0]], key)
+        if start and abs(start[0]) >= limit and start[1] >= AGREE:
+            looks.append(f"{DRIFT_NAMES[key]} {math.exp(start[0]) - 1:+.0%}")
+    if looks:
+        reasons.append(f"From {label(trained[0])} on the samples differ from the base model's look ({', '.join(looks)} on the same prompts): "
+                       "the training photos' look, not over-training.")
     for row in rows:  # the likeness level as shown: from the knee, or from an earlier pick
         row["plateau"] = row["epoch"] >= min(knee, best["epoch"])
     return {"best_epoch": best["epoch"], "likeness_signal": like_key, "plateau_start": knee, "undertrained": undertrained,

@@ -157,7 +157,7 @@ def test_paired_changes_ignore_the_prompt_mix_and_flag_real_damage():
     result = ranking.rank(report)
     rows = {row["epoch"]: row for row in result["rows"]}
     assert not rows[20]["flags"] and not rows[60]["flags"]  # the unpaired medians would call every checkpoint 48% less sharp
-    assert any("prompt following" in f for f in rows[80]["flags"]) and any("saturation drift (+35%" in f for f in rows[80]["flags"])
+    assert any("prompt following" in f for f in rows[80]["flags"]) and any("saturation drift (+32% since epoch 20)" in f for f in rows[80]["flags"])
     assert any("drawn closer than the prompts ask, as in the training photos (faces 2.12x" in f for f in rows[80]["flags"])
     assert result["best_epoch"] == 60 and rows[80]["prompt"] == pytest.approx(0.19)
 
