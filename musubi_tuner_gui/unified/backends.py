@@ -280,6 +280,10 @@ class Backend:
         """The trainer, or the classic code that runs it, takes only whole numbers for this setting."""
         return False
 
+    def hub_model_id(self, key: str, value) -> bool:
+        """``value`` of this model-file setting is a Hugging Face id the trainer downloads itself (no local file)."""
+        return False
+
     def check_values(self, values: dict, mode: str | None = None) -> list[str]:
         """Plain-language problems with the values the user entered (empty list: all usable). Save refuses
         these too: a classic save would store such a value changed or not at all."""
@@ -679,6 +683,11 @@ class KohyaBackend(Backend):
         if os.path.isfile(path) or re.match(r"^(?:[A-Za-z]:[\\/]|\\\\|//|~[\\/]|\.{1,2}[\\/]|file:)", strip_quotes(text), re.I):
             return path
         return text
+
+    def hub_model_id(self, key: str, value) -> bool:
+        """sd-scripts takes ``owner/name`` Hugging Face ids for the SDXL base model and the VAE (the presets' VAE is
+        stabilityai/sdxl-vae); FLUX.1 needs its files."""
+        return self.model_key == "sdxl" and key in ("pretrained_model_name_or_path", "vae") and self.module.looks_like_hf_repo_id(value)
 
     def whole_number(self, key: str) -> bool:
         """sd-scripts (or accelerate launch) reads this setting as an int (kohya_backend.kohya_whole_number): rank,

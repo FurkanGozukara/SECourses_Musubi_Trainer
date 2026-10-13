@@ -441,6 +441,20 @@ def test_every_default_fits_its_number_fields_step(workspaces):
     assert not off, off
 
 
+def test_a_hugging_face_id_is_not_reported_missing(workspaces):
+    """The SDXL presets' VAE is stabilityai/sdxl-vae: sd-scripts downloads it, so the file list must not say "not found"."""
+    image = workspaces["image"]
+    entry = image.entry("sdxl")
+    values = image.backend_of(entry).defaults(FULL)
+    values["vae"] = "stabilityai/sdxl-vae"
+    status = image.files_status(entry, values)
+    assert "Hugging Face" in status and "VAE (optional) — not found" not in status
+    flux = image.entry("flux1_dev")
+    flux_values = image.backend_of(flux).defaults(LORA)
+    flux_values["pretrained_model_name_or_path"] = "black-forest-labs/FLUX.1-dev"  # FLUX.1 needs its file
+    assert "Hugging Face" not in image.files_status(flux, flux_values)
+
+
 def test_a_model_downloaded_after_the_preset_loaded_is_found(tmp_path, monkeypatch, workspaces):
     """A FLUX.1 preset loaded before ⬇️ Download keeps its relative Training_Models_FLUX_1/... paths (kohya relocates
     only files that exist); training finds them under the install folder, and so must the file list."""

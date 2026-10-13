@@ -64,6 +64,7 @@ __all__ = [
     "load_kohya_preset",
     "kohya_validation_problems",
     "kohya_whole_number",
+    "looks_like_hf_repo_id",
     "kohya_steps_example",
     "kohya_steps_note",
     "train_kohya_model",
@@ -1091,6 +1092,11 @@ def kohya_whole_number(model_key: str, key: str) -> bool:
 def _clean_text(value: object) -> str:
     """Typed text without padding and surrounding quotes (straight, curly or backticks, as copy-paste brings them)."""
     return strip_quotes(str(value if value is not None else ""))
+
+
+def looks_like_hf_repo_id(value: str) -> bool:
+    """``owner/name`` Hugging Face ids (accepted by sd-scripts for SDXL base models and VAEs)."""
+    return _looks_like_hf_repo_id(value)
 
 
 def _looks_like_hf_repo_id(value: str) -> bool:

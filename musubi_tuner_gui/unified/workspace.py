@@ -870,6 +870,8 @@ class Workspace:
             path = clean_path(values.get(spec.key))
             if path and _model_file_exists(path):
                 rows.append(f'<span class="ud-file ok">✅ {html.escape(spec.label)}</span>')
+            elif path and backend.hub_model_id(spec.key, path):
+                rows.append(f'<span class="ud-file ok" title="{html.escape(path)}">☁️ {html.escape(spec.label)} — Hugging Face, downloaded at Start</span>')
             elif path:
                 rows.append(f'<span class="ud-file bad" title="{html.escape(path)}">⚠️ {html.escape(spec.label)} — not found</span>')
             else:
