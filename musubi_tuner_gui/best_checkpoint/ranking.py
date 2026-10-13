@@ -203,20 +203,25 @@ def rank(report: dict, label=_epoch_label) -> dict:
     level_line = (f"Likeness levels off from {label(knee)}" + (": the faces match the training photos and have left the base model's own person" if identity_knee else "")
                   + f" ({name} {likeness[knee]:.3f}; base model {base_like:.3f}, highest {best_like:.3f}).")
     if undertrained:
-        best = rows[-1]
+        # the most trained checkpoint is the closest to the likeness, unless it already shows damage: then the last
+        # checkpoint before the first warning sign (Mage-Flow DoRA: noisy textures from epoch 80, likeness never complete)
+        clean = [r for r in rows if onset is None or r["epoch"] < onset["epoch"]]
+        best = clean[-1] if clean else rows[-1]
+        latest = "the latest checkpoint" if best is rows[-1] else "the last checkpoint before the warning signs"
         if still_base:
             reasons = [
-                f"The faces are still the base model's own person at {label(best['epoch'])}: they resemble its faces for the same "
+                f"The faces are still the base model's own person at {label(rows[-1]['epoch'])}: they resemble its faces for the same "
                 f"prompts more than your training photos ({name} {best_like:.3f}, base model {base_like:.3f}). The run looks "
-                f"undertrained: train longer or with a higher learning rate; until then the latest checkpoint, {label(best['epoch'])}, is the pick."
+                f"undertrained: train longer or with a higher learning rate; until then {latest}, {label(best['epoch'])}, is the pick."
             ]
         else:
             reasons = [
                 f"Likeness has not risen above the base model yet ({name}: base model {base_like:.3f}, best {best_like:.3f}): the run "
-                f"looks undertrained. Train longer or with a higher learning rate; until then the latest checkpoint, {label(best['epoch'])}, is the pick."
+                f"looks undertrained. Train longer or with a higher learning rate; until then {latest}, {label(best['epoch'])}, is the pick."
             ]
         if onset:
-            reasons.append(f"Warning signs from {onset['label']}: " + "; ".join(onset["flags"]) + ".")
+            reasons.append(f"Warning signs from {onset['label']}: " + "; ".join(onset["flags"]) + "."
+                           + (" Training longer will not fix those: try a lower learning rate with more epochs." if best is not rows[-1] else ""))
     else:
         early = onset is not None and onset["epoch"] <= knee
         isolated = None  # an early sign followed by clean checkpoints on the level

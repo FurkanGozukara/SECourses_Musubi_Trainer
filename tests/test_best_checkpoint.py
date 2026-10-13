@@ -250,6 +250,22 @@ def test_faces_that_never_leave_the_base_models_person_mean_an_undertrained_run(
     assert "still the base model's own person at epoch 100" in result["reasons"][0]
 
 
+def test_an_undertrained_run_with_damage_picks_the_last_checkpoint_before_it():
+    # Mage-Flow DoRA (2026-10-13): the faces never left the base model's person, and from epoch 80 the textures turned
+    # speckled (sharpness +52% / +67% since the first save): the latest checkpoint was the noisiest
+    gains = [0.07, 0.15, 0.11, 0.13, 0.17]
+    margins = [-0.16, 0.05, -0.07, 0.06, 0.05]
+    sharpness = [0.46, 0.55, 0.60, 0.88, 0.98]
+    checkpoints = {0: {"summary": {"face_mean": 0.116, "prompt": 0.13, "variety": 0.9, "face_found": 1.0, "face_area": 0.03}}}
+    for index, (gain, margin, sharp) in enumerate(zip(gains, margins, sharpness)):
+        checkpoints[20 * (index + 1)] = {"summary": {
+            "face_mean": 0.116 + gain, "prompt": 0.13, "variety": 0.9, "face_found": 1.0, "dino_nearest_train": 0.2,
+            "vs_base": {"face_mean": (gain, 1.0), "identity": (margin, 0.5), "hf_energy": (sharp, 0.83), "prompt": (0.0, 0.5)}}}
+    result = ranking.rank({"training_faces": 13, "training_face_area": 0.113, "checkpoints": checkpoints})
+    assert result["undertrained"] and result["onset"] == 80 and result["best_epoch"] == 60
+    assert "the last checkpoint before the warning signs, epoch 60, is the pick" in result["reasons"][0]
+
+
 def test_long_prompts_are_scored_in_sentence_groups_that_fit_the_text_encoder(tmp_path):
     from musubi_tuner_gui.best_checkpoint import scoring
 
