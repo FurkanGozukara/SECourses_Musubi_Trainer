@@ -266,6 +266,23 @@ def test_an_undertrained_run_with_damage_picks_the_last_checkpoint_before_it():
     assert "the last checkpoint before the warning signs, epoch 60, is the pick" in result["reasons"][0]
 
 
+def test_an_undertrained_run_passes_over_a_sign_that_does_not_last():
+    # HiDream-O1 LoRA (2026-10-13): still the base model's people at epoch 100; saturation dipped at epoch 80 only
+    # (-24% since epoch 20, back at 100): the most trained clean checkpoint is the pick, not the one before the dip
+    gains = [0.134, 0.225, 0.231, 0.239, 0.287]
+    margins = [-0.284, -0.078, -0.078, -0.135, -0.046]
+    saturation = [0.0, -0.05, -0.10, -0.28, -0.12]
+    checkpoints = {0: {"summary": {"face_mean": 0.136, "prompt": 0.13, "variety": 0.9, "face_found": 1.0, "face_area": 0.03}}}
+    for index, (gain, margin, sat) in enumerate(zip(gains, margins, saturation)):
+        checkpoints[20 * (index + 1)] = {"summary": {
+            "face_mean": 0.136 + gain, "prompt": 0.13, "variety": 0.9, "face_found": 1.0, "dino_nearest_train": 0.2,
+            "vs_base": {"face_mean": (gain, 1.0), "identity": (margin, 1.0), "saturation": (sat, 1.0), "prompt": (0.0, 0.5)}}}
+    result = ranking.rank({"training_faces": 13, "training_face_area": 0.113, "checkpoints": checkpoints})
+    assert result["undertrained"] and result["onset"] == 80 and result["best_epoch"] == 100
+    assert "the latest checkpoint, epoch 100, is the pick" in result["reasons"][0]
+    assert "do not last: epoch 100 shows none" in result["reasons"][1] and "lower learning rate" not in result["reasons"][1]
+
+
 def test_before_an_early_sign_the_pick_needs_faces_that_left_the_base_models_person():
     # Mage-Flow LoRA (2026-10-13): epoch 20 matched the training faces almost as well as epoch 60 (the subject's
     # glasses and hair) but was still the base model's man by eye; the subject from epoch 60, textures busier from 80

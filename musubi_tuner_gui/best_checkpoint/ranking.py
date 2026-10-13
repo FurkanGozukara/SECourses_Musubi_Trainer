@@ -7,7 +7,7 @@ lost variety, copied training photos, colour / sharpness drift and the training 
   undertrained the best likeness gains less than LIKENESS_MIN_GAIN over the base model, or (with faces) the faces never
                leave the base model's own person (smoothed identity margin below IDENTITY_SWITCH at every save; Z-Image
                Turbo LoRA at 1e-5 for 100 epochs: face match 0.06 -> 0.33, still the base model's man by eye): the
-               latest checkpoint is picked and the user is told to train longer
+               latest checkpoint without warning signs is picked and the user is told to train longer
   knee         the likeness level: the first checkpoint whose smoothed gain reaches KNEE_FRACTION of the highest (later
                checkpoints keep creeping up while the model copies more of its training photos) and, with faces, whose
                smoothed identity margin (``vs_base["identity"]``: similarity to the training faces minus similarity to
@@ -206,11 +206,16 @@ def rank(report: dict, label=_epoch_label) -> dict:
     level_line = (f"Likeness levels off from {label(knee)}" + (": the faces match the training photos and have left the base model's own person" if identity_knee else "")
                   + f" ({name} {likeness[knee]:.3f}; base model {base_like:.3f}, highest {best_like:.3f}).")
     if undertrained:
-        # the most trained checkpoint is the closest to the likeness, unless it already shows damage: then the last
-        # checkpoint before the first warning sign (Mage-Flow DoRA: noisy textures from epoch 80, likeness never complete)
-        clean = [r for r in rows if onset is None or r["epoch"] < onset["epoch"]]
+        # the most trained checkpoint is the closest to the likeness: the latest one without warning signs (Mage-Flow
+        # DoRA: noisy textures from epoch 80 on, so epoch 60; HiDream-O1 LoRA: a saturation dip at epoch 80 only, so 100)
+        clean = [r for r in rows if not r["flags"]]
         best = clean[-1] if clean else rows[-1]
-        latest = "the latest checkpoint" if best is rows[-1] else "the last checkpoint before the warning signs"
+        if best is rows[-1]:
+            latest = "the latest checkpoint"
+        elif onset is not None and best["epoch"] < onset["epoch"]:
+            latest = "the last checkpoint before the warning signs"
+        else:
+            latest = "the latest checkpoint without warning signs"
         if still_base:
             reasons = [
                 f"The faces are still the base model's own person at {label(rows[-1]['epoch'])}: they resemble its faces for the same "
@@ -222,7 +227,11 @@ def rank(report: dict, label=_epoch_label) -> dict:
                 f"Likeness has not risen above the base model yet ({name}: base model {base_like:.3f}, best {best_like:.3f}): the run "
                 f"looks undertrained. Train longer or with a higher learning rate; until then {latest}, {label(best['epoch'])}, is the pick."
             ]
-        if onset:
+        if onset and best is rows[-1] and not best["flags"]:
+            signed = [r for r in rows if r["flags"]]
+            reasons.append(f"Warning signs at {', '.join(r['label'] for r in signed)} (" + "; ".join(onset["flags"])
+                           + f") do not last: {label(best['epoch'])} shows none.")
+        elif onset:
             reasons.append(f"Warning signs from {onset['label']}: " + "; ".join(onset["flags"]) + "."
                            + (" Training longer will not fix those: try a lower learning rate with more epochs." if best is not rows[-1] else ""))
     else:
