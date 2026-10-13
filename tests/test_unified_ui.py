@@ -421,6 +421,26 @@ def test_model_file_status_follows_the_whole_form(workspaces):
     assert html.escape(label) in video.files_status(entry, values)
 
 
+def test_every_default_fits_its_number_fields_step(workspaces):
+    """The browser marks a number off its field's step invalid and its arrows jump by the step: kohya's Text Encoder
+    LR had no step (Gradio's 1) for 5e-5, Qwen-Image Edit's control resolution step 64 for its 1328 default."""
+    off = []
+    for category, workspace in workspaces.items():
+        for item in workspace.fields.values():
+            if item.kind != "number":
+                continue
+            low, _high, step = item.bounds
+            for name, spec in item.per_backend.items():
+                for mode in spec.modes:
+                    value = workspace.backends[name].defaults(mode).get(spec.key)
+                    if isinstance(value, bool) or not isinstance(value, (int, float)):
+                        continue
+                    count = (value - (low or 0)) / step
+                    if abs(count - round(count)) > 1e-6 * max(1.0, abs(count)):
+                        off.append((category, item.uid, name, mode, value, step))
+    assert not off, off
+
+
 def test_a_model_downloaded_after_the_preset_loaded_is_found(tmp_path, monkeypatch, workspaces):
     """A FLUX.1 preset loaded before ⬇️ Download keeps its relative Training_Models_FLUX_1/... paths (kohya relocates
     only files that exist); training finds them under the install folder, and so must the file list."""

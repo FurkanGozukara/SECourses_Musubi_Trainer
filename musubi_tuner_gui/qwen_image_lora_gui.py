@@ -370,7 +370,7 @@ class QwenImageDataset:
                     value=self.config.get("dataset_qwen_image_edit_control_resolution_width", 1328),
                     minimum=0,
                     maximum=4096,
-                    step=64,
+                    step=16,
                     info="[EDIT MODE ONLY] Width for control images. 0 = use training resolution. 1024 = Official Qwen-Image-Edit default. 1328 = Optimal for Qwen models. Only used when Model Version is edit-2509/edit-2511. Cannot be used with 'No Resize Control'."
                 )
                 
@@ -379,7 +379,7 @@ class QwenImageDataset:
                     value=self.config.get("dataset_qwen_image_edit_control_resolution_height", 1328),
                     minimum=0,
                     maximum=4096,
-                    step=64,
+                    step=16,
                     info="[EDIT MODE ONLY] Height for control images. 0 = use training resolution. 1024 = Official Qwen-Image-Edit default. 1328 = Optimal for Qwen models. Set both width & height for custom control resolution."
                 )
                 

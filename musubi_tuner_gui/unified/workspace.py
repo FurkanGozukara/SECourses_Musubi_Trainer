@@ -453,10 +453,13 @@ class Workspace:
                     minimums = [spec.minimum for spec in specs]
                     maximums = [spec.maximum for spec in specs]
                     steps = [spec.step for spec in specs if spec.step]
+                    # no step anywhere (kohya's decimals such as Text Encoder LR): the browser's default 1 marks 5e-5
+                    # invalid and its arrows jump by 1
+                    decimal = any(not self.backends[name].whole_number(key) for name, _spec, _order in items)
                     definition.bounds = (
                         None if any(value is None for value in minimums) else min(minimums),
                         None if any(value is None for value in maximums) else max(maximums),
-                        min(steps) if steps else 1,
+                        min(steps) if steps else (1e-6 if decimal else 1),
                     )
                 definition.host_classes = self._host_classes(definition)
                 self.fields[uid] = definition
