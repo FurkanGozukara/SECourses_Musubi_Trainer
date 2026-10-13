@@ -235,6 +235,21 @@ def test_a_warning_sign_that_does_not_last_does_not_hide_the_clean_checkpoints_a
     assert not any(reason.endswith(": .") or ": ." in reason for reason in result["reasons"])
 
 
+def test_faces_that_never_leave_the_base_models_person_mean_an_undertrained_run():
+    # Z-Image Turbo LoRA at its preset 1e-5 for 100 epochs (2026-10-13): face match 0.06 -> 0.33 (a gain of 0.27, more than
+    # LIKENESS_MIN_GAIN) while every face stayed nearer the base model's man than the training photos; by eye: undertrained
+    gains = [0.006, 0.077, 0.163, 0.248, 0.268]
+    margins = [-0.565, -0.449, -0.295, -0.156, -0.168]
+    checkpoints = {0: {"summary": {"face_mean": 0.059, "prompt": 0.13, "variety": 0.9, "face_found": 1.0, "face_area": 0.03}}}
+    for index, (gain, margin) in enumerate(zip(gains, margins)):
+        checkpoints[20 * (index + 1)] = {"summary": {
+            "face_mean": 0.059 + gain, "prompt": 0.13, "variety": 0.9, "face_found": 1.0, "dino_nearest_train": 0.2,
+            "vs_base": {"face_mean": (gain, 1.0), "identity": (margin, 0.1), "face_area": (0.02, 0.6), "prompt": (0.0, 0.5)}}}
+    result = ranking.rank({"training_faces": 13, "training_face_area": 0.113, "checkpoints": checkpoints})
+    assert result["undertrained"] and result["best_epoch"] == 100
+    assert "still the base model's own person at epoch 100" in result["reasons"][0]
+
+
 def test_long_prompts_are_scored_in_sentence_groups_that_fit_the_text_encoder(tmp_path):
     from musubi_tuner_gui.best_checkpoint import scoring
 

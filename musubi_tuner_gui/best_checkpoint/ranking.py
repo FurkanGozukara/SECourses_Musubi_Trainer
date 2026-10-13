@@ -4,8 +4,10 @@ lost variety, copied training photos, colour / sharpness drift and the training 
   likeness     median face similarity to the mean training face (DINOv2 similarity to the training images when the
                training images or samples have no faces); its gain over the base model is paired (the base model's
                sample of the same prompt and seed) when the report has ``vs_base``, and smoothed over neighbouring saves
-  undertrained the best likeness gains less than LIKENESS_MIN_GAIN over the base model: the latest checkpoint is
-               picked and the user is told to train longer
+  undertrained the best likeness gains less than LIKENESS_MIN_GAIN over the base model, or (with faces) the faces never
+               leave the base model's own person (smoothed identity margin below IDENTITY_SWITCH at every save; Z-Image
+               Turbo LoRA at 1e-5 for 100 epochs: face match 0.06 -> 0.33, still the base model's man by eye): the
+               latest checkpoint is picked and the user is told to train longer
   knee         the likeness level: the first checkpoint whose smoothed gain reaches KNEE_FRACTION of the highest (later
                checkpoints keep creeping up while the model copies more of its training photos) and, with faces, whose
                smoothed identity margin (``vs_base["identity"]``: similarity to the training faces minus similarity to
@@ -41,6 +43,7 @@ KNEE_FRACTION = 0.85
 EARLY_LEVEL = 0.70  # smoothed likeness gain (share of the highest) a checkpoint before an early onset needs
 PICK_TOLERANCE = 0.05  # share of the highest smoothed gain within which the earliest checkpoint is preferred
 STILL_RISING = 0.03  # smoothed likeness gain over the last two saves that counts as still learning
+IDENTITY_SWITCH = 0.10  # smoothed identity margin a run must reach at some save: below it the faces are the base model's
 PROMPT_DROP = 0.02  # unpaired: median SigLIP2 cosine below the base model's
 PAIRED_PROMPT_DROP = 0.01  # paired: median SigLIP2 cosine lost on the same prompts and seeds
 AGREE = 0.70
@@ -158,16 +161,17 @@ def rank(report: dict, label=_epoch_label) -> dict:
     gains = [(_paired(checkpoints[p], like_key) or (likeness[p] - base_like, 1.0))[0] for p in trained]
     smooth = dict(zip(trained, _smooth(gains)))
     undertrained = max(best_like - base_like, max(gains)) < LIKENESS_MIN_GAIN.get(like_key, 0.1)
+    identity = [_paired(checkpoints[p], "identity") for p in trained]
+    margins = dict(zip(trained, _smooth([value[0] for value in identity]))) if like_key == "face_mean" and all(identity) else {}
+    still_base = bool(margins) and max(margins.values()) < IDENTITY_SWITCH
+    undertrained = undertrained or still_base
     top = max(smooth.values())
     knee = trained[-1] if undertrained or top <= 0 else next(p for p in trained if smooth[p] >= KNEE_FRACTION * top)
-    identity = [_paired(checkpoints[p], "identity") for p in trained]
     identity_knee = False
-    if like_key == "face_mean" and not undertrained and all(identity):
-        margins = dict(zip(trained, _smooth([value[0] for value in identity])))
+    if margins and not undertrained:
         margin_top = max(margins.values())
-        if margin_top > 0:
-            knee = max(knee, next(p for p in trained if margins[p] >= KNEE_FRACTION * margin_top))
-            identity_knee = True
+        knee = max(knee, next(p for p in trained if margins[p] >= KNEE_FRACTION * margin_top))
+        identity_knee = True
     unpaired = _unpaired_drift(checkpoints, trained, base)
 
     rows = []
@@ -200,10 +204,17 @@ def rank(report: dict, label=_epoch_label) -> dict:
                   + f" ({name} {likeness[knee]:.3f}; base model {base_like:.3f}, highest {best_like:.3f}).")
     if undertrained:
         best = rows[-1]
-        reasons = [
-            f"Likeness has not risen above the base model yet ({name}: base model {base_like:.3f}, best {best_like:.3f}): the run "
-            f"looks undertrained. Train longer or with a higher learning rate; until then the latest checkpoint, {label(best['epoch'])}, is the pick."
-        ]
+        if still_base:
+            reasons = [
+                f"The faces are still the base model's own person at {label(best['epoch'])}: they resemble its faces for the same "
+                f"prompts more than your training photos ({name} {best_like:.3f}, base model {base_like:.3f}). The run looks "
+                f"undertrained: train longer or with a higher learning rate; until then the latest checkpoint, {label(best['epoch'])}, is the pick."
+            ]
+        else:
+            reasons = [
+                f"Likeness has not risen above the base model yet ({name}: base model {base_like:.3f}, best {best_like:.3f}): the run "
+                f"looks undertrained. Train longer or with a higher learning rate; until then the latest checkpoint, {label(best['epoch'])}, is the pick."
+            ]
         if onset:
             reasons.append(f"Warning signs from {onset['label']}: " + "; ".join(onset["flags"]) + ".")
     else:
