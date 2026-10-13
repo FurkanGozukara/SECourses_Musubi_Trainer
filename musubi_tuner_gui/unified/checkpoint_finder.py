@@ -152,9 +152,19 @@ def _whole(value) -> int:
         return 0
 
 
+def save_interval(values: dict) -> tuple[int, int]:
+    """(epochs, steps) the finder samples at: the epoch saves, or the step saves when the epoch saves give only the
+    final model (the SDXL fine-tuning presets train 1 epoch of high-repeat folders and save every 451 steps)."""
+    epochs, steps = _whole(values.get("save_every_n_epochs")), _whole(values.get("save_every_n_steps"))
+    total_epochs = _whole(values.get("max_train_epochs"))
+    if epochs and steps and total_epochs and (total_epochs - 1) // epochs + 1 < 2:
+        return 0, steps
+    return epochs, steps
+
+
 def saved_checkpoints(values: dict) -> int | None:
     """How many checkpoints the run saves (the final one included), None when the length is not known here."""
-    epochs, steps = _whole(values.get("save_every_n_epochs")), _whole(values.get("save_every_n_steps"))
+    epochs, steps = save_interval(values)
     total_epochs, total_steps = _whole(values.get("max_train_epochs")), _whole(values.get("max_train_steps"))
     if epochs and total_epochs:
         return (total_epochs - 1) // epochs + 1
@@ -175,7 +185,7 @@ def prepare_run(values: dict, settings: dict, references: list[str], *, python: 
     """The run's values with the finder's sampling, and the after-step that scores the samples. Writes
     ``<output_dir>/best_checkpoint/<output_name>/{sample_prompts.txt, settings.json}``. ``sample_size``: written into
     the finder's lines for trainers that do not add their own sample size to a prompt file (kohya sd-scripts)."""
-    epochs, steps = _whole(values.get("save_every_n_epochs")), _whole(values.get("save_every_n_steps"))
+    epochs, steps = save_interval(values)
     if not epochs and not steps:
         raise FinderError("🏆 Best Checkpoint Finder: set Save Every N Epochs (or Steps). The finder compares the checkpoints saved during training.")
     checkpoints = saved_checkpoints(values)

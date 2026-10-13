@@ -517,3 +517,17 @@ def test_an_early_sign_that_does_not_last_keeps_the_full_likeness_after_it():
     result = ranking.rank({"training_faces": 13, "training_face_area": 0.113, "checkpoints": checkpoints})
     assert not result["undertrained"] and result["plateau_start"] == 80 and result["best_epoch"] == 80
     assert any("does not last: epoch 80 shows none" in reason for reason in result["reasons"])
+
+
+def test_the_finder_samples_at_the_step_saves_when_the_epochs_save_only_the_final_model(tmp_path):
+    # the SDXL fine-tuning presets: 1 epoch of high-repeat folders, a save every epoch and every 451 steps
+    values = {"output_dir": str(tmp_path / "out"), "output_name": "sdxl", "max_train_epochs": 1, "save_every_n_epochs": 1,
+              "save_every_n_steps": 451, "sample_prompts": ""}
+    settings = {**CF.defaults("image"), "enabled": True}
+    run, after = CF.prepare_run(values, settings, [str(tmp_path / "a.png")])
+    assert run["sample_every_n_steps"] == 451 and run["sample_every_n_epochs"] == 0 and after is not None
+    assert CF.saved_checkpoints(values) is None  # the step count depends on the dataset
+    # epochs that do save several checkpoints keep the epoch interval
+    values.update(max_train_epochs=100, save_every_n_epochs=25)
+    run, _after = CF.prepare_run(values, settings, [str(tmp_path / "a.png")])
+    assert run["sample_every_n_epochs"] == 25 and run["sample_every_n_steps"] == 0
