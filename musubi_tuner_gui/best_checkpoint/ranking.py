@@ -25,14 +25,13 @@ lost variety, copied training photos, colour / sharpness drift and the training 
                on, unchanged after), faces in fewer samples than FACE_FOUND_DROP x base, faces FRAMING times
                the base model's size in the direction of the training photos' framing (the subject drawn as close, or as
                far, as in its training photos, whatever the prompt asks)
-  pick         the onset of over-training is the first checkpoint with a flag. From the knee up to the onset (or,
-               when the onset comes first, among the checkpoints before it that reach EARLY_LEVEL of the highest
-               likeness and, with faces, an identity margin of IDENTITY_SWITCH): the earliest checkpoint within
-               PICK_TOLERANCE of that window's most likeness (later ones
-               add little likeness and copy more of the training photos). An early sign with nothing before it that
-               reaches the level (FLUX Klein LoRA: framing x1.31 at the first save, x1.16 at the next): the first stretch
-               of level checkpoints without flags. No such checkpoint: the earliest level checkpoint with the fewest
-               flags
+  pick         the onset of over-training is the first checkpoint with a flag. From the knee up to the onset: the
+               earliest checkpoint within PICK_TOLERANCE of that window's most likeness (later ones add little likeness
+               and copy more of the training photos). When the onset comes first and its signs do not last (FLUX Klein
+               LoRA: framing x1.31 at the first save, x1.16 at the next; ERNIE-Image LoRA: prompt following -0.010 at
+               epoch 40 only), the window is the first stretch of level checkpoints without flags; when they last, the
+               checkpoints before the onset that reach EARLY_LEVEL of the highest likeness and, with faces, an identity
+               margin of IDENTITY_SWITCH. Neither: the earliest level checkpoint with the fewest flags
 Thresholds are research values (dont_upload/best_checkpoint_research) and may change with the calibration."""
 
 from __future__ import annotations
@@ -238,22 +237,27 @@ def rank(report: dict, label=_epoch_label) -> dict:
         early = onset is not None and onset["epoch"] <= knee
         isolated = None  # an early sign followed by clean checkpoints on the level
         if early:
-            # with faces, only checkpoints whose faces have left the base model's own person (Mage-Flow LoRA: the first
-            # save had the subject's glasses and hair, so the face match rose, but it was still the base model's man).
-            # Not a share of the highest margin: it keeps rising while a run over-trains (Krea 2 at 2x: 0.35 at the
-            # first save, the subject by eye, 0.55 at the last)
-            window = [r for r in rows if r["epoch"] < onset["epoch"] and r["gain"] >= EARLY_LEVEL * top
-                      and (not margins or margins[r["epoch"]] >= IDENTITY_SWITCH)]
-            if not window:
-                for r in rows:
-                    if r["epoch"] < knee or (r["flags"] and not window):
-                        continue
-                    if r["flags"]:
-                        break
-                    window.append(r)
-                if window:
-                    isolated, early = onset, False
-                    onset = next((r for r in rows if r["epoch"] > window[-1]["epoch"] and r["flags"]), None)
+            # an early sign that does not last: the first stretch of level checkpoints without flags after it (FLUX
+            # Klein LoRA: framing x1.31 at the first save, x1.16 at the next; ERNIE-Image LoRA: prompt following -0.010
+            # at epoch 40 only, while epoch 20 had only half the likeness)
+            stretch = []
+            for r in rows:
+                if r["epoch"] < knee or (r["flags"] and not stretch):
+                    continue
+                if r["flags"]:
+                    break
+                stretch.append(r)
+            if stretch:
+                window, isolated, early = stretch, onset, False
+                onset = next((r for r in rows if r["epoch"] > stretch[-1]["epoch"] and r["flags"]), None)
+            else:
+                # signs that last: the checkpoints before them. With faces, only those whose faces have left the base
+                # model's own person (Mage-Flow LoRA: the first save had the subject's glasses and hair, so the face
+                # match rose, but it was still the base model's man). Not a share of the highest margin: it keeps
+                # rising while a run over-trains (Krea 2 at 2x: 0.35 at the first save, the subject by eye, 0.55 at
+                # the last)
+                window = [r for r in rows if r["epoch"] < onset["epoch"] and r["gain"] >= EARLY_LEVEL * top
+                          and (not margins or margins[r["epoch"]] >= IDENTITY_SWITCH)]
         else:
             window = [r for r in rows if r["epoch"] >= knee and (onset is None or r["epoch"] < onset["epoch"])]
         signs = f"Over-training signs from {onset['label']}: " + "; ".join(onset["flags"]) + "." if onset else ""

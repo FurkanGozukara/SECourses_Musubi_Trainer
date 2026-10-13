@@ -501,3 +501,19 @@ def test_analyze_reuses_the_settings_a_finder_run_wrote(tmp_path):
         json.dump({"prompts": ["photo of sks woman"], "lines": 1, "references": [str(tmp_path / "a.png")]}, handle)
     assert CF.run_settings(out, "mine") == path
     assert CF.analysis_settings(values, CF.defaults("image"), []) == path
+
+
+def test_an_early_sign_that_does_not_last_keeps_the_full_likeness_after_it():
+    # ERNIE-Image LoRA (2026-10-13): prompt following -0.010 at epoch 40 only; epoch 20 (before it) had half the
+    # likeness, epochs 60-100 the subject without signs: the pick comes from the clean likeness level, not epoch 20
+    gains = [0.369, 0.411, 0.433, 0.487, 0.447]
+    margins = [0.120, 0.151, 0.320, 0.356, 0.346]
+    prompt = [-0.006, -0.011, -0.003, -0.006, -0.006]
+    checkpoints = {0: {"summary": {"face_mean": 0.17, "prompt": 0.13, "variety": 0.9, "face_found": 1.0, "face_area": 0.03}}}
+    for index, (gain, margin, change) in enumerate(zip(gains, margins, prompt)):
+        checkpoints[20 * (index + 1)] = {"summary": {
+            "face_mean": 0.17 + gain, "prompt": 0.13, "variety": 0.9, "face_found": 1.0, "dino_nearest_train": 0.2,
+            "vs_base": {"face_mean": (gain, 1.0), "identity": (margin, 1.0), "prompt": (change, 0.8)}}}
+    result = ranking.rank({"training_faces": 13, "training_face_area": 0.113, "checkpoints": checkpoints})
+    assert not result["undertrained"] and result["plateau_start"] == 80 and result["best_epoch"] == 80
+    assert any("does not last: epoch 80 shows none" in reason for reason in result["reasons"])
