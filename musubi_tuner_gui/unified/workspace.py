@@ -1264,8 +1264,16 @@ class Workspace:
         reason = self.finder_unavailable(entry, values)
         if reason:
             return values, None, reason
+        size = None
+        if self.backend_of(entry).name.startswith("kohya:"):
+            # sd-scripts samples a line without --w / --h at 512 x 512 (the musubi tabs add their own sample size):
+            # FLUX.1 renders poorer faces there and the wide shots' faces get too small to compare
+            try:
+                size = (int(float(values["dataset_resolution_width"])), int(float(values["dataset_resolution_height"])))
+            except (KeyError, TypeError, ValueError):
+                size = None
         try:
-            run, after = CF.prepare_run(values, settings, self.finder_references(entry, values))
+            run, after = CF.prepare_run(values, settings, self.finder_references(entry, values), sample_size=size)
         except CF.FinderError as exc:
             raise gr.Error(str(exc), title="Training could not start", duration=None)
         return run, after, ""

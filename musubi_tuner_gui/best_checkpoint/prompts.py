@@ -79,9 +79,11 @@ def clean_prompts(rows) -> list[str]:
     return prompts
 
 
-def prompt_file_lines(prompts: list[str], seeds: list[int]) -> list[str]:
-    """One sampling line per prompt and seed; the seed is explicit, so every checkpoint draws the same noise."""
-    return [f"{prompt} --d {seed}" for prompt in prompts for seed in seeds]
+def prompt_file_lines(prompts: list[str], seeds: list[int], size: tuple[int, int] | None = None) -> list[str]:
+    """One sampling line per prompt and seed; the seed is explicit, so every checkpoint draws the same noise. ``size``
+    (width, height) is written as --w / --h where the trainer does not add its own sample size (sd-scripts: 512 x 512)."""
+    flags = f" --w {int(size[0])} --h {int(size[1])}" if size else ""
+    return [f"{prompt}{flags} --d {seed}" for prompt in prompts for seed in seeds]
 
 
 def leakage_prompt(subject: str) -> str:

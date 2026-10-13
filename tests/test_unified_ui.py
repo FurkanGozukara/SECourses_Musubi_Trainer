@@ -633,6 +633,15 @@ def test_best_checkpoint_finder_settings_follow_your_presets_and_reach_the_run(t
     run, after, note = image.finder_run(entry, values, mine)
     assert not note and after is not None and run["sample_every_n_epochs"] == 5 and run["sample_at_first"]
     assert run["sample_prompts"].endswith("sample_prompts.txt") and values.get("sample_prompts") != run["sample_prompts"]
+    assert "--w " not in open(run["sample_prompts"], encoding="utf-8").read()  # the musubi tabs add their own sample size
+    # sd-scripts samples a line without a size at 512 x 512: the finder writes the training resolution for kohya runs
+    flux = ENTRY_BY_KEY["flux1_dev"]
+    kohya_values = image.backend_of(flux).defaults(LORA)
+    kohya_values.update(parent_folder_path=str(tmp_path / "data"), output_dir=str(tmp_path / "kohya"), output_name="k", save_every_n_epochs=5,
+                        dataset_resolution_width=1024, dataset_resolution_height=768)
+    kohya_run, kohya_after, _note = image.finder_run(flux, kohya_values, mine)
+    lines = open(kohya_run["sample_prompts"], encoding="utf-8").read().splitlines()
+    assert kohya_after is not None and lines and all(line.endswith(" --w 1024 --h 768 --d " + line.rsplit(" ", 1)[1]) for line in lines[:3])
     assert image.finder_run(entry, values, {**mine, "enabled": False})[1] is None
     edit = ENTRY_BY_KEY["mage_flow_edit"]
     edit_values = {**image.backend_of(edit).defaults(LORA), **edit.fixed, "output_dir": str(tmp_path / "out"), "output_name": "e", "save_every_n_epochs": 5}

@@ -170,9 +170,11 @@ def sample_count(values: dict, settings: dict) -> int | None:
     return None if checkpoints is None else lines * (checkpoints + 1)
 
 
-def prepare_run(values: dict, settings: dict, references: list[str], *, python: str | None = None) -> tuple[dict, "AfterStep"]:
+def prepare_run(values: dict, settings: dict, references: list[str], *, python: str | None = None,
+                sample_size: tuple[int, int] | None = None) -> tuple[dict, "AfterStep"]:
     """The run's values with the finder's sampling, and the after-step that scores the samples. Writes
-    ``<output_dir>/best_checkpoint/<output_name>/{sample_prompts.txt, settings.json}``."""
+    ``<output_dir>/best_checkpoint/<output_name>/{sample_prompts.txt, settings.json}``. ``sample_size``: written into
+    the finder's lines for trainers that do not add their own sample size to a prompt file (kohya sd-scripts)."""
     epochs, steps = _whole(values.get("save_every_n_epochs")), _whole(values.get("save_every_n_steps"))
     if not epochs and not steps:
         raise FinderError("🏆 Best Checkpoint Finder: set Save Every N Epochs (or Steps). The finder compares the checkpoints saved during training.")
@@ -196,7 +198,7 @@ def prepare_run(values: dict, settings: dict, references: list[str], *, python: 
     prompts = list(settings["prompts"])
     if settings["leakage"]:
         prompts.append(BP.leakage_prompt(settings["subject"]))
-    lines = BP.prompt_file_lines(prompts, seeds)
+    lines = BP.prompt_file_lines(prompts, seeds, sample_size)
     prompt_file = os.path.join(folder, "sample_prompts.txt")
     with open(prompt_file, "w", encoding="utf-8", newline="\n") as handle:
         handle.write("\n".join(lines + _own_prompt_lines(values.get("sample_prompts"))) + "\n")
