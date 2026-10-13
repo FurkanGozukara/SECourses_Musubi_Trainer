@@ -887,6 +887,12 @@ class TrainingRunner:
         if self._cancel_requested:
             self._finish("stopped", code, "Stopped by user")
         elif code == 0:
+            # the run did every step and saved its model, even when the bar's last redraw never reached us (an
+            # sd-scripts FLUX.1 run ended on 2,599 / 2,600, so "Saving & finishing" showed as skipped)
+            with self.lock:
+                if self.state.total_steps and self.state.step < self.state.total_steps:
+                    self.state.step = self.state.total_steps
+            self._advance("finish")
             after = self.state.after
             if after is not None:
                 self._run_after(after, "Training finished successfully ✓")

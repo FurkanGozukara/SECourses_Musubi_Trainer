@@ -281,3 +281,24 @@ def test_the_elapsed_clock_and_ago_texts_tick_in_the_browser():
     assert f'data-since="{runner.state.started_at:.3f}"' in html and "data-ago=" in html
     runner._finish("finished", 0, "done")
     assert "data-since" not in render_dashboard(runner.snapshot())
+
+
+def test_a_successful_run_ends_with_every_step_and_its_saving_stage_done():
+    # sd-scripts' last bar redraw (2,600 / 2,600) can come with the exit unread: the run still did every step
+    runner = TrainingRunner()
+    code = (
+        "import sys, time\n"
+        "sys.stdout.write('steps:  99%|#########9| 39/40 [00:10<00:00, 3.90it/s, avr_loss=0.3]' + chr(13)); sys.stdout.flush()\n"
+        "time.sleep(0.3)\n"
+    )
+    from musubi_tuner_gui.unified.runner import AfterStep
+
+    for after in (None, AfterStep("Finding the best checkpoint", _python("print('scored')"))):
+        runner = TrainingRunner()
+        started, _message = runner.start_job(lambda: runner.execute_command(_python(code)), title="kohya", meta={}, after=after)
+        assert started
+        _wait(runner)
+        snapshot = runner.snapshot()
+        stages = {stage["id"]: stage["state"] for stage in snapshot["stages"]}
+        assert snapshot["status"] == "finished" and snapshot["step"] == snapshot["total_steps"] == 40
+        assert stages["train"] == "done" and stages["finish"] == "done"  # with the finder after it, it showed "skipped"
