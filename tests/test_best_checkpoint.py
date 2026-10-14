@@ -291,6 +291,24 @@ def test_an_undertrained_run_passes_over_a_sign_that_does_not_last():
     assert "do not last: epoch 100 shows none" in result["reasons"][1] and "lower learning rate" not in result["reasons"][1]
 
 
+def test_an_undertrained_run_never_picks_a_checkpoint_that_is_still_the_base_model():
+    # Kandinsky 6 LoRA at 3e-4 on three person clips (2026-10-14): the base model's clips are dim, blurry and nearly
+    # still; epoch 40 looked the same (2% of the likeness gain), every later save is sharper and less saturated (toward
+    # the training clips' own look) and flagged for it; by eye only epoch 200 learned anything (a partial likeness)
+    gains = [-0.048, 0.102, 0.042, 0.044, 0.127]
+    margins = [-0.253, -0.203, -0.139, -0.229, -0.024]
+    sharpness = [0.0, 0.912, 1.418, 0.784, 1.075]
+    checkpoints = {0: {"summary": {"face_mean": 0.08, "prompt": 0.1, "variety": 0.8, "face_found": 1.0, "face_area": 0.05}}}
+    for index, (gain, margin, sharp) in enumerate(zip(gains, margins, sharpness)):
+        checkpoints[40 * (index + 1)] = {"summary": {
+            "face_mean": 0.08 + gain, "prompt": 0.1, "variety": 0.8, "face_found": 1.0, "dino_nearest_train": 0.3,
+            "vs_base": {"face_mean": (gain, 1.0), "identity": (margin, 1.0), "hf_energy": (sharp, 1.0), "prompt": (0.0, 0.5)}}}
+    result = ranking.rank({"training_faces": 8, "training_face_area": 0.2, "checkpoints": checkpoints})
+    assert result["undertrained"] and result["onset"] == 80 and result["best_epoch"] == 200
+    assert "the latest checkpoint, epoch 200, is the pick" in result["reasons"][0]
+    assert any("(epoch 40) have hardly moved from the base model (2% of the likeness gain at most)" in r for r in result["reasons"])
+
+
 def test_before_an_early_sign_the_pick_needs_faces_that_left_the_base_models_person():
     # Mage-Flow LoRA (2026-10-13): epoch 20 matched the training faces almost as well as epoch 60 (the subject's
     # glasses and hair) but was still the base model's man by eye; the subject from epoch 60, textures busier from 80

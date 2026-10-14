@@ -7,7 +7,8 @@ lost variety, copied training photos, colour / sharpness drift and the training 
   undertrained the best likeness gains less than LIKENESS_MIN_GAIN over the base model, or (with faces) the faces never
                leave the base model's own person (smoothed identity margin below IDENTITY_SWITCH at every save; Z-Image
                Turbo LoRA at 1e-5 for 100 epochs: face match 0.06 -> 0.33, still the base model's man by eye): the
-               latest checkpoint without warning signs is picked and the user is told to train longer
+               latest checkpoint without warning signs among those with LEARNED_SHARE of the highest gain is picked
+               (none: the one with the most likeness) and the user is told to train longer
   knee         the likeness level: the first checkpoint whose smoothed gain reaches KNEE_FRACTION of the highest (later
                checkpoints keep creeping up while the model copies more of its training photos) and, with faces, whose
                smoothed identity margin (``vs_base["identity"]``: similarity to the training faces minus similarity to
@@ -47,6 +48,10 @@ KNEE_FRACTION = 0.85
 EARLY_LEVEL = 0.70  # smoothed likeness gain (share of the highest) a checkpoint before an early onset needs
 PICK_TOLERANCE = 0.05  # share of the highest smoothed gain within which the earliest checkpoint is preferred
 STILL_RISING = 0.03  # smoothed likeness gain over the last two saves that counts as still learning
+# an undertrained run's pick needs this share of the run's highest smoothed likeness gain: a checkpoint below it has
+# hardly left the base model (Kandinsky 6 LoRA at 3e-4: 2% at its only flag-free save; Mage-Flow LoRA at 3e-5: 42% at
+# its judged best, epoch 60, before the speckle)
+LEARNED_SHARE = 0.25
 # smoothed identity margin below which the faces are still the base model's own person: a run must reach it at some
 # save, and a checkpoint before an early onset needs it
 IDENTITY_SWITCH = 0.10
@@ -249,10 +254,16 @@ def rank(report: dict, label=_epoch_label) -> dict:
     if undertrained:
         # the most trained checkpoint is the closest to the likeness: the latest one without warning signs (Mage-Flow
         # DoRA: noisy textures from epoch 80 on, so epoch 60; HiDream-O1 LoRA: a saturation dip at epoch 80 only, so 100)
-        clean = [r for r in rows if not r["signs"]]
-        best = clean[-1] if clean else rows[-1]
+        # among those that learned something (LEARNED_SHARE of the highest gain; Kandinsky 6 LoRA at 3e-4: the only
+        # clean save, epoch 40, was still the base model's blurry clips at 2%, epoch 200 the only one with a likeness)
+        learned = [r for r in rows if top <= 0 or r["gain"] >= LEARNED_SHARE * top]
+        clean = [r for r in learned if not r["signs"]]
+        best = clean[-1] if clean else max(reversed(learned), key=lambda r: r["gain"])  # else the most likeness, the latest of equals
+        unlearned = [r for r in rows if not r["signs"] and r not in learned]
         if best is rows[-1]:
             latest = "the latest checkpoint"
+        elif best["signs"]:
+            latest = "the checkpoint with the most likeness"
         elif onset is not None and best["epoch"] < onset["epoch"]:
             latest = "the last checkpoint before the warning signs"
         else:
@@ -275,6 +286,9 @@ def rank(report: dict, label=_epoch_label) -> dict:
         elif onset:
             reasons.append(f"Warning signs from {onset['label']}: " + "; ".join(onset["signs"]) + "."
                            + (" Training longer will not fix those: try a lower learning rate with more epochs." if best is not rows[-1] else ""))
+        if best["signs"] and unlearned:
+            reasons.append(f"The checkpoints without them ({', '.join(r['label'] for r in unlearned)}) have hardly moved from the base "
+                           f"model ({max(r['gain'] for r in unlearned) / top:.0%} of the likeness gain at most): {label(best['epoch'])} is the pick despite them.")
     else:
         early = onset is not None and onset["epoch"] <= knee
         isolated = None  # an early sign followed by clean checkpoints on the level
