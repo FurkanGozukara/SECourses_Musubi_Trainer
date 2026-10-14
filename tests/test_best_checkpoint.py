@@ -616,6 +616,48 @@ def test_signs_that_come_and_go_are_shown_but_not_counted():
     assert "the training photos' framing at epoch 75, epoch 100, epoch 175" in passing and "sharpness" not in passing
 
 
+def test_the_training_scene_in_other_prompts_is_a_note_not_a_flag():
+    # LTX 2.3 GUI run (2026-10-14): the training clip's garden behind the prompts' people from epoch 100 (backgrounds
+    # +0.19 nearer the training frames than the base model's), the pick (75) stays where the rule put it
+    gains = [0.17, 0.34, 0.41, 0.49, 0.50, 0.50, 0.51, 0.43]
+    margins = [0.05, 0.237, 0.356, 0.45, 0.50, 0.516, 0.548, 0.531]
+    areas = [0.0, 0.477, 0.236, 0.368, 0.40, 0.721, 0.421, 0.22]
+    scene = [0.01, 0.02, 0.06, 0.19, 0.15, 0.18, 0.26, 0.39]
+
+    def report(with_scene: bool) -> dict:
+        checkpoints = {0: {"summary": {"face_mean": 0.126, "prompt": 0.09, "variety": 0.83, "face_found": 1.0, "face_area": 0.06}}}
+        for index, (gain, margin, area, rise) in enumerate(zip(gains, margins, areas, scene)):
+            vs_base = {"face_mean": (gain, 1.0), "identity": (margin, 1.0), "face_area": (area, 1.0), "prompt": (0.0, 0.5)}
+            if with_scene:
+                vs_base["scene_nearest_train"] = (rise, 1.0)
+            checkpoints[25 * (index + 1)] = {"summary": {"face_mean": 0.126 + gain, "prompt": 0.09, "variety": 0.83, "face_found": 1.0,
+                                                         "dino_nearest_train": 0.5, "vs_base": vs_base}}
+        return {"training_faces": 8, "training_face_area": 0.2, "checkpoints": checkpoints}
+
+    plain, noted = ranking.rank(report(False)), ranking.rank(report(True))
+    assert plain["best_epoch"] == noted["best_epoch"] == 75 and plain["onset"] == noted["onset"]
+    assert [row["flags"] for row in plain["rows"]] == [row["flags"] for row in noted["rows"]]
+    note = next(reason for reason in noted["reasons"] if "surroundings" in reason)
+    assert note.startswith("From epoch 100 the samples take on the training data's surroundings (backgrounds +0.19")
+    assert not any("surroundings" in reason for reason in plain["reasons"])
+    # a single high save among low ones (a photo run's headshot backdrop) is not the training scene taking over
+    scene[:] = [0.01, 0.13, 0.02, 0.03, 0.02, 0.04, 0.03, 0.05]
+    assert not any("surroundings" in reason for reason in ranking.rank(report(True))["reasons"])
+
+
+def test_the_background_mask_covers_the_person_below_the_face():
+    from musubi_tuner_gui.best_checkpoint import scoring
+
+    class Processor:  # dinov2-base: shortest side 256, centre crop 224, 16 x 16 patches
+        size, crop_size = {"shortest_edge": 256}, {"height": 224, "width": 224}
+
+    mask = scoring.person_patches((1024, 1024, 3), (412.0, 200.0, 200.0, 260.0), 16, Processor())
+    assert mask[:, 4:12].all() and not mask[:, :4].any() and not mask[:, 12:].any()  # the face's columns, to the bottom
+    assert not scoring.person_patches((480, 864, 3), None, 16, Processor()).any()  # no face: all background
+    wide = scoring.person_patches((480, 864, 3), (400.0, 120.0, 60.0, 80.0), 16, Processor())  # 16:9 frame, centre crop
+    assert wide.any() and not wide[:, 0].any() and not wide[:, -1].any()
+
+
 def test_one_copied_sample_is_enough_and_old_reports_get_it_from_their_samples():
     # LTX 2.3 (2026-10-14): one of three samples copied a training clip's scene (DINOv2 0.88), the median stayed at 0.59;
     # the per-sample maximum flags it, also for reports written before the summary carried it

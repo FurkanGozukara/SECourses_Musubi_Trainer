@@ -31,8 +31,8 @@ def run_folder(output_dir: str, output_name: str) -> str:
     return os.path.join(output_dir, FOLDER, output_name)
 LEAK_DELTA = 0.15  # face similarity a prompt without the trigger may gain over the base model before it is noted
 # signals compared with the base model's sample of the same prompt and seed (True: as a log ratio)
-PAIRED = {"face_mean": False, "face_area": True, "prompt": False, "dino_nearest_train": False, "saturation": True,
-          "colourfulness": True, "hf_energy": True, "gray_std": True, "clipped": False}
+PAIRED = {"face_mean": False, "face_area": True, "prompt": False, "dino_nearest_train": False, "scene_nearest_train": False,
+          "saturation": True, "colourfulness": True, "hf_energy": True, "gray_std": True, "clipped": False}
 MAX_REFERENCES = 400
 
 

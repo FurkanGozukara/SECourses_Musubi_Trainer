@@ -3,6 +3,8 @@
   face_mean / face_nearest   cosine of the largest face (OpenCV Zoo YuNet MIT + SFace Apache-2.0) to the mean training
                              face / to the nearest single training face; face_found
   dino_nearest_train         DINOv2 (Apache-2.0) cosine to the nearest training image (copying)
+  scene_nearest_train        DINOv2 cosine of the background (the patch tokens outside the person) to the nearest training
+                             background: the training photos' or clip's surroundings bleeding into other prompts' scenes
   prompt                     SigLIP2 (Apache-2.0) image-text cosine with the trigger replaced by its class word
   saturation, colourfulness, gray_std, clipped, hf_energy   colour and sharpness statistics ("fried" look)
 Videos are scored on frames sampled across the clip (mean of the frame scores; temporal consistency = mean
@@ -29,7 +31,11 @@ VIDEO_EXT = (".mp4", ".webm", ".mov", ".mkv", ".avi")
 VIDEO_FRAMES = 8
 SIGLIP_TOKENS = 64  # SigLIP2's text length
 PROMPT_CHUNKS = 4  # sentence groups of a long prompt that are scored (mean)
-SCORES_VERSION = 4  # raise when a signal changes: the cached scores of other versions are computed again
+SCORES_VERSION = 5  # raise when a signal changes: the cached scores of other versions are computed again
+# the person in a frame, for the background descriptor: the largest face's box widened to the shoulders and run down
+# to the bottom of the frame (head and body), as shares of the face box; fewer background patches than this: none
+PERSON_BOX = (0.4, 0.4, 1.4)  # left, above, right of the face box (x - 0.4 w, y - 0.4 h, x + 1.4 w)
+MIN_BACKGROUND_PATCHES = 8
 
 
 def models_dir() -> str:
@@ -99,6 +105,29 @@ def colour_stats(rgb: np.ndarray) -> dict:
     }
 
 
+def person_patches(shape: tuple, box, grid: int, processor) -> np.ndarray:
+    """grid x grid booleans, True on the person: the face box widened by PERSON_BOX and run down to the bottom of the
+    frame, mapped through the DINOv2 processor's resize (shortest side) and centre crop. All False without a face."""
+    mask = np.zeros((grid, grid), bool)
+    if box is None:
+        return mask
+    h, w = shape[:2]
+    size = getattr(processor, "size", None) or {}
+    crop = getattr(processor, "crop_size", None) or {}
+    short = size.get("shortest_edge") or min(h, w)
+    crop_h, crop_w = crop.get("height") or short, crop.get("width") or short
+    scale = short / min(h, w)
+    off_x, off_y = (w * scale - crop_w) / 2, (h * scale - crop_h) / 2
+    x, y, fw, fh = box
+    left, above, right = PERSON_BOX
+    x0, y0, x1, y1 = x - left * fw, y - above * fh, x + right * fw, h
+    cell_w, cell_h = crop_w / grid, crop_h / grid
+    c0, c1 = math.floor((x0 * scale - off_x) / cell_w), math.ceil((x1 * scale - off_x) / cell_w)
+    r0, r1 = math.floor((y0 * scale - off_y) / cell_h), math.ceil((y1 * scale - off_y) / cell_h)
+    mask[max(0, r0):max(0, r1), max(0, c0):max(0, c1)] = True
+    return mask
+
+
 class Scorer:
     """Loads its models on first use; ``device`` "cuda" or "cpu"."""
 
@@ -115,6 +144,10 @@ class Scorer:
     def face_and_area(self, rgb: np.ndarray):
         """The normalized SFace embedding of the largest face and the share of the image its box covers (None, None
         without a face)."""
+        return self.face_area_box(rgb)[:2]
+
+    def face_area_box(self, rgb: np.ndarray):
+        """``face_and_area`` and the face box (x, y, width, height in pixels); (None, None, None) without a face."""
         import cv2
 
         if self._faces is None:
@@ -127,13 +160,21 @@ class Scorer:
         detector.setInputSize((bgr.shape[1], bgr.shape[0]))
         _, faces = detector.detect(bgr)
         if faces is None or len(faces) == 0:
-            return None, None
+            return None, None, None
         face = max(faces, key=lambda f: f[2] * f[3])
         feature = recognizer.feature(recognizer.alignCrop(bgr, face)).reshape(-1).astype(np.float32)
-        return feature / (np.linalg.norm(feature) + 1e-12), float(face[2] * face[3]) / (bgr.shape[0] * bgr.shape[1])
+        return (feature / (np.linalg.norm(feature) + 1e-12), float(face[2] * face[3]) / (bgr.shape[0] * bgr.shape[1]),
+                tuple(float(v) for v in face[:4]))
 
     # DINOv2 ---------------------------------------------------------------------------------------------------
     def dino(self, images: list[np.ndarray]):
+        return self.dino_and_background(images)[0]
+
+    def dino_and_background(self, images: list[np.ndarray], boxes: list | None = None):
+        """Normalized DINOv2 image embeddings and, with ``boxes`` (each frame's face box or None), background
+        descriptors from the same forward: the patch tokens outside the person, each normalized (DINOv2 without
+        registers has a few high-norm tokens in plain background areas), averaged; None where the person covers nearly
+        the whole crop."""
         import torch
         from transformers import AutoImageProcessor, AutoModel
 
@@ -144,8 +185,21 @@ class Scorer:
         processor, model, dtype = self._dino
         with torch.no_grad():
             inputs = processor(images=[Image.fromarray(i) for i in images], return_tensors="pt").to(self.device, dtype)
-            pooled = model(**inputs).pooler_output.float()
-        return torch.nn.functional.normalize(pooled, dim=-1).cpu()
+            output = model(**inputs)
+        pooled = torch.nn.functional.normalize(output.pooler_output.float(), dim=-1).cpu()
+        if boxes is None:
+            return pooled, None
+        tokens = output.last_hidden_state[:, 1:, :].float().cpu()
+        grid = round(math.sqrt(tokens.shape[1]))
+        backgrounds = []
+        for image, box, patches in zip(images, boxes, tokens):
+            keep = ~torch.from_numpy(person_patches(image.shape, box, grid, processor).reshape(-1))
+            if int(keep.sum()) < MIN_BACKGROUND_PATCHES:
+                backgrounds.append(None)
+                continue
+            mean = torch.nn.functional.normalize(patches[keep], dim=-1).mean(0)
+            backgrounds.append(torch.nn.functional.normalize(mean, dim=0))
+        return pooled, backgrounds
 
     # SigLIP2 --------------------------------------------------------------------------------------------------
     def _siglip_model(self):
@@ -231,22 +285,30 @@ def _frames_of(path: str, video_frames_count: int) -> list[np.ndarray]:
 
 def reference_set(scorer: Scorer, paths: list[str], batch: int = 16) -> dict:
     """Face and DINOv2 embeddings of the training images (three frames of each training video), streamed in
-    batches so a large dataset never sits in memory at once, and their median face box area (the framing an
-    overtrained model drifts towards)."""
-    faces, areas, dino, pending, count = [], [], [], [], 0
+    batches so a large dataset never sits in memory at once, their median face box area (the framing an
+    overtrained model drifts towards) and their background descriptors (the surroundings it copies)."""
+    faces, areas, dino, backgrounds, pending, boxes, count = [], [], [], [], [], [], 0
+
+    def flush():
+        pooled, found = scorer.dino_and_background(pending, boxes)
+        dino.append(pooled)
+        backgrounds.extend(b for b in found if b is not None)
+        pending.clear()
+        boxes.clear()
+
     for path in paths:
         for frame in _frames_of(path, 3):
             count += 1
-            face, area = scorer.face_and_area(frame)
+            face, area, box = scorer.face_area_box(frame)
             if face is not None:
                 faces.append(face)
                 areas.append(area)
             pending.append(frame)
+            boxes.append(box)
             if len(pending) == batch:
-                dino.append(scorer.dino(pending))
-                pending = []
+                flush()
     if pending:
-        dino.append(scorer.dino(pending))
+        flush()
     mean_face = None
     if faces:
         mean_face = np.mean(faces, axis=0)
@@ -254,7 +316,7 @@ def reference_set(scorer: Scorer, paths: list[str], batch: int = 16) -> dict:
     import torch
 
     return {"count": count, "faces": faces, "mean_face": mean_face, "dino": torch.cat(dino) if dino else None,
-            "face_area": statistics.median(areas) if areas else None}
+            "background": torch.stack(backgrounds) if backgrounds else None, "face_area": statistics.median(areas) if areas else None}
 
 
 def score_samples(scorer: Scorer, samples: list[dict], prompts: list[str], references: dict, subject: str, class_word: str,
@@ -275,12 +337,13 @@ def _score_one(scorer: Scorer, item: dict, prompts: list[str], references: dict,
     if not frames:
         return {"error": "unreadable"}
     prompt = prompts[item["prompt_index"]] if item["prompt_index"] < len(prompts) else ""
-    dino = scorer.dino(frames)
+    detected = [scorer.face_area_box(frame) for frame in frames]
+    dino, backgrounds = scorer.dino_and_background(frames, [box for _face, _area, box in detected])
     stats = [colour_stats(frame) for frame in frames]
     scores = {key: statistics.mean(s[key] for s in stats) for key in stats[0]}
     if prompt:
         scores["prompt"] = float(statistics.mean(scorer.prompt_scores(frames, clean_prompt(prompt, subject, class_word))))
-    faces = [found for found in (scorer.face_and_area(frame) for frame in frames) if found[0] is not None]
+    faces = [(face, area) for face, area, _box in detected if face is not None]
     scores["face_found"] = len(faces) / len(frames)
     found = [face for face, _area in faces]
     if faces:  # framing: an overtrained subject is drawn as close as in its training photos, whatever the prompt asks
@@ -293,6 +356,9 @@ def _score_one(scorer: Scorer, item: dict, prompts: list[str], references: dict,
         scores["face_embedding"] = (mean / (np.linalg.norm(mean) + 1e-12)).astype(np.float32).round(5).tolist()
     if references["dino"] is not None:
         scores["dino_nearest_train"] = float(statistics.mean(float((references["dino"] @ d).max()) for d in dino))
+    nearest_scene = [float((references["background"] @ b).max()) for b in backgrounds if b is not None] if references.get("background") is not None else []
+    if nearest_scene:
+        scores["scene_nearest_train"] = float(statistics.mean(nearest_scene))
     if len(frames) > 1:
         scores["temporal"] = float(statistics.mean(float(dino[i] @ dino[i + 1]) for i in range(len(frames) - 1)))
     scores["dino_embedding"] = dino.mean(0).tolist()
@@ -308,8 +374,8 @@ def summarize(samples: list[dict]) -> dict:
         values = [s[key] for s in samples if s.get(key) is not None]
         return statistics.median(values) if values else None
 
-    summary = {key: median(key) for key in ("face_mean", "face_nearest", "face_area", "dino_nearest_train", "prompt", "saturation",
-                                            "colourfulness", "gray_std", "clipped", "hf_energy", "temporal")}
+    summary = {key: median(key) for key in ("face_mean", "face_nearest", "face_area", "dino_nearest_train", "scene_nearest_train", "prompt",
+                                            "saturation", "colourfulness", "gray_std", "clipped", "hf_energy", "temporal")}
     nearest = [s["dino_nearest_train"] for s in samples if s.get("dino_nearest_train") is not None]
     summary["dino_nearest_max"] = max(nearest) if nearest else None  # the sample nearest to a training image (copying)
     found = [s.get("face_found") for s in samples if s.get("face_found") is not None]

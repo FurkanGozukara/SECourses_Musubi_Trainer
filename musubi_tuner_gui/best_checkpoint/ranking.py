@@ -37,6 +37,8 @@ lost variety, copied training photos, colour / sharpness drift and the training 
                counting at NEAR of its limit (drift and framing hover around their limits); one that comes and goes is
                shown but not counted (Mage-Flow LoRA, 200 epochs: faces x1.32-1.37 at epochs 75-100, x1.17 at 125-150,
                x1.47 at 175, x1.05 at 200, the scenes intact; speckle from 125 on, sharpness +54% / +52% / +59% / +47%)
+  scene        a note, not a flag: from the first save whose backgrounds are SCENE_NOTE nearer the training data's own
+               (paired, ``vs_base["scene_nearest_train"]``) and stay so, the training scene shows in other prompts
 Thresholds are research values (dont_upload/best_checkpoint_research) and may change with the calibration."""
 
 from __future__ import annotations
@@ -80,6 +82,11 @@ FRAMING = 1.3
 # around their limits (FLUX Klein 9B LoRA: faces x1.35 at epoch 60, then x1.28-1.29)
 RECUR_SHARE = 0.5
 NEAR = 0.9
+# paired: the samples' surroundings (DINOv2 patch tokens outside the person) this much nearer the training data's own
+# than the base model's samples of the same prompts and seeds: the training scene bleeds into other prompts. A note,
+# not a flag: in the LTX 2.3 runs the training clips' garden came together with the likeness and the judged best
+# checkpoints carried it (+0.20 to +0.46); photo runs stayed below it
+SCENE_NOTE = 0.12
 
 LIKENESS_NAMES = {"face_mean": "face match", "dino_nearest_train": "image similarity"}
 DRIFT_NAMES = {"saturation": "saturation", "colourfulness": "colourfulness", "hf_energy": "sharpness", "clipped": "clipped highlights / shadows"}
@@ -358,6 +365,12 @@ def rank(report: dict, label=_epoch_label) -> dict:
             ]
         if onset is None and best is rows[-1] and len(trained) >= 3 and smooth[trained[-1]] - smooth[trained[-3]] >= STILL_RISING:
             reasons.append(f"Likeness was still rising at {label(best['epoch'])} and nothing shows over-training yet: more epochs could add likeness.")
+    scene = {p: _paired(checkpoints[p], "scene_nearest_train") for p in trained}
+    scene_from = next((p for i, p in enumerate(trained) if scene[p] and scene[p][0] >= SCENE_NOTE and scene[p][1] >= AGREE
+                       and sum(1 for q in trained[i + 1:] if scene[q] and scene[q][0] >= NEAR * SCENE_NOTE) >= RECUR_SHARE * len(trained[i + 1:])), None)
+    if scene_from is not None:
+        reasons.append(f"From {label(scene_from)} the samples take on the training data's surroundings (backgrounds {scene[scene_from][0]:+.2f} "
+                       "nearer them than the base model's): expect that scene in other prompts; an earlier checkpoint keeps the prompts' own.")
     if passing:
         reasons.append("Signs that come and go at the later saves are not counted as over-training: "
                        + "; ".join(f"{SIGN_NAMES.get(kind, kind)} at {', '.join(labels)}" for kind, labels in passing.items()) + ".")
