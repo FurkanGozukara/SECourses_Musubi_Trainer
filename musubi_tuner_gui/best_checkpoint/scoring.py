@@ -310,6 +310,8 @@ def summarize(samples: list[dict]) -> dict:
 
     summary = {key: median(key) for key in ("face_mean", "face_nearest", "face_area", "dino_nearest_train", "prompt", "saturation",
                                             "colourfulness", "gray_std", "clipped", "hf_energy", "temporal")}
+    nearest = [s["dino_nearest_train"] for s in samples if s.get("dino_nearest_train") is not None]
+    summary["dino_nearest_max"] = max(nearest) if nearest else None  # the sample nearest to a training image (copying)
     found = [s.get("face_found") for s in samples if s.get("face_found") is not None]
     summary["face_found"] = statistics.mean(found) if found else None
     by_seed: dict[str, list] = {}

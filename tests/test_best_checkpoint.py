@@ -79,8 +79,9 @@ def test_step_samples_map_to_step_checkpoints(tmp_path):
     assert checkpoint_for(str(tmp_path), "lora", 1000, "step").endswith("lora.safetensors")
 
 
-def _checkpoint(face, prompt, variety, saturation, nearest, found=1.0):
-    return {"summary": {"face_mean": face, "dino_nearest_train": nearest, "prompt": prompt, "saturation": saturation,
+def _checkpoint(face, prompt, variety, saturation, nearest, found=1.0, copied=None):
+    """``nearest``: the median sample's similarity to the nearest training image; ``copied``: the highest sample's."""
+    return {"summary": {"face_mean": face, "dino_nearest_train": nearest, "dino_nearest_max": copied, "prompt": prompt, "saturation": saturation,
                         "colourfulness": 40 + saturation * 10, "clipped": 0.01, "hf_energy": 100 + saturation * 50,
                         "face_found": found, "variety": variety}}
 
@@ -92,14 +93,14 @@ def test_the_rule_picks_the_plateau_and_explains_the_overcooked_end():
         40: _checkpoint(0.55, 0.199, 0.48, 0.42, 0.75),
         60: _checkpoint(0.62, 0.198, 0.47, 0.43, 0.80),
         80: _checkpoint(0.64, 0.195, 0.45, 0.45, 0.84),
-        100: _checkpoint(0.65, 0.17, 0.37, 0.60, 0.95, found=0.6),
+        100: _checkpoint(0.65, 0.17, 0.37, 0.60, 0.95, found=0.6, copied=0.97),
     }}
     result = ranking.rank(report)
     # likeness levels off from epoch 60; epoch 100 shows the over-training signs: the most likeness before them
     assert result["best_epoch"] == 80 and result["plateau_start"] == 60 and result["onset"] == 100
     flags = next(row for row in result["rows"] if row["epoch"] == 100)["flags"]
     assert any("prompt following" in f for f in flags) and any("variety" in f for f in flags)
-    assert any("copies training photos" in f for f in flags)
+    assert any("a sample copies a training image" in f for f in flags)
     assert any("from epoch 100" in reason for reason in result["reasons"])
     assert ranking.rank({"training_faces": 0, "checkpoints": {0: report["checkpoints"][0]}}).get("error")
 
@@ -548,3 +549,16 @@ def test_a_lone_clean_checkpoint_among_lasting_signs_is_not_their_end():
     flagged = [row["epoch"] for row in result["rows"] if row["flags"]]
     assert flagged == [50, 100, 125, 150, 175] and result["best_epoch"] == 75
     assert any("the checkpoints after it carry them" in reason for reason in result["reasons"])
+
+
+def test_one_copied_sample_is_enough_and_old_reports_get_it_from_their_samples():
+    # LTX 2.3 (2026-10-14): one of three samples copied a training clip's scene (DINOv2 0.88), the median stayed at 0.59;
+    # the per-sample maximum flags it, also for reports written before the summary carried it
+    base = {"face_mean": 0.1, "prompt": 0.13, "variety": 0.9, "face_found": 1.0}
+    samples = [{"dino_nearest_train": value} for value in (0.59, 0.88, 0.25)]
+    old = {"training_faces": 8, "checkpoints": {0: {"summary": base}, 20: {"summary": {**base, "face_mean": 0.5, "dino_nearest_train": 0.59},
+                                                                         "samples": samples}}}
+    flags = ranking.rank(old)["rows"][0]["flags"]
+    assert flags == ["a sample copies a training image (similarity 0.88)"]
+    clean = {"training_faces": 8, "checkpoints": {0: {"summary": base}, 20: {"summary": {**base, "face_mean": 0.5, "dino_nearest_max": 0.74}}}}
+    assert not ranking.rank(clean)["rows"][0]["flags"]

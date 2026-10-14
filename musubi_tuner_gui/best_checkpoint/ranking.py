@@ -50,7 +50,10 @@ PROMPT_DROP = 0.02  # unpaired: median SigLIP2 cosine below the base model's
 PAIRED_PROMPT_DROP = 0.01  # paired: median SigLIP2 cosine lost on the same prompts and seeds
 AGREE = 0.70
 VARIETY_RATIO = 0.80
-COPY_LIMIT = 0.92
+# a sample this similar (DINOv2) to a training image copies it: 0 of 337 judged-acceptable checkpoints of the research
+# runs had a sample above 0.80, the LTX 2.3 runs' over-trained ones up to 0.91 (the training clips' scenes). The median
+# over the samples, used before, never reached the old 0.92 in any run
+COPY_LIMIT = 0.80
 Z_LIMIT = 2.0
 FACE_FOUND_DROP = 0.75
 LIKENESS_MIN_GAIN = {"face_mean": 0.15, "dino_nearest_train": 0.05}
@@ -120,6 +123,15 @@ def _drift_flags(summary: dict, base: dict, unpaired: dict, first: dict | None =
     return flags
 
 
+def _with_nearest_max(data: dict) -> dict:
+    """The checkpoint summary; reports written before ``dino_nearest_max`` get it from their samples."""
+    summary = data["summary"]
+    if "dino_nearest_max" not in summary and data.get("samples"):
+        values = [s["dino_nearest_train"] for s in data["samples"] if s.get("dino_nearest_train") is not None]
+        summary = {**summary, "dino_nearest_max": max(values) if values else None}
+    return summary
+
+
 def _smooth(values: list[float]) -> list[float]:
     """Each value weighted 1/2 with 1/4 of each neighbour (2/3 and 1/3 at the ends): saves are noisy, a face match
     moves 0.03-0.06 between them, and a checkpoint's own value still decides between two."""
@@ -144,7 +156,7 @@ def _framing_flag(summary: dict, base: dict, training_area: float | None) -> str
 def rank(report: dict, label=_epoch_label) -> dict:
     """``report["checkpoints"]``: point (epoch or step; 0 = the base model) -> {"summary": ...}. ``label`` names a point
     in the reasons and flags."""
-    checkpoints = {int(point): data["summary"] for point, data in report["checkpoints"].items()}
+    checkpoints = {int(point): _with_nearest_max(data) for point, data in report["checkpoints"].items()}
     points = sorted(checkpoints)
     base_point = points[0] if points and points[0] == 0 else None
     base = checkpoints.get(base_point, {}) if base_point is not None else {}
@@ -188,8 +200,8 @@ def rank(report: dict, label=_epoch_label) -> dict:
             flags.append(f"weaker prompt following than the base model ({prompt[p]:.3f} vs {base['prompt']:.3f})")
         if base.get("variety") and s.get("variety") is not None and s["variety"] < VARIETY_RATIO * base["variety"]:
             flags.append(f"less variety between prompts ({s['variety']:.3f}, base {base['variety']:.3f})")
-        if s.get("dino_nearest_train") is not None and s["dino_nearest_train"] > COPY_LIMIT:
-            flags.append(f"copies training photos (similarity {s['dino_nearest_train']:.3f})")
+        if s.get("dino_nearest_max") is not None and s["dino_nearest_max"] > COPY_LIMIT:
+            flags.append(f"a sample copies a training image (similarity {s['dino_nearest_max']:.2f})")
         flags += _drift_flags(s, base, unpaired.get(p, {}), checkpoints[trained[0]], label(trained[0]))
         framing = _framing_flag(s, base, report.get("training_face_area"))
         if framing:
