@@ -279,8 +279,15 @@ def test_an_undertrained_run_passes_over_a_sign_that_does_not_last():
             "face_mean": 0.136 + gain, "prompt": 0.13, "variety": 0.9, "face_found": 1.0, "dino_nearest_train": 0.2,
             "vs_base": {"face_mean": (gain, 1.0), "identity": (margin, 1.0), "saturation": (sat, 1.0), "prompt": (0.0, 0.5)}}}
     result = ranking.rank({"training_faces": 13, "training_face_area": 0.113, "checkpoints": checkpoints})
-    assert result["undertrained"] and result["onset"] == 80 and result["best_epoch"] == 100
+    assert result["undertrained"] and result["onset"] is None and result["best_epoch"] == 100
     assert "the latest checkpoint, epoch 100, is the pick" in result["reasons"][0]
+    assert "not counted as over-training: saturation drift at epoch 80." in result["reasons"][1]
+    row = next(r for r in result["rows"] if r["epoch"] == 80)
+    assert row["flags"] and not row["signs"]  # shown, not counted
+    # a sign that recurs at half of the later saves counts, and the clean last checkpoint is still the pick
+    checkpoints[60]["summary"]["vs_base"]["saturation"] = (-0.28, 1.0)
+    result = ranking.rank({"training_faces": 13, "training_face_area": 0.113, "checkpoints": checkpoints})
+    assert result["onset"] == 60 and result["best_epoch"] == 100
     assert "do not last: epoch 100 shows none" in result["reasons"][1] and "lower learning rate" not in result["reasons"][1]
 
 
@@ -412,6 +419,18 @@ def test_results_render_from_a_report(tmp_path):
     assert "Best checkpoint: epoch 20" in page and "bcf-best" in page and "base model" in page
     items = CF.comparison_gallery(loaded)
     assert len(items) == 2 and all(os.path.isfile(path) for path, _caption in items)  # base and best (= last)
+    # a sign that comes and goes is shown muted; one that counts, and every flag of an older report, as a warning
+    rows = loaded["result"]["rows"]
+    rows[0].update(flags=["sharpness drift (+60% since epoch 10)"], signs=[])
+    rows[1].update(flags=["weaker prompt following than the base model (-0.020 on the same prompts and seeds)"])
+    rows[1].pop("signs", None)
+    page = CF.results_html(loaded, str(out), "lora")
+    assert 'bcf-flag bcf-flag-passing" title="Comes and goes' in page and page.count('<span class="bcf-flag">') == 1
+    from musubi_tuner_gui.best_checkpoint import worker
+
+    worker.write_html(str(tmp_path / "report.html"), {**report, "result": loaded["result"]})  # the worker's own report: int points
+    text = (tmp_path / "report.html").read_text(encoding="utf-8")
+    assert "comes and goes, not counted: sharpness drift" in text and "weaker prompt following" in text
     summary = CF.result_summary(str(out), "lora")
     assert summary["headline"] == "Best checkpoint: epoch 20"
     assert "No finder report" in CF.results_html(None, str(out), "other")
@@ -516,8 +535,9 @@ def test_an_early_sign_that_does_not_last_keeps_the_full_likeness_after_it():
             "face_mean": 0.17 + gain, "prompt": 0.13, "variety": 0.9, "face_found": 1.0, "dino_nearest_train": 0.2,
             "vs_base": {"face_mean": (gain, 1.0), "identity": (margin, 1.0), "prompt": (change, 0.8)}}}
     result = ranking.rank({"training_faces": 13, "training_face_area": 0.113, "checkpoints": checkpoints})
-    assert not result["undertrained"] and result["plateau_start"] == 80 and result["best_epoch"] == 60  # judged 60-100
-    assert any("does not last: epoch 60 shows none" in reason for reason in result["reasons"])
+    assert not result["undertrained"] and result["plateau_start"] == 80 and result["best_epoch"] == 80  # judged 60-100, best 80
+    assert result["onset"] is None
+    assert any("not counted as over-training: weaker prompt following at epoch 40." in reason for reason in result["reasons"])
 
 
 def test_the_finder_samples_at_the_step_saves_when_the_epochs_save_only_the_final_model(tmp_path):
@@ -549,6 +569,33 @@ def test_a_lone_clean_checkpoint_among_lasting_signs_is_not_their_end():
     flagged = [row["epoch"] for row in result["rows"] if row["flags"]]
     assert flagged == [50, 100, 125, 150, 175] and result["best_epoch"] == 75
     assert any("the checkpoints after it carry them" in reason for reason in result["reasons"])
+
+
+def test_signs_that_come_and_go_are_shown_but_not_counted():
+    # Mage-Flow LoRA with uniform timesteps, 200 epochs (2026-10-14 server run): faces x1.32-1.37 at epochs 75-100,
+    # x1.17 at 125-150, x1.47 at 175, x1.05 at 200, the scenes intact; by eye the anchor's suit, desk and map speckle
+    # from epoch 125 (sharpness +54% / +52% / +59% since epoch 25), milder at 200 (+47%, just under the limit); the
+    # subject from epoch 50: judged 50-100, best 100. Counting every flag picked epoch 200, the only clean save
+    gains = [0.102, 0.209, 0.224, 0.205, 0.356, 0.186, 0.275, 0.282]
+    margins = [-0.097, 0.083, 0.020, 0.103, 0.199, 0.095, 0.182, 0.109]
+    areas = [(-0.070, 0.67), (0.158, 1.0), (0.276, 1.0), (0.314, 1.0), (0.162, 1.0), (0.153, 1.0), (0.388, 1.0), (0.048, 0.6)]
+    sharpness = [0.579, 0.695, 0.963, 0.774, 1.010, 1.000, 1.041, 0.967]
+    clipped = [0.002, 0.015, 0.011, 0.017, 0.083, 0.040, 0.061, 0.043]
+    colour = [-0.019, 0.106, 0.095, 0.113, 0.137, 0.131, 0.167, 0.101]
+    checkpoints = {0: {"summary": {"face_mean": 0.12, "prompt": 0.13, "variety": 0.9, "face_found": 1.0, "face_area": 0.03}}}
+    for index, (gain, margin, area, sharp, clip, colourful) in enumerate(zip(gains, margins, areas, sharpness, clipped, colour)):
+        checkpoints[25 * (index + 1)] = {"summary": {
+            "face_mean": 0.12 + gain, "prompt": 0.13, "variety": 0.9, "face_found": 0.67 if index == 4 else 1.0, "dino_nearest_train": 0.2,
+            "vs_base": {"face_mean": (gain, 1.0), "identity": (margin, 1.0), "face_area": area, "hf_energy": (sharp, 1.0),
+                        "clipped": (clip, 0.83), "colourfulness": (colourful, 0.83), "prompt": (0.0, 0.5)}}}
+    result = ranking.rank({"training_faces": 12, "training_face_area": 0.113, "checkpoints": checkpoints})
+    rows = {row["epoch"]: row for row in result["rows"]}
+    assert [p for p, row in rows.items() if row["flags"]] == [75, 100, 125, 150, 175]
+    assert [p for p, row in rows.items() if row["signs"]] == [125, 150, 175]  # the sharpness drift recurs, +47% at 200 included
+    assert (result["plateau_start"], result["onset"], result["best_epoch"]) == (125, 125, 100)
+    assert "They start as likeness levels off (epoch 125): epoch 100 has nearly the most likeness before them" in result["reasons"][1]
+    passing = next(reason for reason in result["reasons"] if reason.startswith("Signs that come and go"))
+    assert "the training photos' framing at epoch 75, epoch 100, epoch 175" in passing and "sharpness" not in passing
 
 
 def test_one_copied_sample_is_enough_and_old_reports_get_it_from_their_samples():

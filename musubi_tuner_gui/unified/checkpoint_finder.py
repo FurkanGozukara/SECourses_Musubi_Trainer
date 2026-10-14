@@ -392,7 +392,10 @@ def results_html(report: dict | None, output_dir: str = "", output_name: str = "
         )
     for row in rows:
         is_best = row["epoch"] == best
-        flags = "".join(f'<span class="bcf-flag">{html.escape(flag)}</span>' for flag in row["flags"])
+        signs = row.get("signs", row["flags"])  # the counted ones; reports written before 2026-10-14 count every flag
+        flags = "".join(f'<span class="bcf-flag">{html.escape(flag)}</span>' if flag in signs else
+                        f'<span class="bcf-flag bcf-flag-passing" title="Comes and goes at the later saves: not counted as over-training">'
+                        f'{html.escape(flag)}</span>' for flag in row["flags"])
         level = '<span class="bcf-level">likeness level</span>' if row.get("plateau") else ""
         body += (
             f'<tr class="{"bcf-best" if is_best else ""}"><td>{html.escape(row.get("label") or point_label(row["epoch"], kind))}{" 🏆" if is_best else ""}</td>'

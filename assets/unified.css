@@ -502,6 +502,7 @@
 .bcf-flags { display: flex; flex-wrap: wrap; gap: 4px; min-width: 220px; }
 .bcf-flag, .bcf-level { font-size: .8em; padding: 2px 7px; border-radius: 999px; line-height: 1.35; }
 .bcf-flag { background: color-mix(in srgb, var(--ud-warn) 15%, transparent); border: 1px solid color-mix(in srgb, var(--ud-warn) 45%, transparent); }
+.bcf-flag-passing { opacity: .6; border-style: dashed; }
 .bcf-level { background: color-mix(in srgb, var(--ud-ok) 12%, transparent); border: 1px solid color-mix(in srgb, var(--ud-ok) 40%, transparent); }
 .bcf-foot { font-size: .84em; color: var(--body-text-color-subdued); }
 .bcf-foot code { word-break: break-all; }

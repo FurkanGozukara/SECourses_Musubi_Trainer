@@ -32,6 +32,10 @@ lost variety, copied training photos, colour / sharpness drift and the training 
                epoch 40 only), the window is the first stretch of level checkpoints without flags; when they last, the
                checkpoints before the onset that reach EARLY_LEVEL of the highest likeness and, with faces, an identity
                margin of IDENTITY_SWITCH. Neither: the earliest level checkpoint with the fewest flags
+  recurring    a kind of sign counts only when it recurs at RECUR_SHARE of the saves after its first one, a later save
+               counting at NEAR of its limit (drift and framing hover around their limits); one that comes and goes is
+               shown but not counted (Mage-Flow LoRA, 200 epochs: faces x1.32-1.37 at epochs 75-100, x1.17 at 125-150,
+               x1.47 at 175, x1.05 at 200, the scenes intact; speckle from 125 on, sharpness +54% / +52% / +59% / +47%)
 Thresholds are research values (dont_upload/best_checkpoint_research) and may change with the calibration."""
 
 from __future__ import annotations
@@ -66,9 +70,16 @@ DRIFT_LOG = {"saturation": math.log(1.20), "colourfulness": math.log(1.20), "hf_
 # headshots were visibly drawn closer (LoRA epoch 140, DoRA epoch 160); x1.2-1.25 also at checkpoints that still
 # looked right (DoRA epoch 100)
 FRAMING = 1.3
+# a kind of sign counts as over-training when it recurs at this share of the saves after its first one (over-training
+# does not undo itself); a later save recurs a drift or framing sign at NEAR of its limit, as those signals hover
+# around their limits (FLUX Klein 9B LoRA: faces x1.35 at epoch 60, then x1.28-1.29)
+RECUR_SHARE = 0.5
+NEAR = 0.9
 
 LIKENESS_NAMES = {"face_mean": "face match", "dino_nearest_train": "image similarity"}
 DRIFT_NAMES = {"saturation": "saturation", "colourfulness": "colourfulness", "hf_energy": "sharpness", "clipped": "clipped highlights / shadows"}
+SIGN_NAMES = {"prompt": "weaker prompt following", "variety": "less variety", "copy": "a copied training image", "framing": "the training photos' framing",
+              "faces": "fewer faces found", **{key: f"{name} drift" for key, name in DRIFT_NAMES.items()}}
 
 
 def _epoch_label(point: int) -> str:
@@ -101,25 +112,27 @@ def _unpaired_drift(checkpoints: dict, trained: list[int], base: dict) -> dict:
     return drift
 
 
-def _drift_flags(summary: dict, base: dict, unpaired: dict, first: dict | None = None, first_label: str = "") -> list[str]:
-    """Colour / sharpness drift. Paired: the change from the base model minus the change at the first save (``first``),
-    so only drift that grows with training counts."""
+def _drift_flags(summary: dict, base: dict, unpaired: dict, first: dict | None = None, first_label: str = "",
+                 near: float = 1.0) -> list[tuple[str, str]]:
+    """Colour / sharpness drift as (kind, text). Paired: the change from the base model minus the change at the first
+    save (``first``), so only drift that grows with training counts. ``near``: the share of the limits that counts."""
     flags = []
     if any(_paired(summary, key) for key in (*DRIFT_LOG, "clipped")):
         for key, limit in DRIFT_LOG.items():
             change, start = _paired(summary, key), _paired(first or {}, key)
             growth = change[0] - (start[0] if start else 0.0) if change else 0.0
-            if change and abs(growth) >= limit and change[1] >= AGREE:
-                flags.append(f"{DRIFT_NAMES[key]} drift ({math.exp(growth) - 1:+.0%} since {first_label or 'the first save'})")
+            if change and abs(growth) >= near * limit and change[1] >= AGREE:
+                flags.append((key, f"{DRIFT_NAMES[key]} drift ({math.exp(growth) - 1:+.0%} since {first_label or 'the first save'})"))
         change, start = _paired(summary, "clipped"), _paired(first or {}, "clipped")
-        if change and change[0] - (start[0] if start else 0.0) >= DRIFT_MIN["clipped"] and change[1] >= AGREE:
-            flags.append(f"{DRIFT_NAMES['clipped']} drift ({change[0] - (start[0] if start else 0.0):+.0%} of the image clipped since {first_label or 'the first save'})")
+        if change and change[0] - (start[0] if start else 0.0) >= near * DRIFT_MIN["clipped"] and change[1] >= AGREE:
+            flags.append(("clipped", f"{DRIFT_NAMES['clipped']} drift ({change[0] - (start[0] if start else 0.0):+.0%} of the image clipped since "
+                                     f"{first_label or 'the first save'})"))
         return flags
     for key, z in unpaired.items():
-        if abs(z) > Z_LIMIT:
+        if abs(z) > near * Z_LIMIT:
             change = summary[key] - base[key]
             amount = f"{change:+.0%} of the image clipped" if key == "clipped" else f"{change / base[key]:+.0%}"
-            flags.append(f"{DRIFT_NAMES.get(key, key)} drift ({amount} vs the base model)")
+            flags.append((key, f"{DRIFT_NAMES.get(key, key)} drift ({amount} vs the base model)"))
     return flags
 
 
@@ -141,13 +154,14 @@ def _smooth(values: list[float]) -> list[float]:
     return [(2 * values[0] + values[1]) / 3, *inner, (2 * values[-1] + values[-2]) / 3]
 
 
-def _framing_flag(summary: dict, base: dict, training_area: float | None) -> str | None:
-    """Faces FRAMING times the base model's size (paired) towards the training photos' own framing."""
+def _framing_flag(summary: dict, base: dict, training_area: float | None, near: float = 1.0) -> str | None:
+    """Faces FRAMING times the base model's size (paired) towards the training photos' own framing (``near``: the share
+    of the log limit that counts)."""
     change = _paired(summary, "face_area")
     if not change or change[1] < AGREE:
         return None
     toward = 1.0 if not training_area or not base.get("face_area") or training_area >= base["face_area"] else -1.0
-    if toward * change[0] < math.log(FRAMING):
+    if toward * change[0] < near * math.log(FRAMING):
         return None
     word = "closer" if change[0] > 0 else "farther away"
     return f"drawn {word} than the prompts ask, as in the training photos (faces {math.exp(change[0]):.2f}x the base model's size)"
@@ -188,38 +202,54 @@ def rank(report: dict, label=_epoch_label) -> dict:
         identity_knee = True
     unpaired = _unpaired_drift(checkpoints, trained, base)
 
-    rows = []
-    for p in trained:
+    def signs_at(p: int, near: float = 1.0) -> list[tuple[str, str]]:
+        """(kind, text) of every warning sign at checkpoint ``p``; ``near`` < 1 for the recurrence check."""
         s = checkpoints[p]
-        flags = []
+        found = []
         change = _paired(s, "prompt")
         if change:
             if change[0] < -PAIRED_PROMPT_DROP and change[1] >= AGREE:
-                flags.append(f"weaker prompt following than the base model ({change[0]:+.3f} on the same prompts and seeds)")
+                found.append(("prompt", f"weaker prompt following than the base model ({change[0]:+.3f} on the same prompts and seeds)"))
         elif base.get("prompt") is not None and prompt[p] < base["prompt"] - PROMPT_DROP:
-            flags.append(f"weaker prompt following than the base model ({prompt[p]:.3f} vs {base['prompt']:.3f})")
+            found.append(("prompt", f"weaker prompt following than the base model ({prompt[p]:.3f} vs {base['prompt']:.3f})"))
         if base.get("variety") and s.get("variety") is not None and s["variety"] < VARIETY_RATIO * base["variety"]:
-            flags.append(f"less variety between prompts ({s['variety']:.3f}, base {base['variety']:.3f})")
+            found.append(("variety", f"less variety between prompts ({s['variety']:.3f}, base {base['variety']:.3f})"))
         if s.get("dino_nearest_max") is not None and s["dino_nearest_max"] > COPY_LIMIT:
-            flags.append(f"a sample copies a training image (similarity {s['dino_nearest_max']:.2f})")
-        flags += _drift_flags(s, base, unpaired.get(p, {}), checkpoints[trained[0]], label(trained[0]))
-        framing = _framing_flag(s, base, report.get("training_face_area"))
+            found.append(("copy", f"a sample copies a training image (similarity {s['dino_nearest_max']:.2f})"))
+        found += _drift_flags(s, base, unpaired.get(p, {}), checkpoints[trained[0]], label(trained[0]), near)
+        framing = _framing_flag(s, base, report.get("training_face_area"), near)
         if framing:
-            flags.append(framing)
+            found.append(("framing", framing))
         if base.get("face_found") and s.get("face_found") is not None and s["face_found"] < FACE_FOUND_DROP * base["face_found"]:
-            flags.append(f"faces found in {s['face_found']:.0%} of samples (base model {base['face_found']:.0%})")
+            found.append(("faces", f"faces found in {s['face_found']:.0%} of samples (base model {base['face_found']:.0%})"))
+        return found
+
+    signs = {p: signs_at(p) for p in trained}
+    near = {p: {kind for kind, _ in signs_at(p, NEAR)} for p in trained}
+    counted = set()  # the kinds of sign that recur at the later saves
+    for kind in {kind for found in signs.values() for kind, _ in found}:
+        first = next(i for i, p in enumerate(trained) if any(k == kind for k, _ in signs[p]))
+        later = trained[first + 1:]
+        if not later or sum(kind in near[p] for p in later) >= RECUR_SHARE * len(later):
+            counted.add(kind)
+    rows = []
+    for p in trained:
+        s = checkpoints[p]
         area = _paired(s, "face_area")
         rows.append({"epoch": p, "label": label(p), "likeness": likeness[p], "prompt": prompt[p], "variety": s.get("variety"),
-                     "framing": math.exp(area[0]) if area else None, "gain": smooth[p], "plateau": p >= knee, "flags": flags,
+                     "framing": math.exp(area[0]) if area else None, "gain": smooth[p], "plateau": p >= knee,
+                     "flags": [text for _, text in signs[p]], "signs": [text for kind, text in signs[p] if kind in counted],
                      "score": smooth[p] / top if top > 0 else 0.0})
-    onset = next((r for r in rows if r["flags"]), None)
+    passing = {kind: [r["label"] for r in rows if any(k == kind for k, _ in signs[r["epoch"]])]
+               for kind in sorted({kind for found in signs.values() for kind, _ in found} - counted)}
+    onset = next((r for r in rows if r["signs"]), None)
     name = LIKENESS_NAMES.get(like_key, like_key)
     level_line = (f"Likeness levels off from {label(knee)}" + (": the faces match the training photos and have left the base model's own person" if identity_knee else "")
                   + f" ({name} {likeness[knee]:.3f}; base model {base_like:.3f}, highest {best_like:.3f}).")
     if undertrained:
         # the most trained checkpoint is the closest to the likeness: the latest one without warning signs (Mage-Flow
         # DoRA: noisy textures from epoch 80 on, so epoch 60; HiDream-O1 LoRA: a saturation dip at epoch 80 only, so 100)
-        clean = [r for r in rows if not r["flags"]]
+        clean = [r for r in rows if not r["signs"]]
         best = clean[-1] if clean else rows[-1]
         if best is rows[-1]:
             latest = "the latest checkpoint"
@@ -238,12 +268,12 @@ def rank(report: dict, label=_epoch_label) -> dict:
                 f"Likeness has not risen above the base model yet ({name}: base model {base_like:.3f}, best {best_like:.3f}): the run "
                 f"looks undertrained. Train longer or with a higher learning rate; until then {latest}, {label(best['epoch'])}, is the pick."
             ]
-        if onset and best is rows[-1] and not best["flags"]:
-            signed = [r for r in rows if r["flags"]]
-            reasons.append(f"Warning signs at {', '.join(r['label'] for r in signed)} (" + "; ".join(onset["flags"])
+        if onset and best is rows[-1] and not best["signs"]:
+            signed = [r for r in rows if r["signs"]]
+            reasons.append(f"Warning signs at {', '.join(r['label'] for r in signed)} (" + "; ".join(onset["signs"])
                            + f") do not last: {label(best['epoch'])} shows none.")
         elif onset:
-            reasons.append(f"Warning signs from {onset['label']}: " + "; ".join(onset["flags"]) + "."
+            reasons.append(f"Warning signs from {onset['label']}: " + "; ".join(onset["signs"]) + "."
                            + (" Training longer will not fix those: try a lower learning rate with more epochs." if best is not rows[-1] else ""))
     else:
         early = onset is not None and onset["epoch"] <= knee
@@ -259,7 +289,7 @@ def rank(report: dict, label=_epoch_label) -> dict:
             # garden replaced the prompts' scenes, which no signal shows): epoch 75
             runs, current = [], []
             for r in rows:
-                if not r["flags"] and r["gain"] >= EARLY_LEVEL * top and (not margins or margins[r["epoch"]] >= IDENTITY_SWITCH):
+                if not r["signs"] and r["gain"] >= EARLY_LEVEL * top and (not margins or margins[r["epoch"]] >= IDENTITY_SWITCH):
                     current.append(r)
                 elif current:
                     runs.append(current)
@@ -269,30 +299,30 @@ def rank(report: dict, label=_epoch_label) -> dict:
             window = max(runs, key=len) if runs else []
             if window and window[0]["epoch"] > onset["epoch"]:  # after the first sign: it did not last
                 isolated, early = onset, False
-                onset = next((r for r in rows if r["epoch"] > window[-1]["epoch"] and r["flags"]), None)
+                onset = next((r for r in rows if r["epoch"] > window[-1]["epoch"] and r["signs"]), None)
         else:
             window = [r for r in rows if r["epoch"] >= knee and (onset is None or r["epoch"] < onset["epoch"])]
-        signs = f"Over-training signs from {onset['label']}: " + "; ".join(onset["flags"]) + "." if onset else ""
+        signs_line = f"Over-training signs from {onset['label']}: " + "; ".join(onset["signs"]) + "." if onset else ""
         if window:
             peak = max(r["gain"] for r in window)
             best = next(r for r in window if r["gain"] >= peak - PICK_TOLERANCE * top)
             later = "" if best is window[-1] else " (the later ones add little likeness and copy more of the training photos)"
             if early:
                 reasons = [
-                    signs,
-                    f"They start before likeness levels off ({label(knee)}): {label(best['epoch'])} has nearly the most likeness before them"
+                    signs_line,
+                    f"They start {'as' if onset['epoch'] == knee else 'before'} likeness levels off ({label(knee)}): {label(best['epoch'])} has nearly the most likeness before them"
                     f"{later}. A lower learning rate would reach the full likeness before them.",
                 ]
             else:
                 reasons = [level_line]
                 if isolated:
-                    signed = [r for r in rows if r["flags"] and r["epoch"] < window[0]["epoch"]]
+                    signed = [r for r in rows if r["signs"] and r["epoch"] < window[0]["epoch"]]
                     if len(signed) == 1:
-                        reasons.append(f"A warning sign at {isolated['label']} (" + "; ".join(isolated["flags"]) + f") does not last: {window[0]['label']} shows none.")
+                        reasons.append(f"A warning sign at {isolated['label']} (" + "; ".join(isolated["signs"]) + f") does not last: {window[0]['label']} shows none.")
                     else:
                         reasons.append(f"Warning signs at {', '.join(r['label'] for r in signed)} (from {isolated['label']}: "
-                                       + "; ".join(isolated["flags"]) + f"); {window[0]['label']} shows none.")
-                reasons += [signs] if signs else []
+                                       + "; ".join(isolated["signs"]) + f"); {window[0]['label']} shows none.")
+                reasons += [signs_line] if signs_line else []
                 if len(window) > 1:
                     where = "before them" if onset else ("on that level, with no over-training signs" if window[0]["epoch"] >= knee
                                                          else "without warning signs")
@@ -305,15 +335,18 @@ def rank(report: dict, label=_epoch_label) -> dict:
                                    else f"{label(best['epoch'])} is the only checkpoint on that level.")
         else:  # over-trained from the first saves on: the least of it
             level = [r for r in rows if r["epoch"] >= knee]
-            fewest = min(len(r["flags"]) for r in level)
-            best = next(r for r in level if len(r["flags"]) == fewest)
+            fewest = min(len(r["signs"]) for r in level)
+            best = next(r for r in level if len(r["signs"]) == fewest)
             reasons = [
                 level_line,
                 f"Every checkpoint on that level shows over-training signs; {label(best['epoch'])} is the earliest with the fewest: "
-                + "; ".join(best["flags"]) + ". A lower learning rate (or saving more often) would reach the likeness before them.",
+                + "; ".join(best["signs"]) + ". A lower learning rate (or saving more often) would reach the likeness before them.",
             ]
         if onset is None and best is rows[-1] and len(trained) >= 3 and smooth[trained[-1]] - smooth[trained[-3]] >= STILL_RISING:
             reasons.append(f"Likeness was still rising at {label(best['epoch'])} and nothing shows over-training yet: more epochs could add likeness.")
+    if passing:
+        reasons.append("Signs that come and go at the later saves are not counted as over-training: "
+                       + "; ".join(f"{SIGN_NAMES.get(kind, kind)} at {', '.join(labels)}" for kind, labels in passing.items()) + ".")
     looks = []
     for key, limit in DRIFT_LOG.items():
         start = _paired(checkpoints[trained[0]], key)

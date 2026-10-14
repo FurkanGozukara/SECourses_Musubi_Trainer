@@ -161,6 +161,13 @@ def _times(value) -> str:
     return "—" if value is None else f"×{value:.2f}"
 
 
+def _flags_cell(row: dict) -> str:
+    """The counted signs, then the ones that come and go (reports written before 2026-10-14 count every flag)."""
+    signs = row.get("signs", row["flags"])
+    passing = [flag for flag in row["flags"] if flag not in signs]
+    return html.escape("; ".join(signs)) + (f" <small>comes and goes, not counted: {html.escape('; '.join(passing))}</small>" if passing else "")
+
+
 def write_html(path: str, report: dict) -> None:
     """A self-contained page: the recommendation and why, the ranked table and the prompt x checkpoint grid (images
     linked relative to the report, so the output folder can be moved as a whole)."""
@@ -176,7 +183,7 @@ def write_html(path: str, report: dict) -> None:
     rows = "".join(
         f"<tr class='{'best' if r['epoch'] == best else ''}'><td>{html.escape(r['label'])}{' 🏆' if r['epoch'] == best else ''}</td>"
         f"<td>{_num(r['likeness'])}</td><td>{_num(r['prompt'])}</td><td>{_num(r['variety'])}</td><td>{_times(r.get('framing'))}</td>"
-        f"<td>{'✓' if r['plateau'] else ''}</td><td>{html.escape('; '.join(r['flags']))}</td></tr>"
+        f"<td>{'✓' if r['plateau'] else ''}</td><td>{_flags_cell(r)}</td></tr>"
         for r in result.get("rows", [])
     )
     by_cell: dict[tuple, dict] = {}
