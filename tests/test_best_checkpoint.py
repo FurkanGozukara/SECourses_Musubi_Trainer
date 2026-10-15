@@ -667,6 +667,26 @@ def test_the_training_scene_in_other_prompts_is_a_note_not_a_flag():
     assert not any("surroundings" in reason for reason in ranking.rank(report(True))["reasons"])
 
 
+def test_one_prompts_scene_taken_over_is_noted_from_its_sample():
+    # LTX 2.3 DoRA at 1e-4 on three clips (2026-10-15): the anchor prompt's studio turned into the training clip's garden
+    # from epoch 100 (+0.38 for that sample) while the headshot and pilot kept their scenes (median +0.04)
+    rises = {25: (-0.17, 0.00, 0.05), 50: (0.01, 0.00, 0.03), 75: (0.01, -0.01, 0.13), 100: (0.04, 0.01, 0.38), 125: (0.03, 0.02, 0.36),
+             150: (0.00, 0.03, 0.26), 175: (0.06, 0.06, 0.31), 200: (0.07, 0.11, 0.30)}
+    base_samples = [{"prompt_index": i, "seed": 1001, "scene_nearest_train": 0.3} for i in range(3)]
+    checkpoints = {0: {"summary": {"face_mean": 0.08, "prompt": 0.1, "variety": 0.8, "face_found": 1.0}, "samples": base_samples}}
+    for point, values in rises.items():
+        checkpoints[point] = {"summary": {"face_mean": 0.5, "prompt": 0.1, "variety": 0.8, "face_found": 1.0, "dino_nearest_train": 0.4,
+                                          "vs_base": {"face_mean": (0.4, 1.0), "scene_nearest_train": (sorted(values)[1], 1.0)}},
+                              "samples": [{"prompt_index": i, "seed": 1001, "scene_nearest_train": 0.3 + v} for i, v in enumerate(values)]}
+    result = ranking.rank({"training_faces": 8, "checkpoints": checkpoints})
+    note = next(reason for reason in result["reasons"] if "surroundings" in reason)
+    assert note.startswith("From epoch 100 the samples take on the training data's surroundings (one prompt's background +0.38")
+    # one high sample that does not recur is no note
+    for point in (125, 150, 175, 200):
+        checkpoints[point]["samples"][2]["scene_nearest_train"] = 0.32
+    assert not any("surroundings" in reason for reason in ranking.rank({"training_faces": 8, "checkpoints": checkpoints})["reasons"])
+
+
 def test_the_background_mask_covers_the_person_below_the_face():
     from musubi_tuner_gui.best_checkpoint import scoring
 

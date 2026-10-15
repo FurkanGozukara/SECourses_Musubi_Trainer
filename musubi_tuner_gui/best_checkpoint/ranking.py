@@ -38,7 +38,8 @@ lost variety, copied training photos, colour / sharpness drift and the training 
                shown but not counted (Mage-Flow LoRA, 200 epochs: faces x1.32-1.37 at epochs 75-100, x1.17 at 125-150,
                x1.47 at 175, x1.05 at 200, the scenes intact; speckle from 125 on, sharpness +54% / +52% / +59% / +47%)
   scene        a note, not a flag: from the first save whose backgrounds are SCENE_NOTE nearer the training data's own
-               (paired, ``vs_base["scene_nearest_train"]``) and stay so, the training scene shows in other prompts
+               (paired, ``vs_base["scene_nearest_train"]``), or one sample's SCENE_NOTE_SAMPLE, and stay so, the training
+               scene shows in other prompts
 Thresholds are research values (dont_upload/best_checkpoint_research) and may change with the calibration."""
 
 from __future__ import annotations
@@ -89,6 +90,11 @@ NEAR = 0.9
 # not a flag: in the LTX 2.3 runs the training clips' garden came together with the likeness and the judged best
 # checkpoints carried it (+0.20 to +0.46); photo runs stayed below it
 SCENE_NOTE = 0.12
+# the same in one prompt's sample (the largest paired rise of a checkpoint's samples): a video run's three prompts can
+# keep two of their scenes while the third turns into the training clip's (LTX 2.3 at 1e-4: the anchor in the garden from
+# epoch 75-100, the median rise +0.04). Measured on the 103 judged runs: from 0.25 it fires on the LTX 2.3 and MiniMax H3
+# runs only, at the save where the scene took over; at 0.20 also on photo runs
+SCENE_NOTE_SAMPLE = 0.25
 
 LIKENESS_NAMES = {"face_mean": "face match", "dino_nearest_train": "image similarity"}
 DRIFT_NAMES = {"saturation": "saturation", "colourfulness": "colourfulness", "hf_energy": "sharpness", "clipped": "clipped highlights / shadows"}
@@ -157,6 +163,21 @@ def _with_nearest_max(data: dict) -> dict:
         values = [s["dino_nearest_train"] for s in data["samples"] if s.get("dino_nearest_train") is not None]
         summary = {**summary, "dino_nearest_max": max(values) if values else None}
     return summary
+
+
+def _scene_rise_max(checkpoints: dict, base_point, trained: list[int]) -> dict:
+    """point -> the largest rise of a sample's ``scene_nearest_train`` over the base model's sample of the same prompt and
+    seed (empty without per-sample values)."""
+    by_point = {int(point): data for point, data in checkpoints.items()}
+    base = {(s.get("prompt_index"), s.get("seed")): s.get("scene_nearest_train")
+            for s in (by_point.get(base_point) or {}).get("samples") or [] if s.get("scene_nearest_train") is not None}
+    rises = {}
+    for point in trained:
+        values = [s["scene_nearest_train"] - base[(s.get("prompt_index"), s.get("seed"))] for s in by_point[point].get("samples") or []
+                  if s.get("scene_nearest_train") is not None and (s.get("prompt_index"), s.get("seed")) in base]
+        if values:
+            rises[point] = max(values)
+    return rises
 
 
 def _smooth(values: list[float]) -> list[float]:
@@ -382,11 +403,21 @@ def rank(report: dict, label=_epoch_label) -> dict:
         if onset is None and best is rows[-1] and len(trained) >= 3 and smooth[trained[-1]] - smooth[trained[-3]] >= STILL_RISING:
             reasons.append(f"Likeness was still rising at {label(best['epoch'])} and nothing shows over-training yet: more epochs could add likeness.")
     scene = {p: _paired(checkpoints[p], "scene_nearest_train") for p in trained}
-    scene_from = next((p for i, p in enumerate(trained) if scene[p] and scene[p][0] >= SCENE_NOTE and scene[p][1] >= AGREE
-                       and sum(1 for q in trained[i + 1:] if scene[q] and scene[q][0] >= NEAR * SCENE_NOTE) >= RECUR_SHARE * len(trained[i + 1:])), None)
-    if scene_from is not None:
-        reasons.append(f"From {label(scene_from)} the samples take on the training data's surroundings (backgrounds {scene[scene_from][0]:+.2f} "
-                       "nearer them than the base model's): expect that scene in other prompts; an earlier checkpoint keeps the prompts' own.")
+    scene_max = _scene_rise_max(report["checkpoints"], base_point, trained)
+
+    def scene_start(value, limit):
+        return next((p for i, p in enumerate(trained) if value(p) is not None and value(p) >= limit
+                     and sum(1 for q in trained[i + 1:] if value(q) is not None and value(q) >= NEAR * limit) >= RECUR_SHARE * len(trained[i + 1:])), None)
+
+    from_median = scene_start(lambda p: scene[p][0] if scene[p] and scene[p][1] >= AGREE else None, SCENE_NOTE)
+    from_sample = scene_start(lambda p: scene_max.get(p), SCENE_NOTE_SAMPLE)
+    starts = [p for p in (from_median, from_sample) if p is not None]
+    if starts:
+        scene_from = min(starts)
+        where = (f"backgrounds {scene[scene_from][0]:+.2f} nearer them than the base model's" if scene_from == from_median
+                 else f"one prompt's background {scene_max[scene_from]:+.2f} nearer them than the base model's")
+        reasons.append(f"From {label(scene_from)} the samples take on the training data's surroundings ({where}): expect that scene in "
+                       "other prompts; an earlier checkpoint keeps the prompts' own.")
     if passing:
         reasons.append("Signs that come and go at the later saves are not counted as over-training: "
                        + "; ".join(f"{SIGN_NAMES.get(kind, kind)} at {', '.join(labels)}" for kind, labels in passing.items()) + ".")
