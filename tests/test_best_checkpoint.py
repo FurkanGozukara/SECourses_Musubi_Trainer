@@ -265,6 +265,9 @@ def test_an_undertrained_run_with_damage_picks_the_last_checkpoint_before_it():
     result = ranking.rank({"training_faces": 13, "training_face_area": 0.113, "checkpoints": checkpoints})
     assert result["undertrained"] and result["onset"] == 80 and result["best_epoch"] == 60
     assert "the last checkpoint before the warning signs, epoch 60, is the pick" in result["reasons"][0]
+    # the later checkpoint with more likeness is named for comparison (epoch 100: the most)
+    assert any(r.startswith("Epoch 100 has more likeness (100% of the most, epoch 60") and r.endswith("compare the two in the grid.")
+               for r in result["reasons"])
 
 
 def test_an_undertrained_run_passes_over_a_sign_that_does_not_last():

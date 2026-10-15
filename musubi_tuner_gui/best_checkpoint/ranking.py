@@ -299,6 +299,13 @@ def rank(report: dict, label=_epoch_label) -> dict:
         elif onset:
             reasons.append(f"Warning signs from {onset['label']}: " + "; ".join(onset["signs"]) + "."
                            + (" Training longer will not fix those: try a lower learning rate with more epochs." if best is not rows[-1] else ""))
+        # the trade-off named when the likeness signals are this weak (Mage-Flow LoRA uniform at 3e-5: the pick, the last
+        # save before the speckle, was still the base model's men by eye; the subject came with the speckle)
+        stronger = [r for r in learned if r["epoch"] > best["epoch"] and r["signs"] and r["gain"] > best["gain"] + PICK_TOLERANCE * top]
+        if not best["signs"] and stronger:
+            alt = max(stronger, key=lambda r: r["gain"])
+            reasons.append(f"{label(alt['epoch'])} has more likeness ({alt['gain'] / top:.0%} of the most, {label(best['epoch'])} "
+                           f"{best['gain'] / top:.0%}) with the warning signs: compare the two in the grid.")
         if best["signs"] and unlearned:
             shares = f"{max(r['gain'] for r in unlearned) / top:.0%} of the likeness gain"
             if span > 0:
