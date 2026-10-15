@@ -306,7 +306,26 @@ def test_an_undertrained_run_never_picks_a_checkpoint_that_is_still_the_base_mod
     result = ranking.rank({"training_faces": 8, "training_face_area": 0.2, "checkpoints": checkpoints})
     assert result["undertrained"] and result["onset"] == 80 and result["best_epoch"] == 200
     assert "the latest checkpoint, epoch 200, is the pick" in result["reasons"][0]
-    assert any("(epoch 40) have hardly moved from the base model (2% of the likeness gain at most)" in r for r in result["reasons"])
+    assert any("(epoch 40) have hardly moved from the base model (at most 2% of the likeness gain, 0% of the move away from its own person)" in r
+               for r in result["reasons"])
+
+
+def test_an_undertrained_runs_pick_has_also_moved_away_from_the_base_models_person():
+    # Mage-Flow LoRA with uniform timesteps at 3e-5 for 200 epochs (2026-10-15): a tiny likeness gain throughout, so the
+    # first save had 41% of it while still drawing the base model's men (identity margin at its lowest); speckle
+    # (sharpness drift) at every later save; by eye the most likeness is at epoch 200
+    gains = [0.030, 0.081, 0.020, 0.080, 0.055, 0.061, 0.080, 0.130]
+    margins = [-0.249, 0.045, -0.072, -0.017, -0.105, -0.074, -0.015, 0.041]
+    sharpness = [0.0, 0.41, 0.83, 0.75, 0.96, 1.02, 1.19, 0.90]
+    checkpoints = {0: {"summary": {"face_mean": 0.13, "prompt": 0.13, "variety": 0.9, "face_found": 1.0, "face_area": 0.03}}}
+    for index, (gain, margin, sharp) in enumerate(zip(gains, margins, sharpness)):
+        checkpoints[25 * (index + 1)] = {"summary": {
+            "face_mean": 0.13 + gain, "prompt": 0.13, "variety": 0.9, "face_found": 1.0, "dino_nearest_train": 0.2,
+            "vs_base": {"face_mean": (gain, 1.0), "identity": (margin, 1.0), "hf_energy": (sharp, 1.0), "prompt": (0.0, 0.5)}}}
+    result = ranking.rank({"training_faces": 13, "training_face_area": 0.113, "checkpoints": checkpoints})
+    assert result["undertrained"] and result["onset"] == 50 and result["best_epoch"] == 200
+    assert any("(epoch 25) have hardly moved from the base model" in r and "0% of the move away from its own person" in r
+               for r in result["reasons"])
 
 
 def test_before_an_early_sign_the_pick_needs_faces_that_left_the_base_models_person():
