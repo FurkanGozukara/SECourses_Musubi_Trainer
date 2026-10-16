@@ -725,6 +725,14 @@ def train_flux_model(headless: bool, print_only: bool, parameters):
     # Improve sample generation defaults by enhancing the prompt file if provided.
     param_dict, parameters = _maybe_create_enhanced_sample_prompts(param_dict, parameters)
 
+    # The text encoder caching step also encodes the sample prompts, so training samples without loading the text
+    # encoder on the GPU (Mistral 3 in BF16 peaked at 45.5 GB with the 32 GB FLUX.2 Dev preset, whose caching runs on the CPU)
+    sample_prompt_file = (param_dict.get("sample_prompts") or "").strip()
+    if teo_cache_cmd and sample_prompt_file and os.path.isfile(sample_prompt_file):
+        prompt_cache = os.path.join(output_dir, f"{output_name}_sample_prompts_te_cache.pt")
+        teo_cache_cmd.extend(["--sample_prompts", sample_prompt_file, "--sample_prompts_cache", prompt_cache])
+        parameters = [(k, v) for k, v in parameters if k != "sample_prompts_cache"] + [("sample_prompts_cache", prompt_cache)]
+
     # Exclude caching and GUI-only keys from training config file.
     pattern_exclusion = [k for k, _ in parameters if k.startswith("caching_latent_") or k.startswith("caching_teo_")]
 

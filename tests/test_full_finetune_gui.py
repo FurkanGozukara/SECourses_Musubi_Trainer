@@ -762,6 +762,30 @@ def test_flux_full_finetune_runtime_uses_full_script_and_valid_config(
     assert "network_dim" not in runtime
 
 
+def test_flux2_text_encoder_caching_also_encodes_the_sample_prompts(tmp_path: Path, monkeypatch):
+    # training loaded Mistral 3 (BF16) on the GPU for its sample prompts: 45.5 GB with the 32 GB FLUX.2 Dev preset
+    keys = flux_lora_gui.FLUX_PARAM_KEYS
+    values = _base_full_values(tmp_path, keys, model_version="dev")
+    values.update({"model_family": "FLUX.2", "caching_teo_skip_existing": True,
+                   "sample_prompts": _touch(tmp_path / "prompts.txt", "a photo of ohwx man --d 1\n")})
+    fake_executor = _FakeExecutor()
+    monkeypatch.setattr(flux_lora_gui, "executor", fake_executor)
+    monkeypatch.setattr(flux_lora_gui, "save_executed_script", lambda **_kwargs: None)
+    monkeypatch.setattr(flux_lora_gui, "setup_environment", lambda **_kwargs: {})
+
+    flux_lora_gui.train_flux_model(headless=True, print_only=False, parameters=_ordered_parameters(keys, values))
+
+    script = Path(fake_executor.calls[0]["run_cmd"][-1])
+    content = script.read_text(encoding="utf-8")
+    script.unlink()
+    cache = str(tmp_path / "output" / "full-smoke_sample_prompts_te_cache.pt")
+    teo_line = next(line for line in content.splitlines() if "flux_2_cache_text_encoder_outputs.py" in line)
+    assert "--sample_prompts_cache" in teo_line and "full-smoke_sample_prompts_te_cache.pt" in teo_line
+    assert "_enhanced_prompts_" in teo_line  # the prompt file training samples from
+    runtime = toml.load(next((tmp_path / "output").glob("full-smoke_*.toml")))
+    assert runtime["sample_prompts_cache"] == cache
+
+
 def test_wan_compile_callback_parameter_order_includes_residency_control():
     assert wan_lora_gui.WAN_COMPILE_PARAMETER_NAMES == (
         "compile",
