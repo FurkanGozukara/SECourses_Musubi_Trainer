@@ -2282,6 +2282,16 @@ def _normalize_logging_fields_for_run_config(variables: dict) -> None:
         variables.pop("logging_dir", None)
 
 
+def _with_sample_text_encoder_device(parameters):
+    """A preset that caches text encoder outputs on the CPU does so because the text encoder does not fit the GPU:
+    training then encodes its sample prompts on the CPU too (``sample_text_encoder_device``; the trainers load the text
+    encoder on the GPU for them otherwise, before the DiT)."""
+    values = dict(parameters)
+    if str(values.get("caching_teo_device") or "").strip().lower() != "cpu" or not str(values.get("sample_prompts") or "").strip():
+        return parameters
+    return [(k, v) for k, v in parameters if k != "sample_text_encoder_device"] + [("sample_text_encoder_device", "cpu")]
+
+
 def SaveConfigFileToRun(
     parameters,
     file_path: str,
@@ -2301,6 +2311,7 @@ def SaveConfigFileToRun(
         exclusion (list): List of keys to exclude from saving. Defaults to ["file_path", "save_as", "headless", "print_only"].
     """
     parameters = _normalize_resume_parameters(parameters)
+    parameters = _with_sample_text_encoder_device(parameters)
 
     # File path parameters that should be excluded if empty
     FILE_PATH_PARAMETERS = [
