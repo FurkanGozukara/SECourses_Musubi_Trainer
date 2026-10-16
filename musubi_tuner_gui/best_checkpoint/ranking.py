@@ -39,7 +39,8 @@ lost variety, copied training photos, colour / sharpness drift and the training 
                x1.47 at 175, x1.05 at 200, the scenes intact; speckle from 125 on, sharpness +54% / +52% / +59% / +47%)
   scene        a note, not a flag: from the first save whose backgrounds are SCENE_NOTE nearer the training data's own
                (paired, ``vs_base["scene_nearest_train"]``), or one sample's SCENE_NOTE_SAMPLE, and stay so, the training
-               scene shows in other prompts
+               scene shows in other prompts. Only with faces in the training photos: the person is masked below the
+               face, and without one the "background" is the whole image, a style's or an object's
 Thresholds are research values (dont_upload/best_checkpoint_research) and may change with the calibration."""
 
 from __future__ import annotations
@@ -402,8 +403,10 @@ def rank(report: dict, label=_epoch_label) -> dict:
             ]
         if onset is None and best is rows[-1] and len(trained) >= 3 and smooth[trained[-1]] - smooth[trained[-3]] >= STILL_RISING:
             reasons.append(f"Likeness was still rising at {label(best['epoch'])} and nothing shows over-training yet: more epochs could add likeness.")
-    scene = {p: _paired(checkpoints[p], "scene_nearest_train") for p in trained}
-    scene_max = _scene_rise_max(report["checkpoints"], base_point, trained)
+    # without faces in the training photos nothing is masked: the whole image (a style, an object) would read as surroundings
+    people = report.get("training_faces", 0) > 0
+    scene = {p: _paired(checkpoints[p], "scene_nearest_train") if people else None for p in trained}
+    scene_max = _scene_rise_max(report["checkpoints"], base_point, trained) if people else {}
 
     def scene_start(value, limit):
         return next((p for i, p in enumerate(trained) if value(p) is not None and value(p) >= limit

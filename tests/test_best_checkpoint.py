@@ -662,6 +662,10 @@ def test_the_training_scene_in_other_prompts_is_a_note_not_a_flag():
     note = next(reason for reason in noted["reasons"] if "surroundings" in reason)
     assert note.startswith("From epoch 100 the samples take on the training data's surroundings (backgrounds +0.19")
     assert not any("surroundings" in reason for reason in plain["reasons"])
+    # training images without faces (a style or an object): nothing was masked, the whole image is what the run learns
+    faceless = report(True)
+    faceless["training_faces"] = 0
+    assert not any("surroundings" in reason for reason in ranking.rank(faceless)["reasons"])
     # a single high save among low ones (a photo run's headshot backdrop) is not the training scene taking over
     scene[:] = [0.01, 0.13, 0.02, 0.03, 0.02, 0.04, 0.03, 0.05]
     assert not any("surroundings" in reason for reason in ranking.rank(report(True))["reasons"])
