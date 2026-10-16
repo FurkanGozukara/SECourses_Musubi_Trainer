@@ -43,10 +43,14 @@ def available(category: str) -> bool:
     return category in CATEGORIES
 
 
+def default_prompts(category: str, subject: str = BP.DEFAULT_SUBJECT) -> list[str]:
+    """The default test prompts for the subject (``BP.default_prompts``); video models sample VIDEO_PROMPTS of them."""
+    return BP.default_prompts(subject, VIDEO_PROMPTS if category == "video" else None)
+
+
 def defaults(category: str) -> dict:
     video = category == "video"
-    prompts = [BP.DEFAULT_PROMPTS[i] for i in VIDEO_PROMPTS] if video else list(BP.DEFAULT_PROMPTS)
-    return {"enabled": False, "subject": BP.DEFAULT_SUBJECT, "prompts": prompts, "seeds": 1 if video else 2, "leakage": not video}
+    return {"enabled": False, "subject": BP.DEFAULT_SUBJECT, "prompts": default_prompts(category), "seeds": 1 if video else 2, "leakage": not video}
 
 
 def normalize(raw, category: str) -> dict:
@@ -107,6 +111,14 @@ def replace_subject(text: str, previous: str, subject: str) -> str:
     if not previous or not subject or previous.casefold() == subject.casefold():
         return text
     return re.sub(rf"(?<![\w]){re.escape(previous)}(?![\w])", lambda _match: subject, text, flags=re.IGNORECASE)
+
+
+def prompts_for_subject(text: str, previous: str, subject: str, category: str) -> str:
+    """The prompts once the subject changed from ``previous``: prompts that are still the previous subject's defaults
+    become the new subject's (a woman's pronouns, the object set for a dog); edited ones only get the new subject."""
+    if subject and BP.clean_prompts(text) == default_prompts(category, previous):
+        return prompts_text({"prompts": default_prompts(category, subject)})
+    return replace_subject(text, previous, subject)
 
 
 def subject_from_folders(names: list[str], current: str = "") -> str:

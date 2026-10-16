@@ -41,6 +41,38 @@ def test_default_prompts_follow_the_subject_and_carry_their_seed(tmp_path):
     assert "woman" in prompts.leakage_prompt("sks woman") and "sks" not in prompts.leakage_prompt("sks woman")
 
 
+def test_default_prompts_take_the_subjects_pronouns_or_the_object_set():
+    import re
+
+    man = prompts.default_prompts("sks man")
+    assert man == prompts.apply_subject(prompts.DEFAULT_PROMPTS, "sks man") and prompts.default_prompts() == prompts.DEFAULT_PROMPTS
+    assert prompts.default_prompts("ohwx") == prompts.apply_subject(prompts.DEFAULT_PROMPTS, "ohwx")  # no class word: as written
+    he = re.compile(r"\b(?:[Hh]e|[Hh]is|[Hh]im|[Hh]imself)\b")
+    woman = prompts.default_prompts("sks woman")
+    assert not any(he.search(p) for p in woman) and all("ohwx man" not in p for p in woman)
+    assert "She is wearing a traditional black suit" in woman[0] and "sks woman, a woman in her early 40s" in woman[4]
+    person = prompts.default_prompts("sks person")
+    assert not any(he.search(p) for p in person)
+    assert not any(re.search(r"\b[Tt]hey (?:is|has|\w+[bcdfgklmnprtvwxz]s)\b", p) for p in person)
+    assert "They are wearing a traditional black suit" in person[0] and "which they hold under their arm" in person[4]
+    assert "a person in their early 40s" in person[4] and "They wear a pair of durable" in person[4]
+    dog = prompts.default_prompts("sks dog")
+    assert dog[0].startswith("A photo of sks dog on a wooden kitchen counter") and dog[1].startswith("sks dog on a sandy beach")
+    assert len(dog) == len(prompts.OBJECT_PROMPTS) and not any("eyeglasses" in p or he.search(p) for p in dog)
+    assert prompts.leakage_prompt("sks dog") == "A photo of a dog on a park bench, soft afternoon light."
+    assert prompts.leakage_prompt("sks owl") == "A photo of an owl on a park bench, soft afternoon light."
+    assert prompts.leakage_prompt("sks girl").startswith("A candid photograph of a girl sitting at a small table")
+    assert [prompts.subject_kind(s) for s in ("ohwx man", "ohwx", "sks Woman", "sks child", "sks toy")] == ["male", "male", "female", "person", "object"]
+    assert CF.default_prompts("video", "sks dog") == [dog[i] for i in CF.VIDEO_PROMPTS]
+    assert CF.defaults("image")["prompts"] == prompts.DEFAULT_PROMPTS
+    # a subject change switches prompts that are still the defaults; edited ones only get the new subject
+    text = CF.prompts_text({"prompts": CF.default_prompts("image")})
+    assert CF.prompts_for_subject(text, "ohwx man", "sks woman", "image") == CF.prompts_text({"prompts": woman})
+    assert CF.prompts_for_subject(CF.prompts_text({"prompts": woman}), "sks woman", "sks dog", "image") == CF.prompts_text({"prompts": dog})
+    edited = text.replace("burgundy tie", "green tie")
+    assert CF.prompts_for_subject(edited, "ohwx man", "sks woman", "image") == CF.replace_subject(edited, "ohwx man", "sks woman")
+
+
 def test_samples_are_grouped_by_checkpoint_and_mapped_to_their_files(tmp_path):
     sample = tmp_path / "sample"
     sample.mkdir()

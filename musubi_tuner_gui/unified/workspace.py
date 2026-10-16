@@ -26,7 +26,6 @@ from dataclasses import dataclass, field
 
 import gradio as gr
 
-from ..best_checkpoint import prompts as BP
 from ..best_checkpoint.samples import index_samples
 from ..custom_logging import setup_logging
 from . import checkpoint_finder as CF
@@ -1844,7 +1843,7 @@ class Workspace:
         def subject_changed(request: gr.Request, *args):
             settings = self.finder_settings(args)
             previous = CF.remembered(self.category)["subject"]
-            text = CF.replace_subject(CF.prompts_text(settings), previous, settings["subject"])
+            text = CF.prompts_for_subject(CF.prompts_text(settings), previous, settings["subject"], self.category)
             settings = CF.normalize({**settings, "prompts": text}, self.category)
             CF.remember(self.category, settings)
             with self.session(request):
@@ -1856,7 +1855,7 @@ class Workspace:
 
         def default_prompts(request: gr.Request, *args):
             settings = self.finder_settings(args)
-            settings["prompts"] = BP.apply_subject(CF.defaults(self.category)["prompts"], settings["subject"])
+            settings["prompts"] = CF.default_prompts(self.category, settings["subject"])
             CF.remember(self.category, settings)
             with self.session(request):
                 return self.emit(request, self.desired_finder(settings), dict(zip(inputs, args)))
@@ -1872,7 +1871,7 @@ class Workspace:
             if not subject:
                 gr.Warning("No training folder named '<repeats>_<trigger class>' (such as 10_ohwx man): type the subject.", duration=8)
                 return {self.bcf_summary: gr.skip()}
-            text = CF.replace_subject(CF.prompts_text(settings), settings["subject"], subject)
+            text = CF.prompts_for_subject(CF.prompts_text(settings), settings["subject"], subject, self.category)
             settings = CF.normalize({**settings, "subject": subject, "prompts": text}, self.category)
             CF.remember(self.category, settings)
             gr.Info(f"Subject: {subject}")

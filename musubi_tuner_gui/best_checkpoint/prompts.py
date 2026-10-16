@@ -1,6 +1,7 @@
 """Test prompts of the best-checkpoint finder: the defaults (from SECourses' Qwen_Training_Tutorial_Prompts
-"Grid_Find_Best_Checkpoint" set, written for a person subject "ohwx man"), the subject read from the dataset folder
-names, and the prompt file the trainer samples from (one line per prompt and seed, --d set)."""
+"Grid_Find_Best_Checkpoint" set, written for a person subject "ohwx man"; ``default_prompts`` gives a woman or a person
+of unstated gender their pronouns and any other subject, a dog or a toy, the object set), the subject read from the
+dataset folder names, and the prompt file the trainer samples from (one line per prompt and seed, --d set)."""
 
 from __future__ import annotations
 
@@ -23,6 +24,33 @@ LEAKAGE_PROMPT = (
     "A candid photograph of a {cls} sitting at a small table in a busy cafe, soft natural window light, "
     "shallow depth of field, other customers blurred in the background."
 )
+# subjects whose class word is not a person (a dog, a toy, a car): six scenes and styles that leave the subject the same
+# and a prompt without the trigger. The object study's prompts (dont_upload/best_checkpoint_research/research_prompts_toy.txt)
+OBJECT_PROMPTS = [
+    "A photo of {subject} on a wooden kitchen counter next to a cup of coffee and a bowl of fruit, warm morning light through the window, shallow depth of field.",
+    "{subject} on a sandy beach at sunset, small waves rolling in behind it, golden light and long shadows.",
+    "A watercolor painting of {subject} in a field of sunflowers, loose brush strokes and soft pastel colors.",
+    "{subject} floating in outer space in front of the Earth and the Moon, stars all around.",
+    "{subject} in the snow on a mountain top, snowflakes falling, a clear blue winter sky.",
+    "{subject} on a busy city street at night, neon signs and wet pavement reflecting the lights.",
+]
+OBJECT_LEAKAGE_PROMPT = "A photo of {article} {cls} on a park bench, soft afternoon light."
+# the class word picks the default prompts (``subject_kind``): the person set is written for a man, a woman gets her
+# pronouns, a person of unstated gender theirs, any other class word the object set
+FEMALE_WORDS = frozenset({"woman", "women", "girl", "girls", "lady", "ladies", "female", "mother", "mom", "wife", "queen", "princess",
+                          "actress", "businesswoman"})
+NEUTRAL_WORDS = frozenset({"person", "people", "human", "child", "kid", "baby", "teen", "teenager", "adult", "character", "individual"})
+MALE_WORDS = frozenset({"man", "men", "guy", "guys", "boy", "boys", "gentleman", "male", "father", "dad", "husband", "king", "prince",
+                        "actor", "businessman"})
+_PRONOUNS = {
+    "female": ((r"\bHe\b", "She"), (r"\bhe\b", "she"), (r"\bHis\b", "Her"), (r"\bhis\b", "her"), (r"\bhimself\b", "herself"),
+               (r"\bhim\b", "her"), (r"\ba man\b", "a woman")),
+    # verbs agree with "they": is / has, then any other verb in -s after "he" (stands, wears, holds)
+    "person": ((r"\bHe is\b", "They are"), (r"\bhe is\b", "they are"), (r"\bHe has\b", "They have"), (r"\bhe has\b", "they have"),
+               (r"\bHe (\w*[bcdfgklmnprtvwxz])s\b", r"They \1"), (r"\bhe (\w*[bcdfgklmnprtvwxz])s\b", r"they \1"),
+               (r"\bHe\b", "They"), (r"\bhe\b", "they"), (r"\bHis\b", "Their"), (r"\bhis\b", "their"),
+               (r"\bhimself\b", "themselves"), (r"\bhim\b", "them"), (r"\ba man\b", "a person")),
+}
 FIRST_SEED = 1001
 OPTION_RE = re.compile(r"(?<!\S)--?[a-zA-Z]{1,3}(?:\s|=|$)")
 
@@ -57,6 +85,35 @@ def class_word(subject: str) -> str:
     return words[-1] if len(words) > 1 else ""
 
 
+def subject_kind(subject: str) -> str:
+    """``male``, ``female`` or ``person`` (the person set with those pronouns), or ``object`` for any other class word
+    (a dog, a toy, a car). A subject without a class word (``ohwx``) keeps the person set as written."""
+    word = class_word(subject).casefold()
+    if not word or word in MALE_WORDS:
+        return "male"
+    if word in FEMALE_WORDS:
+        return "female"
+    return "person" if word in NEUTRAL_WORDS else "object"
+
+
+def _pronouns(text: str, kind: str) -> str:
+    for pattern, replacement in _PRONOUNS[kind]:
+        text = re.sub(pattern, replacement, text)
+    return text
+
+
+def default_prompts(subject: str = DEFAULT_SUBJECT, indices=None) -> list[str]:
+    """The default test prompts for ``subject`` (``subject_kind``: the person set, with a woman's or unstated pronouns,
+    or the object set); ``indices`` picks some of them (video models sample fewer)."""
+    subject = " ".join(str(subject or "").split()) or DEFAULT_SUBJECT
+    kind = subject_kind(subject)
+    if kind == "object":
+        found = [prompt.format(subject=subject) for prompt in OBJECT_PROMPTS]
+    else:
+        found = apply_subject([prompt if kind == "male" else _pronouns(prompt, kind) for prompt in DEFAULT_PROMPTS], subject)
+    return [found[i] for i in indices] if indices is not None else found
+
+
 def apply_subject(prompts: list[str], subject: str) -> list[str]:
     """Replace the defaults' ``ohwx man`` with the user's subject (case-insensitive); other prompts stay as typed."""
     subject = subject.strip()
@@ -87,7 +144,10 @@ def prompt_file_lines(prompts: list[str], seeds: list[int], size: tuple[int, int
 
 
 def leakage_prompt(subject: str) -> str:
-    return LEAKAGE_PROMPT.format(cls=class_word(subject) or "person")
+    cls = class_word(subject)
+    if subject_kind(subject) == "object":
+        return OBJECT_LEAKAGE_PROMPT.format(article="an" if cls[:1].lower() in "aeiou" else "a", cls=cls)
+    return LEAKAGE_PROMPT.format(cls=cls or "person")
 
 
 def seeds(count: int) -> list[int]:
