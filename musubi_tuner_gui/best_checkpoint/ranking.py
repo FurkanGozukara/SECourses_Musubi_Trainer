@@ -213,7 +213,10 @@ def rank(report: dict, label=_epoch_label) -> dict:
     trained = [p for p in points if p != base_point]
     if not trained:
         return {"error": "no checkpoint samples (only the base model's)"}
-    use_faces = report.get("training_faces", 0) > 0 and all(checkpoints[p].get("face_mean") is not None for p in trained)
+    # face signs need faces in the training photos: a pet or object run's face detections are dog faces or stray people
+    # (FLUX.2 Klein 4B on a corgi: "drawn closer, faces 5.5x the base model's size", "faces found in 17%")
+    people = report.get("training_faces", 0) > 0
+    use_faces = people and all(checkpoints[p].get("face_mean") is not None for p in trained)
     like_key = "face_mean" if use_faces else "dino_nearest_train"
     likeness = {p: checkpoints[p].get(like_key) or 0.0 for p in trained}
     prompt = {}  # paired: the base model's prompt following plus the median change on the same prompts and seeds
@@ -253,10 +256,10 @@ def rank(report: dict, label=_epoch_label) -> dict:
         if s.get("dino_nearest_max") is not None and s["dino_nearest_max"] > COPY_LIMIT:
             found.append(("copy", f"a sample copies a training image (similarity {s['dino_nearest_max']:.2f})"))
         found += _drift_flags(s, base, unpaired.get(p, {}), checkpoints[trained[0]], label(trained[0]), near)
-        framing = _framing_flag(s, base, report.get("training_face_area"), near)
+        framing = _framing_flag(s, base, report.get("training_face_area"), near) if people else None
         if framing:
             found.append(("framing", framing))
-        if base.get("face_found") and s.get("face_found") is not None and s["face_found"] < FACE_FOUND_DROP * base["face_found"]:
+        if people and base.get("face_found") and s.get("face_found") is not None and s["face_found"] < FACE_FOUND_DROP * base["face_found"]:
             found.append(("faces", f"faces found in {s['face_found']:.0%} of samples (base model {base['face_found']:.0%})"))
         return found
 
@@ -404,8 +407,7 @@ def rank(report: dict, label=_epoch_label) -> dict:
         if onset is None and best is rows[-1] and len(trained) >= 3 and smooth[trained[-1]] - smooth[trained[-3]] >= STILL_RISING:
             reasons.append(f"Likeness was still rising at {label(best['epoch'])} and nothing shows over-training yet: more epochs could add likeness.")
     # without faces in the training photos nothing is masked: the whole image (a style, an object) would read as surroundings
-    people = report.get("training_faces", 0) > 0
-    scene = {p: _paired(checkpoints[p], "scene_nearest_train") if people else None for p in trained}
+    scene ={p: _paired(checkpoints[p], "scene_nearest_train") if people else None for p in trained}
     scene_max = _scene_rise_max(report["checkpoints"], base_point, trained) if people else {}
 
     def scene_start(value, limit):

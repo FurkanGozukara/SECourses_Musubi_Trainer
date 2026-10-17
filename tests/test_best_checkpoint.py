@@ -162,6 +162,25 @@ def test_without_faces_the_rule_uses_image_similarity():
     assert result["likeness_signal"] == "dino_nearest_train" and result["best_epoch"] in (20, 40)
 
 
+def test_face_signs_need_faces_in_the_training_photos():
+    # FLUX.2 Klein 4B on five photos of a corgi (2026-10-17 object study): the face detector found dog faces and stray
+    # people, read as "drawn closer than the prompts ask (faces 5.51x the base model's size)" and "faces found in 17%"
+    def point(nearest):
+        return {"summary": {"dino_nearest_train": nearest, "prompt": 0.2, "variety": 0.7, "face_found": 0.05,
+                            "vs_base": {"face_area": (1.7, 1.0)}}}
+
+    base = {"summary": {"dino_nearest_train": 0.05, "prompt": 0.2, "variety": 0.7, "face_found": 0.33, "face_area": 0.01}}
+    checkpoints = {0: base, 40: point(0.42), 80: point(0.65), 120: point(0.70)}
+
+    def flags(report):
+        return [flag for row in ranking.rank(report)["rows"] for flag in row["flags"]]
+
+    pet = flags({"training_faces": 0, "checkpoints": checkpoints})
+    assert not any("drawn closer" in flag or "faces found" in flag for flag in pet)
+    person = flags({"training_faces": 5, "training_face_area": 0.2, "checkpoints": checkpoints})
+    assert any("drawn closer" in flag for flag in person) and any("faces found" in flag for flag in person)
+
+
 def test_paired_changes_ignore_the_prompt_mix_and_flag_real_damage():
     from musubi_tuner_gui.best_checkpoint import scoring
 
