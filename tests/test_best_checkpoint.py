@@ -722,6 +722,35 @@ def test_the_training_scene_in_other_prompts_is_a_note_not_a_flag():
     assert not any("surroundings" in reason for reason in ranking.rank(report(True))["reasons"])
 
 
+def test_the_fewest_signs_pick_counts_the_training_scene_as_a_sign():
+    # Wan 2.2 T2I DoRA 2x (2026-10-17 server run): framing and prompt following flag every save from epoch 50, sharpness
+    # drifts from 175; epoch 125 lacked the framing sign by chance while the training garden had replaced the news studio
+    # from epoch 100 (backgrounds +0.15 nearer the training photos'): judged 25-75, best 50
+    gains = [0.165, 0.285, 0.33, 0.295, 0.297, 0.252, 0.237, 0.303]
+    margins = [(-0.159, 0.17), (0.131, 0.67), (0.266, 0.83), (0.234, 0.83), (0.138, 0.83), (0.208, 1.0), (0.173, 0.67), (0.213, 1.0)]
+    areas = [(0.12, 0.5), (0.577, 0.83), (0.953, 1.0), (0.677, 1.0), (0.759, 0.67), (0.731, 1.0), (0.414, 0.67), (1.048, 1.0)]
+    prompt = [(-0.004, 0.67), (-0.009, 0.67), (-0.013, 0.83), (-0.011, 0.83), (-0.011, 0.83), (-0.011, 0.83), (-0.012, 0.83), (-0.027, 0.83)]
+    sharpness = [-0.329, -0.456, -0.48, -0.652, -0.645, -0.713, -0.899, -0.931]
+    scene = [0.048, 0.085, 0.078, 0.149, 0.143, 0.149, 0.146, 0.183]
+
+    def report(with_scene: bool) -> dict:
+        checkpoints = {0: {"summary": {"face_mean": 0.089, "prompt": 0.133, "variety": 0.859, "face_found": 1.0, "face_area": 0.035}}}
+        for index, (gain, margin, area, change, sharp, rise) in enumerate(zip(gains, margins, areas, prompt, sharpness, scene)):
+            vs_base = {"face_mean": (gain, 1.0), "identity": margin, "face_area": area, "prompt": change, "hf_energy": (sharp, 1.0)}
+            if with_scene:
+                vs_base["scene_nearest_train"] = (rise, 1.0)
+            checkpoints[25 * (index + 1)] = {"summary": {"face_mean": 0.089 + gain, "prompt": 0.133, "variety": 0.84, "face_found": 1.0,
+                                                         "dino_nearest_train": 0.3, "vs_base": vs_base}}
+        return {"training_faces": 12, "training_face_area": 0.113, "checkpoints": checkpoints}
+
+    plain, noted = ranking.rank(report(False)), ranking.rank(report(True))
+    assert (plain["plateau_start"], plain["onset"]) == (noted["plateau_start"], noted["onset"]) == (75, 50)
+    assert [len(row["signs"]) for row in noted["rows"]] == [0, 1, 2, 2, 1, 2, 2, 3]
+    assert plain["best_epoch"] == 125 and noted["best_epoch"] == 75
+    assert "epoch 75 is the earliest with the fewest" in noted["reasons"][1] and "surroundings" not in noted["reasons"][1]
+    assert any(reason.startswith("From epoch 100 the samples take on the training data's surroundings") for reason in noted["reasons"])
+
+
 def test_one_prompts_scene_taken_over_is_noted_from_its_sample():
     # LTX 2.3 DoRA at 1e-4 on three clips (2026-10-15): the anchor prompt's studio turned into the training clip's garden
     # from epoch 100 (+0.38 for that sample) while the headshot and pilot kept their scenes (median +0.04)

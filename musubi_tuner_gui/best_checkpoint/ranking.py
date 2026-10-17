@@ -32,12 +32,15 @@ lost variety, copied training photos, colour / sharpness drift and the training 
                LoRA: framing x1.31 at the first save, x1.16 at the next; ERNIE-Image LoRA: prompt following -0.010 at
                epoch 40 only), the window is the first stretch of level checkpoints without flags; when they last, the
                checkpoints before the onset that reach EARLY_LEVEL of the highest likeness and, with faces, an identity
-               margin of IDENTITY_SWITCH. Neither: the earliest level checkpoint with the fewest flags
+               margin of IDENTITY_SWITCH. Neither: the earliest level checkpoint with the fewest flags, the scene note
+               counting as one more from its first save (Wan 2.2 T2I DoRA 2x: framing and prompt following flag every
+               save from epoch 50 and a saturation dip came and went; epoch 125 lacked the framing sign by chance, while
+               the training garden had replaced the news studio from epoch 100: judged 25-75, the scene count picks 75)
   recurring    a kind of sign counts only when it recurs at RECUR_SHARE of the saves after its first one, a later save
                counting at NEAR of its limit (drift and framing hover around their limits); one that comes and goes is
                shown but not counted (Mage-Flow LoRA, 200 epochs: faces x1.32-1.37 at epochs 75-100, x1.17 at 125-150,
                x1.47 at 175, x1.05 at 200, the scenes intact; speckle from 125 on, sharpness +54% / +52% / +59% / +47%)
-  scene        a note, not a flag: from the first save whose backgrounds are SCENE_NOTE nearer the training data's own
+  scene        a note, not a flag (but for the fewest-flags pick): from the first save whose backgrounds are SCENE_NOTE nearer the training data's own
                (paired, ``vs_base["scene_nearest_train"]``), or one sample's SCENE_NOTE_SAMPLE, and stay so, the training
                scene shows in other prompts. Only with faces in the training photos: the person is masked below the
                face, and without one the "background" is the whole image, a style's or an object's
@@ -285,6 +288,18 @@ def rank(report: dict, label=_epoch_label) -> dict:
     name = LIKENESS_NAMES.get(like_key, like_key)
     level_line = (f"Likeness levels off from {label(knee)}" + (": the faces match the training photos and have left the base model's own person" if identity_knee else "")
                   + f" ({name} {likeness[knee]:.3f}; base model {base_like:.3f}, highest {best_like:.3f}).")
+    # without faces in the training photos nothing is masked: the whole image (a style, an object) would read as surroundings
+    scene = {p: _paired(checkpoints[p], "scene_nearest_train") if people else None for p in trained}
+    scene_max = _scene_rise_max(report["checkpoints"], base_point, trained) if people else {}
+
+    def scene_start(value, limit):
+        return next((p for i, p in enumerate(trained) if value(p) is not None and value(p) >= limit
+                     and sum(1 for q in trained[i + 1:] if value(q) is not None and value(q) >= NEAR * limit) >= RECUR_SHARE * len(trained[i + 1:])), None)
+
+    from_median = scene_start(lambda p: scene[p][0] if scene[p] and scene[p][1] >= AGREE else None, SCENE_NOTE)
+    from_sample = scene_start(lambda p: scene_max.get(p), SCENE_NOTE_SAMPLE)
+    starts = [p for p in (from_median, from_sample) if p is not None]
+    scene_from = min(starts) if starts else None
     if undertrained:
         # the most trained checkpoint is the closest to the likeness: the latest one without warning signs (Mage-Flow
         # DoRA: noisy textures from epoch 80 on, so epoch 60; HiDream-O1 LoRA: a saturation dip at epoch 80 only, so 100)
@@ -397,28 +412,21 @@ def rank(report: dict, label=_epoch_label) -> dict:
                                    else f"{label(best['epoch'])} is the only checkpoint on that level.")
         else:  # over-trained from the first saves on: the least of it
             level = [r for r in rows if r["epoch"] >= knee]
-            fewest = min(len(r["signs"]) for r in level)
-            best = next(r for r in level if len(r["signs"]) == fewest)
+
+            def scene_taken(r: dict) -> bool:
+                return scene_from is not None and r["epoch"] >= scene_from
+
+            fewest = min(len(r["signs"]) + scene_taken(r) for r in level)
+            best = next(r for r in level if len(r["signs"]) + scene_taken(r) == fewest)
             reasons = [
                 level_line,
                 f"Every checkpoint on that level shows over-training signs; {label(best['epoch'])} is the earliest with the fewest: "
-                + "; ".join(best["signs"]) + ". A lower learning rate (or saving more often) would reach the likeness before them.",
+                + "; ".join(best["signs"] + (["the training data's surroundings"] if scene_taken(best) else []))
+                + ". A lower learning rate (or saving more often) would reach the likeness before them.",
             ]
         if onset is None and best is rows[-1] and len(trained) >= 3 and smooth[trained[-1]] - smooth[trained[-3]] >= STILL_RISING:
             reasons.append(f"Likeness was still rising at {label(best['epoch'])} and nothing shows over-training yet: more epochs could add likeness.")
-    # without faces in the training photos nothing is masked: the whole image (a style, an object) would read as surroundings
-    scene ={p: _paired(checkpoints[p], "scene_nearest_train") if people else None for p in trained}
-    scene_max = _scene_rise_max(report["checkpoints"], base_point, trained) if people else {}
-
-    def scene_start(value, limit):
-        return next((p for i, p in enumerate(trained) if value(p) is not None and value(p) >= limit
-                     and sum(1 for q in trained[i + 1:] if value(q) is not None and value(q) >= NEAR * limit) >= RECUR_SHARE * len(trained[i + 1:])), None)
-
-    from_median = scene_start(lambda p: scene[p][0] if scene[p] and scene[p][1] >= AGREE else None, SCENE_NOTE)
-    from_sample = scene_start(lambda p: scene_max.get(p), SCENE_NOTE_SAMPLE)
-    starts = [p for p in (from_median, from_sample) if p is not None]
-    if starts:
-        scene_from = min(starts)
+    if scene_from is not None:
         where = (f"backgrounds {scene[scene_from][0]:+.2f} nearer them than the base model's" if scene_from == from_median
                  else f"one prompt's background {scene_max[scene_from]:+.2f} nearer them than the base model's")
         reasons.append(f"From {label(scene_from)} the samples take on the training data's surroundings ({where}): expect that scene in "
