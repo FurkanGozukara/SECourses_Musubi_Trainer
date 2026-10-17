@@ -27,10 +27,10 @@ def adapter_spec() -> ParamSpec:
         key=ADAPTER_KEY,
         kind="dropdown",
         label="Adapter Type",
-        default=LORA_ADAPTER,
-        info="DoRA also learns a magnitude per input channel: more faithful at the same rank, about 10-15% slower per step, and at "
-        "the same learning rate it can need more epochs (Krea 2: best checkpoint at epoch 120 instead of 80; FLUX Klein: no "
-        "difference). Both load in ComfyUI / SwarmUI.",
+        default=DORA_ADAPTER,  # every LoRA training defaults to DoRA (user decision, 2026-10-18); a loaded LoRA config stays LoRA
+        info="DoRA (the default) also learns a magnitude per input channel: more faithful at the same rank, about 10-15% slower "
+        "per step, and at the same learning rate it can need more epochs (Krea 2: best checkpoint at epoch 120 instead of 80; "
+        "FLUX Klein: no difference). Both load in ComfyUI / SwarmUI.",
         choices=(LORA_ADAPTER, DORA_ADAPTER),
         section="network",
         priority=-10,

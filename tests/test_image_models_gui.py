@@ -198,7 +198,7 @@ def test_tabs_without_defaults_file_ignore_stray_config_toml(tmp_path, monkeypat
     monkeypatch.chdir(tmp_path)
     assert GUIConfig().config == {}
     manager = TabConfigManager(config_file_path=str(tmp_path / "missing_defaults.toml"))
-    for tab in ("qwen_image_21", "ernie_image", "mage_flow", "flux3_klein", "hidream_o1", "kandinsky6", "image_preprocessing"):
+    for tab in ("qwen_image_21", "ernie_image", "mage_flow", "flux3_klein", "moss_image", "hidream_o1", "kandinsky6", "image_preprocessing"):
         assert manager.get_config_for_tab(tab).config == {}
     prepared = m._prepare_config(m.QWEN_IMAGE_21, manager.get_config_for_tab("qwen_image_21"))
     assert prepared.get("discrete_flow_shift") == m.architecture_defaults(m.QWEN_IMAGE_21)["discrete_flow_shift"]

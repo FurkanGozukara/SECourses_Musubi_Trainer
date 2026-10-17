@@ -180,14 +180,12 @@ def test_kohya_dora_reaches_sd_scripts_and_the_preset(model_key, tmp_path):
     assert loaded[ADAPTER_KEY] == DORA_ADAPTER and "use_dora" not in str(loaded["network_args"])
 
 
-def test_dora_is_refused_for_wan22_high_and_low_noise_training():
+def test_dora_trains_wan22_high_and_low_noise_together():
+    """The trainer keeps one DoRA magnitude per expert (<name>.safetensors for the low-noise model,
+    <name>_high_noise.safetensors for the high-noise model), so the UI refuses neither adapter with both DiTs."""
     backend = get_backend("wan")
     values = backend.defaults("lora")
-    values[ADAPTER_KEY] = DORA_ADAPTER
     values["dit_high_noise"] = "C:/models/wan22_high.safetensors"
-    assert any("high and low noise" in problem for problem in backend.check_values(values, "lora"))
-    values["dit_high_noise"] = ""
-    assert not any("high and low noise" in problem for problem in backend.check_values(values, "lora"))
-    values[ADAPTER_KEY] = LORA_ADAPTER
-    values["dit_high_noise"] = "C:/models/wan22_high.safetensors"
-    assert not any("high and low noise" in problem for problem in backend.check_values(values, "lora"))
+    for adapter in (DORA_ADAPTER, LORA_ADAPTER):
+        values[ADAPTER_KEY] = adapter
+        assert not any("high and low noise" in problem for problem in backend.check_values(values, "lora")), adapter

@@ -275,6 +275,15 @@ def _flux3_text_args(params: dict) -> list[str]:
     ]
 
 
+def _moss_text_args(params: dict) -> list[str]:
+    return [
+        "--text_encoder",
+        str(params["text_encoder"]),
+        "--text_encoder_dtype",
+        str(params.get("caching_teo_text_encoder_dtype") or "bfloat16"),
+    ]
+
+
 def _hidream_latent_args(params: dict) -> list[str]:
     return []  # pixel-space model: the pixel cache needs no VAE
 
@@ -527,6 +536,63 @@ FLUX_3_KLEIN = ImageArchSpec(
     build_text_cache_args=_flux3_text_args,
 )
 
+MOSS_IMAGE = ImageArchSpec(
+    key="moss_image",
+    display_name="MOSS-Image",
+    slug="moss_image",
+    network_module="networks.lora_moss_image",
+    train_script="moss_image_train_network.py",
+    full_train_script=None,
+    latent_cache_script="moss_image_cache_latents.py",
+    text_cache_script="moss_image_cache_text_encoder_outputs.py",
+    model_folder="Training_Models_MOSS_Image",
+    model_paths=(
+        ModelPath(
+            "dit",
+            "MOSS-Image DiT",
+            "moss_image_base_bf16.safetensors",
+            "BF16 Base (recommended for training) or SFT (moss_image_sft_bf16); the INT8 ConvRot files are for inference. The LoRA works on both.",
+            frozenset({"train"}),
+        ),
+        ModelPath("vae", "FLUX.2 VAE", "flux2-vae.safetensors", "MOSS-Image uses the FLUX.2 VAE. Needed for latent caching and samples.", frozenset({"latent", "sample"})),
+        ModelPath(
+            "text_encoder",
+            "Qwen3.5 9B Text Encoder",
+            "qwen3.5_9b_int8_convrot.safetensors",
+            "The ComfyUI Qwen3.5-9B file SwarmUI uses (INT8 ConvRot, read in BF16) or the BF16 file. Needed for text caching and samples.",
+            frozenset({"text", "sample"}),
+        ),
+    ),
+    max_blocks_to_swap=40,  # 42 blocks; backward needs 2 resident
+    max_blocks_to_swap_full=40,
+    preset_folders=("MOSS_Image_Training_Configs",),
+    download_bundles=("moss_image", "moss_image_sft"),
+    supported_attention=frozenset({"sdpa"}),  # PyTorch attention, as the vendor (text masks)
+    extras=(
+        ExtraOption("caching_teo_text_encoder_dtype", "dropdown", "Text Encoder Dtype", "bfloat16", "caching", "Use float32 only for CPU caching.", choices=("bfloat16", "float32"), runtime=False),
+    ),
+    defaults={
+        "timestep_sampling": "shift",
+        "weighting_scheme": "none",
+        "discrete_flow_shift": 5.0,  # the vendor's sampler shift (ComfyUI's model sampling), also ai-toolkit's training shift
+        "sigmoid_scale": 1.0,
+        "sample_steps": 50,
+        "sample_cfg_scale": 3.0,  # the vendor's sampler: 50 steps, CFG 3, its negative branch skipping block 22, empty negative
+        "sample_negative_prompt": "",
+        "max_train_epochs": 200,
+        "save_every_n_epochs": 25,
+    },
+    lora_defaults=COMMON_LORA_DEFAULTS,
+    gui_only_keys=frozenset({"caching_teo_text_encoder_dtype"}),
+    notes=(
+        "OpenMOSS MOSS-Image (5B DiT, Qwen3.5-9B text encoder, FLUX.2 VAE). LoRA training on the BF16 Base or SFT "
+        "model; the LoRA loads on Base and SFT, BF16 or INT8 ConvRot, in ComfyUI and SwarmUI. Timesteps use the vendor's "
+        "shift 5; samples use its sampler (50 steps, CFG 3)."
+    ),
+    build_latent_cache_args=_flux3_latent_args,
+    build_text_cache_args=_moss_text_args,
+)
+
 HIDREAM_O1 = ImageArchSpec(
     key="hidream_o1",
     display_name="HiDream-O1",
@@ -733,7 +799,7 @@ KANDINSKY_6 = ImageArchSpec(
 )
 
 ARCHITECTURES: dict[str, ImageArchSpec] = {
-    spec.key: spec for spec in (QWEN_IMAGE_21, ERNIE_IMAGE, MAGE_FLOW, FLUX_3_KLEIN, HIDREAM_O1, KANDINSKY_6)
+    spec.key: spec for spec in (QWEN_IMAGE_21, ERNIE_IMAGE, MAGE_FLOW, FLUX_3_KLEIN, MOSS_IMAGE, HIDREAM_O1, KANDINSKY_6)
 }
 
 
@@ -2451,6 +2517,10 @@ def mage_flow_tab(headless: bool = False, config: GUIConfig | dict = {}):
 
 def flux3_klein_tab(headless: bool = False, config: GUIConfig | dict = {}):
     return image_model_tab("flux3_klein", headless=headless, config=config)
+
+
+def moss_image_tab(headless: bool = False, config: GUIConfig | dict = {}):
+    return image_model_tab("moss_image", headless=headless, config=config)
 
 
 def hidream_o1_tab(headless: bool = False, config: GUIConfig | dict = {}):

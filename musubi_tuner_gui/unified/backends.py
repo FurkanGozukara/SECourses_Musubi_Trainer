@@ -23,7 +23,7 @@ import gradio as gr
 import toml
 
 from ..custom_logging import setup_logging
-from .adapter import ADAPTER_KEY, DORA_ADAPTER, NETWORK_KEY, adapter_spec, fold_adapter, is_synthetic, unfold_adapter
+from .adapter import ADAPTER_KEY, NETWORK_KEY, adapter_spec, fold_adapter, is_synthetic, unfold_adapter
 from .arguments import ARGUMENT_KEYS, argument_problems, normalize_items
 from .arguments import LITERAL_KEYS as LITERAL_ARGUMENT_KEYS
 from .legacy_tabs import LEGACY_BACKENDS, actions_callable, legacy_module
@@ -316,16 +316,8 @@ class Backend:
                     normalize_gpu_ids(value)
                 except ValueError as exc:
                     problems.append(f"{spec.label or spec.key}: {exc}")
-        if (
-            ADAPTER_KEY in self.spec_map()
-            and mode in (None, LORA)
-            and str(values.get(ADAPTER_KEY) or "").strip().casefold() == DORA_ADAPTER.casefold()
-            and str(values.get("dit_high_noise") or "").strip()
-        ):
-            problems.append(
-                "Adapter Type DoRA cannot train Wan 2.2's high and low noise experts together: one network would need "
-                "magnitudes for two base models. Choose LoRA, or clear the High Noise DiT to train one expert."
-            )
+        # Wan 2.2 high + low noise DoRA trains one magnitude per expert (<name>.safetensors for the low-noise model,
+        # <name>_high_noise.safetensors for the high-noise model): nothing to refuse
         return problems
 
     def check(self, values: dict, mode: str | None = None) -> list[str]:

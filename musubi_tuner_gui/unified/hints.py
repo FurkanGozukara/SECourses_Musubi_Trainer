@@ -297,6 +297,21 @@ MODEL_HINTS: dict[str, dict] = {
         "vram": "24 GB trains without block swap (14.5 GB peak); 16, 12 and 10 GB swap 2, 16 and 25 blocks (H2D-only); 8 and 6 GB swap 22 and 24 blocks with activation CPU offload (6.2 and 4.3 GB).",
         "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions; for editing, a control_images sub-folder with the references.",
     },
+    "moss_image": {
+        "about": "OpenMOSS MOSS-Image, a 5B single-stream text-to-image DiT with the Qwen3.5-9B text encoder and the FLUX.2 VAE (LoRA training only).",
+        "all": [
+            "Train on the BF16 Base model (moss_image_base_bf16); the LoRA also loads on the SFT model and on the INT8 ConvRot files in ComfyUI and SwarmUI.",
+            "Timestep sampling shift with flow shift 5 is the vendor's own sampler shift.",
+            "Training samples default to 50 steps at CFG 3 with an empty negative prompt; their negative branch skips block 22, as the vendor's sampler does.",
+            "The text encoder is the INT8 ConvRot Qwen3.5-9B file SwarmUI downloads, read in BF16 for caching.",
+            "Up to 40 blocks can be swapped; two blocks always stay on the GPU.",
+        ],
+        "lora": [
+            "No presets yet: the defaults load rank 128 with AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25.",
+        ],
+        "vram": "No presets yet, so no measured VRAM; the defaults train without block swap.",
+        "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions.",
+    },
     "mage_flow": {
         "about": "Microsoft Mage-Flow (4B, MIT license), a native-resolution text-to-image model (LoRA training only).",
         "all": [
@@ -335,6 +350,7 @@ MODEL_HINTS: dict[str, dict] = {
         "about": "Wan 2.2 A14B dual-model video generator: a high-noise DiT for early denoising and a low-noise DiT for detail (T2V, I2V and image LoRAs).",
         "all": [
             "Fill both DiT paths to train high- and low-noise LoRAs together; leaving the high-noise path empty trains one model only.",
+            "DoRA with both DiT paths writes <name>.safetensors for the low-noise model and <name>_high_noise.safetensors for the high-noise model (shared LoRA matrices, one DoRA magnitude per expert): load each file on its own model; a LoRA file loads on both.",
             "Timestep Boundary 0 uses the model default switch point: 0.875 for T2V and 0.9 for I2V.",
             "Use standard block swap for dual-DiT training; H2D-only block swap is not meant for Wan 2.2's two models.",
             "Auto Normalize Target Frames clamps the frame count to your shortest video so no clip is skipped.",

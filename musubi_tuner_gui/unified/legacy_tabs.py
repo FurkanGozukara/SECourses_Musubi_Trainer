@@ -136,6 +136,18 @@ LEGACY_BACKENDS: dict[str, LegacyBackend] = {
             defaults_tab="flux3_klein",
         ),
         LegacyBackend(
+            "moss_image",
+            "MOSS-Image",
+            "musubi_tuner_gui.image_models_gui",
+            "gui_actions",
+            "train_model",
+            "musubi_tuner_gui.image_models_gui",
+            "moss_image_tab",
+            spec_key="moss_image",
+            executor_style="dict",
+            defaults_tab="moss_image",
+        ),
+        LegacyBackend(
             "hidream_o1",
             "HiDream-O1",
             "musubi_tuner_gui.image_models_gui",

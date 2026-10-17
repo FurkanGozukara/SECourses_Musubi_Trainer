@@ -22,6 +22,7 @@ from musubi_tuner_gui.image_models_gui import (
     flux3_klein_tab,
     kandinsky6_tab,
     mage_flow_tab,
+    moss_image_tab,
     qwen_image_21_tab,
 )
 from musubi_tuner_gui.image_captioning_gui import image_captioning_tab
@@ -92,7 +93,7 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
                     <div class="app-hero-badge">V35.0</div>
                     <div>
                         <h1>SECourses <span class="grad">Musubi Trainer</span></h1>
-                        <p>Qwen Image &middot; Qwen Image 2.1 &middot; FLUX.2 &middot; FLUX.3 Klein &middot; Z-Image &middot; Krea 2 &middot; Ideogram 4 &middot; ERNIE-Image &middot; Mage-Flow &middot; HiDream-O1 &middot; Wan &middot; LTX 2.3 &middot; MiniMax H3 &middot; Kandinsky 6 &mdash; LoRA &amp; fine-tune training with ready-made GPU presets</p>
+                        <p>Qwen Image &middot; Qwen Image 2.1 &middot; FLUX.2 &middot; FLUX.3 Klein &middot; MOSS-Image &middot; Z-Image &middot; Krea 2 &middot; Ideogram 4 &middot; ERNIE-Image &middot; Mage-Flow &middot; HiDream-O1 &middot; Wan &middot; LTX 2.3 &middot; MiniMax H3 &middot; Kandinsky 6 &mdash; LoRA &amp; fine-tune training with ready-made GPU presets</p>
                     </div>
                 </div>
                 <a class="app-hero-link" href="https://www.patreon.com/posts/137551634" target="_blank" rel="noopener">
@@ -123,6 +124,8 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
                         mage_flow_tab(headless=headless, config=config_manager.get_config_for_tab("mage_flow"))
                     with gr.Tab("FLUX.3 Klein ✨"):
                         flux3_klein_tab(headless=headless, config=config_manager.get_config_for_tab("flux3_klein"))
+                    with gr.Tab("MOSS-Image ✨"):
+                        moss_image_tab(headless=headless, config=config_manager.get_config_for_tab("moss_image"))
                     with gr.Tab("HiDream-O1 ✨"):
                         hidream_o1_tab(headless=headless, config=config_manager.get_config_for_tab("hidream_o1"))
 
