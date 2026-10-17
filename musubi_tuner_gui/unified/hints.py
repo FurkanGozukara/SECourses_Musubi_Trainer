@@ -289,9 +289,12 @@ MODEL_HINTS: dict[str, dict] = {
             "Up to 26 blocks can be swapped; two joint blocks always stay on the GPU.",
         ],
         "lora": [
-            "No presets yet: the defaults load rank 128 with AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25.",
+            "Presets: DoRA rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs; the 8 GB tier trains 768 px and the 6 GB tier 512 px with an FP8 scaled base, both at rank 32.",
+            "The 32 GB preset turns off gradient checkpointing (1.33 s/step on an RTX 5090; 1.46 s/step with it on the 24 GB preset).",
+            "10 GB and smaller tiers cache the text encoder on the CPU.",
+            "The presets were measured with a text-to-image dataset: reference images (editing) add tokens and keep the reference stream on the GPU, so pick a lower tier for editing LoRAs.",
         ],
-        "vram": "No presets yet, so no measured VRAM; the defaults train without block swap.",
+        "vram": "24 GB trains without block swap (14.5 GB peak); 16, 12 and 10 GB swap 2, 16 and 25 blocks (H2D-only); 8 and 6 GB swap 22 and 24 blocks with activation CPU offload (6.2 and 4.3 GB).",
         "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions; for editing, a control_images sub-folder with the references.",
     },
     "mage_flow": {
