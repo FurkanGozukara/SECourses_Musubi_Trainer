@@ -283,6 +283,7 @@ NETWORK_MODULE_BACKENDS = {
     "networks.lora_qwen_image_21": "qwen_image_21",
     "networks.lora_qwen_image": "qwen_image",
     "networks.lora_flux_2": "flux",
+    "networks.lora_flux_3": "flux3_klein",
     "networks.lora_zimage": "zimage",
     "networks.lora_ernie_image": "ernie_image",
     "networks.lora_mage_flow": "mage_flow",
@@ -412,6 +413,7 @@ def identify_preset(path: str, data: dict | None = None) -> PresetIdentity:
 _NAME_HINTS = (
     (r"mage.?flow.?edit", "mage_flow_edit"),
     (r"mage.?flow", "mage_flow"),
+    (r"flux.?3", "flux3_klein"),
     (r"klein.?4b|4b.?klein", "flux2_klein_4b"),
     (r"klein", "flux2_klein_9b"),
     (r"flux.?2", "flux2_dev"),

@@ -308,3 +308,17 @@ ComfyUI picks the DoRA axis from the `dora_scale` shape, and its output-axis bra
 ### Regression check
 
 `musubi-tuner/tests/test_dora_input_axis.py` (dense definition, ComfyUI's own `weight_decompose`, fp8 / ConvRot bases, block swap, compiled checkpointed blocks with `fullgraph=True`, save and load, the generation scripts' merge) and `tests/test_kohya_dora.py`; `dont_upload/vram_lab/comfy_dora_check.py` loads a trained file with ComfyUI's code and lists every key it would skip.
+
+## Guardrail 19: Padded text encodings pass the reference's position ids
+
+### Rule
+
+- A text encoder whose padded positions reach the DiT (no text mask, or a suffix after the padding) passes `position_ids` explicitly, computed the way the model's reference environment did. Qwen3-VL text-only input: transformers 4.57 derived them from the attention mask with the pads at rotary position 1 (`(mask.cumsum(-1) - 1).masked_fill(mask == 0, 1)`); transformers 5 puts the pads at 0.
+
+### Why this exists
+
+FLUX.3 Klein conditions on every token of its 80-token-multiple context, pads included, and BFL's reference pins transformers 4.57 (ComfyUI's `Flux3Qwen3VL` reproduces it). With transformers 5's default positions the real tokens' states were identical but the pad states differed by up to 67, silently changing the condition of every caption. Krea 2 hit the same change through its suffix after the padding (`krea2_encoder.py` passes the positions explicitly).
+
+### Regression check
+
+Compare the cached context with the reference recipe at the real and the pad positions separately (`flux3_utils.tokenize_prompt`, `tests/test_flux3_klein.py::test_tokenization_pads_to_multiples_of_80_with_pads_at_position_one`); after a transformers upgrade re-run the comparison for every model whose DiT reads pad states.

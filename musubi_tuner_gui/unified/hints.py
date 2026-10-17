@@ -279,6 +279,21 @@ MODEL_HINTS: dict[str, dict] = {
         "vram": "24 GB trains without block swap (20.8 GB peak); 16, 12 and 10 GB tiers swap 18, 28 and 33 blocks (H2D-only); max swap 34.",
         "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions (768 px on the 6 GB tier).",
     },
+    "flux3_klein": {
+        "about": "Black Forest Labs FLUX.3 Klein, a 5.4B text-to-image and editing DiT with the Qwen3-VL 4B text encoder and the FLUX.2 VAE (LoRA training only).",
+        "all": [
+            "Train on the undistilled Base checkpoint (flux3-image-klein-base-bf16); the LoRA also loads on the 16-step distilled model in ComfyUI and SwarmUI.",
+            "Timestep sampling shift with flow shift 6.93 is BFL's own sampler shift, the same at every resolution.",
+            "Training samples default to 50 steps at CFG 3.5 with an empty negative prompt, the base model's reference settings.",
+            "Turn on reference images to train an editing LoRA: each target takes one or more ordered references from its control folder.",
+            "Up to 26 blocks can be swapped; two joint blocks always stay on the GPU.",
+        ],
+        "lora": [
+            "No presets yet: the defaults load rank 128 with AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25.",
+        ],
+        "vram": "No presets yet, so no measured VRAM; the defaults train without block swap.",
+        "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions; for editing, a control_images sub-folder with the references.",
+    },
     "mage_flow": {
         "about": "Microsoft Mage-Flow (4B, MIT license), a native-resolution text-to-image model (LoRA training only).",
         "all": [

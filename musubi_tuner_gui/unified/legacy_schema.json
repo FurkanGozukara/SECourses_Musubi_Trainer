@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-13T23:49:08",
+ "generated": "2026-10-17T18:15:00",
  "gradio": "6.30.0",
  "backends": {
   "qwen_image": {
@@ -23607,6 +23607,2854 @@
     }
    }
   },
+  "flux3_klein": {
+   "module": "musubi_tuner_gui.image_models_gui",
+   "keys": [
+    "mixed_precision",
+    "num_cpu_threads_per_process",
+    "num_processes",
+    "num_machines",
+    "multi_gpu",
+    "gpu_ids",
+    "main_process_port",
+    "dynamo_backend",
+    "dynamo_mode",
+    "dynamo_use_fullgraph",
+    "dynamo_use_dynamic",
+    "extra_accelerate_launch_args",
+    "additional_parameters",
+    "debug_mode",
+    "training_mode",
+    "dataset_config_mode",
+    "dataset_config",
+    "parent_folder_path",
+    "dataset_resolution_width",
+    "dataset_resolution_height",
+    "dataset_caption_extension",
+    "create_missing_captions",
+    "caption_strategy",
+    "dataset_batch_size",
+    "dataset_enable_bucket",
+    "dataset_bucket_no_upscale",
+    "dataset_cache_directory",
+    "generated_toml_path",
+    "use_control_images",
+    "control_directory_name",
+    "dit",
+    "vae",
+    "text_encoder",
+    "dit_dtype",
+    "vae_dtype",
+    "fp8_base",
+    "fp8_scaled",
+    "disable_numpy_memmap",
+    "blocks_to_swap",
+    "use_pinned_memory_for_block_swap",
+    "block_swap_h2d_only",
+    "block_swap_ring_size",
+    "compile",
+    "compile_backend",
+    "compile_mode",
+    "compile_dynamic",
+    "compile_fullgraph",
+    "compile_cache_size_limit",
+    "timestep_sampling",
+    "weighting_scheme",
+    "discrete_flow_shift",
+    "sigmoid_scale",
+    "mode_scale",
+    "min_timestep",
+    "max_timestep",
+    "sdpa",
+    "flash_attn",
+    "sage_attn",
+    "xformers",
+    "split_attn",
+    "use_legacy_sdpa",
+    "max_train_steps",
+    "max_train_epochs",
+    "max_data_loader_n_workers",
+    "persistent_data_loader_workers",
+    "seed",
+    "gradient_checkpointing",
+    "gradient_checkpointing_cpu_offload",
+    "gradient_accumulation_steps",
+    "full_bf16",
+    "full_fp16",
+    "fused_backward_pass",
+    "block_swap_optimizer_patch_params",
+    "logging_dir",
+    "log_with",
+    "log_prefix",
+    "log_tracker_name",
+    "wandb_run_name",
+    "log_tracker_config",
+    "wandb_api_key",
+    "log_config",
+    "ddp_timeout",
+    "ddp_gradient_as_bucket_view",
+    "ddp_static_graph",
+    "sample_every_n_steps",
+    "sample_every_n_epochs",
+    "sample_at_first",
+    "sample_prompts",
+    "sample_output_dir",
+    "disable_prompt_enhancement",
+    "sample_width",
+    "sample_height",
+    "sample_steps",
+    "sample_seed",
+    "sample_negative_prompt",
+    "sample_cfg_scale",
+    "cache_latents",
+    "caching_latent_device",
+    "caching_latent_batch_size",
+    "caching_latent_num_workers",
+    "caching_latent_skip_existing",
+    "caching_latent_keep_cache",
+    "cache_text_encoder_outputs",
+    "caching_teo_device",
+    "caching_teo_batch_size",
+    "caching_teo_num_workers",
+    "caching_teo_skip_existing",
+    "caching_teo_keep_cache",
+    "caching_teo_text_encoder_dtype",
+    "optimizer_type",
+    "optimizer_args",
+    "learning_rate",
+    "max_grad_norm",
+    "lr_scheduler",
+    "lr_warmup_steps",
+    "lr_decay_steps",
+    "lr_scheduler_num_cycles",
+    "lr_scheduler_power",
+    "lr_scheduler_timescale",
+    "lr_scheduler_min_lr_ratio",
+    "lr_scheduler_type",
+    "lr_scheduler_args",
+    "no_metadata",
+    "network_weights",
+    "network_module",
+    "network_dim",
+    "network_alpha",
+    "network_dropout",
+    "network_args",
+    "training_comment",
+    "dim_from_weights",
+    "scale_weight_norms",
+    "base_weights",
+    "base_weights_multiplier",
+    "output_dir",
+    "output_name",
+    "resume",
+    "save_precision",
+    "save_every_n_epochs",
+    "save_last_n_epochs",
+    "save_every_n_steps",
+    "save_last_n_steps",
+    "save_last_n_epochs_state",
+    "save_last_n_steps_state",
+    "save_state",
+    "save_state_on_train_end",
+    "mem_eff_save",
+    "metadata_author",
+    "metadata_description",
+    "metadata_license",
+    "metadata_tags",
+    "metadata_title",
+    "metadata_reso",
+    "metadata_arch",
+    "huggingface_repo_id",
+    "huggingface_token",
+    "huggingface_repo_type",
+    "huggingface_repo_visibility",
+    "huggingface_path_in_repo",
+    "save_state_to_huggingface",
+    "resume_from_huggingface",
+    "async_upload"
+   ],
+   "params": {
+    "mixed_precision": {
+     "cls": "Dropdown",
+     "label": "Mixed precision",
+     "info": "Use mixed precision for training. bf16 is generally recommended for FLUX/Z-Image on supported GPUs; fp16 may be less stable.",
+     "value": "bf16",
+     "choices": [
+      [
+       "no",
+       "no"
+      ],
+      [
+       "fp16",
+       "fp16"
+      ],
+      [
+       "bf16",
+       "bf16"
+      ]
+     ],
+     "interactive": null,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": false,
+     "type": "value",
+     "parents": [
+      "Accelerate Launch (GPUs & Precision)",
+      "Resource Selection"
+     ]
+    },
+    "num_cpu_threads_per_process": {
+     "cls": "Slider",
+     "label": "Number of CPU threads per core",
+     "info": "CPU threads per process used by accelerate (data loading and preprocessing).",
+     "value": 1,
+     "minimum": 1,
+     "maximum": 32,
+     "step": 1,
+     "precision": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Accelerate Launch (GPUs & Precision)",
+      "Resource Selection"
+     ]
+    },
+    "num_processes": {
+     "cls": "Number",
+     "label": "Number of processes",
+     "info": "The total number of processes to be launched in parallel.",
+     "value": 1,
+     "minimum": 1,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Accelerate Launch (GPUs & Precision)",
+      "Resource Selection"
+     ]
+    },
+    "num_machines": {
+     "cls": "Number",
+     "label": "Number of machines",
+     "info": "The total number of machines used in this training.",
+     "value": 1,
+     "minimum": 1,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Accelerate Launch (GPUs & Precision)",
+      "Resource Selection"
+     ]
+    },
+    "multi_gpu": {
+     "cls": "Checkbox",
+     "label": "Multi GPU",
+     "info": "Whether or not this should launch a distributed GPU training.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Accelerate Launch (GPUs & Precision)",
+      "Hardware Selection & Distributed GPUs"
+     ]
+    },
+    "gpu_ids": {
+     "cls": "Textbox",
+     "label": "GPU IDs",
+     "info": "Comma-separated GPU IDs to use on this machine (e.g., 0,1). Leave empty for auto.",
+     "value": "0",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "example: 0,1",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Accelerate Launch (GPUs & Precision)",
+      "Hardware Selection & Distributed GPUs"
+     ]
+    },
+    "main_process_port": {
+     "cls": "Number",
+     "label": "Main process port",
+     "info": "Port of the main process for multi-GPU runs (0 = accelerate's default 29500).",
+     "value": 0,
+     "minimum": 0,
+     "maximum": 65535,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Accelerate Launch (GPUs & Precision)",
+      "Hardware Selection & Distributed GPUs"
+     ]
+    },
+    "dynamo_backend": {
+     "cls": "Dropdown",
+     "label": "Dynamo backend",
+     "info": "Backend for torch dynamo JIT. Use 'no' to disable (recommended for stability), or 'inductor' for PyTorch 2.x optimizations.",
+     "value": "no",
+     "choices": [
+      [
+       "no",
+       "no"
+      ],
+      [
+       "eager",
+       "eager"
+      ],
+      [
+       "aot_eager",
+       "aot_eager"
+      ],
+      [
+       "inductor",
+       "inductor"
+      ],
+      [
+       "aot_ts_nvfuser",
+       "aot_ts_nvfuser"
+      ],
+      [
+       "nvprims_nvfuser",
+       "nvprims_nvfuser"
+      ],
+      [
+       "cudagraphs",
+       "cudagraphs"
+      ],
+      [
+       "ofi",
+       "ofi"
+      ],
+      [
+       "fx2trt",
+       "fx2trt"
+      ],
+      [
+       "onnxrt",
+       "onnxrt"
+      ],
+      [
+       "tensorrt",
+       "tensorrt"
+      ],
+      [
+       "ipex",
+       "ipex"
+      ],
+      [
+       "tvm",
+       "tvm"
+      ]
+     ],
+     "interactive": null,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": false,
+     "type": "value",
+     "parents": [
+      "Accelerate Launch (GPUs & Precision)",
+      "Resource Selection"
+     ]
+    },
+    "dynamo_mode": {
+     "cls": "Dropdown",
+     "label": "Dynamo mode",
+     "info": "Choose a mode to optimize your training with dynamo. Leave empty for default.",
+     "value": "",
+     "choices": [
+      [
+       "",
+       ""
+      ],
+      [
+       "default",
+       "default"
+      ],
+      [
+       "reduce-overhead",
+       "reduce-overhead"
+      ],
+      [
+       "max-autotune",
+       "max-autotune"
+      ]
+     ],
+     "interactive": null,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": false,
+     "type": "value",
+     "parents": [
+      "Accelerate Launch (GPUs & Precision)",
+      "Resource Selection"
+     ]
+    },
+    "dynamo_use_fullgraph": {
+     "cls": "Checkbox",
+     "label": "Dynamo use fullgraph",
+     "info": "Whether to use full graph mode for dynamo or it is ok to break model into several subgraphs",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Accelerate Launch (GPUs & Precision)",
+      "Resource Selection"
+     ]
+    },
+    "dynamo_use_dynamic": {
+     "cls": "Checkbox",
+     "label": "Dynamo use dynamic",
+     "info": "Whether to enable dynamic shape tracing.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Accelerate Launch (GPUs & Precision)",
+      "Resource Selection"
+     ]
+    },
+    "extra_accelerate_launch_args": {
+     "cls": "Textbox",
+     "label": "Extra accelerate launch arguments",
+     "info": "List of extra parameters to pass to accelerate launch",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "example: --same_network --machine_rank 4",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Accelerate Launch (GPUs & Precision)"
+     ]
+    },
+    "additional_parameters": {
+     "cls": "Textbox",
+     "label": "Additional parameters",
+     "info": "Extra CLI flags appended to the training command (use with care).",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "(Optional) Use to provide additional parameters not handled by the GUI. Eg: --some_parameters \"value\"",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Advanced Settings"
+     ]
+    },
+    "debug_mode": {
+     "cls": "Dropdown",
+     "label": "Debug Mode Selection",
+     "info": "Select debug mode for training visualization and logging. Dataset debugging is handled separately in caching settings.",
+     "value": "None",
+     "choices": [
+      [
+       "None",
+       "None"
+      ],
+      [
+       "Show Timesteps (Image)",
+       "Show Timesteps (Image)"
+      ],
+      [
+       "Show Timesteps (Console)",
+       "Show Timesteps (Console)"
+      ],
+      [
+       "RCM Debug Save",
+       "RCM Debug Save"
+      ],
+      [
+       "Enable Logging (TensorBoard)",
+       "Enable Logging (TensorBoard)"
+      ],
+      [
+       "Enable Logging (WandB)",
+       "Enable Logging (WandB)"
+      ],
+      [
+       "Enable Logging (All)",
+       "Enable Logging (All)"
+      ]
+     ],
+     "interactive": true,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": true,
+     "type": "value",
+     "parents": [
+      "Advanced Settings"
+     ]
+    },
+    "training_mode": {
+     "cls": "Radio",
+     "label": "Training Mode",
+     "info": "FLUX.3 Klein supports LoRA training only.",
+     "value": "LoRA Training",
+     "choices": [
+      [
+       "LoRA Training",
+       "LoRA Training"
+      ]
+     ],
+     "interactive": false,
+     "visible": false,
+     "type": "value",
+     "parents": []
+    },
+    "dataset_config_mode": {
+     "cls": "Radio",
+     "label": "Dataset Configuration Method",
+     "info": null,
+     "value": "Generate from Folder Structure",
+     "choices": [
+      [
+       "Use TOML File",
+       "Use TOML File"
+      ],
+      [
+       "Generate from Folder Structure",
+       "Generate from Folder Structure"
+      ]
+     ],
+     "interactive": null,
+     "visible": true,
+     "type": "value",
+     "parents": [
+      "FLUX.3 Klein Training Dataset"
+     ]
+    },
+    "dataset_config": {
+     "cls": "Textbox",
+     "label": "Dataset Config TOML",
+     "info": "Used by both cache stages and training.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "FLUX.3 Klein Training Dataset"
+     ],
+     "browse": "file"
+    },
+    "parent_folder_path": {
+     "cls": "Textbox",
+     "label": "Parent Dataset Folder",
+     "info": "Contains repeat-prefixed sub-folders such as 10_ohwx.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "FLUX.3 Klein Training Dataset"
+     ],
+     "browse": "folder"
+    },
+    "dataset_resolution_width": {
+     "cls": "Number",
+     "label": "Width",
+     "info": "Multiple of 16.",
+     "value": 1024,
+     "minimum": 16,
+     "maximum": null,
+     "step": 16,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "FLUX.3 Klein Training Dataset"
+     ]
+    },
+    "dataset_resolution_height": {
+     "cls": "Number",
+     "label": "Height",
+     "info": "Multiple of 16.",
+     "value": 1024,
+     "minimum": 16,
+     "maximum": null,
+     "step": 16,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "FLUX.3 Klein Training Dataset"
+     ]
+    },
+    "dataset_caption_extension": {
+     "cls": "Textbox",
+     "label": "Caption Extension",
+     "info": null,
+     "value": ".txt",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "FLUX.3 Klein Training Dataset"
+     ]
+    },
+    "create_missing_captions": {
+     "cls": "Checkbox",
+     "label": "Create Missing Captions",
+     "info": null,
+     "value": true,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "FLUX.3 Klein Training Dataset"
+     ]
+    },
+    "caption_strategy": {
+     "cls": "Dropdown",
+     "label": "Missing Caption Strategy",
+     "info": null,
+     "value": "folder_name",
+     "choices": [
+      [
+       "folder_name",
+       "folder_name"
+      ],
+      [
+       "empty",
+       "empty"
+      ]
+     ],
+     "interactive": null,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": false,
+     "type": "value",
+     "parents": [
+      "FLUX.3 Klein Training Dataset"
+     ]
+    },
+    "dataset_batch_size": {
+     "cls": "Number",
+     "label": "Batch Size",
+     "info": null,
+     "value": 1,
+     "minimum": 1,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "FLUX.3 Klein Training Dataset"
+     ]
+    },
+    "dataset_enable_bucket": {
+     "cls": "Checkbox",
+     "label": "Enable Buckets",
+     "info": null,
+     "value": true,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "FLUX.3 Klein Training Dataset"
+     ]
+    },
+    "dataset_bucket_no_upscale": {
+     "cls": "Checkbox",
+     "label": "Do Not Upscale Buckets",
+     "info": null,
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "FLUX.3 Klein Training Dataset"
+     ]
+    },
+    "dataset_cache_directory": {
+     "cls": "Textbox",
+     "label": "Cache Directory Name",
+     "info": null,
+     "value": "cache_dir",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "FLUX.3 Klein Training Dataset"
+     ]
+    },
+    "generated_toml_path": {
+     "cls": "Textbox",
+     "label": "Generated Dataset TOML",
+     "info": null,
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": null,
+     "interactive": false,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "FLUX.3 Klein Training Dataset"
+     ]
+    },
+    "use_control_images": {
+     "cls": "Checkbox",
+     "label": "Use reference images (FLUX.3 Klein editing, 1+ ordered references per target)",
+     "info": null,
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "FLUX.3 Klein Training Dataset"
+     ]
+    },
+    "control_directory_name": {
+     "cls": "Textbox",
+     "label": "Control Images Sub-Folder Name",
+     "info": "Inside each dataset folder; files named like the target (image_0.png, image_1.png ...).",
+     "value": "control_images",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "FLUX.3 Klein Training Dataset"
+     ]
+    },
+    "dit": {
+     "cls": "Textbox",
+     "label": "FLUX.3 Klein Base DiT",
+     "info": "The undistilled BF16 base model. The 16-step distilled and the quantized files cannot train; LoRAs trained on the base work with both.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "FLUX.3 Klein Model Files"
+     ],
+     "browse": "file"
+    },
+    "vae": {
+     "cls": "Textbox",
+     "label": "FLUX.2 VAE",
+     "info": "FLUX.3 uses the FLUX.2 VAE. Needed for latent caching and samples.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "FLUX.3 Klein Model Files"
+     ],
+     "browse": "file"
+    },
+    "text_encoder": {
+     "cls": "Textbox",
+     "label": "Qwen3-VL 4B Text Encoder",
+     "info": "BF16 Qwen3-VL-4B-Instruct (the same file as Krea 2). Needed for text caching and samples.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "FLUX.3 Klein Model Files"
+     ],
+     "browse": "file"
+    },
+    "dit_dtype": {
+     "cls": "Dropdown",
+     "label": "DiT Dtype",
+     "info": "LoRA keeps the DiT in BF16; full fine-tuning follows Full BF16.",
+     "value": "bfloat16",
+     "choices": [
+      [
+       "bfloat16",
+       "bfloat16"
+      ],
+      [
+       "float32",
+       "float32"
+      ]
+     ],
+     "interactive": false,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": false,
+     "type": "value",
+     "parents": [
+      "Memory & Speed (Block Swap, FP8, Precision)"
+     ]
+    },
+    "vae_dtype": {
+     "cls": "Dropdown",
+     "label": "VAE Dtype",
+     "info": null,
+     "value": "bfloat16",
+     "choices": [
+      [
+       "bfloat16",
+       "bfloat16"
+      ],
+      [
+       "float16",
+       "float16"
+      ],
+      [
+       "float32",
+       "float32"
+      ]
+     ],
+     "interactive": null,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": false,
+     "type": "value",
+     "parents": [
+      "Memory & Speed (Block Swap, FP8, Precision)"
+     ]
+    },
+    "fp8_base": {
+     "cls": "Checkbox",
+     "label": "FP8 Base (LoRA)",
+     "info": "Store the frozen DiT in FP8. Enable together with Scaled FP8.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Memory & Speed (Block Swap, FP8, Precision)"
+     ]
+    },
+    "fp8_scaled": {
+     "cls": "Checkbox",
+     "label": "Scaled FP8 (LoRA)",
+     "info": "Recommended FP8 mode: per-block scaled weights, better quality.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Memory & Speed (Block Swap, FP8, Precision)"
+     ]
+    },
+    "disable_numpy_memmap": {
+     "cls": "Checkbox",
+     "label": "Disable NumPy Memmap",
+     "info": "Read weights normally instead of memory mapping.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Memory & Speed (Block Swap, FP8, Precision)"
+     ]
+    },
+    "blocks_to_swap": {
+     "cls": "Slider",
+     "label": "Blocks to Swap",
+     "info": "Offload transformer blocks to RAM to save VRAM. Max 26 (LoRA) / 26 (fine-tuning).",
+     "value": 0,
+     "minimum": 0,
+     "maximum": 26,
+     "step": 1,
+     "precision": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Memory & Speed (Block Swap, FP8, Precision)"
+     ]
+    },
+    "use_pinned_memory_for_block_swap": {
+     "cls": "Checkbox",
+     "label": "Pinned Memory for Block Swap",
+     "info": "Faster transfers; on Windows it also uses shared GPU memory.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Memory & Speed (Block Swap, FP8, Precision)"
+     ]
+    },
+    "block_swap_h2d_only": {
+     "cls": "Checkbox",
+     "label": "H2D-Only Block Swap (LoRA)",
+     "info": "Upload-only ring for frozen weights. Needs block swap + gradient checkpointing.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Memory & Speed (Block Swap, FP8, Precision)"
+     ]
+    },
+    "block_swap_ring_size": {
+     "cls": "Number",
+     "label": "H2D Ring Size",
+     "info": "2 overlaps copy and compute; 1 minimizes VRAM.",
+     "value": 2,
+     "minimum": 1,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Memory & Speed (Block Swap, FP8, Precision)"
+     ]
+    },
+    "compile": {
+     "cls": "Checkbox",
+     "label": "Enable torch.compile",
+     "info": "Faster steps after a one-time warm-up. Needs a C++ toolchain on Windows.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Torch Compile"
+     ]
+    },
+    "compile_backend": {
+     "cls": "Dropdown",
+     "label": "Backend",
+     "info": null,
+     "value": "inductor",
+     "choices": [
+      [
+       "inductor",
+       "inductor"
+      ],
+      [
+       "eager",
+       "eager"
+      ],
+      [
+       "aot_eager",
+       "aot_eager"
+      ],
+      [
+       "cudagraphs",
+       "cudagraphs"
+      ]
+     ],
+     "interactive": null,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": false,
+     "type": "value",
+     "parents": [
+      "Torch Compile"
+     ]
+    },
+    "compile_mode": {
+     "cls": "Dropdown",
+     "label": "Mode",
+     "info": null,
+     "value": "default",
+     "choices": [
+      [
+       "default",
+       "default"
+      ],
+      [
+       "reduce-overhead",
+       "reduce-overhead"
+      ],
+      [
+       "max-autotune",
+       "max-autotune"
+      ]
+     ],
+     "interactive": null,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": false,
+     "type": "value",
+     "parents": [
+      "Torch Compile"
+     ]
+    },
+    "compile_dynamic": {
+     "cls": "Dropdown",
+     "label": "Dynamic Shapes",
+     "info": null,
+     "value": "auto",
+     "choices": [
+      [
+       "auto",
+       "auto"
+      ],
+      [
+       "true",
+       "true"
+      ],
+      [
+       "false",
+       "false"
+      ]
+     ],
+     "interactive": null,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": false,
+     "type": "value",
+     "parents": [
+      "Torch Compile"
+     ]
+    },
+    "compile_fullgraph": {
+     "cls": "Checkbox",
+     "label": "Fullgraph",
+     "info": null,
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Torch Compile"
+     ]
+    },
+    "compile_cache_size_limit": {
+     "cls": "Number",
+     "label": "Cache Size Limit",
+     "info": null,
+     "value": 0,
+     "minimum": 0,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Torch Compile"
+     ]
+    },
+    "timestep_sampling": {
+     "cls": "Dropdown",
+     "label": "Timestep Sampling",
+     "info": null,
+     "value": "shift",
+     "choices": [
+      [
+       "sigmoid",
+       "sigmoid"
+      ],
+      [
+       "shift",
+       "shift"
+      ],
+      [
+       "uniform",
+       "uniform"
+      ],
+      [
+       "uniform_shift",
+       "uniform_shift"
+      ],
+      [
+       "qwen_shift",
+       "qwen_shift"
+      ],
+      [
+       "flux_shift",
+       "flux_shift"
+      ],
+      [
+       "flux2_shift",
+       "flux2_shift"
+      ],
+      [
+       "sigma",
+       "sigma"
+      ],
+      [
+       "logsnr",
+       "logsnr"
+      ],
+      [
+       "qinglong_flux",
+       "qinglong_flux"
+      ],
+      [
+       "qinglong_qwen",
+       "qinglong_qwen"
+      ]
+     ],
+     "interactive": null,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": true,
+     "type": "value",
+     "parents": [
+      "Flow Matching & Timesteps"
+     ]
+    },
+    "weighting_scheme": {
+     "cls": "Dropdown",
+     "label": "Weighting Scheme",
+     "info": null,
+     "value": "none",
+     "choices": [
+      [
+       "none",
+       "none"
+      ],
+      [
+       "mode",
+       "mode"
+      ],
+      [
+       "logit_normal",
+       "logit_normal"
+      ],
+      [
+       "cosmap",
+       "cosmap"
+      ],
+      [
+       "sigma_sqrt",
+       "sigma_sqrt"
+      ]
+     ],
+     "interactive": null,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": true,
+     "type": "value",
+     "parents": [
+      "Flow Matching & Timesteps"
+     ]
+    },
+    "discrete_flow_shift": {
+     "cls": "Number",
+     "label": "Discrete Flow Shift",
+     "info": "Used by 'shift' and 'uniform_shift'.",
+     "value": 6.93,
+     "minimum": null,
+     "maximum": null,
+     "step": 0.1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Flow Matching & Timesteps"
+     ]
+    },
+    "sigmoid_scale": {
+     "cls": "Number",
+     "label": "Sigmoid Scale",
+     "info": null,
+     "value": 1.0,
+     "minimum": null,
+     "maximum": null,
+     "step": 0.1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Flow Matching & Timesteps"
+     ]
+    },
+    "mode_scale": {
+     "cls": "Number",
+     "label": "Mode Scale",
+     "info": "Used by weighting scheme 'mode'.",
+     "value": 1.29,
+     "minimum": null,
+     "maximum": null,
+     "step": 0.01,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Flow Matching & Timesteps"
+     ]
+    },
+    "min_timestep": {
+     "cls": "Number",
+     "label": "Min Timestep",
+     "info": null,
+     "value": 0,
+     "minimum": 0,
+     "maximum": 999,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Flow Matching & Timesteps"
+     ]
+    },
+    "max_timestep": {
+     "cls": "Number",
+     "label": "Max Timestep",
+     "info": null,
+     "value": 1000,
+     "minimum": 1,
+     "maximum": 1000,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Flow Matching & Timesteps"
+     ]
+    },
+    "sdpa": {
+     "cls": "Checkbox",
+     "label": "Use SDPA for CrossAttention",
+     "info": "Use PyTorch SDPA attention (torch>=2.0).",
+     "value": true,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "flash_attn": {
+     "cls": "Checkbox",
+     "label": "FlashAttention",
+     "info": "Use FlashAttention for CrossAttention",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "sage_attn": {
+     "cls": "Checkbox",
+     "label": "SageAttention",
+     "info": "Use SageAttention for CrossAttention",
+     "value": false,
+     "interactive": null,
+     "visible": false,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "xformers": {
+     "cls": "Checkbox",
+     "label": "xformers",
+     "info": "Use xformers for CrossAttention",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "split_attn": {
+     "cls": "Checkbox",
+     "label": "Split Attention",
+     "info": "Use Split Attention for CrossAttention",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "use_legacy_sdpa": {
+     "cls": "Checkbox",
+     "label": "Use Legacy PyTorch SDPA",
+     "info": "Leave off (recommended) to let SDPA use PyTorch's fused kernel or a verified external FlashAttention backend when the native kernel is unavailable. Enable to force the older, usually slower PyTorch SDPA path. This only applies when Use SDPA is enabled. Automatic mode falls back to PyTorch SDPA if FlashAttention cannot import, is unsupported by the GPU, or fails a CUDA forward/backward training probe.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "max_train_steps": {
+     "cls": "Number",
+     "label": "Max Training Steps",
+     "info": "Maximum number of training steps",
+     "value": 80000,
+     "minimum": null,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "max_train_epochs": {
+     "cls": "Number",
+     "label": "Max Training Epochs",
+     "info": "Optional. Overrides max_train_steps when set.",
+     "value": 200,
+     "minimum": null,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "max_data_loader_n_workers": {
+     "cls": "Number",
+     "label": "Max DataLoader Workers",
+     "info": "Lower values reduce RAM usage and speed up epoch start",
+     "value": 2,
+     "minimum": null,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "persistent_data_loader_workers": {
+     "cls": "Checkbox",
+     "label": "Persistent DataLoader Workers",
+     "info": "Keep DataLoader workers alive between epochs",
+     "value": true,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "seed": {
+     "cls": "Number",
+     "label": "Random Seed for Training",
+     "info": "Optional: set a fixed seed for reproducibility",
+     "value": 42,
+     "minimum": null,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "gradient_checkpointing": {
+     "cls": "Checkbox",
+     "label": "Enable Gradient Checkpointing",
+     "info": "Enable gradient checkpointing for memory savings",
+     "value": true,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "gradient_checkpointing_cpu_offload": {
+     "cls": "Checkbox",
+     "label": "Gradient Checkpointing CPU Offload",
+     "info": "Offload activations to CPU when using gradient checkpointing. Reduces VRAM at the cost of speed",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "gradient_accumulation_steps": {
+     "cls": "Number",
+     "label": "Gradient Accumulation Steps",
+     "info": "Number of steps to accumulate gradients before backward pass",
+     "value": 1,
+     "minimum": null,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "full_bf16": {
+     "cls": "Checkbox",
+     "label": "Full BF16 Training",
+     "info": "[EXPERIMENTAL] Stores gradients in BF16 instead of FP32. Saves ~30% VRAM but may cause training instability. Requires mixed_precision='bf16'. Monitor loss carefully.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "full_fp16": {
+     "cls": "Checkbox",
+     "label": "Full FP16 Training",
+     "info": "[EXPERIMENTAL] Stores gradients in FP16 instead of FP32. Saves ~30% VRAM but has a higher risk of gradient underflow. Requires mixed_precision='fp16' and careful learning-rate tuning.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "fused_backward_pass": {
+     "cls": "Checkbox",
+     "label": "Fused Backward Pass",
+     "info": "Adafactor only; lowest memory. Needs accumulation steps = 1.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Full Fine-Tuning Settings"
+     ]
+    },
+    "block_swap_optimizer_patch_params": {
+     "cls": "Checkbox",
+     "label": "Patch Optimizer for Block Swap",
+     "info": "For AdamW/Adafactor without fused backward when blocks are swapped.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Full Fine-Tuning Settings"
+     ]
+    },
+    "logging_dir": {
+     "cls": "Textbox",
+     "label": "Logging Directory",
+     "info": "Required when log_with is tensorboard or all.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Directory for TensorBoard logs",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "log_with": {
+     "cls": "Dropdown",
+     "label": "Logging Tool",
+     "info": "Select the logging tool to use. (none) = no logging",
+     "value": "",
+     "choices": [
+      [
+       "(none)",
+       ""
+      ],
+      [
+       "tensorboard",
+       "tensorboard"
+      ],
+      [
+       "wandb",
+       "wandb"
+      ],
+      [
+       "all",
+       "all"
+      ]
+     ],
+     "interactive": true,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": true,
+     "type": "value",
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "log_prefix": {
+     "cls": "Textbox",
+     "label": "Log Directory Prefix",
+     "info": "Optional. Prefix for generated log directories.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Prefix for each log directory",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "log_tracker_name": {
+     "cls": "Textbox",
+     "label": "Log Tracker Name",
+     "info": "Optional. Custom tracker name shown in logs.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Name of the tracker used for logging",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "wandb_run_name": {
+     "cls": "Textbox",
+     "label": "WandB Run Name",
+     "info": "Optional. Run name shown in WandB.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Name of the specific WandB session",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "log_tracker_config": {
+     "cls": "Textbox",
+     "label": "Log Tracker Config",
+     "info": "Optional. Path to a tracker config file.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Path to the tracker config file for logging",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "wandb_api_key": {
+     "cls": "Textbox",
+     "label": "WandB API Key",
+     "info": "Optional. If set, logs in before training.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Optional: Specify WandB API key to log in before training",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "log_config": {
+     "cls": "Checkbox",
+     "label": "Log Training Configuration",
+     "info": "Log the training configuration to the logging directory",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "ddp_timeout": {
+     "cls": "Number",
+     "label": "DDP Timeout (minutes)",
+     "info": "Set DDP timeout in minutes (None for default)",
+     "value": null,
+     "minimum": null,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "ddp_gradient_as_bucket_view": {
+     "cls": "Checkbox",
+     "label": "Enable Gradient as Bucket View for DDP",
+     "info": "DDP optimization: use gradient_as_bucket_view.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "ddp_static_graph": {
+     "cls": "Checkbox",
+     "label": "Enable Static Graph for DDP",
+     "info": "DDP optimization for static graphs.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Training Settings"
+     ]
+    },
+    "sample_every_n_steps": {
+     "cls": "Number",
+     "label": "Sample Every N Steps",
+     "info": null,
+     "value": 0,
+     "minimum": 0,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Sample Images During Training"
+     ]
+    },
+    "sample_every_n_epochs": {
+     "cls": "Number",
+     "label": "Sample Every N Epochs",
+     "info": null,
+     "value": 0,
+     "minimum": 0,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Sample Images During Training"
+     ]
+    },
+    "sample_at_first": {
+     "cls": "Checkbox",
+     "label": "Sample Before Training",
+     "info": null,
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Sample Images During Training"
+     ]
+    },
+    "sample_prompts": {
+     "cls": "Textbox",
+     "label": "Sample Prompts File",
+     "info": "One prompt per line; supports --w --h --s --d --l --n --ci flags.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Sample Images During Training"
+     ],
+     "browse": "file"
+    },
+    "sample_output_dir": {
+     "cls": "Textbox",
+     "label": "Sample Output Directory",
+     "info": "Empty = the output folder.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Sample Images During Training"
+     ]
+    },
+    "disable_prompt_enhancement": {
+     "cls": "Checkbox",
+     "label": "Disable Prompt Defaults",
+     "info": "Do not append the defaults below to each prompt line.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Sample Images During Training"
+     ]
+    },
+    "sample_width": {
+     "cls": "Number",
+     "label": "Width",
+     "info": null,
+     "value": 1024,
+     "minimum": 16,
+     "maximum": null,
+     "step": 16,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Sample Images During Training"
+     ]
+    },
+    "sample_height": {
+     "cls": "Number",
+     "label": "Height",
+     "info": null,
+     "value": 1024,
+     "minimum": 16,
+     "maximum": null,
+     "step": 16,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Sample Images During Training"
+     ]
+    },
+    "sample_steps": {
+     "cls": "Number",
+     "label": "Steps",
+     "info": null,
+     "value": 50,
+     "minimum": 0,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Sample Images During Training"
+     ]
+    },
+    "sample_seed": {
+     "cls": "Number",
+     "label": "Seed",
+     "info": null,
+     "value": 42,
+     "minimum": null,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Sample Images During Training"
+     ]
+    },
+    "sample_negative_prompt": {
+     "cls": "Textbox",
+     "label": "Negative Prompt",
+     "info": "Used when CFG > 1.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Sample Images During Training"
+     ]
+    },
+    "sample_cfg_scale": {
+     "cls": "Number",
+     "label": "CFG Scale",
+     "info": null,
+     "value": 3.5,
+     "minimum": null,
+     "maximum": null,
+     "step": 0.1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Sample Images During Training"
+     ]
+    },
+    "cache_latents": {
+     "cls": "Checkbox",
+     "label": "Run Latent / Pixel Caching",
+     "info": null,
+     "value": true,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "caching_latent_device": {
+     "cls": "Dropdown",
+     "label": "Latent Cache Device",
+     "info": null,
+     "value": "cuda",
+     "choices": [
+      [
+       "cuda",
+       "cuda"
+      ],
+      [
+       "cpu",
+       "cpu"
+      ]
+     ],
+     "interactive": null,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": true,
+     "type": "value",
+     "parents": [
+      "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "caching_latent_batch_size": {
+     "cls": "Number",
+     "label": "Latent Batch Size",
+     "info": null,
+     "value": 1,
+     "minimum": 1,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "caching_latent_num_workers": {
+     "cls": "Number",
+     "label": "Latent Workers",
+     "info": null,
+     "value": 2,
+     "minimum": 1,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "caching_latent_skip_existing": {
+     "cls": "Checkbox",
+     "label": "Skip Existing Latents",
+     "info": null,
+     "value": true,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "caching_latent_keep_cache": {
+     "cls": "Checkbox",
+     "label": "Keep Unreferenced Latents",
+     "info": null,
+     "value": true,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "cache_text_encoder_outputs": {
+     "cls": "Checkbox",
+     "label": "Run Text Encoder Caching",
+     "info": null,
+     "value": true,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "caching_teo_device": {
+     "cls": "Dropdown",
+     "label": "Text Cache Device",
+     "info": null,
+     "value": "cuda",
+     "choices": [
+      [
+       "cuda",
+       "cuda"
+      ],
+      [
+       "cpu",
+       "cpu"
+      ]
+     ],
+     "interactive": null,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": true,
+     "type": "value",
+     "parents": [
+      "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "caching_teo_batch_size": {
+     "cls": "Number",
+     "label": "Text Batch Size",
+     "info": null,
+     "value": 1,
+     "minimum": 1,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "caching_teo_num_workers": {
+     "cls": "Number",
+     "label": "Text Workers",
+     "info": null,
+     "value": 2,
+     "minimum": 1,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "caching_teo_skip_existing": {
+     "cls": "Checkbox",
+     "label": "Skip Existing Text Caches",
+     "info": null,
+     "value": true,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "caching_teo_keep_cache": {
+     "cls": "Checkbox",
+     "label": "Keep Unreferenced Text Caches",
+     "info": null,
+     "value": true,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "caching_teo_text_encoder_dtype": {
+     "cls": "Dropdown",
+     "label": "Text Encoder Dtype",
+     "info": "Use float32 only for CPU caching.",
+     "value": "bfloat16",
+     "choices": [
+      [
+       "bfloat16",
+       "bfloat16"
+      ],
+      [
+       "float32",
+       "float32"
+      ]
+     ],
+     "interactive": null,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": false,
+     "type": "value",
+     "parents": [
+      "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "optimizer_type": {
+     "cls": "Dropdown",
+     "label": "Optimizer Type",
+     "info": "Select the optimizer to use",
+     "value": "AdaFactor",
+     "choices": [
+      [
+       "AdamW",
+       "AdamW"
+      ],
+      [
+       "AdamW8bit",
+       "AdamW8bit"
+      ],
+      [
+       "AdaFactor",
+       "AdaFactor"
+      ],
+      [
+       "Automagic",
+       "Automagic"
+      ],
+      [
+       "Automagic2",
+       "Automagic2"
+      ],
+      [
+       "Automagic3",
+       "Automagic3"
+      ],
+      [
+       "AutomagicEXPERIMENT",
+       "AutomagicEXPERIMENT"
+      ]
+     ],
+     "interactive": true,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": true,
+     "type": "value",
+     "parents": [
+      "Learning Rate, Optimizer & Scheduler"
+     ]
+    },
+    "optimizer_args": {
+     "cls": "Textbox",
+     "label": "Optimizer Arguments",
+     "info": "⚠️ Space-separated arguments ONLY (no commas). Commas will be automatically removed when saving config.",
+     "value": "scale_parameter=False relative_step=False warmup_init=False weight_decay=0.01",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Additional arguments for optimizer. Space separated. e.g. \"scale_parameter=False relative_step=False weight_decay=0.01\"",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Learning Rate, Optimizer & Scheduler"
+     ]
+    },
+    "learning_rate": {
+     "cls": "Number",
+     "label": "Learning Rate",
+     "info": "Specify the learning rate (e.g., 2.0e-6)",
+     "value": 6e-05,
+     "minimum": null,
+     "maximum": null,
+     "step": 1e-06,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Learning Rate, Optimizer & Scheduler"
+     ]
+    },
+    "max_grad_norm": {
+     "cls": "Number",
+     "label": "Max Gradient Norm",
+     "info": "Maximum gradient norm (0 for no clipping)",
+     "value": 0.0,
+     "minimum": null,
+     "maximum": null,
+     "step": 0.0001,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Learning Rate, Optimizer & Scheduler"
+     ]
+    },
+    "lr_scheduler": {
+     "cls": "Dropdown",
+     "label": "Learning Rate Scheduler",
+     "info": "Select the learning rate scheduler to use",
+     "value": "constant",
+     "choices": [
+      [
+       "constant",
+       "constant"
+      ],
+      [
+       "linear",
+       "linear"
+      ],
+      [
+       "cosine",
+       "cosine"
+      ],
+      [
+       "constant_with_warmup",
+       "constant_with_warmup"
+      ]
+     ],
+     "interactive": true,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": false,
+     "type": "value",
+     "parents": [
+      "Learning Rate, Optimizer & Scheduler"
+     ]
+    },
+    "lr_warmup_steps": {
+     "cls": "Number",
+     "label": "LR Warmup Steps",
+     "info": "Number of warmup steps or ratio of train steps (e.g., 0.1 for 10%)",
+     "value": 0,
+     "minimum": null,
+     "maximum": null,
+     "step": 0.01,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Learning Rate, Optimizer & Scheduler"
+     ]
+    },
+    "lr_decay_steps": {
+     "cls": "Number",
+     "label": "LR Decay Steps",
+     "info": "Number of decay steps or ratio of train steps (e.g., 0.1 for 10%)",
+     "value": 0,
+     "minimum": null,
+     "maximum": null,
+     "step": 0.01,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Learning Rate, Optimizer & Scheduler"
+     ]
+    },
+    "lr_scheduler_num_cycles": {
+     "cls": "Number",
+     "label": "LR Scheduler Num Cycles",
+     "info": "Number of restarts for cosine scheduler with restarts",
+     "value": 1,
+     "minimum": 1,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Learning Rate, Optimizer & Scheduler"
+     ]
+    },
+    "lr_scheduler_power": {
+     "cls": "Number",
+     "label": "LR Scheduler Polynomial Power",
+     "info": "Polynomial power for polynomial scheduler",
+     "value": 1,
+     "minimum": null,
+     "maximum": null,
+     "step": 0.001,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Learning Rate, Optimizer & Scheduler"
+     ]
+    },
+    "lr_scheduler_timescale": {
+     "cls": "Number",
+     "label": "LR Scheduler Timescale",
+     "info": "Timescale for inverse sqrt scheduler (defaults to num_warmup_steps)",
+     "value": null,
+     "minimum": null,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Learning Rate, Optimizer & Scheduler"
+     ]
+    },
+    "lr_scheduler_min_lr_ratio": {
+     "cls": "Number",
+     "label": "LR Scheduler Min LR Ratio",
+     "info": "Minimum LR as a ratio of initial LR for cosine with min LR scheduler",
+     "value": null,
+     "minimum": null,
+     "maximum": null,
+     "step": 0.001,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Learning Rate, Optimizer & Scheduler"
+     ]
+    },
+    "lr_scheduler_type": {
+     "cls": "Textbox",
+     "label": "LR Scheduler Type",
+     "info": "Optional. Custom scheduler module or class path (overrides preset selection).",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Specify custom scheduler module",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Learning Rate, Optimizer & Scheduler"
+     ]
+    },
+    "lr_scheduler_args": {
+     "cls": "Textbox",
+     "label": "LR Scheduler Arguments",
+     "info": "Space-separated key=value args passed to the scheduler.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Additional arguments for scheduler. Space separated. e.g. \"T_max=100 eta_min=1e-7 last_epoch=-1\"",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Learning Rate, Optimizer & Scheduler"
+     ]
+    },
+    "no_metadata": {
+     "cls": "Checkbox",
+     "label": "Do Not Save Metadata",
+     "info": "Disable saving metadata into the output model file.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "LoRA Settings"
+     ]
+    },
+    "network_weights": {
+     "cls": "Textbox",
+     "label": "Network Weights (LoRA Weights)",
+     "info": "Optional. Load existing LoRA weights before training.",
+     "value": null,
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Path to pretrained LoRA weights for network",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "LoRA Settings"
+     ]
+    },
+    "network_module": {
+     "cls": "Textbox",
+     "label": "Network Module (LoRA Type)",
+     "info": "LoRA module path used by training (e.g., networks.lora_flux_2 or networks.lora_zimage).",
+     "value": "networks.lora_flux_3",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "LoRA module type to train",
+     "interactive": false,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "LoRA Settings"
+     ]
+    },
+    "network_dim": {
+     "cls": "Number",
+     "label": "Network Dimensions (LoRA Rank)",
+     "info": "LoRA rank/dimensions (depends on the module type)",
+     "value": 128,
+     "minimum": null,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "LoRA Settings"
+     ]
+    },
+    "network_alpha": {
+     "cls": "Number",
+     "label": "Network Alpha (LoRA Alpha)",
+     "info": "Alpha value for LoRA weight scaling (default: 1)",
+     "value": 128,
+     "minimum": null,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "LoRA Settings"
+     ]
+    },
+    "network_dropout": {
+     "cls": "Number",
+     "label": "Network Dropout (LoRA Dropout)",
+     "info": "LoRA dropout rate (0 or None for no dropout, 1 drops all neurons)",
+     "value": 0,
+     "minimum": 0,
+     "maximum": 1,
+     "step": 0.01,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "LoRA Settings"
+     ]
+    },
+    "network_args": {
+     "cls": "Textbox",
+     "label": "Network Arguments (LoRA Args)",
+     "info": "Space-separated key=value args passed to the LoRA module.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Additional LoRA network arguments. Space separated. e.g. \"conv_dim=4 conv_alpha=1 algo=locon\"",
+     "interactive": true,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "LoRA Settings"
+     ]
+    },
+    "training_comment": {
+     "cls": "Textbox",
+     "label": "Training Comment",
+     "info": "Optional comment stored in metadata.",
+     "value": null,
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Arbitrary comment string to store in metadata",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "LoRA Settings"
+     ]
+    },
+    "dim_from_weights": {
+     "cls": "Checkbox",
+     "label": "Determine Dimensions from LoRA Weights",
+     "info": "Auto-detect LoRA rank/dim from network_weights.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "LoRA Settings"
+     ]
+    },
+    "scale_weight_norms": {
+     "cls": "Number",
+     "label": "Scale Weight Norms",
+     "info": "Scaling factor for weights (1 is a good starting point)",
+     "value": null,
+     "minimum": 0,
+     "maximum": null,
+     "step": 0.001,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "LoRA Settings"
+     ]
+    },
+    "base_weights": {
+     "cls": "Textbox",
+     "label": "Base Weights (LoRA Base)",
+     "info": "Optional. LoRA files merged into the model before training; separate several with ';' (or quote each path).",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Paths to LoRA weights to merge into the model before training",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "LoRA Settings"
+     ]
+    },
+    "base_weights_multiplier": {
+     "cls": "Textbox",
+     "label": "Base Weights Multiplier",
+     "info": "Optional. One multiplier per base weight, in the same order, separated by spaces (e.g. 1 0.5).",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Multipliers for network weights to merge into the model before training",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "LoRA Settings"
+     ]
+    },
+    "output_dir": {
+     "cls": "Textbox",
+     "label": "Output Directory",
+     "info": "Required. Folder where checkpoints and config will be written.",
+     "value": "{APP}/outputs/flux3_klein",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Directory to save the trained model",
+     "interactive": true,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Save Models & Resume Training"
+     ],
+     "browse": "folder"
+    },
+    "output_name": {
+     "cls": "Textbox",
+     "label": "Output Name",
+     "info": "Required. Base filename for saved checkpoints (extension is added automatically).",
+     "value": "my_flux3_klein_lora",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Base name of the trained model file (excluding extension)",
+     "interactive": true,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Save Models & Resume Training"
+     ]
+    },
+    "resume": {
+     "cls": "Textbox",
+     "label": "Resume Training State",
+     "info": "Optional. Path to a saved state to resume training from.",
+     "value": null,
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Path to saved state to resume training",
+     "interactive": true,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Save Models & Resume Training"
+     ]
+    },
+    "save_precision": {
+     "cls": "Dropdown",
+     "label": "LoRA Save Precision",
+     "info": "Precision used for saved LoRA weights. BF16 is the default and keeps files about half the size of FP32 without reducing LoRA rank.",
+     "value": "bf16",
+     "choices": [
+      [
+       "BF16 (recommended, smaller files)",
+       "bf16"
+      ],
+      [
+       "FP16 (smaller files)",
+       "fp16"
+      ],
+      [
+       "FP32 / Float (largest files)",
+       "fp32"
+      ]
+     ],
+     "interactive": true,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": false,
+     "type": "value",
+     "parents": [
+      "Save Models & Resume Training"
+     ]
+    },
+    "save_every_n_epochs": {
+     "cls": "Number",
+     "label": "Save Every N Epochs",
+     "info": "Save a checkpoint every N epochs",
+     "value": 25,
+     "minimum": 0,
+     "maximum": 999999,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Save Models & Resume Training"
+     ]
+    },
+    "save_last_n_epochs": {
+     "cls": "Number",
+     "label": "Save Last N Epochs",
+     "info": "Save only the last N checkpoints when saving every N epochs",
+     "value": null,
+     "minimum": null,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Save Models & Resume Training"
+     ]
+    },
+    "save_every_n_steps": {
+     "cls": "Number",
+     "label": "Save Every N Steps",
+     "info": "Save a checkpoint every N steps",
+     "value": null,
+     "minimum": null,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Save Models & Resume Training"
+     ]
+    },
+    "save_last_n_steps": {
+     "cls": "Number",
+     "label": "Save Last N Steps",
+     "info": "Save checkpoints until N steps elapsed (remove older ones afterward)",
+     "value": null,
+     "minimum": null,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Save Models & Resume Training"
+     ]
+    },
+    "save_last_n_epochs_state": {
+     "cls": "Number",
+     "label": "Save Last N Epochs State",
+     "info": "Save states of the last N epochs (overrides save_last_n_epochs)",
+     "value": null,
+     "minimum": null,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Save Models & Resume Training"
+     ]
+    },
+    "save_last_n_steps_state": {
+     "cls": "Number",
+     "label": "Save Last N Steps State",
+     "info": "Save states until N steps elapsed (overrides save_last_n_steps)",
+     "value": null,
+     "minimum": null,
+     "maximum": null,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Save Models & Resume Training"
+     ]
+    },
+    "save_state": {
+     "cls": "Checkbox",
+     "label": "Save Training State",
+     "info": "Save optimizer and training state (needed for resume).",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Save Models & Resume Training"
+     ]
+    },
+    "save_state_on_train_end": {
+     "cls": "Checkbox",
+     "label": "Save State on Train End",
+     "info": "Save state at the end of training even if periodic saving is disabled.",
+     "value": false,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Save Models & Resume Training"
+     ]
+    },
+    "mem_eff_save": {
+     "cls": "Checkbox",
+     "label": "Memory Efficient Save",
+     "info": "Reduces RAM usage when the selected full fine-tuning backend supports memory-efficient checkpoint saving. Optimizer state saves still use the normal method.",
+     "value": false,
+     "interactive": true,
+     "visible": true,
+     "parents": [
+      "Save Models & Resume Training"
+     ]
+    },
+    "metadata_author": {
+     "cls": "Textbox",
+     "label": "Metadata author",
+     "info": "Optional author name stored in metadata.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "(optional) author name for model metadata",
+     "interactive": true,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Metadata"
+     ]
+    },
+    "metadata_description": {
+     "cls": "Textbox",
+     "label": "Metadata description",
+     "info": "Optional description stored in metadata.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "(optional) description for model metadata",
+     "interactive": true,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Metadata"
+     ]
+    },
+    "metadata_license": {
+     "cls": "Textbox",
+     "label": "Metadata license",
+     "info": "Optional license string stored in metadata.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "(optional) license for model metadata",
+     "interactive": true,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Metadata"
+     ]
+    },
+    "metadata_tags": {
+     "cls": "Textbox",
+     "label": "Metadata tags",
+     "info": "Optional comma-separated tags stored in metadata.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "(optional) tags for model metadata, separated by comma",
+     "interactive": true,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Metadata"
+     ]
+    },
+    "metadata_title": {
+     "cls": "Textbox",
+     "label": "Metadata title",
+     "info": "Optional title stored in the model metadata.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "(optional) title for model metadata (default is output_name)",
+     "interactive": true,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Metadata"
+     ]
+    },
+    "metadata_reso": {
+     "cls": "Textbox",
+     "label": "Metadata Resolution",
+     "info": "Format: width,height (e.g., 1024,1024)",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "(optional) resolution for model metadata, e.g., 1024,1024 or 720,1280",
+     "interactive": true,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Metadata"
+     ]
+    },
+    "metadata_arch": {
+     "cls": "Textbox",
+     "label": "Metadata Architecture",
+     "info": "Custom architecture identifier",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "(optional) custom architecture string for model metadata",
+     "interactive": true,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Metadata"
+     ]
+    },
+    "huggingface_repo_id": {
+     "cls": "Textbox",
+     "label": "Huggingface repo id",
+     "info": "Target repo id, e.g. username/model-name.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "huggingface repo id",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "HuggingFace Upload"
+     ]
+    },
+    "huggingface_token": {
+     "cls": "Textbox",
+     "label": "Huggingface token",
+     "info": "Access token with write permissions for the repo.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "huggingface token",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "HuggingFace Upload"
+     ]
+    },
+    "huggingface_repo_type": {
+     "cls": "Textbox",
+     "label": "Huggingface repo type",
+     "info": "Repo type (e.g., model or dataset). Leave empty for default.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "huggingface repo type",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "HuggingFace Upload"
+     ]
+    },
+    "huggingface_repo_visibility": {
+     "cls": "Textbox",
+     "label": "Huggingface repo visibility",
+     "info": "Visibility setting: public or private (leave empty to keep repo default).",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "huggingface repo visibility",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "HuggingFace Upload"
+     ]
+    },
+    "huggingface_path_in_repo": {
+     "cls": "Textbox",
+     "label": "Huggingface path in repo",
+     "info": "Optional subfolder path inside the repo to upload files to.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "huggingface path in repo",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "HuggingFace Upload"
+     ]
+    },
+    "save_state_to_huggingface": {
+     "cls": "Checkbox",
+     "label": "Save state to huggingface",
+     "info": "Upload training state/checkpoints to Hugging Face after save.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "HuggingFace Upload"
+     ]
+    },
+    "resume_from_huggingface": {
+     "cls": "Textbox",
+     "label": "Resume from huggingface",
+     "info": "Optional HF resume spec. Leave empty for local resume. Local filesystem paths belong in 'Resume Training State'.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "resume from huggingface",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "HuggingFace Upload"
+     ]
+    },
+    "async_upload": {
+     "cls": "Checkbox",
+     "label": "Async upload",
+     "info": "Upload to Hugging Face asynchronously to avoid blocking training.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "HuggingFace Upload"
+     ]
+    }
+   }
+  },
   "hidream_o1": {
    "module": "musubi_tuner_gui.image_models_gui",
    "keys": [
@@ -43828,6 +46676,530 @@
    "network_module": {
     "type": "str",
     "default": "musubi_tuner.networks.lora_mage_flow"
+   },
+   "network_dim": {
+    "type": "int",
+    "default": null
+   },
+   "network_alpha": {
+    "type": "float",
+    "default": 1
+   },
+   "network_dropout": {
+    "type": "float",
+    "default": null
+   },
+   "network_args": {
+    "type": "str",
+    "default": null,
+    "nargs": "*"
+   },
+   "training_comment": {
+    "type": "str",
+    "default": null
+   },
+   "dim_from_weights": {
+    "type": "bool",
+    "default": false
+   },
+   "scale_weight_norms": {
+    "type": "float",
+    "default": null
+   },
+   "base_weights": {
+    "type": "str",
+    "default": null,
+    "nargs": "*"
+   },
+   "base_weights_multiplier": {
+    "type": "float",
+    "default": null,
+    "nargs": "*"
+   },
+   "output_dir": {
+    "type": "str",
+    "default": "output"
+   },
+   "output_name": {
+    "type": "str",
+    "default": null
+   },
+   "resume": {
+    "type": "str",
+    "default": null
+   },
+   "save_precision": {
+    "type": "str",
+    "default": null,
+    "choices": [
+     "float",
+     "fp32",
+     "fp16",
+     "bf16"
+    ]
+   },
+   "save_every_n_epochs": {
+    "type": "int",
+    "default": null
+   },
+   "save_last_n_epochs": {
+    "type": "int",
+    "default": null
+   },
+   "save_every_n_steps": {
+    "type": "int",
+    "default": null
+   },
+   "save_last_n_steps": {
+    "type": "int",
+    "default": null
+   },
+   "save_last_n_epochs_state": {
+    "type": "int",
+    "default": null
+   },
+   "save_last_n_steps_state": {
+    "type": "int",
+    "default": null
+   },
+   "save_state": {
+    "type": "bool",
+    "default": false
+   },
+   "save_state_on_train_end": {
+    "type": "bool",
+    "default": false
+   },
+   "metadata_author": {
+    "type": "str",
+    "default": null
+   },
+   "metadata_description": {
+    "type": "str",
+    "default": null
+   },
+   "metadata_license": {
+    "type": "str",
+    "default": null
+   },
+   "metadata_tags": {
+    "type": "str",
+    "default": null
+   },
+   "metadata_title": {
+    "type": "str",
+    "default": null
+   },
+   "metadata_reso": {
+    "type": "str",
+    "default": null
+   },
+   "metadata_arch": {
+    "type": "str",
+    "default": null
+   },
+   "huggingface_repo_id": {
+    "type": "str",
+    "default": null
+   },
+   "huggingface_token": {
+    "type": "str",
+    "default": null
+   },
+   "huggingface_repo_type": {
+    "type": "str",
+    "default": null
+   },
+   "huggingface_repo_visibility": {
+    "type": "str",
+    "default": null
+   },
+   "huggingface_path_in_repo": {
+    "type": "str",
+    "default": null
+   },
+   "save_state_to_huggingface": {
+    "type": "bool",
+    "default": false
+   },
+   "resume_from_huggingface": {
+    "type": "bool",
+    "default": false
+   },
+   "async_upload": {
+    "type": "bool",
+    "default": false
+   }
+  },
+  "flux3_klein": {
+   "mixed_precision": {
+    "type": "str",
+    "default": null,
+    "choices": [
+     "no",
+     "fp16",
+     "bf16"
+    ]
+   },
+   "dynamo_backend": {
+    "type": "str",
+    "default": "NO",
+    "choices": [
+     "NO",
+     "EAGER",
+     "AOT_EAGER",
+     "INDUCTOR",
+     "AOT_TS_NVFUSER",
+     "NVPRIMS_NVFUSER",
+     "CUDAGRAPHS",
+     "OFI",
+     "FX2TRT",
+     "ONNXRT",
+     "TENSORRT",
+     "AOT_TORCHXLA_TRACE_ONCE",
+     "TORCHXLA_TRACE_ONCE",
+     "TVM",
+     "HPU_BACKEND",
+     "NEURON"
+    ]
+   },
+   "dynamo_mode": {
+    "type": "str",
+    "default": null,
+    "choices": [
+     "default",
+     "reduce-overhead",
+     "max-autotune"
+    ]
+   },
+   "dataset_config": {
+    "type": "custom:Path",
+    "default": null
+   },
+   "dit": {
+    "type": "str",
+    "default": null
+   },
+   "vae": {
+    "type": "str",
+    "default": null
+   },
+   "text_encoder": {
+    "type": "str",
+    "default": null
+   },
+   "vae_dtype": {
+    "type": "str",
+    "default": null
+   },
+   "fp8_base": {
+    "type": "bool",
+    "default": false
+   },
+   "fp8_scaled": {
+    "type": "bool",
+    "default": false
+   },
+   "disable_numpy_memmap": {
+    "type": "bool",
+    "default": false
+   },
+   "blocks_to_swap": {
+    "type": "int",
+    "default": null
+   },
+   "use_pinned_memory_for_block_swap": {
+    "type": "bool",
+    "default": false
+   },
+   "block_swap_h2d_only": {
+    "type": "bool",
+    "default": false
+   },
+   "block_swap_ring_size": {
+    "type": "int",
+    "default": 2
+   },
+   "compile": {
+    "type": "bool",
+    "default": false
+   },
+   "compile_backend": {
+    "type": "str",
+    "default": "inductor"
+   },
+   "compile_mode": {
+    "type": "str",
+    "default": "default",
+    "choices": [
+     "default",
+     "reduce-overhead",
+     "max-autotune",
+     "max-autotune-no-cudagraphs"
+    ]
+   },
+   "compile_dynamic": {
+    "type": "str",
+    "default": null,
+    "choices": [
+     "true",
+     "false",
+     "auto"
+    ]
+   },
+   "compile_fullgraph": {
+    "type": "bool",
+    "default": false
+   },
+   "compile_cache_size_limit": {
+    "type": "int",
+    "default": null
+   },
+   "timestep_sampling": {
+    "type": "str",
+    "default": "sigma",
+    "choices": [
+     "sigma",
+     "uniform",
+     "uniform_shift",
+     "sigmoid",
+     "shift",
+     "flux_shift",
+     "flux2_shift",
+     "ideogram4_shift",
+     "qwen_shift",
+     "krea2_shift",
+     "logsnr",
+     "qinglong_flux",
+     "qinglong_qwen",
+     "shifted_logit_normal"
+    ]
+   },
+   "weighting_scheme": {
+    "type": "str",
+    "default": "none",
+    "choices": [
+     "logit_normal",
+     "mode",
+     "cosmap",
+     "sigma_sqrt",
+     "none"
+    ]
+   },
+   "discrete_flow_shift": {
+    "type": "float",
+    "default": 1.0
+   },
+   "sigmoid_scale": {
+    "type": "float",
+    "default": 1.0
+   },
+   "mode_scale": {
+    "type": "float",
+    "default": 1.29
+   },
+   "min_timestep": {
+    "type": "int",
+    "default": null
+   },
+   "max_timestep": {
+    "type": "int",
+    "default": null
+   },
+   "sdpa": {
+    "type": "bool",
+    "default": false
+   },
+   "flash_attn": {
+    "type": "bool",
+    "default": false
+   },
+   "sage_attn": {
+    "type": "bool",
+    "default": false
+   },
+   "xformers": {
+    "type": "bool",
+    "default": false
+   },
+   "split_attn": {
+    "type": "bool",
+    "default": false
+   },
+   "use_legacy_sdpa": {
+    "type": "bool",
+    "default": false
+   },
+   "max_train_steps": {
+    "type": "int",
+    "default": 1600
+   },
+   "max_train_epochs": {
+    "type": "int",
+    "default": null
+   },
+   "max_data_loader_n_workers": {
+    "type": "int",
+    "default": 8
+   },
+   "persistent_data_loader_workers": {
+    "type": "bool",
+    "default": false
+   },
+   "seed": {
+    "type": "int",
+    "default": null
+   },
+   "gradient_checkpointing": {
+    "type": "bool",
+    "default": false
+   },
+   "gradient_checkpointing_cpu_offload": {
+    "type": "bool",
+    "default": false
+   },
+   "gradient_accumulation_steps": {
+    "type": "int",
+    "default": 1
+   },
+   "full_bf16": {
+    "type": "bool",
+    "default": false
+   },
+   "full_fp16": {
+    "type": "bool",
+    "default": false
+   },
+   "logging_dir": {
+    "type": "str",
+    "default": null
+   },
+   "log_with": {
+    "type": "str",
+    "default": null,
+    "choices": [
+     "tensorboard",
+     "wandb",
+     "all"
+    ]
+   },
+   "log_prefix": {
+    "type": "str",
+    "default": null
+   },
+   "log_tracker_name": {
+    "type": "str",
+    "default": null
+   },
+   "wandb_run_name": {
+    "type": "str",
+    "default": null
+   },
+   "log_tracker_config": {
+    "type": "str",
+    "default": null
+   },
+   "wandb_api_key": {
+    "type": "str",
+    "default": null
+   },
+   "log_config": {
+    "type": "bool",
+    "default": false
+   },
+   "ddp_timeout": {
+    "type": "int",
+    "default": null
+   },
+   "ddp_gradient_as_bucket_view": {
+    "type": "bool",
+    "default": false
+   },
+   "ddp_static_graph": {
+    "type": "bool",
+    "default": false
+   },
+   "sample_every_n_steps": {
+    "type": "int",
+    "default": null
+   },
+   "sample_every_n_epochs": {
+    "type": "int",
+    "default": null
+   },
+   "sample_at_first": {
+    "type": "bool",
+    "default": false
+   },
+   "sample_prompts": {
+    "type": "str",
+    "default": null
+   },
+   "optimizer_type": {
+    "type": "str",
+    "default": ""
+   },
+   "optimizer_args": {
+    "type": "str",
+    "default": null,
+    "nargs": "*"
+   },
+   "learning_rate": {
+    "type": "float",
+    "default": 2e-06
+   },
+   "max_grad_norm": {
+    "type": "float",
+    "default": 1.0
+   },
+   "lr_scheduler": {
+    "type": "str",
+    "default": "constant"
+   },
+   "lr_warmup_steps": {
+    "type": "custom:_int_or_float",
+    "default": 0
+   },
+   "lr_decay_steps": {
+    "type": "custom:_int_or_float",
+    "default": 0
+   },
+   "lr_scheduler_num_cycles": {
+    "type": "int",
+    "default": 1
+   },
+   "lr_scheduler_power": {
+    "type": "float",
+    "default": 1
+   },
+   "lr_scheduler_timescale": {
+    "type": "int",
+    "default": null
+   },
+   "lr_scheduler_min_lr_ratio": {
+    "type": "float",
+    "default": null
+   },
+   "lr_scheduler_type": {
+    "type": "str",
+    "default": ""
+   },
+   "lr_scheduler_args": {
+    "type": "str",
+    "default": null,
+    "nargs": "*"
+   },
+   "no_metadata": {
+    "type": "bool",
+    "default": false
+   },
+   "network_weights": {
+    "type": "str",
+    "default": null
+   },
+   "network_module": {
+    "type": "str",
+    "default": null
    },
    "network_dim": {
     "type": "int",

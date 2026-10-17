@@ -31,6 +31,7 @@ TRAINING_SCRIPTS: dict[str, dict[str, str]] = {
     "ideogram4": {"lora": "musubi_tuner.ideogram4_train_network", "full": "musubi_tuner.ideogram4_train"},
     "ernie_image": {"lora": "musubi_tuner.ernie_image_train_network"},
     "mage_flow": {"lora": "musubi_tuner.mage_flow_train_network"},
+    "flux3_klein": {"lora": "musubi_tuner.flux_3_train_network"},
     "hidream_o1": {"lora": "musubi_tuner.hidream_o1_train_network", "full": "musubi_tuner.hidream_o1_train"},
     "wan": {"lora": "musubi_tuner.wan_train_network"},
     "ltx2": {"lora": "musubi_tuner.ltx2_train_network", "full": "musubi_tuner.ltx2_train"},

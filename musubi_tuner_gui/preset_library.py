@@ -45,6 +45,7 @@ FAMILY_NAMES = {
     "FLUX 2": "FLUX.2 Dev",
     "FLUX Klein 9B": "FLUX.2 Klein 9B",
     "FLUX Klein 4B": "FLUX.2 Klein 4B",
+    "FLUX 3 Klein": "FLUX.3 Klein",
     "Wan 21": "Wan 2.1",
     "Wan22": "Wan 2.2",
     "Z Image Base": "Z-Image Base",

@@ -262,6 +262,19 @@ def _mage_validate(params: dict, full_finetune: bool) -> None:
         raise ValueError("Mage-Flow rejects plain FP8 Base; enable Scaled FP8 together with FP8 Base.")
 
 
+def _flux3_latent_args(params: dict) -> list[str]:
+    return ["--vae", str(params["vae"])]  # the FLUX.2 VAE runs in float32 for caching, as in BFL's reference
+
+
+def _flux3_text_args(params: dict) -> list[str]:
+    return [
+        "--text_encoder",
+        str(params["text_encoder"]),
+        "--text_encoder_dtype",
+        str(params.get("caching_teo_text_encoder_dtype") or "bfloat16"),
+    ]
+
+
 def _hidream_latent_args(params: dict) -> list[str]:
     return []  # pixel-space model: the pixel cache needs no VAE
 
@@ -460,6 +473,58 @@ MAGE_FLOW = ImageArchSpec(
     build_latent_cache_args=_mage_latent_args,
     build_text_cache_args=_mage_text_args,
     validate=_mage_validate,
+)
+
+FLUX_3_KLEIN = ImageArchSpec(
+    key="flux3_klein",
+    display_name="FLUX.3 Klein",
+    slug="flux3_klein",
+    network_module="networks.lora_flux_3",
+    train_script="flux_3_train_network.py",
+    full_train_script=None,
+    latent_cache_script="flux_3_cache_latents.py",
+    text_cache_script="flux_3_cache_text_encoder_outputs.py",
+    model_folder="Training_Models_FLUX_3_Klein",
+    model_paths=(
+        ModelPath(
+            "dit",
+            "FLUX.3 Klein Base DiT",
+            "flux3-image-klein-base-bf16.safetensors",
+            "The undistilled BF16 base model. The 16-step distilled and the quantized files cannot train; LoRAs trained on the base work with both.",
+            frozenset({"train"}),
+        ),
+        ModelPath("vae", "FLUX.2 VAE", "flux3_bfl_flux2-vae.safetensors", "FLUX.3 uses the FLUX.2 VAE. Needed for latent caching and samples.", frozenset({"latent", "sample"})),
+        ModelPath("text_encoder", "Qwen3-VL 4B Text Encoder", "qwen3vl_4b_bf16.safetensors", "BF16 Qwen3-VL-4B-Instruct (the same file as Krea 2). Needed for text caching and samples.", frozenset({"text", "sample"})),
+    ),
+    max_blocks_to_swap=26,  # 28 joint blocks; backward needs 2 resident (the five early blocks per stream stay resident)
+    max_blocks_to_swap_full=26,
+    preset_folders=("FLUX_3_Klein_Training_Configs",),
+    download_bundles=("flux3_klein",),
+    supports_control_images=True,
+    control_label="Use reference images (FLUX.3 Klein editing, 1+ ordered references per target)",
+    extras=(
+        ExtraOption("caching_teo_text_encoder_dtype", "dropdown", "Text Encoder Dtype", "bfloat16", "caching", "Use float32 only for CPU caching.", choices=("bfloat16", "float32"), runtime=False),
+    ),
+    defaults={
+        "timestep_sampling": "shift",
+        "weighting_scheme": "none",
+        "discrete_flow_shift": 6.93,  # BFL's static sampler shift (ComfyUI: mu = ln 6.93), used by ai-toolkit for training
+        "sigmoid_scale": 1.0,
+        "sample_steps": 50,
+        "sample_cfg_scale": 3.5,  # the base model's reference sampler: 50 steps, guidance 3.5, empty negative
+        "sample_negative_prompt": "",
+        "max_train_epochs": 200,
+        "save_every_n_epochs": 25,
+    },
+    lora_defaults=COMMON_LORA_DEFAULTS,
+    gui_only_keys=frozenset({"caching_teo_text_encoder_dtype"}),
+    notes=(
+        "Black Forest Labs FLUX.3 Klein (5.4B single-sequence DiT, Qwen3-VL 4B text encoder, FLUX.2 VAE). LoRA "
+        "training on the undistilled base model; the LoRA also loads on the 16-step distilled model in ComfyUI "
+        "and SwarmUI. Enable reference images to train editing LoRAs. Timesteps use BFL's static shift 6.93."
+    ),
+    build_latent_cache_args=_flux3_latent_args,
+    build_text_cache_args=_flux3_text_args,
 )
 
 HIDREAM_O1 = ImageArchSpec(
@@ -668,7 +733,7 @@ KANDINSKY_6 = ImageArchSpec(
 )
 
 ARCHITECTURES: dict[str, ImageArchSpec] = {
-    spec.key: spec for spec in (QWEN_IMAGE_21, ERNIE_IMAGE, MAGE_FLOW, HIDREAM_O1, KANDINSKY_6)
+    spec.key: spec for spec in (QWEN_IMAGE_21, ERNIE_IMAGE, MAGE_FLOW, FLUX_3_KLEIN, HIDREAM_O1, KANDINSKY_6)
 }
 
 
@@ -2382,6 +2447,10 @@ def ernie_image_tab(headless: bool = False, config: GUIConfig | dict = {}):
 
 def mage_flow_tab(headless: bool = False, config: GUIConfig | dict = {}):
     return image_model_tab("mage_flow", headless=headless, config=config)
+
+
+def flux3_klein_tab(headless: bool = False, config: GUIConfig | dict = {}):
+    return image_model_tab("flux3_klein", headless=headless, config=config)
 
 
 def hidream_o1_tab(headless: bool = False, config: GUIConfig | dict = {}):

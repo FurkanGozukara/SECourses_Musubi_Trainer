@@ -20,6 +20,7 @@ TAB_DEFAULT_FILES = {
     "qwen_image_21": None,
     "ernie_image": None,
     "mage_flow": None,
+    "flux3_klein": None,
     "hidream_o1": None,
     "kandinsky6": None,
     "musubi_tuner": "musubi_tuner_defaults.toml",

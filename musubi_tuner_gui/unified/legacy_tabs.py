@@ -124,6 +124,18 @@ LEGACY_BACKENDS: dict[str, LegacyBackend] = {
             defaults_tab="mage_flow",
         ),
         LegacyBackend(
+            "flux3_klein",
+            "FLUX.3 Klein",
+            "musubi_tuner_gui.image_models_gui",
+            "gui_actions",
+            "train_model",
+            "musubi_tuner_gui.image_models_gui",
+            "flux3_klein_tab",
+            spec_key="flux3_klein",
+            executor_style="dict",
+            defaults_tab="flux3_klein",
+        ),
+        LegacyBackend(
             "hidream_o1",
             "HiDream-O1",
             "musubi_tuner_gui.image_models_gui",

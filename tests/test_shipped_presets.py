@@ -19,6 +19,7 @@ FOLDERS = {
     "ERNIE_Image_Training_Configs": ("image_models", "ernie_image"),
     "Mage_Flow_Training_Configs": ("image_models", "mage_flow"),
     "Mage_Flow_Edit_Training_Configs": ("image_models", "mage_flow"),
+    "FLUX_3_Klein_Training_Configs": ("image_models", "flux3_klein"),
     "HiDream_O1_Training_Configs": ("image_models", "hidream_o1"),
     "Kandinsky_6_Training_Configs": ("image_models", "kandinsky6"),
     "LTX_2.3_Training_Configs": ("ltx2", None),

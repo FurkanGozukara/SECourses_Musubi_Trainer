@@ -53,7 +53,7 @@ def test_schema_matches_the_trainer_modules():
         "minimax_h3": list(minimax_h3_lora_gui.MINIMAX_H3_PARAM_KEYS),
         "qwen_image": list(inspect.signature(qwen_image_lora_gui.qwen_image_gui_actions).parameters)[5:],
     }
-    for spec_key in ("qwen_image_21", "ernie_image", "mage_flow", "hidream_o1", "kandinsky6"):
+    for spec_key in ("qwen_image_21", "ernie_image", "mage_flow", "flux3_klein", "hidream_o1", "kandinsky6"):
         expected[spec_key] = image_models_gui.param_keys(image_models_gui.ARCHITECTURES[spec_key])
     for name, keys in expected.items():
         assert legacy_keys(name) == keys, f"{name}: legacy_schema.json is stale — run tools/generate_unified_schema.py"
