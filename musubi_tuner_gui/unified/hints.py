@@ -307,9 +307,11 @@ MODEL_HINTS: dict[str, dict] = {
             "Up to 40 blocks can be swapped; two blocks always stay on the GPU.",
         ],
         "lora": [
-            "No presets yet: the defaults load rank 128 with AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25.",
+            "Presets: DoRA rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs; the 6 GB tier trains 768 px at rank 32 with activation CPU offload.",
+            "The 24 and 32 GB presets cache the text encoder on the GPU (15.4 GB caching peak); 16 GB and smaller cache it on the CPU.",
+            "1.65 s/step on an RTX 5090 without block swap; 1.80, 1.87 and 1.97 s/step with 20, 30 and 39 swapped blocks.",
         ],
-        "vram": "No presets yet, so no measured VRAM; the defaults train without block swap.",
+        "vram": "24 and 32 GB train without block swap (14.0 GB); 16 GB too, with text caching on the CPU (14.1 GB); 12, 10 and 8 GB swap 20, 30 and 39 blocks (H2D-only, 10.3, 8.2 and 6.3 GB); 6 GB swaps 35 blocks at 768 px (4.3 GB).",
         "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions.",
     },
     "mage_flow": {

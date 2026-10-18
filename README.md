@@ -21,6 +21,7 @@
 - **🌌 MOSS-Image training (new model)** — LoRA / DoRA on OpenMOSS MOSS-Image (5B, Qwen3.5-9B text encoder, FLUX.2 VAE), Base or SFT.
   - The trained file loads in ComfyUI and SwarmUI on Base and SFT, BF16 and INT8 ConvRot (checked with ComfyUI's own LoRA loader).
   - Uses the INT8 ConvRot Qwen3.5 text encoder SwarmUI already downloads; downloader entries 30 (Base) and 31 (SFT).
+  - GPU presets for 6 to 32 GB GPUs (DoRA rank 128 at 1024 px from 8 GB; 768 px rank 32 at 6 GB), measured on an RTX 5090: no block swap from 16 GB, 1.65 s/step.
 - **🏆 Best Checkpoint Finder (image and video models)**: no more comparing sample grids by eye to pick a checkpoint.
   - Turn it on in its section, keep or edit the test prompts (preset from our `Grid_Find_Best_Checkpoint` tutorial prompts; add, change or delete any), set your subject (trigger word and class, read from your `10_ohwx man` folder with one click) and press Start.
   - The run renders the prompts with the base model before training and at every checkpoint save, with the same seeds. When training ends, every checkpoint is scored with local models: likeness to your training photos (face recognition; image similarity for subjects without faces), prompt following, variety between prompts, and over-training signs such as copies of training photos, colour or sharpness drift, and the subject appearing in prompts without its trigger.
