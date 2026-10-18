@@ -424,7 +424,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Clips with an audio track or a same-stem .wav also train audio; a video-only LoRA can degrade H3's audio quality.",
             "Teacher matching (T2VA only) replaces the guidance loss; the two cannot be enabled together.",
         ],
-        "vram": "At 124 frames: 512 px on 32 GB (30 GB peak), 384 px on 24 GB (21.7 GB), 256 px on 16 GB (14.4 GB) with H2D-only block swap; 256 px at rank 64 on 12 and 10 GB (9.5 and 8.2 GB, block swap 45 and 48); up to 48 of 50 blocks swap; 64 GB system RAM recommended.",
+        "vram": "At 124 frames: 512 px on 32 GB (30 GB peak), 384 px on 24 GB (21.7 GB), 256 px on 16 GB (14.4 GB) with H2D-only block swap; 256 px at rank 64 on 12 and 10 GB (9.5 and 8.4 GB, block swap 45 and 48); up to 48 of 50 blocks swap; 64 GB system RAM recommended.",
         "dataset": "Videos only (image folders are skipped), 17n+5 frames (default 124), sides in 32 px steps, normalized to 24 fps, one .txt caption per clip.",
     },
     "kandinsky6": {
