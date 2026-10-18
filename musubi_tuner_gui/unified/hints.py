@@ -198,7 +198,7 @@ MODEL_HINTS: dict[str, dict] = {
         ],
         "lora": [
             "Keep the training adapter (zimage_turbo_training_adapter_v2 from the Turbo bundle) at Training Adapter Strength 1.0; it is applied as base weights.",
-            "LoRA presets: rank 128, AdaFactor LR 1e-5 (Base uses 6e-5), unquantized BF16 base, 200 epochs, a checkpoint every 25; 1536 px on 32 to 12 GB, 1024 px with activation CPU offload on 10 and 8 GB, 512 px at rank 32 on 6 GB.",
+            "LoRA presets: rank 128, AdaFactor LR 4e-5 (Base uses 6e-5), unquantized BF16 base, 200 epochs, a checkpoint every 25; 1536 px on 32 to 12 GB, 1024 px with activation CPU offload on 10 and 8 GB, 512 px at rank 32 on 6 GB.",
         ],
         "full": [
             "No measured Z-Image Turbo fine-tuning preset yet: the defaults load AdamW8bit at LR 1e-4 with Fused Backward Pass and Full BF16 Training off, and empty model file fields.",
@@ -251,7 +251,7 @@ MODEL_HINTS: dict[str, dict] = {
             "With block swap, the i2i task or FlashAttention requires a dataset batch size of 1.",
         ],
         "lora": [
-            "LoRA presets: rank 128, AdaFactor LR 4e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs.",
+            "LoRA presets: rank 128, AdaFactor LR 8e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs.",
             "The 32 GB preset turns off gradient checkpointing for speed (about 0.56 s/step on an RTX 5090).",
             "For i2i LoRAs, add network args conv_dim=4 conv_alpha=1 if the visual conv layers should adapt too.",
         ],
@@ -377,7 +377,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Wan trains LoRAs only; the installed backend has no full-DiT Wan script.",
         ],
         "lora": [
-            "T2V 14B presets: rank 128, AdaFactor LR 6e-5, 960x960, sigma timesteps, flow shift 5, 200 epochs, a checkpoint every 10.",
+            "T2V 14B presets: rank 128, AdaFactor LR 1.2e-4, 960x960, sigma timesteps, flow shift 5, 200 epochs, a checkpoint every 10.",
             "The presets were measured on image datasets; video clips need more VRAM than the listed peaks.",
             "10 GB and 8 GB tiers drop to rank 64 / 32 with activation CPU offload (8 GB also trains at 768 px).",
         ],
@@ -393,7 +393,7 @@ MODEL_HINTS: dict[str, dict] = {
             "First-frame conditioning probability 0.1 (default) keeps frame 0 clean on some steps for image-to-video use; 0 trains pure text-to-video.",
         ],
         "lora": [
-            "LoRA presets: rank 128, AdaFactor LR 1e-4, 768x512, 33 frames, INT8 ConvRot base, 200 epochs, a checkpoint every 25; no block swap on 24 and 32 GB.",
+            "LoRA presets: rank 128, AdaFactor LR 5e-5, 768x512, 33 frames, INT8 ConvRot base, 200 epochs, a checkpoint every 25; no block swap on 24 and 32 GB.",
             "Choose one base quantization: INT8 ConvRot (the presets' choice), FP8 Scaled, or NF4 (lowest VRAM and lowest fidelity).",
             "Video only builds a video-only transformer, so its LoRAs leave audio untouched; in Audio + Video, video_* target presets do the same.",
             "LoRAs are saved in musubi and ComfyUI (.comfy.safetensors) formats by default.",
@@ -454,7 +454,7 @@ MODEL_HINTS: dict[str, dict] = {
             "The LTX 2.3 checkpoint supplies the audio VAE and vocoder; the Gemma 3 12B text encoder is still needed for text caching.",
         ],
         "lora": [
-            "No presets yet: the defaults load rank 128 with AdaFactor LR 1e-4 (the pair the LTX 2.3 video LoRA presets use), INT8 ConvRot base, block swap 20, 100 epochs, a checkpoint every 10.",
+            "No presets yet: the defaults load rank 128 with AdaFactor LR 1e-4, INT8 ConvRot base, block swap 20, 100 epochs, a checkpoint every 10.",
             "Keep the LoRA target preset on audio: it trains only the audio attention and FFN layers.",
         ],
         "full": [

@@ -380,6 +380,32 @@ def test_tips_without_presets_name_the_defaults_that_load(entry, mode):
             assert str(values["optimizer_type"]).casefold() == optimizer.casefold(), f"{entry.key} {mode}: optimizer {values['optimizer_type']}"
 
 
+PRESET_TIP = re.compile(r"\bpresets?\b", re.I)
+
+
+@pytest.mark.skipif(not HAVE_PRESETS, reason="no shipped presets next to the app")
+@pytest.mark.parametrize("entry,mode", [case for case in CASES if not case.values[0].is_kohya])
+def test_preset_tips_quote_a_rate_the_presets_train_at(entry, mode):
+    """A tip on the shipped presets of a training type quotes a learning rate those presets use (the 2026-10-18 rate
+    changes: Z-Image Turbo, HiDream-O1, LTX 2.3 and Wan 2.1)."""
+    presets = P.shipped_presets(entry, mode)
+    if not presets:
+        return
+    rates = set()
+    for item in presets:
+        with open(item.path, encoding="utf-8-sig") as handle:
+            match = re.search(r"(?m)^learning_rate\s*=\s*([0-9.eE+-]+)", handle.read())
+        if match:
+            rates.add(float(match.group(1)))
+    for scope, text in _texts(entry, mode):
+        if scope != mode or not PRESET_TIP.search(text) or NO_PRESET.search(text):
+            continue
+        for number in re.findall(r"\bLR\s+(\d+(?:\.\d+)?(?:e-?\d+)?)", text):
+            assert any(float(number) == pytest.approx(rate) for rate in rates), (
+                f"{entry.key} {mode}: the presets train at {sorted(rates)}, the tip says LR {number}: {text}"
+            )
+
+
 def _measured_values(entry) -> set[float]:
     """Every number in the entry's preset file names, their header comments and README files."""
     found: set[float] = set()
