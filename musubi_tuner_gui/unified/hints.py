@@ -380,9 +380,9 @@ MODEL_HINTS: dict[str, dict] = {
         "lora": [
             "T2V 14B presets: rank 128, AdaFactor LR 1.2e-4, 960x960, sigma timesteps, flow shift 5, 200 epochs, a checkpoint every 10.",
             "The presets were measured on image datasets; video clips need more VRAM than the listed peaks.",
-            "10 GB and 8 GB tiers drop to rank 64 / 32 with activation CPU offload (8 GB also trains at 768 px).",
+            "10 GB and 8 GB tiers drop to rank 64 / 32 with activation CPU offload (8 GB also trains at 512 px).",
         ],
-        "vram": "T2V 14B: 29.2 GB with block swap 9 on 32 GB down to 6.5 GB (768 px, rank 32, block swap 36) on 8 GB.",
+        "vram": "T2V 14B: 29.2 GB with block swap 9 on 32 GB down to 4.9 GB (512 px, rank 32, block swap 38) on 8 GB.",
         "dataset": "Images, 16 fps videos or both at 960x960 (or 1280x720 / 720x1280), 4n+1 frames (81 = about 5 s), each with a same-name .txt caption; image-only folders work too.",
     },
     "ltx23": {
@@ -449,7 +449,7 @@ MODEL_HINTS: dict[str, dict] = {
             "The fine-tuned DiT is saved as one .safetensors file with the model's own keys, which loads as the DiT for more training or for samples.",
         ],
         "vram": {
-            "lora": "24/32 GB: 864x480 at 121 frames (22.4 GB peak); 16 GB: 864x480 with block swap 17 (14.3 GB); 12 and 10 GB: 640x352 at 121 frames; 8 GB: 512x288 at 97 frames; 6 GB: 512x288 at 49 frames (4.3 GB); Lite swaps at most 30 blocks.",
+            "lora": "32 GB: 864x480 at 121 frames without block swap (22.4 GB peak), 24 GB with block swap 10 (22.3 GB); 16 GB: 864x480 with block swap 25 and activation CPU offload (14.2 GB); 12 GB: 640x352 at 121 frames; 10 and 8 GB: 512x288 at 97 frames; 6 GB: 512x288 at 49 frames (4.3 GB); Lite swaps at most 30 blocks.",
             "full": "Lite swaps at most 30 of its 32 blocks, Pro 58 of 60.",
         },
         "dataset": "Clips with sound at 864x480 (16 px steps), 4n+1 frames (121 = about 5 s at 24 fps), images, or both in one folder, each with a same-name .txt caption.",
