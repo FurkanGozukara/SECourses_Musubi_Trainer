@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-18T01:36:20",
+ "generated": "2026-10-20T04:13:28",
  "gradio": "6.30.0",
  "backends": {
   "qwen_image": {
@@ -27576,7 +27576,7 @@
      "cls": "Number",
      "label": "Discrete Flow Shift",
      "info": "Used by 'shift' and 'uniform_shift'.",
-     "value": 5.0,
+     "value": 3.0,
      "minimum": null,
      "maximum": null,
      "step": 0.1,

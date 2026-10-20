@@ -574,7 +574,9 @@ MOSS_IMAGE = ImageArchSpec(
     defaults={
         "timestep_sampling": "shift",
         "weighting_scheme": "none",
-        "discrete_flow_shift": 5.0,  # the vendor's sampler shift (ComfyUI's model sampling), also ai-toolkit's training shift
+        # training timestep shift 3: about MOSS's pre-training distribution (kohya's MOSS guide); one save cleaner than 5 on two
+        # training seeds (2026-10-19). Samples keep the vendor's shift 5 (the trainer's sample default).
+        "discrete_flow_shift": 3.0,
         "sigmoid_scale": 1.0,
         "sample_steps": 50,
         "sample_cfg_scale": 3.0,  # the vendor's sampler: 50 steps, CFG 3, its negative branch skipping block 22, empty negative
@@ -586,8 +588,8 @@ MOSS_IMAGE = ImageArchSpec(
     gui_only_keys=frozenset({"caching_teo_text_encoder_dtype"}),
     notes=(
         "OpenMOSS MOSS-Image (5B DiT, Qwen3.5-9B text encoder, FLUX.2 VAE). LoRA training on the BF16 Base or SFT "
-        "model; the LoRA loads on Base and SFT, BF16 or INT8 ConvRot, in ComfyUI and SwarmUI. Timesteps use the vendor's "
-        "shift 5; samples use its sampler (50 steps, CFG 3)."
+        "model; the LoRA loads on Base and SFT, BF16 or INT8 ConvRot, in ComfyUI and SwarmUI. Training timesteps use shift 3 "
+        "(about the pre-training distribution); samples use the vendor's sampler (shift 5, 50 steps, CFG 3)."
     ),
     build_latent_cache_args=_flux3_latent_args,
     build_text_cache_args=_moss_text_args,

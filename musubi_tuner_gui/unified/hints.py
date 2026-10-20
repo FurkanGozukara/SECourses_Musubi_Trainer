@@ -301,7 +301,7 @@ MODEL_HINTS: dict[str, dict] = {
         "about": "OpenMOSS MOSS-Image, a 5B single-stream text-to-image DiT with the Qwen3.5-9B text encoder and the FLUX.2 VAE (LoRA training only).",
         "all": [
             "Train on the BF16 Base model (moss_image_base_bf16); the LoRA also loads on the SFT model and on the INT8 ConvRot files in ComfyUI and SwarmUI.",
-            "Timestep sampling shift with flow shift 5 is the vendor's own sampler shift.",
+            "Training uses timestep sampling shift with flow shift 3 (about MOSS's pre-training distribution): it kept the prompts one checkpoint longer than shift 5 on two training seeds; samples keep the vendor's shift 5.",
             "Training samples default to 50 steps at CFG 3 with an empty negative prompt; their negative branch skips block 22, as the vendor's sampler does.",
             "The text encoder is the INT8 ConvRot Qwen3.5-9B file SwarmUI downloads, read in BF16 for caching.",
             "Up to 40 blocks can be swapped; two blocks always stay on the GPU.",
