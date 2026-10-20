@@ -21,7 +21,8 @@ def _touch(path, content=b"x"):
 
 def _parameters(spec_key, tmp_path, **overrides):
     spec = m.get_spec(spec_key)
-    defaults = m.architecture_defaults(spec)
+    # a switch to Full Fine-Tuning loads the fine-tuning defaults (their optimizer is AdaFactor, as fused backward needs)
+    defaults = m.architecture_defaults(spec, overrides.get("training_mode") == FULL_FINE_TUNING_MODE)
     values = {}
     for item in spec.model_paths:
         target = tmp_path / "models" / item.filename
@@ -393,3 +394,22 @@ def test_training_mode_switch_applies_the_model_recipe():
     # back to LoRA: a fine-tuning LR is raised to the LoRA recipe, fused backward is switched off
     updates = m.training_mode_switch_updates(spec, LORA_TRAINING_MODE, "AdaFactor", 5e-6)
     assert updates[2]["value"] == spec.lora_defaults["learning_rate"] and updates[5]["value"] is False
+
+
+def test_kandinsky6_fine_tuning_runs_kandinsky6_train_with_the_ring_only_under_block_swap(tmp_path):
+    """Kandinsky 6 Fine-Tuning runs kandinsky6_train.py (BF16 DiT, fused AdaFactor); the trainable block-swap ring is
+    written to the run's settings only with block swap, and with pinned memory (its CPU copies are pinned). A saved
+    preset keeps the choice; ConvRot INT8 stays a LoRA option."""
+    spec = m.get_spec("kandinsky6")
+    full = dict(training_mode=FULL_FINE_TUNING_MODE, block_swap_trainable_ring=True, convrot_int8=True)
+    config_path = tmp_path / "run.toml"
+    workflow = m.prepare_workflow("kandinsky6", _parameters("kandinsky6", tmp_path, blocks_to_swap=0, **full), str(config_path), python_cmd="python")
+    data = toml.load(config_path)
+    assert any(part.endswith("kandinsky6_train.py") for part in workflow.train_command)
+    assert data["optimizer_type"] == "AdaFactor" and data["fused_backward_pass"] and data["full_bf16"]
+    assert data["block_swap_trainable_ring"] is False and "convrot_int8" not in data
+    m.prepare_workflow("kandinsky6", _parameters("kandinsky6", tmp_path, blocks_to_swap=8, use_pinned_memory_for_block_swap=False, **full), str(config_path), python_cmd="python")
+    data = toml.load(config_path)
+    assert data["block_swap_trainable_ring"] is True and data["use_pinned_memory_for_block_swap"] is True
+    _, saved = m.normalize_parameters(spec, _parameters("kandinsky6", tmp_path, blocks_to_swap=0, **full), validate_paths=False)
+    assert dict(saved)["block_swap_trainable_ring"] is True

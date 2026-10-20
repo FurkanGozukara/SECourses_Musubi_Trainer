@@ -142,7 +142,11 @@ ENTRIES: tuple[ModelEntry, ...] = (
         preset_folders=("MOSS_Image_Training_Configs",),
         badges=("New",),
         model_folder="Training_Models_MOSS_Image",
-        download_bundles=(("MOSS-Image Base models", "moss_image"), ("MOSS-Image SFT model", "moss_image_sft")),
+        download_bundles=(
+            ("MOSS-Image Base models", "moss_image"),
+            ("MOSS-Image SFT model", "moss_image_sft"),
+            ("MOSS-Image BF16 text encoder", "moss_image_te_bf16"),
+        ),
     ),
     ModelEntry(
         "qwen_image",
@@ -363,9 +367,8 @@ ENTRIES: tuple[ModelEntry, ...] = (
         VIDEO,
         "Kandinsky 6",
         "🎥",
-        "Kandinsky 6 video + audio (text or text+image to audio-video), LoRA.",
+        "Kandinsky 6 video + audio (text or text+image to audio-video), LoRA or full fine-tuning.",
         "kandinsky6",
-        modes=(LORA,),
         preset_folders=("Kandinsky_6_Training_Configs",),
         badges=("New", "🔊 Audio"),
         model_folder="Training_Models_Kandinsky_6",

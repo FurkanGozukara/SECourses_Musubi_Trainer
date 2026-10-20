@@ -304,7 +304,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Train on the BF16 Base model (moss_image_base_bf16); the LoRA also loads on the SFT model and on the INT8 ConvRot files in ComfyUI and SwarmUI.",
             "Training uses timestep sampling shift with flow shift 3 (about MOSS's pre-training distribution): it kept the prompts one checkpoint longer than shift 5 on two training seeds; samples keep the vendor's shift 5.",
             "Training samples default to 50 steps at CFG 3 with an empty negative prompt; their negative branch skips block 22, as the vendor's sampler does.",
-            "The text encoder is the INT8 ConvRot Qwen3.5-9B file SwarmUI downloads, read in BF16 for caching.",
+            "The text encoder is the INT8 ConvRot Qwen3.5-9B file SwarmUI downloads, read in BF16 for caching. The unquantized BF16 file (Model Files: MOSS-Image BF16 text encoder, a 19 GB download) loaded in 5 s instead of 49 s on an A6000 server, and its caption embeddings differ from the INT8 file's by about 3% (cosine 0.999): cache with the file you generate with.",
             "Up to 40 blocks can be swapped; two blocks always stay on the GPU.",
         ],
         "lora": [
@@ -442,7 +442,16 @@ MODEL_HINTS: dict[str, dict] = {
             "Video Only turns the audio loss off; Audio Loss Weight scales it for clips with real audio.",
             "ConvRot INT8 base (needs Triton) and FP8 Base are mutually exclusive; choose one base quantization.",
         ],
-        "vram": "24/32 GB: 864x480 at 121 frames (22.4 GB peak); 16 GB: 864x480 with block swap 17 (14.3 GB); 12 and 10 GB: 640x352 at 121 frames; 8 GB: 512x288 at 97 frames; 6 GB: 512x288 at 49 frames (4.3 GB); Lite swaps at most 30 blocks.",
+        "full": [
+            "No measured fine-tuning presets yet. Fine-Tuning trains every DiT weight in BF16 with fused-backward AdaFactor (max grad norm 0, LR 1e-5 by default); the video and audio VAEs and the text encoders stay frozen.",
+            "Trainable Block-Swap Ring streams the swapped blocks through reusable GPU buffers with pinned CPU copies, written back after each update (it turns Pinned Memory for Block Swap on); Frozen Blocks keeps the visual blocks you list unchanged.",
+            "ConvRot INT8 and FP8 bases are for LoRA: fine-tuning loads the BF16 transformer.",
+            "The fine-tuned DiT is saved as one .safetensors file with the model's own keys, which loads as the DiT for more training or for samples.",
+        ],
+        "vram": {
+            "lora": "24/32 GB: 864x480 at 121 frames (22.4 GB peak); 16 GB: 864x480 with block swap 17 (14.3 GB); 12 and 10 GB: 640x352 at 121 frames; 8 GB: 512x288 at 97 frames; 6 GB: 512x288 at 49 frames (4.3 GB); Lite swaps at most 30 blocks.",
+            "full": "Lite swaps at most 30 of its 32 blocks, Pro 58 of 60.",
+        },
         "dataset": "Clips with sound at 864x480 (16 px steps), 4n+1 frames (121 = about 5 s at 24 fps), images, or both in one folder, each with a same-name .txt caption.",
     },
     # ------------------------------------------------------------------ audio models

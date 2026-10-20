@@ -570,7 +570,7 @@ MOSS_IMAGE = ImageArchSpec(
     max_blocks_to_swap=40,  # 42 blocks; backward needs 2 resident
     max_blocks_to_swap_full=40,
     preset_folders=("MOSS_Image_Training_Configs",),
-    download_bundles=("moss_image", "moss_image_sft"),
+    download_bundles=("moss_image", "moss_image_sft", "moss_image_te_bf16"),
     supported_attention=frozenset({"sdpa"}),  # PyTorch attention, as the vendor (text masks)
     extras=(
         ExtraOption("caching_teo_text_encoder_dtype", "dropdown", "Text Encoder Dtype", "bfloat16", "caching", "Use float32 only for CPU caching.", choices=("bfloat16", "float32"), runtime=False),
@@ -587,6 +587,9 @@ MOSS_IMAGE = ImageArchSpec(
         "sample_negative_prompt": "",
         "max_train_epochs": 200,
         "save_every_n_epochs": 25,
+        # 8 captions per padded forward: 8.0 s instead of 62.7 s with the layer-streamed text encoder, 0.37 s instead of
+        # 1.33 s resident, the same accuracy (moss_utils.encode_prompts)
+        "caching_teo_batch_size": 8,
     },
     lora_defaults=COMMON_LORA_DEFAULTS,
     gui_only_keys=frozenset({"caching_teo_text_encoder_dtype"}),
@@ -727,7 +730,7 @@ KANDINSKY_6 = ImageArchSpec(
     slug="kandinsky6",
     network_module="networks.lora_kandinsky6",
     train_script="kandinsky6_train_network.py",
-    full_train_script=None,
+    full_train_script="kandinsky6_train.py",
     latent_cache_script="kandinsky6_cache_latents.py",
     text_cache_script="kandinsky6_cache_text_encoder_outputs.py",
     model_folder="Training_Models_Kandinsky_6",
@@ -752,8 +755,8 @@ KANDINSKY_6 = ImageArchSpec(
     extras=(
         ExtraOption("model_variant", "dropdown", "Model Variant", "auto", "model", "auto detects Lite/Pro from the DiT; lite allows 30 swapped blocks, pro 58.", choices=("auto", "lite", "pro")),
         ExtraOption("task", "dropdown", "Task", "t2av", "model", "t2av = text to video+audio; ti2av = first-frame conditioned (needs a JSONL dataset with control_path).", choices=("t2av", "ti2av")),
-        ExtraOption("convrot_int8", "checkbox", "ConvRot INT8 Base (LoRA)", False, "model", "Quantize the frozen DiT to ConvRot INT8 while loading (needs Triton). Not combinable with FP8."),
-        ExtraOption("convrot_int8_bwd", "dropdown", "ConvRot INT8 Backward", "bf16", "model", "bf16 = most accurate; int8 = faster gradients.", choices=("bf16", "int8")),
+        ExtraOption("convrot_int8", "checkbox", "ConvRot INT8 Base (LoRA)", False, "model", "Quantize the frozen DiT to ConvRot INT8 while loading (needs Triton). Not combinable with FP8.", lora_only=True),
+        ExtraOption("convrot_int8_bwd", "dropdown", "ConvRot INT8 Backward", "bf16", "model", "bf16 = most accurate; int8 = faster gradients.", choices=("bf16", "int8"), lora_only=True),
         ExtraOption("scheduler_scale", "number", "Scheduler Scale", 1.0, "schedule", "Shifted-uniform schedule scale applied to video and audio times.", step=0.1),
         ExtraOption("independent_time", "checkbox", "Independent Video/Audio Times", True, "schedule", "Sample separate diffusion times for video and audio (official default)."),
         ExtraOption("audio_loss_weight", "number", "Audio Loss Weight", 1.0, "schedule", "Scales the audio loss for clips cached with real audio.", step=0.05),
@@ -762,6 +765,18 @@ KANDINSKY_6 = ImageArchSpec(
         ExtraOption("max_length", "number", "Text Max Length", 1024, "caching", "Qwen2.5-VL token budget for captions.", minimum=64, step=1),
         ExtraOption("caching_teo_quantized_qwen", "checkbox", "NF4 Qwen for Text Caching", False, "caching", "bitsandbytes NF4 text encoder while caching (saves VRAM).", runtime=False),
         ExtraOption("caching_latent_vae_memory_gb", "number", "VAE Tiling Memory (GB)", 0, "caching", "Plan the video VAE's encode tiles for at most this much GPU memory; 0 = all free memory. Lower values cache latents with less VRAM (tiles are blended).", runtime=False, minimum=0, step=0.5),
+        ExtraOption(
+            "block_swap_trainable_ring",
+            "checkbox",
+            "Trainable Block-Swap Ring",
+            True,
+            "full",
+            "Fastest block swap for full fine-tuning: the swapped blocks keep pinned CPU copies and stream through reusable "
+            "GPU buffers, written back after each update (only with Blocks to Swap > 0; turns Pinned Memory for Block Swap on).",
+            full_only=True,
+        ),
+        ExtraOption("adafactor_triton", "checkbox", "Triton Adafactor", False, "full", "Triton kernels for the fused Adafactor update of BF16 matrices (needs Triton); other tensors use the standard update.", full_only=True),
+        ExtraOption("k6_freeze_blocks", "textbox", "Frozen Blocks", "", "full", "Visual blocks to keep frozen, e.g. 0-9,31 (Lite has 32, Pro 60); they are saved unchanged. Empty trains every block.", full_only=True),
     ),
     sample_flags=("w", "h", "f", "s", "d", "g", "n"),
     defaults={
@@ -793,11 +808,12 @@ KANDINSKY_6 = ImageArchSpec(
         "lr_scheduler": "constant",
         "max_grad_norm": 1.0,
     },
+    full_defaults={**COMMON_FULL_DEFAULTS, "learning_rate": 1e-5},
     gui_only_keys=frozenset({"caching_teo_quantized_qwen"}),
     notes=(
-        "Kandinsky 6 Lite/Pro (Oct 2026) jointly generates video with audio at 24 fps. Train t2av LoRAs from "
-        "clips with sound, or appearance LoRAs from images (cached as silent one-frame videos). Frame counts "
-        "must be 4n+1; 121 frames is about 5 seconds."
+        "Kandinsky 6 Lite/Pro (Oct 2026) jointly generates video with audio at 24 fps. Train t2av LoRAs or full "
+        "fine-tunes (BF16 DiT, fused Adafactor) from clips with sound, or appearance LoRAs from images (cached as silent "
+        "one-frame videos). Frame counts must be 4n+1; 121 frames is about 5 seconds."
     ),
     build_latent_cache_args=_k6_latent_args,
     build_text_cache_args=_k6_text_args,
@@ -1475,6 +1491,13 @@ def prepare_workflow(
         os.makedirs(str(param_dict["output_dir"]), exist_ok=True)
 
     full_finetune = is_full_fine_tuning(param_dict.get("training_mode"))
+    if full_finetune and param_dict.get("block_swap_trainable_ring"):
+        # the run's settings only (a saved preset keeps the choice): the ring streams the swapped blocks through pinned
+        # CPU copies, so it needs block swap and pinned memory
+        if int(param_dict.get("blocks_to_swap") or 0) == 0:
+            parameters = _set(param_dict, parameters, "block_swap_trainable_ring", False)
+        elif not param_dict.get("use_pinned_memory_for_block_swap"):
+            parameters = _set(param_dict, parameters, "use_pinned_memory_for_block_swap", True)
     mandatory = ["dataset_config", "dit", "output_dir", "output_name"]
     if not full_finetune:
         mandatory.append("network_module")
