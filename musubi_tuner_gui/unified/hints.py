@@ -281,22 +281,39 @@ MODEL_HINTS: dict[str, dict] = {
         "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions (768 px on the 6 GB tier).",
     },
     "flux3_klein": {
-        "about": "Black Forest Labs FLUX.3 Klein, a 5.4B text-to-image and editing DiT with the Qwen3-VL 4B text encoder and the FLUX.2 VAE (LoRA training only).",
+        "about": "Black Forest Labs FLUX.3 Klein, a 5.4B text-to-image DiT with the Qwen3-VL 4B text encoder and the FLUX.2 VAE (LoRA training only); editing LoRAs train in the FLUX.3 Klein Edit card.",
         "all": [
             "Train on the undistilled Base checkpoint (flux3-image-klein-base-bf16); the LoRA also loads on the 16-step distilled model in ComfyUI and SwarmUI.",
             "Timestep sampling shift with flow shift 6.93 is BFL's own sampler shift, the same at every resolution.",
             "Training samples default to 50 steps at CFG 3.5 with an empty negative prompt, the base model's reference settings.",
-            "Turn on reference images to train an editing LoRA: each target takes one or more ordered references from its control folder; each reference keeps its own framing at the training resolution's pixel count (not cropped to the target), so keep the dataset batch size at 1.",
             "Up to 26 blocks can be swapped; two joint blocks always stay on the GPU.",
         ],
         "lora": [
             "Presets: DoRA rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs; the 8 GB tier trains 768 px and the 6 GB tier 512 px with an FP8 scaled base, both at rank 32.",
             "The 32 GB preset turns off gradient checkpointing (1.33 s/step on an RTX 5090; 1.46 s/step with it on the 24 GB preset).",
             "10 GB and smaller tiers cache the text encoder on the CPU.",
-            "The presets were measured with a text-to-image dataset; references (editing) add their tokens and keep the reference stream on the GPU. With one reference per image, use the 24 GB preset on 24 and 32 GB GPUs (16.9 GB measured), the 12 GB preset on 16 GB (13.6 GB), the 8 GB preset on 12 and 10 GB (8.3 GB) and the 6 GB preset on 8 GB (5.3 GB); the 32 GB Fast preset runs out of memory with references, and more references need more.",
+            "These presets are for text-to-image datasets: reference images (editing) add their tokens and keep the reference stream on the GPU, so train editing LoRAs in the FLUX.3 Klein Edit card, whose presets were measured with one reference per image.",
         ],
         "vram": "24 GB trains without block swap (14.5 GB peak); 16, 12 and 10 GB swap 2, 16 and 25 blocks (H2D-only); 8 and 6 GB swap 22 and 24 blocks with activation CPU offload (6.2 and 4.3 GB).",
-        "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions; for editing, a control_images sub-folder with the references.",
+        "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions.",
+    },
+    "flux3_klein_edit": {
+        "about": "FLUX.3 Klein editing LoRAs: the model learns an edit from each target image (the result) and its reference images (the source), LoRA training only.",
+        "all": [
+            "Every dataset folder needs a control_images sub-folder with each target's reference: photo.png -> control_images/photo_0.png (more references: photo_1.png ...); the tab refuses to start without it.",
+            "Each reference keeps its own framing at the training resolution's pixel count (not cropped to the target), so the dataset batch size stays 1.",
+            "🔍 Check dataset in 📁 Dataset shows every target beside its references and lists images without one.",
+            "Train on the undistilled Base checkpoint (flux3-image-klein-base-bf16); the LoRA also loads on the 16-step distilled model in ComfyUI and SwarmUI.",
+            "Sample prompts take their reference images with --ci (one per reference, in order); timestep sampling shift 6.93 is BFL's own.",
+            "Up to 26 blocks can be swapped; two joint blocks always stay on the GPU.",
+        ],
+        "lora": [
+            "Presets: one reference per image, DoRA rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs; the 10 GB tier trains 768 px and the 8 GB tier 512 px with an FP8 scaled base, both at rank 32. No configuration fits 6 GB.",
+            "More references per target add their tokens and need more VRAM than the listed peak: pick a lower tier.",
+            "6.19 s/step without block swap on an RTX A6000 (32 and 24 GB presets), 6.63 s/step with 13 blocks streamed H2D-only (16 GB).",
+        ],
+        "vram": "24 and 32 GB train without block swap (16.9 GB peak); 16 GB streams 13 blocks H2D-only (14.3 GB); 12 GB swaps 24 blocks with activation CPU offload (10.3 GB); 10 GB trains 768 px (8.3 GB) and 8 GB 512 px with an FP8 base (6.3 GB); nothing fits 6 GB.",
+        "dataset": "1024x1024 target images with same-name .txt captions plus one reference per target in control_images (photo_0.png).",
     },
     "moss_image": {
         "about": "OpenMOSS MOSS-Image, a 5B single-stream text-to-image DiT with the Qwen3.5-9B text encoder and the FLUX.2 VAE (LoRA or full fine-tuning).",

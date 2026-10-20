@@ -569,7 +569,7 @@ FLUX_3_KLEIN = ImageArchSpec(
     ),
     max_blocks_to_swap=26,  # 28 joint blocks; backward needs 2 resident (the five early blocks per stream stay resident)
     max_blocks_to_swap_full=26,
-    preset_folders=("FLUX_3_Klein_Training_Configs",),
+    preset_folders=("FLUX_3_Klein_Training_Configs", "FLUX_3_Klein_Edit_Training_Configs"),
     download_bundles=("flux3_klein",),
     supports_control_images=True,
     control_label="Use reference images (FLUX.3 Klein editing, 1+ ordered references per target)",

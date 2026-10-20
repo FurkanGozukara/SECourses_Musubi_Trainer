@@ -308,6 +308,8 @@ def _entry_for_backend(backend: str, data: dict) -> str | None:
         return "zimage_turbo" if str(data.get("zimage_variant") or "").lower() == "turbo" else "zimage_base"
     if backend == "mage_flow":
         return "mage_flow_edit" if bool(data.get("is_edit")) else "mage_flow"
+    if backend == "flux3_klein":
+        return "flux3_klein_edit" if bool(data.get("use_control_images")) else "flux3_klein"
     if backend == "wan":
         task = str(data.get("task") or "")
         return "wan22" if "A14B" in task else "wan21"
@@ -414,6 +416,7 @@ def identify_preset(path: str, data: dict | None = None) -> PresetIdentity:
 _NAME_HINTS = (
     (r"mage.?flow.?edit", "mage_flow_edit"),
     (r"mage.?flow", "mage_flow"),
+    (r"flux.?3.?(?:klein.?)?edit", "flux3_klein_edit"),
     (r"flux.?3", "flux3_klein"),
     (r"moss", "moss_image"),
     (r"klein.?4b|4b.?klein", "flux2_klein_4b"),

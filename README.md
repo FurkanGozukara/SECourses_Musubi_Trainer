@@ -14,7 +14,7 @@
 
 ## 12 October 2026 Version 37.0 Update
 
-- **💫 FLUX.3 Klein training (new model)** — LoRA / DoRA on Black Forest Labs' undistilled FLUX.3 Klein Base (5.4B, Qwen3-VL 4B text encoder, FLUX.2 VAE), for text-to-image or for editing with reference images.
+- **💫 FLUX.3 Klein training (new model)** — LoRA / DoRA on Black Forest Labs' undistilled FLUX.3 Klein Base (5.4B, Qwen3-VL 4B text encoder, FLUX.2 VAE), for text-to-image and, in its own **✏️ FLUX.3 Klein Edit** card with GPU presets measured on an editing dataset, for editing with reference images.
   - The trained file loads in ComfyUI and SwarmUI on the Base, the 16-step distilled and the INT8 ConvRot models (checked with ComfyUI's own LoRA loader).
   - Measured GPU presets for 6 to 32 GB (`FLUX_3_Klein_Training_Configs`): rank 128 at 1024 px down to 10 GB (8.2 GB peak), 768 px on 8 GB and 512 px with an FP8 base on 6 GB (4.3 GB).
   - Downloader entry 29 fetches the Base model (gated on Hugging Face: accept its terms and run `hf auth login`), the FLUX.2 VAE and the Qwen3-VL 4B text encoder.

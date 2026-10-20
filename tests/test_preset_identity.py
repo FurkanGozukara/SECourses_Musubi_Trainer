@@ -58,7 +58,27 @@ def test_content_wins_over_the_name(tmp_path):
         ("Wan_2.2_t2v.toml", "wan22"),
         ("MiniMax_H3_LoRA.toml", "minimax_h3"),
         ("Mage_Flow_Edit_x.toml", "mage_flow_edit"),
+        ("FLUX_3_Klein_Edit_x.toml", "flux3_klein_edit"),
+        ("FLUX_3_Klein_x.toml", "flux3_klein"),
     ],
 )
 def test_name_hints(name, expected):
     assert P._name_hint(os.path.join("C:/anything", name)) == expected
+
+
+@pytest.mark.parametrize("controls, expected", [(True, "flux3_klein_edit"), (False, "flux3_klein")])
+def test_flux3_reference_images_pick_the_edit_card(tmp_path, controls, expected):
+    """FLUX.3 Klein editing has its own card (presets measured with a reference per image): a FLUX.3 preset with control
+    images on is the Edit card's, whatever its file is called."""
+    path = tmp_path / "my_run.toml"
+    with open(path, "w", encoding="utf-8") as handle:
+        toml.dump({"network_module": "networks.lora_flux_3", "use_control_images": controls, "learning_rate": 6e-5}, handle)
+    assert P.identify_preset(str(path)).entry_key == expected
+
+
+def test_the_shipped_flux3_edit_presets_belong_to_the_edit_card():
+    folder = os.path.join(os.path.dirname(APP_DIR), "Training_Presets", "FLUX_3_Klein_Edit_Training_Configs", "LoRA_Training")
+    if not os.path.isdir(folder):
+        pytest.skip("no Training_Presets in this checkout")
+    names = sorted(name for name in os.listdir(folder) if name.endswith(".toml"))
+    assert names and all(P.identify_preset(os.path.join(folder, name)).entry_key == "flux3_klein_edit" for name in names)
