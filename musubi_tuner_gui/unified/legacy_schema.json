@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-20T22:49:31",
+ "generated": "2026-10-20T23:54:15",
  "gradio": "6.30.0",
  "backends": {
   "qwen_image": {
@@ -26486,6 +26486,8 @@
     "dataset_bucket_no_upscale",
     "dataset_cache_directory",
     "generated_toml_path",
+    "use_control_images",
+    "control_directory_name",
     "dit",
     "vae",
     "text_encoder",
@@ -26565,6 +26567,11 @@
     "caching_teo_skip_existing",
     "caching_teo_keep_cache",
     "caching_teo_text_encoder_dtype",
+    "control_maps_generate",
+    "control_maps_depth_model",
+    "control_lr_ratio",
+    "control_dropout",
+    "control_caption_dropout",
     "block_swap_trainable_ring",
     "adafactor_triton",
     "optimizer_type",
@@ -27164,6 +27171,32 @@
      "max_lines": null,
      "placeholder": null,
      "interactive": false,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "MOSS-Image Training Dataset"
+     ]
+    },
+    "use_control_images": {
+     "cls": "Checkbox",
+     "label": "Train a colour / depth control adapter (ComfyUI's MOSS-Image Color/Depth Control)",
+     "info": null,
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "MOSS-Image Training Dataset"
+     ]
+    },
+    "control_directory_name": {
+     "cls": "Textbox",
+     "label": "Control Images Sub-Folder Name",
+     "info": "Inside each dataset folder; files named like the target (image_0.png, image_1.png ...).",
+     "value": "control_images",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": null,
+     "interactive": null,
      "visible": true,
      "type": "text",
      "parents": [
@@ -28432,6 +28465,88 @@
      "type": "value",
      "parents": [
       "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "control_maps_generate": {
+     "cls": "Checkbox",
+     "label": "Make Missing Colour / Depth Maps",
+     "info": "Control adapter: before caching, every image without both maps gets them in the control images sub-folder (<image>_0.png one flat colour per region from Mask2Former, <image>_1.png depth from Depth Anything V2, near = white). The two models download on first use into the model folder's control_map_models.",
+     "value": true,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "MOSS-Image Training Dataset"
+     ]
+    },
+    "control_maps_depth_model": {
+     "cls": "Dropdown",
+     "label": "Depth Map Model",
+     "info": "Large: the published adapter's (licensed CC-BY-NC-4.0, non-commercial). Small: Apache-2.0.",
+     "value": "depth-anything/Depth-Anything-V2-Large-hf",
+     "choices": [
+      [
+       "depth-anything/Depth-Anything-V2-Large-hf",
+       "depth-anything/Depth-Anything-V2-Large-hf"
+      ],
+      [
+       "depth-anything/Depth-Anything-V2-Small-hf",
+       "depth-anything/Depth-Anything-V2-Small-hf"
+      ]
+     ],
+     "interactive": null,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": false,
+     "type": "value",
+     "parents": [
+      "MOSS-Image Training Dataset"
+     ]
+    },
+    "control_lr_ratio": {
+     "cls": "Number",
+     "label": "Control Columns LR Ratio",
+     "info": "Control adapter: learning rate of the patch embedder's new colour / depth columns relative to the learning rate (its released columns and bias train at the learning rate).",
+     "value": 10.0,
+     "minimum": 0.5,
+     "maximum": 100.0,
+     "step": 0.5,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Advanced Settings"
+     ]
+    },
+    "control_dropout": {
+     "cls": "Textbox",
+     "label": "Map Dropout Shares",
+     "info": "Control adapter: shares of steps that keep the colour map only, the depth map only, both, neither (the published recipe).",
+     "value": "0.35,0.35,0.2,0.1",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Advanced Settings"
+     ]
+    },
+    "control_caption_dropout": {
+     "cls": "Number",
+     "label": "Caption Dropout (Control Adapter)",
+     "info": "Control adapter: share of samples trained with the empty caption, independent of the maps (CFG's negative branch carries the maps too).",
+     "value": 0.1,
+     "minimum": 0.0,
+     "maximum": 0.9,
+     "step": 0.05,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Advanced Settings"
      ]
     },
     "block_swap_trainable_ring": {
@@ -50639,6 +50754,18 @@
    "sample_prompts": {
     "type": "str",
     "default": null
+   },
+   "control_lr_ratio": {
+    "type": "float",
+    "default": 10.0
+   },
+   "control_dropout": {
+    "type": "str",
+    "default": null
+   },
+   "control_caption_dropout": {
+    "type": "float",
+    "default": 0.1
    },
    "optimizer_type": {
     "type": "str",

@@ -157,7 +157,10 @@ def advise(backend: str, baseline: dict, current: dict, mode: str = "lora") -> l
             add(LESS, BIG, "Base model quantized (FP8 / INT8 / NF4): about half the weight memory")
     before, after = _flag(baseline.get("use_control_images")), _flag(current.get("use_control_images"))
     if "use_control_images" in baseline and "use_control_images" in current and before is not None and after is not None and before != after:
-        add(MORE if after else LESS, BIG, "Control images on: each control image adds about as many tokens as the target image (≈2× with one)" if after else "Control images off: no control-image tokens")
+        if backend == "moss_image":  # a control adapter: the maps widen each image token's input, no tokens are added
+            add(MORE if after else LESS, SMALL, "Control adapter on: the two maps widen each image token's input and the text refiner's two blocks train too (no extra tokens)" if after else "Control adapter off")
+        else:
+            add(MORE if after else LESS, BIG, "Control images on: each control image adds about as many tokens as the target image (≈2× with one)" if after else "Control images off: no control-image tokens")
     for key in ("no_resize_control", "dataset_qwen_image_edit_no_resize_control"):
         before, after = _flag(baseline.get(key)), _flag(current.get(key))
         if controls_used and key in baseline and key in current and before is not None and after is not None and before != after:

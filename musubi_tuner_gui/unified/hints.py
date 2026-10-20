@@ -312,6 +312,9 @@ MODEL_HINTS: dict[str, dict] = {
             "The 24 and 32 GB presets cache the text encoder on the GPU (15.4 GB caching peak); 16 GB and smaller cache it on the CPU.",
             "The trainer measures the CPU's BF16 speed first: where it is far slower than FP32 (an AVX2-only server CPU took 17 minutes per caption), text caching and sample prompts run the text encoder on the GPU one layer at a time instead (under 1 GB of VRAM, about 12 seconds per caption there).",
             "1.65 s/step on an RTX 5090 without block swap; 1.80, 1.87 and 1.97 s/step with 20, 30 and 39 swapped blocks.",
+            "Use Control Images trains a colour / depth control adapter for ComfyUI's MOSS-Image Color/Depth Control node instead of a subject LoRA: every image needs <image>_0.png (one flat colour per region) and <image>_1.png (depth, near = white) in its control_images sub-folder, and Make Missing Colour / Depth Maps creates them before caching (Mask2Former regions, Depth Anything V2 depth). An adapter learns layouts, not a subject: give it a large, varied image set.",
+            "The control adapter follows the published recipe: the patch embedder's new colour / depth columns train at 10x the learning rate, each step keeps the colour map only, the depth map only, both or neither (35 / 35 / 20 / 10 %), 10% of the captions are dropped, and the text refiner's two blocks train with the LoRA. Every checkpoint is the file ComfyUI's node loads (load it with LoRA Loader Model Only).",
+            "Control adapter sample prompts take the maps with --ci: the colour map, then the depth map; --ci none leaves one out (--ci none --ci depth.png samples with depth only).",
         ],
         "full": [
             "No measured fine-tuning presets yet. Fine-Tuning trains every DiT weight in BF16 with fused-backward AdaFactor (max grad norm 0, LR 1e-5 by default); the VAE and the text encoder stay frozen.",
@@ -319,7 +322,7 @@ MODEL_HINTS: dict[str, dict] = {
             "The fine-tuned DiT is saved in the released layout (fused qkv), so it loads as the DiT for more training, in ComfyUI and in SwarmUI.",
         ],
         "vram": {"lora": "24 and 32 GB train without block swap (14.0 GB); 16 GB too, with text caching on the CPU (14.1 GB); 12, 10 and 8 GB swap 20, 30 and 39 blocks (H2D-only, 10.3, 8.2 and 6.3 GB); 6 GB swaps 35 blocks at 768 px (4.3 GB).", "full": "Fine-tuning swaps up to 40 of the 42 blocks, as LoRA does."},
-        "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions.",
+        "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions; for a control adapter, a control_images sub-folder with <image>_0.png colour and <image>_1.png depth maps (made when missing).",
     },
     "mage_flow": {
         "about": "Microsoft Mage-Flow (4B, MIT license), a native-resolution text-to-image model (LoRA training only).",

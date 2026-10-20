@@ -65,6 +65,7 @@ from .dataset_config_generator import (
     dataset_toml_matches,
     generate_dataset_config_from_folders,
     generate_kandinsky6_dataset_config_from_folders,
+    get_image_files,
     round_frames_to_4n_plus_1,
     save_dataset_config,
     validate_dataset_config,
@@ -180,6 +181,9 @@ class ImageArchSpec:
     # reference images keep their own framing (aspect ratio) at the training pixel count (control_resolution) instead of
     # being cropped to the target's bucket, which cuts what lies outside a differently shaped target
     references_keep_framing: bool = False
+    # control images train a colour / depth control adapter (MOSS-Image): the trainer gets --control_adapter, the maps
+    # (<image>_0 colour regions, <image>_1 depth) are made before caching where missing, LoRA training only
+    control_adapter: bool = False
     extras: tuple = ()
     sample_flags: tuple = ("w", "h", "s", "d", "l", "n")
     defaults: dict = field(default_factory=dict)
@@ -285,6 +289,40 @@ def _moss_text_args(params: dict) -> list[str]:
         "--text_encoder_dtype",
         str(params.get("caching_teo_text_encoder_dtype") or "bfloat16"),
     ]
+
+
+MOSS_DEPTH_MODELS = ("depth-anything/Depth-Anything-V2-Large-hf", "depth-anything/Depth-Anything-V2-Small-hf")
+
+
+def _control_dropout_shares(text: object) -> list[float]:
+    """The control adapter's four map-dropout shares (colour only, depth only, both, none), as the trainer reads them."""
+    try:
+        values = [float(part) for part in str(text or "").replace(";", ",").split(",") if part.strip()]
+    except ValueError:
+        values = []
+    if len(values) != 4 or any(value < 0 for value in values) or sum(values) <= 0:
+        raise ValueError(f"Map Dropout Shares needs four non-negative numbers (colour only, depth only, both, none), got '{text}'.")
+    return values
+
+
+def _moss_validate(params: dict, full_finetune: bool) -> None:
+    if not params.get("use_control_images"):
+        return
+    if full_finetune:
+        raise ValueError("A MOSS-Image control adapter trains as LoRA / DoRA: switch to LoRA Training or turn the control adapter off.")
+    if params.get("fp8_base") and not params.get("fp8_scaled"):
+        raise ValueError("A MOSS-Image control adapter with FP8 Base needs Scaled FP8 (the plain FP8 cast would cast the trained patch embedder).")
+    if any("dora_axis" in str(arg) and "output" in str(arg).split("=", 1)[-1].lower() for arg in _coerce_cli_list(params.get("network_args"))):
+        raise ValueError("A MOSS-Image control adapter writes DoRA in ComfyUI's input-axis layout: remove dora_axis=output from Network Arguments.")
+    if str(params.get("control_dropout") or "").strip():
+        _control_dropout_shares(params.get("control_dropout"))
+    for key, label, low, high in (("control_lr_ratio", "Control Columns LR Ratio", 0.0, None), ("control_caption_dropout", "Caption Dropout (Control Adapter)", 0.0, 1.0)):
+        value = params.get(key)
+        if value in (None, ""):
+            continue
+        number = float(value)
+        if (key == "control_lr_ratio" and not number > low) or (high is not None and not low <= number < high):
+            raise ValueError(f"{label} is out of range: {value}.")
 
 
 def _hidream_latent_args(params: dict) -> list[str]:
@@ -593,8 +631,68 @@ MOSS_IMAGE = ImageArchSpec(
     preset_folders=("MOSS_Image_Training_Configs",),
     download_bundles=("moss_image", "moss_image_sft", "moss_image_te_bf16"),
     supported_attention=frozenset({"sdpa"}),  # PyTorch attention, as the vendor (text masks)
+    supports_control_images=True,
+    control_label="Train a colour / depth control adapter (ComfyUI's MOSS-Image Color/Depth Control)",
+    control_adapter=True,
     extras=(
         ExtraOption("caching_teo_text_encoder_dtype", "dropdown", "Text Encoder Dtype", "bfloat16", "caching", "Use float32 only for CPU caching.", choices=("bfloat16", "float32"), runtime=False),
+        ExtraOption(
+            "control_maps_generate",
+            "checkbox",
+            "Make Missing Colour / Depth Maps",
+            True,
+            "dataset",
+            "Control adapter: before caching, every image without both maps gets them in the control images sub-folder "
+            "(<image>_0.png one flat colour per region from Mask2Former, <image>_1.png depth from Depth Anything V2, near = white). "
+            "The two models download on first use into the model folder's control_map_models.",
+            runtime=False,
+            lora_only=True,
+        ),
+        ExtraOption(
+            "control_maps_depth_model",
+            "dropdown",
+            "Depth Map Model",
+            MOSS_DEPTH_MODELS[0],
+            "dataset",
+            "Large: the published adapter's (licensed CC-BY-NC-4.0, non-commercial). Small: Apache-2.0.",
+            choices=MOSS_DEPTH_MODELS,
+            runtime=False,
+            lora_only=True,
+        ),
+        ExtraOption(
+            "control_lr_ratio",
+            "number",
+            "Control Columns LR Ratio",
+            10.0,
+            "advanced",
+            "Control adapter: learning rate of the patch embedder's new colour / depth columns relative to the learning rate "
+            "(its released columns and bias train at the learning rate).",
+            lora_only=True,
+            minimum=0.5,
+            maximum=100.0,
+            step=0.5,
+        ),
+        ExtraOption(
+            "control_dropout",
+            "textbox",
+            "Map Dropout Shares",
+            "0.35,0.35,0.2,0.1",
+            "advanced",
+            "Control adapter: shares of steps that keep the colour map only, the depth map only, both, neither (the published recipe).",
+            lora_only=True,
+        ),
+        ExtraOption(
+            "control_caption_dropout",
+            "number",
+            "Caption Dropout (Control Adapter)",
+            0.1,
+            "advanced",
+            "Control adapter: share of samples trained with the empty caption, independent of the maps (CFG's negative branch carries the maps too).",
+            lora_only=True,
+            minimum=0.0,
+            maximum=0.9,
+            step=0.05,
+        ),
         TRAINABLE_RING_OPTION,
         TRITON_ADAFACTOR_OPTION,
     ),
@@ -620,10 +718,12 @@ MOSS_IMAGE = ImageArchSpec(
     notes=(
         "OpenMOSS MOSS-Image (5B DiT, Qwen3.5-9B text encoder, FLUX.2 VAE). LoRA or full fine-tuning on the BF16 Base or SFT "
         "model; the LoRA loads on Base and SFT, BF16 or INT8 ConvRot, in ComfyUI and SwarmUI, a fine-tune is a BF16 DiT file. Training timesteps use shift 3 "
-        "(about the pre-training distribution); samples use the vendor's sampler (shift 5, 50 steps, CFG 3)."
+        "(about the pre-training distribution); samples use the vendor's sampler (shift 5, 50 steps, CFG 3). With control images on, the LoRA run trains "
+        "a colour / depth control adapter for ComfyUI's MOSS-Image Color/Depth Control node instead (maps <image>_0 / <image>_1, made where missing)."
     ),
     build_latent_cache_args=_flux3_latent_args,
     build_text_cache_args=_moss_text_args,
+    validate=_moss_validate,
 )
 
 HIDREAM_O1 = ImageArchSpec(
@@ -1310,10 +1410,11 @@ class ImageWorkflow:
     latent_cache_command: list[str] | None
     text_cache_command: list[str] | None
     train_command: list[str]
+    prepare_command: list[str] | None = None  # runs before caching (a control adapter's missing maps)
 
     @property
     def commands(self) -> list[list[str]]:
-        commands = [command for command in (self.latent_cache_command, self.text_cache_command) if command]
+        commands = [command for command in (self.prepare_command, self.latent_cache_command, self.text_cache_command) if command]
         commands.append(self.train_command)
         return commands
 
@@ -1594,12 +1695,36 @@ def prepare_workflow(
     )
     script = spec.full_train_script if full_finetune else spec.train_script
     train_command.extend([_trainer_script_path(script), "--config_file", config_path])
+    prepare_command = None
+    if spec.control_adapter and bool(param_dict.get("use_control_images")) and not full_finetune:
+        train_command.append("--control_adapter")
+        if bool(param_dict.get("control_maps_generate", True)):
+            prepare_command = control_maps_command(spec, param_dict, python_cmd=python_cmd)
     additional = str(param_dict.get("additional_parameters") or "").strip()
     debug = _debug_cli_flags(param_dict.get("debug_mode"))
     if debug:
         additional = f"{additional} {debug}".strip()
     train_command = run_cmd_advanced_training(run_cmd=train_command, additional_parameters=additional)
-    return ImageWorkflow(parameters, config_path, latent_command, text_command, train_command)
+    return ImageWorkflow(parameters, config_path, latent_command, text_command, train_command, prepare_command)
+
+
+def control_maps_command(spec: ImageArchSpec, param_dict: dict, *, python_cmd: str | None = None) -> list[str]:
+    """moss_image_control_maps.py for every dataset of the run's TOML: both maps for each image that lacks them, on the
+    latent caching device, the models kept in the model folder."""
+    models_dir = os.path.normpath(os.path.join(scriptdir, "..", spec.model_folder, "control_map_models"))
+    return [
+        python_cmd or sys.executable,
+        _trainer_script_path("moss_image_control_maps.py"),
+        "--dataset_config",
+        str(param_dict["dataset_config"]),
+        "--skip_existing",
+        "--device",
+        _resolve_device(param_dict.get("caching_latent_device"), param_dict.get("gpu_ids")),
+        "--models_dir",
+        models_dir,
+        "--depth_model",
+        str(param_dict.get("control_maps_depth_model") or MOSS_DEPTH_MODELS[0]),
+    ]
 
 
 def create_dataset_config(spec: ImageArchSpec, param_dict: dict) -> tuple[str, list[str]]:
@@ -1620,6 +1745,13 @@ def create_dataset_config(spec: ImageArchSpec, param_dict: dict) -> tuple[str, l
             "cannot share a batch: set the dataset batch size to 1 and raise Gradient Accumulation Steps instead."
         )
     control_dir = str(param_dict.get("control_directory_name") or "control_images").strip() if use_controls else f"__{spec.slug}_no_control__"
+    make_maps = use_controls and spec.control_adapter and bool(param_dict.get("control_maps_generate", True))
+    if make_maps:
+        # the workflow's first step fills these (moss_image_control_maps.py); the dataset TOML must name them already
+        for name in sorted(os.listdir(parent)):
+            folder = os.path.join(parent, name)
+            if not name.startswith(".") and os.path.isdir(folder) and get_image_files(folder):
+                os.makedirs(os.path.join(folder, control_dir), exist_ok=True)
     if spec.dataset_kind == "video":
         config, messages = generate_kandinsky6_dataset_config_from_folders(
             parent_folder=parent,
@@ -1660,6 +1792,12 @@ def create_dataset_config(spec: ImageArchSpec, param_dict: dict) -> tuple[str, l
     if use_controls:
         # an edit / i2i run without reference images would only fail later, while caching or training
         missing = [entry.get("image_directory", "?") for entry in config.get("datasets", []) if not entry.get("control_directory")]
+        if missing and spec.control_adapter:
+            raise ValueError(
+                f"The control adapter needs colour / depth maps but these dataset folders have no '{control_dir}' sub-folder: "
+                f"{', '.join(missing)}. Turn on 'Make Missing Colour / Depth Maps', or put <image>_0.png (one flat colour per "
+                f"region) and <image>_1.png (depth, near = white) for every image in <dataset folder>/{control_dir}."
+            )
         if missing:
             raise ValueError(
                 f"Reference images are enabled ('{spec.control_label}') but these dataset folders have no "
@@ -1673,7 +1811,10 @@ def create_dataset_config(spec: ImageArchSpec, param_dict: dict) -> tuple[str, l
     messages.extend(validation_messages)
     if not valid:
         raise ValueError("\n".join(messages))
-    if use_controls:
+    if use_controls and spec.control_adapter:
+        made = " (missing maps are made before caching)" if make_maps else ""
+        messages.append(f"Control adapter maps: '{control_dir}' sub-folders, <image>_0.png colour and <image>_1.png depth{made}.")
+    elif use_controls:
         messages.append(f"Control/reference images: '{control_dir}' sub-folders are paired with the targets.")
     messages.append(f"Saved dataset TOML: {path}")
     return os.path.abspath(path), messages
@@ -1700,6 +1841,7 @@ def generate_dataset_toml(spec_key: str, *values):
         "frame_stride",
         "frame_sample",
         "max_frames",
+        "control_maps_generate",
     ]
     param_dict = dict(zip(keys, values))
     try:
@@ -2224,6 +2366,7 @@ def image_model_tab(spec_key: str, headless: bool = False, config: GUIConfig | d
                         "control_directory_name",
                         gr.Textbox(label="Control Images Sub-Folder Name", value=value("control_directory_name", "control_images"), info="Inside each dataset folder; files named like the target (image_0.png, image_1.png ...)."),
                     )
+            extras_for("dataset")
             generated_toml_path = reg("generated_toml_path", gr.Textbox(label="Generated Dataset TOML", value=value("generated_toml_path", ""), interactive=False))
             dataset_status = gr.Textbox(label="Dataset Status", lines=4, interactive=False)
             generate_dataset_button = gr.Button("Generate Dataset TOML", variant="primary", elem_classes=["mbtn", "mbtn-orange"])
@@ -2445,6 +2588,7 @@ def image_model_tab(spec_key: str, headless: bool = False, config: GUIConfig | d
             components.get("frame_stride", gr.Number(value=1, visible=False)),
             components.get("frame_sample", gr.Number(value=1, visible=False)),
             components.get("max_frames", gr.Number(value=241, visible=False)),
+            components.get("control_maps_generate", dummy_false),
         ],
         outputs=[dataset_config, generated_toml_path, dataset_status],
         show_progress=False,

@@ -133,7 +133,17 @@ RULES: tuple = (
     ("wandb", "log_with", ("wandb_run_name", "wandb_api_key"), lambda v: str(v or "") in ("wandb", "all"), "['wandb','all'].includes(String(v))"),
     ("swap", "blocks_to_swap", ("use_pinned_memory_for_block_swap", "block_swap_h2d_only", "block_swap_ring_size"), lambda v: _as_float(v) > 0, "Number(v) > 0"),
     ("fp8", "fp8_base", ("fp8_scaled",), bool, "!!v"),
-    ("control", "use_control_images", ("control_directory_name", "no_resize_control", "control_resolution_width", "control_resolution_height"), bool, "!!v"),
+    (
+        "control",
+        "use_control_images",
+        (
+            "control_directory_name", "no_resize_control", "control_resolution_width", "control_resolution_height",
+            # MOSS-Image: control images train a colour / depth control adapter
+            "control_maps_generate", "control_maps_depth_model", "control_lr_ratio", "control_dropout", "control_caption_dropout",
+        ),
+        bool,
+        "!!v",
+    ),
     # Ideogram 4: warning instead of failing only applies while captions are validated (the save turns it off)
     ("capwarn", "validate_caption_structure", ("warn_on_caption_issues",), bool, "!!v"),
     # settings the trainers only read (or only write to the runtime TOML) in some cases (tools/audit_parameter_passthrough.py)

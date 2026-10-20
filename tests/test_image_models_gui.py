@@ -330,6 +330,60 @@ def test_flux3_references_keep_their_framing(tmp_path):
     assert "control_resolution" not in toml.load(path)["datasets"][0]  # other editing models keep the target's bucket
 
 
+def test_moss_control_images_train_a_control_adapter(tmp_path):
+    """MOSS-Image: Use Control Images trains a colour / depth control adapter. The trainer gets --control_adapter, the
+    missing maps are made before caching (the dataset TOML names the map folders the first step fills), and the
+    adapter's own settings reach the runtime TOML while the map tool's stay in the GUI."""
+    target = tmp_path / "dataset" / "1_ohwx"
+    _touch(target / "image_0.png")
+    (target / "image_0.txt").write_text("ohwx", encoding="utf-8")
+    params = dict(_parameters("moss_image", tmp_path, use_control_images=True))
+    params.update({"parent_folder_path": str(tmp_path / "dataset"), "dataset_config_mode": "Generate from Folder Structure"})
+    path, messages = m.create_dataset_config(m.MOSS_IMAGE, params)
+    assert (target / "control_images").is_dir() and toml.load(path)["datasets"][0]["control_directory"].endswith("control_images")
+    assert any("Control adapter maps" in message for message in messages)
+
+    other = tmp_path / "other" / "1_ohwx"
+    _touch(other / "image_0.png")
+    params.update({"parent_folder_path": str(tmp_path / "other"), "control_maps_generate": False})
+    with pytest.raises(ValueError, match="Make Missing Colour / Depth Maps"):
+        m.create_dataset_config(m.MOSS_IMAGE, params)
+
+    config_path = tmp_path / "run.toml"
+    workflow = m.prepare_workflow("moss_image", _parameters("moss_image", tmp_path, use_control_images=True), str(config_path), python_cmd="python")
+    maps = workflow.commands[0]
+    assert maps is workflow.prepare_command and any(part.endswith("moss_image_control_maps.py") for part in maps)
+    assert maps[maps.index("--depth_model") + 1] == m.MOSS_DEPTH_MODELS[0] and "--skip_existing" in maps
+    assert maps[maps.index("--models_dir") + 1].endswith(os.path.join("Training_Models_MOSS_Image", "control_map_models"))
+    assert workflow.train_command[-3:] == ["--config_file", str(config_path), "--control_adapter"]
+    data = toml.load(config_path)
+    assert data["control_lr_ratio"] == 10.0 and data["control_dropout"] == "0.35,0.35,0.2,0.1" and data["control_caption_dropout"] == 0.1
+    assert "control_maps_generate" not in data and "control_maps_depth_model" not in data and "use_control_images" not in data
+
+    plain = m.prepare_workflow("moss_image", _parameters("moss_image", tmp_path), str(config_path), python_cmd="python")
+    assert plain.prepare_command is None and "--control_adapter" not in plain.train_command
+    no_maps = m.prepare_workflow(
+        "moss_image", _parameters("moss_image", tmp_path, use_control_images=True, control_maps_generate=False), str(config_path), python_cmd="python"
+    )
+    assert no_maps.prepare_command is None and "--control_adapter" in no_maps.train_command
+
+
+@pytest.mark.parametrize(
+    "overrides, message",
+    [
+        ({"training_mode": FULL_FINE_TUNING_MODE}, "trains as LoRA"),
+        ({"control_dropout": "0.5,0.5"}, "four non-negative"),
+        ({"control_caption_dropout": 1.0}, "out of range"),
+        ({"fp8_base": True, "fp8_scaled": False}, "Scaled FP8"),
+        ({"network_args": "use_dora=True dora_axis=output"}, "input-axis"),
+    ],
+)
+def test_moss_control_adapter_settings_are_validated(tmp_path, overrides, message):
+    params = _parameters("moss_image", tmp_path, use_control_images=True, **overrides)
+    with pytest.raises(ValueError, match=message):
+        m.prepare_workflow("moss_image", params, str(tmp_path / "run.toml"), python_cmd="python")
+
+
 def test_paths_after_download_keep_the_preset_file(tmp_path, monkeypatch):
     """A Mage-Flow-Edit preset applied before downloading must get the Edit DiT, not the T2I default."""
     models = tmp_path / "Training_Models_Mage_Flow"
