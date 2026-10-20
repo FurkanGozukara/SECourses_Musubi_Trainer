@@ -152,6 +152,7 @@ MODEL_HINTS: dict[str, dict] = {
         ],
         "lora": [
             "LoRA presets: rank 128, AdaFactor LR 6e-5, 1328 px, 200 epochs, a checkpoint every 25 epochs.",
+            "Each checkpoint also gets <name>.comfy.safetensors: load that file in ComfyUI or SwarmUI, which apply the trainer's own file without 2 of the 7 trained layers per block (the fused MLP); convert older LoRAs in Tools with Qwen-Image 2.1 -> ComfyUI / SwarmUI.",
             "8 GB and 6 GB tiers drop to rank 64 / 32 (6 GB at 768 px) with activation CPU offload.",
             "Tiers of 16 GB and below cache the Qwen3-VL text encoder on the CPU in full precision (slower, lossless).",
         ],

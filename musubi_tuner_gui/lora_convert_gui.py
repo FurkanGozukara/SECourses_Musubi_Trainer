@@ -45,6 +45,7 @@ class ConversionProfile:
     target: Optional[str] = None
     reverse: bool = False
     notes: str = ""
+    forced_prefix: str = ""  # a Diffusers prefix the profile always uses (the prefix field is hidden)
 
 
 PROFILE_DEFINITIONS: List[ConversionProfile] = [
@@ -57,6 +58,22 @@ PROFILE_DEFINITIONS: List[ConversionProfile] = [
         converter_type="generic",
         target="other",
         notes="Uses musubi-tuner convert_lora.py --target other.",
+    ),
+    ConversionProfile(
+        key="qwen21_to_comfy",
+        label="Qwen-Image 2.1 -> ComfyUI / SwarmUI",
+        script_path=GENERIC_CONVERTER_SCRIPT,
+        supported_models="Qwen-Image 2.1",
+        direction="Qwen-Image 2.1 LoRA to the Diffusers keys ComfyUI maps onto its fused MLP",
+        converter_type="generic",
+        target="other",
+        notes=(
+            "Uses convert_lora.py --target other --diffusers_prefix transformer. ComfyUI / SwarmUI apply a Qwen-Image 2.1 "
+            "LoRA's MLP layers (img_mlp.proj / gate_layer, fused in Comfy-Org's checkpoints) only with these keys; the "
+            "trainer's own file loses 2 of the 7 layers per block there. LoRAs trained since 2026-10-20 come with a "
+            "<name>.comfy.safetensors copy already."
+        ),
+        forced_prefix="transformer",
     ),
     ConversionProfile(
         key="generic_to_default",
@@ -143,7 +160,7 @@ def _format_profile_markdown(profile_label: str) -> str:
 
 def _is_diffusers_prefix_supported(profile_label: str) -> bool:
     profile = PROFILE_BY_LABEL.get(profile_label, PROFILE_BY_LABEL[DEFAULT_PROFILE_LABEL])
-    return profile.converter_type == "generic" and profile.target == "other"
+    return profile.converter_type == "generic" and profile.target == "other" and not profile.forced_prefix
 
 
 class LoRAConverter:
@@ -229,7 +246,7 @@ class LoRAConverter:
                 str(profile.target),
             ]
             if profile.target == "other":
-                prefix = (diffusers_prefix or "").strip()
+                prefix = profile.forced_prefix or (diffusers_prefix or "").strip()
                 if prefix:
                     command.extend(["--diffusers_prefix", prefix])
             return command
