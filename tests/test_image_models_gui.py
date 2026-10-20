@@ -413,3 +413,29 @@ def test_kandinsky6_fine_tuning_runs_kandinsky6_train_with_the_ring_only_under_b
     assert data["block_swap_trainable_ring"] is True and data["use_pinned_memory_for_block_swap"] is True
     _, saved = m.normalize_parameters(spec, _parameters("kandinsky6", tmp_path, blocks_to_swap=0, **full), validate_paths=False)
     assert dict(saved)["block_swap_trainable_ring"] is True
+
+
+def test_kandinsky6_r2av_needs_a_reference_dataset_and_trained_slots_for_lora(tmp_path):
+    """Kandinsky 6 r2av: caching encodes the references (letterbox grey, max references), the dataset is a JSONL
+    (Use TOML File), and LoRA refuses a DiT without trained reference slots (a released checkpoint) before caching."""
+    import torch
+    from safetensors.torch import save_file
+
+    full = dict(training_mode=FULL_FINE_TUNING_MODE, task="r2av", ref_pad_value=128, caching_latent_max_references=4)
+    config_path = tmp_path / "run.toml"
+    workflow = m.prepare_workflow("kandinsky6", _parameters("kandinsky6", tmp_path, **full), str(config_path), python_cmd="python")
+    data = toml.load(config_path)
+    assert data["task"] == "r2av" and data["ref_pad_value"] == 128 and data["ref_drop_prob"] == 0.1
+    latent = workflow.latent_cache_command
+    assert latent[latent.index("--ref_pad_value") + 1] == "128" and latent[latent.index("--max_references") + 1] == "4"
+    with pytest.raises(ValueError, match="JSONL"):
+        m.prepare_workflow("kandinsky6", _parameters("kandinsky6", tmp_path, dataset_config_mode="Generate from Folder Structure", **full), str(config_path), python_cmd="python")
+
+    released = tmp_path / "released.safetensors"
+    save_file({"visual_token_type_embeddings.weight": torch.zeros(2, 4)}, str(released))
+    lora = dict(training_mode=LORA_TRAINING_MODE, task="r2av")
+    with pytest.raises(ValueError, match="reference slots"):
+        m.prepare_workflow("kandinsky6", _parameters("kandinsky6", tmp_path, dit=str(released), **lora), str(config_path), python_cmd="python")
+    finetuned = tmp_path / "r2av_finetune.safetensors"
+    save_file({"visual_ref_slot_embeddings.weight": torch.zeros(8, 4)}, str(finetuned))
+    m.prepare_workflow("kandinsky6", _parameters("kandinsky6", tmp_path, dit=str(finetuned), **lora), str(config_path), python_cmd="python")

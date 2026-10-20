@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-20T05:01:05",
+ "generated": "2026-10-20T22:43:06",
  "gradio": "6.30.0",
  "backends": {
   "qwen_image": {
@@ -26565,6 +26565,8 @@
     "caching_teo_skip_existing",
     "caching_teo_keep_cache",
     "caching_teo_text_encoder_dtype",
+    "block_swap_trainable_ring",
+    "adafactor_triton",
     "optimizer_type",
     "optimizer_args",
     "learning_rate",
@@ -26947,16 +26949,20 @@
     "training_mode": {
      "cls": "Radio",
      "label": "Training Mode",
-     "info": "MOSS-Image supports LoRA training only.",
+     "info": "LoRA trains a small adapter; Full Fine-Tuning updates the whole DiT and needs much more RAM/VRAM.",
      "value": "LoRA Training",
      "choices": [
       [
        "LoRA Training",
        "LoRA Training"
+      ],
+      [
+       "Full Fine-Tuning",
+       "Full Fine-Tuning"
       ]
      ],
-     "interactive": false,
-     "visible": false,
+     "interactive": true,
+     "visible": true,
      "type": "value",
      "parents": []
     },
@@ -28354,7 +28360,7 @@
      "cls": "Number",
      "label": "Text Batch Size",
      "info": null,
-     "value": 1,
+     "value": 8,
      "minimum": 1,
      "maximum": null,
      "step": 1,
@@ -28426,6 +28432,28 @@
      "type": "value",
      "parents": [
       "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "block_swap_trainable_ring": {
+     "cls": "Checkbox",
+     "label": "Trainable Block-Swap Ring",
+     "info": "Fastest block swap for full fine-tuning: the swapped blocks keep pinned CPU copies and stream through reusable GPU buffers, written back after each update (only with Blocks to Swap > 0; turns Pinned Memory for Block Swap on).",
+     "value": true,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Full Fine-Tuning Settings"
+     ]
+    },
+    "adafactor_triton": {
+     "cls": "Checkbox",
+     "label": "Triton Adafactor",
+     "info": "Triton kernels for the fused Adafactor update of BF16 matrices (needs Triton); other tensors use the standard update.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Full Fine-Tuning Settings"
      ]
     },
     "optimizer_type": {
@@ -42249,16 +42277,21 @@
     "caching_teo_keep_cache",
     "model_variant",
     "task",
+    "max_reference_slots",
     "convrot_int8",
     "convrot_int8_bwd",
     "scheduler_scale",
     "independent_time",
     "audio_loss_weight",
     "video_only",
+    "ref_drop_prob",
+    "ref_guidance_scale",
     "audio_vae_scaling_factor",
     "max_length",
     "caching_teo_quantized_qwen",
     "caching_latent_vae_memory_gb",
+    "ref_pad_value",
+    "caching_latent_max_references",
     "block_swap_trainable_ring",
     "adafactor_triton",
     "k6_freeze_blocks",
@@ -44256,7 +44289,7 @@
     "task": {
      "cls": "Dropdown",
      "label": "Task",
-     "info": "t2av = text to video+audio; ti2av = first-frame conditioned (needs a JSONL dataset with control_path).",
+     "info": "t2av = text to video+audio; ti2av = first-frame conditioned (needs a JSONL dataset with control_path); r2av = a prompt plus up to 8 reference images named @Image 1, @Image 2 ... (a JSONL with references; a released checkpoint needs Fine-Tuning first).",
      "value": "t2av",
      "choices": [
       [
@@ -44266,6 +44299,10 @@
       [
        "ti2av",
        "ti2av"
+      ],
+      [
+       "r2av",
+       "r2av"
       ]
      ],
      "interactive": null,
@@ -44273,6 +44310,22 @@
      "multiselect": null,
      "allow_custom_value": false,
      "type": "value",
+     "parents": [
+      "Kandinsky 6 Model Files"
+     ]
+    },
+    "max_reference_slots": {
+     "cls": "Number",
+     "label": "R2AV Reference Slots",
+     "info": "R2AV: reference slots a released checkpoint gets (0 = 8); a checkpoint that has them keeps its own count.",
+     "value": 0,
+     "minimum": 0,
+     "maximum": 8,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
      "parents": [
       "Kandinsky 6 Model Files"
      ]
@@ -44366,6 +44419,38 @@
       "Flow Matching & Timesteps"
      ]
     },
+    "ref_drop_prob": {
+     "cls": "Number",
+     "label": "R2AV Reference Drop",
+     "info": "R2AV: share of steps trained without references, which keeps the reference-free branch R2AV Reference Guidance needs.",
+     "value": 0.1,
+     "minimum": 0,
+     "maximum": 0.9,
+     "step": 0.05,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Flow Matching & Timesteps"
+     ]
+    },
+    "ref_guidance_scale": {
+     "cls": "Number",
+     "label": "R2AV Reference Guidance",
+     "info": "R2AV samples: extra guidance toward the references (one more forward per step; 0 = off). Sample prompts add each reference with --ref <image>.",
+     "value": 0.0,
+     "minimum": 0,
+     "maximum": null,
+     "step": 0.5,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Sample Images During Training"
+     ]
+    },
     "audio_vae_scaling_factor": {
      "cls": "Number",
      "label": "Audio VAE Scaling Factor",
@@ -44417,6 +44502,38 @@
      "minimum": 0,
      "maximum": null,
      "step": 0.5,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "ref_pad_value": {
+     "cls": "Number",
+     "label": "R2AV Letterbox Grey",
+     "info": "R2AV: grey level (0-255) around a reference image fitted to the clip's frame (255 = white); use the same value when generating.",
+     "value": 255,
+     "minimum": 0,
+     "maximum": 255,
+     "step": 1,
+     "precision": null,
+     "placeholder": null,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "caching_latent_max_references": {
+     "cls": "Number",
+     "label": "R2AV Max References",
+     "info": "R2AV: clips with more reference images than this are refused (the model's reference slots).",
+     "value": 8,
+     "minimum": 1,
+     "maximum": 8,
+     "step": 1,
      "precision": null,
      "placeholder": null,
      "interactive": null,
@@ -53439,6 +53556,10 @@
      "r2av"
     ]
    },
+   "max_reference_slots": {
+    "type": "int",
+    "default": null
+   },
    "convrot_int8": {
     "type": "bool",
     "default": false
@@ -53467,6 +53588,14 @@
     "type": "bool",
     "default": false
    },
+   "ref_drop_prob": {
+    "type": "float",
+    "default": 0.1
+   },
+   "ref_guidance_scale": {
+    "type": "float",
+    "default": 0.0
+   },
    "audio_vae_scaling_factor": {
     "type": "float",
     "default": 0.5302
@@ -53474,6 +53603,10 @@
    "max_length": {
     "type": "int",
     "default": 1024
+   },
+   "ref_pad_value": {
+    "type": "int",
+    "default": 255
    },
    "optimizer_type": {
     "type": "str",

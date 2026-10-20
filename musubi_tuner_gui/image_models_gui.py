@@ -342,6 +342,27 @@ COMMON_FULL_DEFAULTS = {
     "save_precision": "bf16",
 }
 
+# full fine-tuning options of the dense trainers (training/dense_trainer.py: Kandinsky 6, MOSS-Image)
+TRAINABLE_RING_OPTION = ExtraOption(
+    "block_swap_trainable_ring",
+    "checkbox",
+    "Trainable Block-Swap Ring",
+    True,
+    "full",
+    "Fastest block swap for full fine-tuning: the swapped blocks keep pinned CPU copies and stream through reusable "
+    "GPU buffers, written back after each update (only with Blocks to Swap > 0; turns Pinned Memory for Block Swap on).",
+    full_only=True,
+)
+TRITON_ADAFACTOR_OPTION = ExtraOption(
+    "adafactor_triton",
+    "checkbox",
+    "Triton Adafactor",
+    False,
+    "full",
+    "Triton kernels for the fused Adafactor update of BF16 matrices (needs Triton); other tensors use the standard update.",
+    full_only=True,
+)
+
 QWEN_IMAGE_21 = ImageArchSpec(
     key="qwen_image_21",
     display_name="Qwen-Image 2.1",
@@ -546,7 +567,7 @@ MOSS_IMAGE = ImageArchSpec(
     slug="moss_image",
     network_module="networks.lora_moss_image",
     train_script="moss_image_train_network.py",
-    full_train_script=None,
+    full_train_script="moss_image_train.py",
     latent_cache_script="moss_image_cache_latents.py",
     text_cache_script="moss_image_cache_text_encoder_outputs.py",
     model_folder="Training_Models_MOSS_Image",
@@ -574,6 +595,8 @@ MOSS_IMAGE = ImageArchSpec(
     supported_attention=frozenset({"sdpa"}),  # PyTorch attention, as the vendor (text masks)
     extras=(
         ExtraOption("caching_teo_text_encoder_dtype", "dropdown", "Text Encoder Dtype", "bfloat16", "caching", "Use float32 only for CPU caching.", choices=("bfloat16", "float32"), runtime=False),
+        TRAINABLE_RING_OPTION,
+        TRITON_ADAFACTOR_OPTION,
     ),
     defaults={
         "timestep_sampling": "shift",
@@ -592,10 +615,11 @@ MOSS_IMAGE = ImageArchSpec(
         "caching_teo_batch_size": 8,
     },
     lora_defaults=COMMON_LORA_DEFAULTS,
+    full_defaults=COMMON_FULL_DEFAULTS,
     gui_only_keys=frozenset({"caching_teo_text_encoder_dtype"}),
     notes=(
-        "OpenMOSS MOSS-Image (5B DiT, Qwen3.5-9B text encoder, FLUX.2 VAE). LoRA training on the BF16 Base or SFT "
-        "model; the LoRA loads on Base and SFT, BF16 or INT8 ConvRot, in ComfyUI and SwarmUI. Training timesteps use shift 3 "
+        "OpenMOSS MOSS-Image (5B DiT, Qwen3.5-9B text encoder, FLUX.2 VAE). LoRA or full fine-tuning on the BF16 Base or SFT "
+        "model; the LoRA loads on Base and SFT, BF16 or INT8 ConvRot, in ComfyUI and SwarmUI, a fine-tune is a BF16 DiT file. Training timesteps use shift 3 "
         "(about the pre-training distribution); samples use the vendor's sampler (shift 5, 50 steps, CFG 3)."
     ),
     build_latent_cache_args=_flux3_latent_args,
@@ -686,7 +710,30 @@ def _k6_latent_args(params: dict) -> list[str]:
     vae_memory_gb = float(params.get("caching_latent_vae_memory_gb") or 0)
     if vae_memory_gb > 0:
         args.extend(["--vae_tiling_memory_gb", f"{vae_memory_gb:g}"])
+    if str(params.get("task") or "t2av") == "r2av":
+        args.extend(["--ref_pad_value", str(int(params.get("ref_pad_value", 255)))])
+        args.extend(["--max_references", str(int(params.get("caching_latent_max_references") or 8))])
     return args
+
+
+K6_REFERENCE_SLOT_KEY = "visual_ref_slot_embeddings.weight"  # kandinsky6/model.py REF_SLOT_KEY
+
+
+def _k6_reference_slots(dit_path: str) -> int:
+    """Reference slots stored in a Kandinsky 6 DiT (0 for the released files); -1 if the file cannot be read."""
+    path = str(dit_path or "").strip()
+    if os.path.isdir(path):
+        for candidate in (os.path.join(path, "transformer", "diffusion_pytorch_model.safetensors"), os.path.join(path, "diffusion_pytorch_model.safetensors")):
+            if os.path.isfile(candidate):
+                path = candidate
+                break
+    try:
+        from safetensors import safe_open
+
+        with safe_open(path, framework="pt", device="cpu") as handle:
+            return int(handle.get_slice(K6_REFERENCE_SLOT_KEY).get_shape()[0]) if K6_REFERENCE_SLOT_KEY in set(handle.keys()) else 0
+    except Exception:  # noqa: BLE001 - a sharded or missing file is left to the trainer's own check
+        return -1
 
 
 def _k6_text_args(params: dict) -> list[str]:
@@ -721,6 +768,21 @@ def _k6_validate(params: dict, full_finetune: bool) -> None:
         )
     if int(params.get("dataset_batch_size") or 1) != 1:
         raise ValueError("Kandinsky 6 trains with batch size 1; raise gradient accumulation instead.")
+    if str(params.get("task") or "t2av") == "r2av":
+        if str(params.get("dataset_config_mode") or "") != "Use TOML File":
+            raise ValueError(
+                "Kandinsky 6 r2av needs a JSONL dataset with a references list per clip (the captions name them @Image 1, "
+                "@Image 2 ... in that order). Use 'Use TOML File' with a dataset TOML whose video_jsonl_file points to it."
+            )
+        if not 0 <= int(params.get("ref_pad_value", 255)) <= 255:
+            raise ValueError("R2AV Letterbox Grey must be between 0 and 255.")
+        if not 0 <= float(params.get("ref_drop_prob") or 0) < 1:
+            raise ValueError("R2AV Reference Drop must be at least 0 and below 1.")
+        if not full_finetune and _k6_reference_slots(str(params.get("dit") or "")) == 0:
+            raise ValueError(
+                "R2AV LoRA needs a Kandinsky 6 DiT whose reference slots were already trained; the released checkpoints "
+                "have none. Train Fine-Tuning with Task r2av first, then train LoRAs on the DiT it saves."
+            )
 
 
 K6_LITE = "Kandinsky-6.0-Lite-5s-Diffusers"
@@ -754,28 +816,34 @@ KANDINSKY_6 = ImageArchSpec(
     default_frames=121,
     extras=(
         ExtraOption("model_variant", "dropdown", "Model Variant", "auto", "model", "auto detects Lite/Pro from the DiT; lite allows 30 swapped blocks, pro 58.", choices=("auto", "lite", "pro")),
-        ExtraOption("task", "dropdown", "Task", "t2av", "model", "t2av = text to video+audio; ti2av = first-frame conditioned (needs a JSONL dataset with control_path).", choices=("t2av", "ti2av")),
+        ExtraOption(
+            "task",
+            "dropdown",
+            "Task",
+            "t2av",
+            "model",
+            "t2av = text to video+audio; ti2av = first-frame conditioned (needs a JSONL dataset with control_path); r2av = "
+            "a prompt plus up to 8 reference images named @Image 1, @Image 2 ... (a JSONL with references; a released "
+            "checkpoint needs Fine-Tuning first).",
+            choices=("t2av", "ti2av", "r2av"),
+        ),
+        ExtraOption("max_reference_slots", "number", "R2AV Reference Slots", 0, "model", "R2AV: reference slots a released checkpoint gets (0 = 8); a checkpoint that has them keeps its own count.", minimum=0, maximum=8, step=1),
         ExtraOption("convrot_int8", "checkbox", "ConvRot INT8 Base (LoRA)", False, "model", "Quantize the frozen DiT to ConvRot INT8 while loading (needs Triton). Not combinable with FP8.", lora_only=True),
         ExtraOption("convrot_int8_bwd", "dropdown", "ConvRot INT8 Backward", "bf16", "model", "bf16 = most accurate; int8 = faster gradients.", choices=("bf16", "int8"), lora_only=True),
         ExtraOption("scheduler_scale", "number", "Scheduler Scale", 1.0, "schedule", "Shifted-uniform schedule scale applied to video and audio times.", step=0.1),
         ExtraOption("independent_time", "checkbox", "Independent Video/Audio Times", True, "schedule", "Sample separate diffusion times for video and audio (official default)."),
         ExtraOption("audio_loss_weight", "number", "Audio Loss Weight", 1.0, "schedule", "Scales the audio loss for clips cached with real audio.", step=0.05),
         ExtraOption("video_only", "checkbox", "Video Only (No Audio Supervision)", False, "schedule", "Disable the audio loss entirely."),
+        ExtraOption("ref_drop_prob", "number", "R2AV Reference Drop", 0.1, "schedule", "R2AV: share of steps trained without references, which keeps the reference-free branch R2AV Reference Guidance needs.", minimum=0, maximum=0.9, step=0.05),
+        ExtraOption("ref_guidance_scale", "number", "R2AV Reference Guidance", 0.0, "sample", "R2AV samples: extra guidance toward the references (one more forward per step; 0 = off). Sample prompts add each reference with --ref <image>.", minimum=0, step=0.5),
         ExtraOption("audio_vae_scaling_factor", "number", "Audio VAE Scaling Factor", 0.5302, "caching", "0.5302 for the regular Lite and Pro checkpoints.", step=0.0001),
         ExtraOption("max_length", "number", "Text Max Length", 1024, "caching", "Qwen2.5-VL token budget for captions.", minimum=64, step=1),
         ExtraOption("caching_teo_quantized_qwen", "checkbox", "NF4 Qwen for Text Caching", False, "caching", "bitsandbytes NF4 text encoder while caching (saves VRAM).", runtime=False),
         ExtraOption("caching_latent_vae_memory_gb", "number", "VAE Tiling Memory (GB)", 0, "caching", "Plan the video VAE's encode tiles for at most this much GPU memory; 0 = all free memory. Lower values cache latents with less VRAM (tiles are blended).", runtime=False, minimum=0, step=0.5),
-        ExtraOption(
-            "block_swap_trainable_ring",
-            "checkbox",
-            "Trainable Block-Swap Ring",
-            True,
-            "full",
-            "Fastest block swap for full fine-tuning: the swapped blocks keep pinned CPU copies and stream through reusable "
-            "GPU buffers, written back after each update (only with Blocks to Swap > 0; turns Pinned Memory for Block Swap on).",
-            full_only=True,
-        ),
-        ExtraOption("adafactor_triton", "checkbox", "Triton Adafactor", False, "full", "Triton kernels for the fused Adafactor update of BF16 matrices (needs Triton); other tensors use the standard update.", full_only=True),
+        ExtraOption("ref_pad_value", "number", "R2AV Letterbox Grey", 255, "caching", "R2AV: grey level (0-255) around a reference image fitted to the clip's frame (255 = white); use the same value when generating.", minimum=0, maximum=255, step=1),
+        ExtraOption("caching_latent_max_references", "number", "R2AV Max References", 8, "caching", "R2AV: clips with more reference images than this are refused (the model's reference slots).", runtime=False, minimum=1, maximum=8, step=1),
+        TRAINABLE_RING_OPTION,
+        TRITON_ADAFACTOR_OPTION,
         ExtraOption("k6_freeze_blocks", "textbox", "Frozen Blocks", "", "full", "Visual blocks to keep frozen, e.g. 0-9,31 (Lite has 32, Pro 60); they are saved unchanged. Empty trains every block.", full_only=True),
     ),
     sample_flags=("w", "h", "f", "s", "d", "g", "n"),

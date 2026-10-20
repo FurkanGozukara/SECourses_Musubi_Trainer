@@ -299,12 +299,12 @@ MODEL_HINTS: dict[str, dict] = {
         "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions; for editing, a control_images sub-folder with the references.",
     },
     "moss_image": {
-        "about": "OpenMOSS MOSS-Image, a 5B single-stream text-to-image DiT with the Qwen3.5-9B text encoder and the FLUX.2 VAE (LoRA training only).",
+        "about": "OpenMOSS MOSS-Image, a 5B single-stream text-to-image DiT with the Qwen3.5-9B text encoder and the FLUX.2 VAE (LoRA or full fine-tuning).",
         "all": [
             "Train on the BF16 Base model (moss_image_base_bf16); the LoRA also loads on the SFT model and on the INT8 ConvRot files in ComfyUI and SwarmUI.",
             "Training uses timestep sampling shift with flow shift 3 (about MOSS's pre-training distribution): it kept the prompts one checkpoint longer than shift 5 on two training seeds; samples keep the vendor's shift 5.",
             "Training samples default to 50 steps at CFG 3 with an empty negative prompt; their negative branch skips block 22, as the vendor's sampler does.",
-            "The text encoder is the INT8 ConvRot Qwen3.5-9B file SwarmUI downloads, read in BF16 for caching. The unquantized BF16 file (Model Files: MOSS-Image BF16 text encoder, a 19 GB download) loaded in 5 s instead of 49 s on an A6000 server, and its caption embeddings differ from the INT8 file's by about 3% (cosine 0.999): cache with the file you generate with.",
+            "The text encoder is the INT8 ConvRot Qwen3.5-9B file SwarmUI downloads, read in BF16 for caching. The unquantized BF16 file (Model Files: MOSS-Image BF16 text encoder, 19 GB on disk) loaded in 5 s instead of 49 s on an A6000 server, and its caption embeddings differ from the INT8 file's by about 3% (cosine 0.999): cache with the file you generate with.",
             "Up to 40 blocks can be swapped; two blocks always stay on the GPU.",
         ],
         "lora": [
@@ -313,7 +313,12 @@ MODEL_HINTS: dict[str, dict] = {
             "The trainer measures the CPU's BF16 speed first: where it is far slower than FP32 (an AVX2-only server CPU took 17 minutes per caption), text caching and sample prompts run the text encoder on the GPU one layer at a time instead (under 1 GB of VRAM, about 12 seconds per caption there).",
             "1.65 s/step on an RTX 5090 without block swap; 1.80, 1.87 and 1.97 s/step with 20, 30 and 39 swapped blocks.",
         ],
-        "vram": "24 and 32 GB train without block swap (14.0 GB); 16 GB too, with text caching on the CPU (14.1 GB); 12, 10 and 8 GB swap 20, 30 and 39 blocks (H2D-only, 10.3, 8.2 and 6.3 GB); 6 GB swaps 35 blocks at 768 px (4.3 GB).",
+        "full": [
+            "No measured fine-tuning presets yet. Fine-Tuning trains every DiT weight in BF16 with fused-backward AdaFactor (max grad norm 0, LR 1e-5 by default); the VAE and the text encoder stay frozen.",
+            "With block swap, the Trainable Block-Swap Ring streams the swapped blocks through reusable GPU buffers from pinned CPU copies, written back after each update (it turns Pinned Memory for Block Swap on).",
+            "The fine-tuned DiT is saved in the released layout (fused qkv), so it loads as the DiT for more training, in ComfyUI and in SwarmUI.",
+        ],
+        "vram": {"lora": "24 and 32 GB train without block swap (14.0 GB); 16 GB too, with text caching on the CPU (14.1 GB); 12, 10 and 8 GB swap 20, 30 and 39 blocks (H2D-only, 10.3, 8.2 and 6.3 GB); 6 GB swaps 35 blocks at 768 px (4.3 GB).", "full": "Fine-tuning swaps up to 40 of the 42 blocks, as LoRA does."},
         "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions.",
     },
     "mage_flow": {
@@ -435,6 +440,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Batch size is fixed to 1; raise gradient accumulation instead.",
             "Clips with sound also train audio (video track or same-stem audio file); image folders train appearance as silent one-frame videos.",
             "ti2av needs a JSONL dataset with a first-frame control_path per clip, loaded with Use TOML File.",
+            "r2av (multi-reference): each clip comes with up to 8 reference images that its caption names @Image 1, @Image 2 ... in order; the JSONL lists them per clip (\"references\": [{\"type\": \"image\", \"path\": ...}]), loaded with Use TOML File. A released checkpoint has no reference slots: train Fine-Tuning with Task r2av first, then LoRAs on the DiT it saves. Sample prompts add each reference with --ref <image>.",
             "Train the regular Lite or Pro transformer; distilled checkpoints cannot be trained, and attention is SDPA only.",
         ],
         "lora": [
