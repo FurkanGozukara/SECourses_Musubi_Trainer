@@ -443,14 +443,14 @@ MODEL_HINTS: dict[str, dict] = {
             "ConvRot INT8 base (needs Triton) and FP8 Base are mutually exclusive; choose one base quantization.",
         ],
         "full": [
-            "No measured fine-tuning presets yet. Fine-Tuning trains every DiT weight in BF16 with fused-backward AdaFactor (max grad norm 0, LR 1e-5 by default); the video and audio VAEs and the text encoders stay frozen.",
-            "Trainable Block-Swap Ring streams the swapped blocks through reusable GPU buffers with pinned CPU copies, written back after each update (it turns Pinned Memory for Block Swap on); Frozen Blocks keeps the visual blocks you list unchanged.",
+            "Fine-tuning presets (Lite): every DiT weight in BF16 with fused-backward AdaFactor at LR 1e-5, max grad norm 0, 100 epochs, a checkpoint every 25 (about 7.5 GB each); the video and audio VAEs and the text encoders stay frozen.",
+            "With block swap the presets use the Trainable Block-Swap Ring: the swapped blocks stream through reusable GPU buffers from pinned CPU copies (about 7.5 GB of system RAM), written back after each update; it turns Pinned Memory for Block Swap on. Frozen Blocks keeps the visual blocks you list unchanged.",
             "ConvRot INT8 and FP8 bases are for LoRA: fine-tuning loads the BF16 transformer.",
             "The fine-tuned DiT is saved as one .safetensors file with the model's own keys, which loads as the DiT for more training or for samples.",
         ],
         "vram": {
             "lora": "32 GB: 864x480 at 121 frames without block swap (22.4 GB peak), 24 GB with block swap 10 (22.3 GB); 16 GB: 864x480 with block swap 25 and activation CPU offload (14.2 GB); 12 GB: 640x352 at 121 frames; 10 and 8 GB: 512x288 at 97 frames; 6 GB: 512x288 at 49 frames (4.3 GB); Lite swaps at most 30 blocks.",
-            "full": "Lite swaps at most 30 of its 32 blocks, Pro 58 of 60.",
+            "full": "Fine-tuning at 864x480, 121 frames: 24 GB without block swap (32 GB tier), 22.2 GB with block swap 10 (24 GB), 14.3 GB with block swap 25 and activation CPU offload (16 GB); 12 and 10 GB train 640x352, 8 GB 512x288 at 97 frames, 6 GB 512x288 at 49 frames (4.3 GB). Lite swaps at most 30 of its 32 blocks, Pro 58 of 60.",
         },
         "dataset": "Clips with sound at 864x480 (16 px steps), 4n+1 frames (121 = about 5 s at 24 fps), images, or both in one folder, each with a same-name .txt caption.",
     },
