@@ -126,7 +126,7 @@ MODEL_HINTS: dict[str, dict] = {
             "🔍 Check dataset in 📁 Dataset shows every target beside its references and lists images without one or misnamed references.",
         ],
         "lora": [
-            "LoRA presets: AdaFactor, rank 128, LR 6e-5 for 200 epochs, 1.5e-4 for 100 or 3e-4 for 50.",
+            "LoRA presets: AdaFactor, rank 128, LR 1.2e-4 for 200 epochs, 3e-4 for 100 or 50. As DoRA, the earlier 6e-5 (200) and 1.5e-4 (100) learned only a partial likeness by the last save; at the doubled rates the subject arrived at epoch 125-175 of 200 and 80-100 of 100 on two training seeds.",
             "Tier1 presets keep BF16 weights, Tier2 and up use FP8 Scaled, and Tier3-6 also lower rank or resolution.",
         ],
         "full": [
