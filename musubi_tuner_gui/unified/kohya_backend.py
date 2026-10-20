@@ -407,6 +407,7 @@ def _flux_defaults(training_type: str) -> dict[str, Any]:
         "train_single_block_indices": "all",
         "blocks_to_swap": 13,
         "cpu_offload_checkpointing": False,
+        "block_swap_h2d_only": False,
         "fp8_base": False,
         "fp8_scaled": False,
         "fp8_fast": False,
@@ -875,6 +876,16 @@ def _build_specs(model_key: str) -> list[ParamSpec]:
     add("gradient_checkpointing", "checkbox", "Gradient Checkpointing", "Recompute activations in the backward pass: large VRAM saving for ~20% speed. On except 48-80 GB presets.", "memory", 20)
     if flux:
         add("cpu_offload_checkpointing", "checkbox", "CPU Offload Checkpointing", "Offload checkpointed activations to RAM. Not together with block swap.", "memory", 25, advanced=True)
+        add(
+            "block_swap_h2d_only",
+            "checkbox",
+            "H2D-only Block Swap",
+            "LoRA with block swap: the frozen swapped blocks stream to the GPU and are never copied back (no device-to-host "
+            "transfer, faster steps for a little more VRAM). Needs Gradient Checkpointing.",
+            "memory",
+            26,
+            modes=LORA_ONLY,
+        )
         add("fp8_base", "checkbox", "FP8 Base Model", "Load the frozen FLUX weights in fp8 (plain cast). Prefer FP8 Scaled.", "memory", 30, modes=LORA_ONLY, advanced=True)
         add("fp8_scaled", "checkbox", "FP8 Scaled Base Model", "Scaled fp8 FLUX weights for LoRA: about 11 GB less weight memory, slightly lower quality. The FP8_Scaled presets spend it on fewer swapped blocks (faster steps) at the same GPU tier.", "memory", 31, modes=LORA_ONLY)
         add("fp8_fast", "checkbox", "Fast FP8 Matmul", "Use fp8 matmul with FP8 Scaled (RTX 40xx+). Faster, small quality cost.", "memory", 32, modes=LORA_ONLY, advanced=True)
@@ -2465,6 +2476,8 @@ def _validated_values(model_key: str, values: dict) -> tuple[dict, str, list[str
         errors.append(f"Blocks to Swap must be between 0 and {model['max_blocks_to_swap']} for {model['short_name']}.")
     if flux and swap > 0 and v.get("cpu_offload_checkpointing"):
         errors.append("CPU Offload Checkpointing cannot be combined with Blocks to Swap; set one of them to off/0.")
+    if flux and training_type == LORA and swap > 0 and v.get("block_swap_h2d_only") and not v.get("gradient_checkpointing"):
+        errors.append("H2D-only Block Swap needs Gradient Checkpointing (the streamed weights are re-read in the backward pass).")
 
     # argument lists: sd-scripts splits every optimizer / scheduler argument at '=' and reads the value with
     # ast.literal_eval, network arguments at the first '=' (the kohya_ss GUI refused malformed ones: validate_args_setting)
@@ -2702,6 +2715,7 @@ def _build_sd_scripts_config(model_key: str, v: dict, training_type: str) -> lis
         put("cpu_offload_checkpointing", True, bool(v["cpu_offload_checkpointing"]))
         put("disable_numpy_memmap", True, bool(v["disable_numpy_memmap"]))
         if lora:
+            put("block_swap_h2d_only", True, _int(v["blocks_to_swap"]) > 0 and bool(v.get("block_swap_h2d_only")))
             for key in ("fp8_base", "fp8_scaled", "fp8_fast", "fp8_base_unet"):
                 put(key, True, bool(v[key]))
     else:

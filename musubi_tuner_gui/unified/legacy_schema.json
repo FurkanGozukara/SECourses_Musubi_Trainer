@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-20T22:43:06",
+ "generated": "2026-10-20T22:49:31",
  "gradio": "6.30.0",
  "backends": {
   "qwen_image": {
@@ -54091,6 +54091,10 @@
     "default": false
    },
    "cpu_offload_checkpointing": {
+    "type": "bool",
+    "default": false
+   },
+   "block_swap_h2d_only": {
     "type": "bool",
     "default": false
    },

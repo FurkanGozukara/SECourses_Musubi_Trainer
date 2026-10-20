@@ -488,6 +488,7 @@ def test_sample_prompt_text_is_written_to_a_file(tmp_path):
         ("flux1_dev", "full", {"optimizer_type": "AdamW"}, "Fused Backward Pass works only with the Adafactor"),
         ("flux1_dev", "lora", {"blocks_to_swap": 13, "cpu_offload_checkpointing": True}, "CPU Offload Checkpointing"),
         ("flux1_dev", "lora", {"blocks_to_swap": 36}, "Blocks to Swap must be between 0 and 35"),
+        ("flux1_dev", "lora", {"blocks_to_swap": 13, "block_swap_h2d_only": True, "gradient_checkpointing": False}, "H2D-only Block Swap needs Gradient Checkpointing"),
         ("sdxl", "lora", {"text_encoder_lr": 1e-5}, "Text Encoder LR = 0"),
         ("sdxl", "full", {"cache_text_encoder_outputs": True}, "cannot be trained while their outputs are cached"),
         ("sdxl", "full", {"full_bf16": True, "mixed_precision": "fp16"}, "Full BF16 Training needs Mixed Precision 'bf16'"),
@@ -1145,3 +1146,18 @@ def test_sd_scripts_constructs_the_musubi_automagic(optimizer):
     result = subprocess.run([sys.executable, "-c", _OPTIMIZER_CHILD, str(kb.SD_SCRIPTS_DIR), json.dumps(args)], env=env, capture_output=True,
                             text=True, encoding="utf-8", errors="replace", timeout=600)
     assert f"OPTIMIZER musubi_tuner.optimizers" in result.stdout and f" {optimizer} False" in result.stdout, result.stdout[-1500:] + result.stderr[-3000:]
+
+
+def test_flux_lora_h2d_only_block_swap_reaches_the_runtime_toml(tmp_path):
+    """kohya-ss/sd-scripts #2467 (ported): H2D-only block swap streams the frozen FLUX blocks to the GPU without copying
+    them back; it is written only for LoRA runs that swap blocks."""
+    values = _values(tmp_path, "flux1_dev", "lora", blocks_to_swap=13, block_swap_h2d_only=True, gradient_checkpointing=True)
+    _, data = _runtime_toml(kb.train_kohya_model("flux1_dev", values, print_only=True, runner=None))
+    assert data["block_swap_h2d_only"] is True and data["blocks_to_swap"] == 13
+    values = _values(tmp_path, "flux1_dev", "lora", blocks_to_swap=0, block_swap_h2d_only=True)
+    _, data = _runtime_toml(kb.train_kohya_model("flux1_dev", values, print_only=True, runner=None))
+    assert "block_swap_h2d_only" not in data  # nothing to stream without block swap
+    values = _values(tmp_path, "flux1_dev", "full", blocks_to_swap=10, block_swap_h2d_only=True)
+    _, data = _runtime_toml(kb.train_kohya_model("flux1_dev", values, print_only=True, runner=None))
+    assert "block_swap_h2d_only" not in data  # fine-tuning trains the swapped weights
+
