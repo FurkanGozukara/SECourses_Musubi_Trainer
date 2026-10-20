@@ -305,6 +305,30 @@ def test_reference_images_enabled_without_control_folder_is_rejected(tmp_path):
     assert toml.load(path)["datasets"][0]["control_directory"].endswith("control_images")
 
 
+def test_flux3_references_keep_their_framing(tmp_path):
+    """FLUX.3 editing: references keep their own aspect ratio at the training pixel count (control_resolution) instead
+    of being cropped to the target's bucket; batches of differently shaped references cannot be stacked."""
+    target = tmp_path / "dataset" / "1_ohwx"
+    _touch(target / "image_0.png")
+    (target / "image_0.txt").write_text("ohwx", encoding="utf-8")
+    _touch(target / "control_images" / "image_0.png")
+    params = dict(_parameters("flux3_klein", tmp_path, use_control_images=True, control_directory_name="control_images"))
+    params.update({"parent_folder_path": str(tmp_path / "dataset"), "dataset_config_mode": "Generate from Folder Structure",
+                   "dataset_resolution_width": 1024, "dataset_resolution_height": 768, "dataset_batch_size": 1})
+    path, _messages = m.create_dataset_config(m.FLUX_3_KLEIN, params)
+    assert toml.load(path)["datasets"][0]["control_resolution"] == [1024, 768]
+    params["dataset_batch_size"] = 2
+    with pytest.raises(ValueError, match="batch size to 1"):
+        m.create_dataset_config(m.FLUX_3_KLEIN, params)
+    params.update(use_control_images=False)
+    path, _messages = m.create_dataset_config(m.FLUX_3_KLEIN, params)  # text-to-image keeps any batch size
+    assert "control_resolution" not in toml.load(path)["datasets"][0]
+    mage = dict(_parameters("mage_flow", tmp_path, use_control_images=True, control_directory_name="control_images"))
+    mage.update({"parent_folder_path": str(tmp_path / "dataset"), "dataset_config_mode": "Generate from Folder Structure"})
+    path, _messages = m.create_dataset_config(m.MAGE_FLOW, mage)
+    assert "control_resolution" not in toml.load(path)["datasets"][0]  # other editing models keep the target's bucket
+
+
 def test_paths_after_download_keep_the_preset_file(tmp_path, monkeypatch):
     """A Mage-Flow-Edit preset applied before downloading must get the Edit DiT, not the T2I default."""
     models = tmp_path / "Training_Models_Mage_Flow"

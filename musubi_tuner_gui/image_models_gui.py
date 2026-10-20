@@ -177,6 +177,9 @@ class ImageArchSpec:
     resolution_step: int = 16
     supports_control_images: bool = False
     control_label: str = "Use control / reference images (editing)"
+    # reference images keep their own framing (aspect ratio) at the training pixel count (control_resolution) instead of
+    # being cropped to the target's bucket, which cuts what lies outside a differently shaped target
+    references_keep_framing: bool = False
     extras: tuple = ()
     sample_flags: tuple = ("w", "h", "s", "d", "l", "n")
     defaults: dict = field(default_factory=dict)
@@ -511,6 +514,7 @@ FLUX_3_KLEIN = ImageArchSpec(
     download_bundles=("flux3_klein",),
     supports_control_images=True,
     control_label="Use reference images (FLUX.3 Klein editing, 1+ ordered references per target)",
+    references_keep_framing=True,  # as ai-toolkit (9d408eb): references keep their framing, sized by area
     extras=(
         ExtraOption("caching_teo_text_encoder_dtype", "dropdown", "Text Encoder Dtype", "bfloat16", "caching", "Use float32 only for CPU caching.", choices=("bfloat16", "float32"), runtime=False),
     ),
@@ -1518,6 +1522,12 @@ def create_dataset_config(spec: ImageArchSpec, param_dict: dict) -> tuple[str, l
     height = int(param_dict.get("dataset_resolution_height") or 1024)
     width, height = max(step, width - width % step), max(step, height - height % step)
     use_controls = bool(param_dict.get("use_control_images")) and spec.supports_control_images
+    if use_controls and spec.references_keep_framing and int(param_dict.get("dataset_batch_size") or 1) > 1:
+        # cached latents of a batch are stacked: references of different shapes cannot share one
+        raise ValueError(
+            f"{spec.display_name} editing keeps each reference image's own framing, so references of different shapes "
+            "cannot share a batch: set the dataset batch size to 1 and raise Gradient Accumulation Steps instead."
+        )
     control_dir = str(param_dict.get("control_directory_name") or "control_images").strip() if use_controls else f"__{spec.slug}_no_control__"
     if spec.dataset_kind == "video":
         config, messages = generate_kandinsky6_dataset_config_from_folders(
@@ -1554,6 +1564,7 @@ def create_dataset_config(spec: ImageArchSpec, param_dict: dict) -> tuple[str, l
         bucket_no_upscale=bool(param_dict.get("dataset_bucket_no_upscale", False)),
         cache_directory_name=str(param_dict.get("dataset_cache_directory") or "cache_dir"),
         control_directory_name=control_dir,
+        control_resolution=(width, height) if use_controls and spec.references_keep_framing else None,
     )
     if use_controls:
         # an edit / i2i run without reference images would only fail later, while caching or training

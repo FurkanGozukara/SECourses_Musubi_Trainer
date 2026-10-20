@@ -285,7 +285,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Train on the undistilled Base checkpoint (flux3-image-klein-base-bf16); the LoRA also loads on the 16-step distilled model in ComfyUI and SwarmUI.",
             "Timestep sampling shift with flow shift 6.93 is BFL's own sampler shift, the same at every resolution.",
             "Training samples default to 50 steps at CFG 3.5 with an empty negative prompt, the base model's reference settings.",
-            "Turn on reference images to train an editing LoRA: each target takes one or more ordered references from its control folder.",
+            "Turn on reference images to train an editing LoRA: each target takes one or more ordered references from its control folder; each reference keeps its own framing at the training resolution's pixel count (not cropped to the target), so keep the dataset batch size at 1.",
             "Up to 26 blocks can be swapped; two joint blocks always stay on the GPU.",
         ],
         "lora": [
