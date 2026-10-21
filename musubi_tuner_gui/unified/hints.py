@@ -335,13 +335,14 @@ MODEL_HINTS: dict[str, dict] = {
         ],
         "full": [
             "Presets: every DiT weight trains in BF16 with fused-backward AdaFactor, LR 1e-5 (max grad norm 0), 1024 px, 200 epochs, a checkpoint every 25 epochs with only the newest training state kept; the VAE and the text encoder stay frozen.",
+            "The presets use Triton Adafactor: the same update in fused kernels, 1.4 GB less VRAM and 2.67 instead of 3.5 s/step than the standard update on an RTX A6000. Where Triton cannot build its kernels, the trainer warns and uses the standard update.",
             "With block swap, the Trainable Block-Swap Ring streams the swapped blocks through reusable GPU buffers from pinned CPU copies, written back after each update (it turns Pinned Memory for Block Swap on; about 10 GB of system RAM).",
             "The fine-tuned DiT is saved in the released layout (fused qkv), so it loads as the DiT for more training, in ComfyUI and in SwarmUI.",
-            "13.61 s/step on an RTX A6000 without block swap; 13.72, 15.04 and 15.80 s/step with 3, 22 and 32 swapped blocks, 18.02 s/step for the 8 GB preset with activation CPU offload.",
+            "2.64 s/step on an RTX A6000 without block swap (16 to 32 GB); 4.85, 6.49 and 7.93 s/step with 14, 24 and 33 swapped blocks (12, 10 and 8 GB), 11.10 s/step for the 6 GB preset with activation CPU offload.",
         ],
         "vram": {
             "lora": "24 and 32 GB train without block swap (14.0 GB); 16 GB too, with text caching on the CPU (14.1 GB); 12, 10 and 8 GB swap 20, 30 and 39 blocks (H2D-only, 10.3, 8.2 and 6.3 GB); 6 GB swaps 35 blocks at 768 px (4.3 GB).",
-            "full": "24 and 32 GB train without block swap (14.9 GB; 15.7 GB while the text encoder caches on the GPU); 16, 12 and 10 GB swap 3, 22 and 32 blocks through the ring with text caching on the CPU (14.4, 10.4 and 8.3 GB); 8 GB swaps 36 with activation CPU offload (6.2 GB); none fits 6 GB.",
+            "full": "16, 24 and 32 GB train without block swap (13.6 GB; 15.7 GB while the text encoder caches on the GPU on 24 and 32 GB); 12, 10 and 8 GB swap 14, 24 and 33 blocks through the ring with text caching on the CPU (10.4, 8.3 and 6.4 GB); 6 GB swaps 37 with activation CPU offload (4.2 GB).",
         },
         "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions; for a control adapter, a control_images sub-folder with <image>_0.png colour and <image>_1.png depth maps (made when missing).",
     },
