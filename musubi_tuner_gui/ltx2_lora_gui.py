@@ -802,11 +802,10 @@ def _validate_ltx2_parameters(param_dict: dict, *, validate_paths: bool = True) 
             raise ValueError("block_swap_h2d_only requires blocks_to_swap > 0.")
         if not param_dict.get("gradient_checkpointing"):
             raise ValueError("block_swap_h2d_only requires gradient_checkpointing.")
-        # the backend rejects both at start-up (they move streamed blocks to the CPU and corrupt the H2D ring)
+        # the backend rejects activation CPU offload at start-up (it moves streamed blocks to the CPU and corrupts the
+        # H2D ring); Sample With Offloading works, since the sampler rebuilds the ring after each of its moves
         if param_dict.get("gradient_checkpointing_cpu_offload"):
             raise ValueError("block_swap_h2d_only cannot be combined with activation CPU offload (gradient_checkpointing_cpu_offload): disable one of them.")
-        if param_dict.get("sample_with_offloading"):
-            raise ValueError("block_swap_h2d_only cannot be combined with Sample With Offloading: disable one of them.")
 
     mode = str(param_dict.get("ltx2_mode") or "video")
     if mode == "audio" and str(param_dict.get("lora_target_preset") or "t2v") == "t2v":

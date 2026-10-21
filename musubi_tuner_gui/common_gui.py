@@ -2824,11 +2824,10 @@ def validate_block_swap_options(param_dict: dict, *, lora_training: bool = True)
         raise ValueError("H2D-only block swap requires blocks_to_swap to be greater than 0.")
     if not bool(param_dict.get("gradient_checkpointing", False)):
         raise ValueError("H2D-only block swap requires gradient checkpointing during training.")
-    # the backend rejects both at start-up (they move streamed blocks to the CPU and corrupt the H2D ring)
+    # the backend rejects activation CPU offload at start-up (it moves streamed blocks to the CPU and corrupts the
+    # H2D ring); LTX-2's Sample With Offloading works, since its sampler rebuilds the ring after each of its moves
     if bool(param_dict.get("gradient_checkpointing_cpu_offload", False)):
         raise ValueError("H2D-only block swap cannot be combined with activation CPU offload (Gradient Checkpointing CPU Offload): disable one of them.")
-    if bool(param_dict.get("sample_with_offloading", False)):
-        raise ValueError("H2D-only block swap cannot be combined with Sample With Offloading: disable one of them.")
 
 
 _DISABLED_COMPILE_BACKENDS = {"", "0", "false", "no", "none", "off"}

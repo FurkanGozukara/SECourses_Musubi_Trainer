@@ -100,6 +100,13 @@ class TestValidation:
                 validate_paths=False,
             )
 
+    def test_h2d_allows_sample_offloading_but_not_activation_offload(self):
+        # the sampler rebuilds the H2D ring after its offload moves; activation CPU offload still corrupts it
+        h2d = {"block_swap_h2d_only": True, "blocks_to_swap": 34, "gradient_checkpointing": True}
+        _normalize_ltx2_parameters(_params(sample_with_offloading=True, **h2d), validate_paths=False)
+        with pytest.raises(ValueError, match="activation CPU offload"):
+            _normalize_ltx2_parameters(_params(gradient_checkpointing_cpu_offload=True, **h2d), validate_paths=False)
+
     def test_lora_rejects_exactly_one_swapped_block(self):
         # one swapped block corrupted LTX-2.3 LoRA weights in the standard block swap (loss ~0.3 -> ~1.8)
         with pytest.raises(ValueError, match="cannot swap exactly 1 block"):
