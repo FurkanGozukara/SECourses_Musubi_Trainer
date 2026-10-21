@@ -2612,6 +2612,9 @@ def _build_sd_scripts_config(model_key: str, v: dict, training_type: str) -> lis
     put("train_batch_size", _int(v["dataset_batch_size"], 1))
     extension = str(v["dataset_caption_extension"] or "").strip()
     put("caption_extension", extension, bool(extension))
+    # the whole caption file with its line breaks, as the musubi trainers read it (sd-scripts otherwise keeps only the
+    # first line: an appended or multi-paragraph caption lost the rest); a dataset TOML sets it per subset itself
+    put("enable_multiline_caption", True, v["dataset_config_mode"] != TOML_DATASET_MODE)
     put("enable_bucket", True, bool(v["dataset_enable_bucket"]))
     put("bucket_no_upscale", True, bool(v["dataset_bucket_no_upscale"]))
     put("min_bucket_reso", _int(v["min_bucket_reso"], 256))

@@ -283,7 +283,7 @@ MODEL_HINTS: dict[str, dict] = {
     "flux3_klein": {
         "about": "Black Forest Labs FLUX.3 Klein, a 5.4B text-to-image DiT with the Qwen3-VL 4B text encoder and the FLUX.2 VAE (LoRA training only); editing LoRAs train in the FLUX.3 Klein Edit card.",
         "all": [
-            "Train on the undistilled Base checkpoint (flux3-image-klein-base-bf16); the LoRA also loads on the 16-step distilled model in ComfyUI and SwarmUI.",
+            "Train on the undistilled Base checkpoint (flux3-image-klein-base-bf16); the LoRA also loads on the 16-step distilled model in ComfyUI (v0.41.0 or newer) and SwarmUI.",
             "Timestep sampling shift with flow shift 6.93 is BFL's own sampler shift, the same at every resolution.",
             "Training samples default to 50 steps at CFG 3.5 with an empty negative prompt, the base model's reference settings.",
             "Up to 26 blocks can be swapped; two joint blocks always stay on the GPU.",
@@ -303,7 +303,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Every dataset folder needs a control_images sub-folder with each target's reference: photo.png -> control_images/photo_0.png (more references: photo_1.png ...); the tab refuses to start without it.",
             "Each reference keeps its own framing at the training resolution's pixel count (not cropped to the target), so the dataset batch size stays 1.",
             "🔍 Check dataset in 📁 Dataset shows every target beside its references and lists images without one.",
-            "Train on the undistilled Base checkpoint (flux3-image-klein-base-bf16); the LoRA also loads on the 16-step distilled model in ComfyUI and SwarmUI.",
+            "Train on the undistilled Base checkpoint (flux3-image-klein-base-bf16); the LoRA also loads on the 16-step distilled model in ComfyUI (v0.41.0 or newer) and SwarmUI.",
             "Sample prompts take their reference images with --ci (one per reference, in order); timestep sampling shift 6.93 is BFL's own.",
             "Up to 26 blocks can be swapped; two joint blocks always stay on the GPU.",
         ],
@@ -318,7 +318,7 @@ MODEL_HINTS: dict[str, dict] = {
     "moss_image": {
         "about": "OpenMOSS MOSS-Image, a 5B single-stream text-to-image DiT with the Qwen3.5-9B text encoder and the FLUX.2 VAE (LoRA or full fine-tuning).",
         "all": [
-            "Train on the BF16 Base model (moss_image_base_bf16); the LoRA also loads on the SFT model and on the INT8 ConvRot files in ComfyUI and SwarmUI.",
+            "Train on the BF16 Base model (moss_image_base_bf16); the LoRA also loads on the SFT model and on the INT8 ConvRot files in ComfyUI (v0.42.0 or newer) and SwarmUI.",
             "Training uses timestep sampling shift with flow shift 3 (about MOSS's pre-training distribution): it kept the prompts one checkpoint longer than shift 5 on two training seeds; samples keep the vendor's shift 5.",
             "Training samples default to 50 steps at CFG 3 with an empty negative prompt; their negative branch skips block 22, as the vendor's sampler does.",
             "The text encoder is the INT8 ConvRot Qwen3.5-9B file SwarmUI downloads, read in BF16 for caching. The unquantized BF16 file (Model Files: MOSS-Image BF16 text encoder, 19 GB on disk) loaded in 5 s instead of 49 s on an A6000 server, and its caption embeddings differ from the INT8 file's by about 3% (cosine 0.999): cache with the file you generate with.",
@@ -329,7 +329,7 @@ MODEL_HINTS: dict[str, dict] = {
             "The 24 and 32 GB presets cache the text encoder on the GPU (15.4 GB caching peak); 16 GB and smaller cache it on the CPU.",
             "The trainer measures the CPU's BF16 speed first: where it is far slower than FP32 (an AVX2-only server CPU took 17 minutes per caption), text caching and sample prompts run the text encoder on the GPU one layer at a time instead (under 1 GB of VRAM, about 12 seconds per caption there).",
             "2.02 s/step on an RTX 5090 without block swap; 2.22, 2.32 and 2.46 s/step with 20, 30 and 39 swapped blocks.",
-            "Use Control Images trains a colour / depth control adapter for ComfyUI's MOSS-Image Color/Depth Control node instead of a subject LoRA: every image needs <image>_0.png (one flat colour per region) and <image>_1.png (depth, near = white) in its control_images sub-folder, and Make Missing Colour / Depth Maps creates them before caching (Mask2Former regions, Depth Anything V2 depth). An adapter learns layouts, not a subject: give it a large, varied image set.",
+            "Use Control Images trains a colour / depth control adapter for ComfyUI's MOSS-Image Color/Depth Control node (ComfyUI v0.42.2 or newer) instead of a subject LoRA: every image needs <image>_0.png (one flat colour per region) and <image>_1.png (depth, near = white) in its control_images sub-folder, and Make Missing Colour / Depth Maps creates them before caching (Mask2Former regions, Depth Anything V2 depth). An adapter learns layouts, not a subject: give it a large, varied image set.",
             "The control adapter follows the published recipe: the patch embedder's new colour / depth columns train at 10x the learning rate, each step keeps the colour map only, the depth map only, both or neither (35 / 35 / 20 / 10 %), 10% of the captions are dropped, and the text refiner's two blocks train with the LoRA. Every checkpoint is the file ComfyUI's node loads (load it with LoRA Loader Model Only).",
             "Control adapter sample prompts take the maps with --ci: the colour map, then the depth map; --ci none leaves one out (--ci none --ci depth.png samples with depth only).",
         ],

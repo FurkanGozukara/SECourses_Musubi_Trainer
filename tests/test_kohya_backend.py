@@ -300,6 +300,7 @@ def test_print_only_command(tmp_path, model, kind):
     assert data["resolution"] == "1024,1024"
     assert data["output_name"] == values["output_name"]
     assert data["console_log_simple"] is True  # plain log lines for the training status panel
+    assert data["enable_multiline_caption"] is True  # whole caption files, as the musubi trainers read them
     if kind == "lora":
         assert data["network_module"] == kb.KOHYA_MODELS[model]["network_module"]
         assert data["network_dim"] == values["network_dim"]
@@ -324,6 +325,7 @@ def test_dataset_toml_and_regularization(tmp_path):
     values = _values(tmp_path, "sdxl", "full", dataset_config_mode=kb.TOML_DATASET_MODE, dataset_config=str(dataset_toml))
     _path, data = _runtime_toml(kb.train_kohya_model("sdxl", values, print_only=True))
     assert data["dataset_config"] == dataset_toml.as_posix() and "train_data_dir" not in data
+    assert "enable_multiline_caption" not in data  # the user's dataset TOML decides it per subset
 
     reg = _make_dataset(tmp_path / "reg", "1_man")
     values = _values(tmp_path, "flux1_dev", "full", reg_data_dir=str(reg))

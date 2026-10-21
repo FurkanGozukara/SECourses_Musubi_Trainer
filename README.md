@@ -15,17 +15,18 @@
 ## 12 October 2026 Version 37.0 Update
 
 - **💫 FLUX.3 Klein training (new model)** — LoRA / DoRA on Black Forest Labs' undistilled FLUX.3 Klein Base (5.4B, Qwen3-VL 4B text encoder, FLUX.2 VAE), for text-to-image and, in its own **✏️ FLUX.3 Klein Edit** card with GPU presets measured on an editing dataset, for editing with reference images.
-  - The trained file loads in ComfyUI and SwarmUI on the Base, the 16-step distilled and the INT8 ConvRot models (checked with ComfyUI's own LoRA loader).
+  - The trained file loads in ComfyUI (v0.41.0 or newer) and SwarmUI on the Base, the 16-step distilled and the INT8 ConvRot models (checked with ComfyUI's own LoRA loader).
   - Measured GPU presets for 6 to 32 GB (`FLUX_3_Klein_Training_Configs`): rank 128 at 1024 px down to 10 GB (8.2 GB peak), 768 px on 8 GB and 512 px with an FP8 base on 6 GB (4.3 GB).
   - Downloader entry 29 fetches the Base model (gated on Hugging Face: accept its terms and run `hf auth login`), the FLUX.2 VAE and the Qwen3-VL 4B text encoder.
 - **🌌 MOSS-Image training (new model)** — LoRA / DoRA on OpenMOSS MOSS-Image (5B, Qwen3.5-9B text encoder, FLUX.2 VAE), Base or SFT.
-  - The trained file loads in ComfyUI and SwarmUI on Base and SFT, BF16 and INT8 ConvRot (checked with ComfyUI's own LoRA loader).
+  - The trained file loads in ComfyUI (v0.42.0 or newer) and SwarmUI on Base and SFT, BF16 and INT8 ConvRot (checked with ComfyUI's own LoRA loader).
   - Uses the INT8 ConvRot Qwen3.5 text encoder SwarmUI already downloads; downloader entries 30 (Base) and 31 (SFT).
   - GPU presets for 6 to 32 GB GPUs (DoRA rank 128 at 1024 px from 8 GB; 768 px rank 32 at 6 GB), measured on an RTX 5090: no block swap from 16 GB, 2.02 s/step.
   - **Full fine-tuning** of the whole DiT in BF16 (fused AdaFactor, trainable block-swap ring, resume), saved in the released layout for ComfyUI and SwarmUI. GPU presets for 6 to 32 GB measured on an RTX A6000: 13.6 GB without block swap from 16 GB, down to 4.2 GB on 6 GB.
-  - **Colour / depth control adapters** for ComfyUI's MOSS-Image Color/Depth Control node: turn on Use Control Images, and missing colour-region and depth maps are made before caching.
+  - **Colour / depth control adapters** for ComfyUI's MOSS-Image Color/Depth Control node (ComfyUI v0.42.2 or newer): turn on Use Control Images, and missing colour-region and depth maps are made before caching.
 - **🎥 Kandinsky 6 full fine-tuning and multi-reference (R2AV) training** — the whole Lite or Pro DiT in BF16 with GPU presets for 6 to 32 GB, and video + audio from a prompt plus up to 8 reference images.
 - **⚡ FLUX.1 LoRA presets train 41-81% faster per step on 12-24 GB GPUs**: their swapped blocks stream to the GPU only (H2D-only block swap), at the same VRAM (measured on an RTX A6000; the gain depends on the PC).
+- **FLUX.1 / SDXL train on the whole caption file**: a caption appended on a new line or written in several paragraphs no longer trains on its first line only, as with every other model.
 - **🏆 Best Checkpoint Finder (image and video models)**: no more comparing sample grids by eye to pick a checkpoint.
   - Turn it on in its section, keep or edit the test prompts (preset from our `Grid_Find_Best_Checkpoint` tutorial prompts; add, change or delete any), set your subject (trigger word and class, read from your `10_ohwx man` folder with one click) and press Start.
   - The run renders the prompts with the base model before training and at every checkpoint save, with the same seeds. When training ends, every checkpoint is scored with local models: likeness to your training photos (face recognition; image similarity for subjects without faces), prompt following, variety between prompts, and over-training signs such as copies of training photos, colour or sharpness drift, and the subject appearing in prompts without its trigger.
