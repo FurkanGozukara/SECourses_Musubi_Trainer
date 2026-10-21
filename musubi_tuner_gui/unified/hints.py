@@ -62,7 +62,7 @@ MODEL_HINTS: dict[str, dict] = {
         ],
         "vram": {
             "lora": "LoRA presets at 1024 px, rank 128: 19.8 GB peak with block swap 27 (24 GB), 29.9 GB with block swap 20 and H2D-only streaming (32 GB); 13.5 GB at 768 px, rank 32, with block swap 29 and activation CPU offload (16 GB); no preset fits 12 GB or less; max block swap 30.",
-            "full": "Fine-tuning at 1024 px: 23.3 GB peak with block swap 27 (32 GB, about 139 s/step on an RTX A6000), 21.5 GB with block swap 30, the dev maximum (24 GB, about 173 s/step); no preset fits 16 GB or less.",
+            "full": "Fine-tuning at 1024 px: 23.3 GB peak with block swap 27 (32 GB), 21.5 GB with block swap 30, the dev maximum (24 GB), both about 90 s/step on an RTX A6000; no preset fits 16 GB or less.",
         },
         "dataset": "1024x1024 images (sides in multiples of 16) with same-name .txt captions; control_images only for reference-image training.",
     },
@@ -253,7 +253,7 @@ MODEL_HINTS: dict[str, dict] = {
         ],
         "lora": [
             "LoRA presets: rank 128, AdaFactor LR 8e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs.",
-            "The 32 GB preset turns off gradient checkpointing for speed (about 0.56 s/step on an RTX 5090).",
+            "The 32 GB preset turns off gradient checkpointing for speed (about 0.43 s/step on an RTX 5090).",
             "For i2i LoRAs, add network args conv_dim=4 conv_alpha=1 if the visual conv layers should adapt too.",
         ],
         "full": [
@@ -290,7 +290,7 @@ MODEL_HINTS: dict[str, dict] = {
         ],
         "lora": [
             "Presets: DoRA rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs; the 8 GB tier trains 768 px and the 6 GB tier 512 px with an FP8 scaled base, both at rank 32.",
-            "The 32 GB preset turns off gradient checkpointing (1.33 s/step on an RTX 5090; 1.46 s/step with it on the 24 GB preset).",
+            "The 32 GB preset turns off gradient checkpointing (1.59 s/step on an RTX 5090; 1.78 s/step with it on the 24 GB preset).",
             "10 GB and smaller tiers cache the text encoder on the CPU.",
             "These presets are for text-to-image datasets: reference images (editing) add their tokens and keep the reference stream on the GPU, so train editing LoRAs in the FLUX.3 Klein Edit card, whose presets were measured with one reference per image.",
         ],
@@ -310,7 +310,7 @@ MODEL_HINTS: dict[str, dict] = {
         "lora": [
             "Presets: one reference per image, DoRA rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs; the 10 GB tier trains 768 px and the 8 GB tier 512 px with an FP8 scaled base, both at rank 32. No configuration fits 6 GB.",
             "More references per target add their tokens and need more VRAM than the listed peak: pick a lower tier.",
-            "6.19 s/step without block swap on an RTX A6000 (32 and 24 GB presets), 6.63 s/step with 13 blocks streamed H2D-only (16 GB).",
+            "5.96 s/step without block swap on an RTX A6000 (32 and 24 GB presets), 6.59 s/step with 13 blocks streamed H2D-only (16 GB).",
         ],
         "vram": "24 and 32 GB train without block swap (16.9 GB peak); 16 GB streams 13 blocks H2D-only (14.3 GB); 12 GB swaps 24 blocks with activation CPU offload (10.3 GB); 10 GB trains 768 px (8.3 GB) and 8 GB 512 px with an FP8 base (6.3 GB); nothing fits 6 GB.",
         "dataset": "1024x1024 target images with same-name .txt captions plus one reference per target in control_images (photo_0.png).",
@@ -328,7 +328,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Presets: DoRA rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs; the 6 GB tier trains 768 px at rank 32 with activation CPU offload.",
             "The 24 and 32 GB presets cache the text encoder on the GPU (15.4 GB caching peak); 16 GB and smaller cache it on the CPU.",
             "The trainer measures the CPU's BF16 speed first: where it is far slower than FP32 (an AVX2-only server CPU took 17 minutes per caption), text caching and sample prompts run the text encoder on the GPU one layer at a time instead (under 1 GB of VRAM, about 12 seconds per caption there).",
-            "1.65 s/step on an RTX 5090 without block swap; 1.80, 1.87 and 1.97 s/step with 20, 30 and 39 swapped blocks.",
+            "2.02 s/step on an RTX 5090 without block swap; 2.22, 2.32 and 2.46 s/step with 20, 30 and 39 swapped blocks.",
             "Use Control Images trains a colour / depth control adapter for ComfyUI's MOSS-Image Color/Depth Control node instead of a subject LoRA: every image needs <image>_0.png (one flat colour per region) and <image>_1.png (depth, near = white) in its control_images sub-folder, and Make Missing Colour / Depth Maps creates them before caching (Mask2Former regions, Depth Anything V2 depth). An adapter learns layouts, not a subject: give it a large, varied image set.",
             "The control adapter follows the published recipe: the patch embedder's new colour / depth columns train at 10x the learning rate, each step keeps the colour map only, the depth map only, both or neither (35 / 35 / 20 / 10 %), 10% of the captions are dropped, and the text refiner's two blocks train with the LoRA. Every checkpoint is the file ComfyUI's node loads (load it with LoRA Loader Model Only).",
             "Control adapter sample prompts take the maps with --ci: the colour map, then the depth map; --ci none leaves one out (--ci none --ci depth.png samples with depth only).",
@@ -373,7 +373,7 @@ MODEL_HINTS: dict[str, dict] = {
         ],
         "lora": [
             "Presets: rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs; the 6 GB tier trains 768 px at rank 32.",
-            "The 32 GB Fast preset turns off gradient checkpointing (28.6 GB peak, 1.12 s/step on an RTX 5090).",
+            "The 32 GB Fast preset turns off gradient checkpointing (28.6 GB peak, 1.24 s/step on an RTX 5090).",
         ],
         "vram": "16 and 24 GB train without block swap (12.6 GB peak); 12, 10 and 8 GB swap 7, 9 and 10 blocks (the maximum).",
         "dataset": "1024x1024 target images with same-name .txt captions plus 1-3 indexed references per target in control_images.",

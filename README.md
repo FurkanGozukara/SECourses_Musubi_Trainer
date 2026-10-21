@@ -21,7 +21,7 @@
 - **🌌 MOSS-Image training (new model)** — LoRA / DoRA on OpenMOSS MOSS-Image (5B, Qwen3.5-9B text encoder, FLUX.2 VAE), Base or SFT.
   - The trained file loads in ComfyUI and SwarmUI on Base and SFT, BF16 and INT8 ConvRot (checked with ComfyUI's own LoRA loader).
   - Uses the INT8 ConvRot Qwen3.5 text encoder SwarmUI already downloads; downloader entries 30 (Base) and 31 (SFT).
-  - GPU presets for 6 to 32 GB GPUs (DoRA rank 128 at 1024 px from 8 GB; 768 px rank 32 at 6 GB), measured on an RTX 5090: no block swap from 16 GB, 1.65 s/step.
+  - GPU presets for 6 to 32 GB GPUs (DoRA rank 128 at 1024 px from 8 GB; 768 px rank 32 at 6 GB), measured on an RTX 5090: no block swap from 16 GB, 2.02 s/step.
   - **Full fine-tuning** of the whole DiT in BF16 (fused AdaFactor, trainable block-swap ring, resume), saved in the released layout for ComfyUI and SwarmUI. GPU presets for 8 to 32 GB measured on an RTX A6000: 14.9 GB without block swap on 24 and 32 GB, down to 6.2 GB on 8 GB.
   - **Colour / depth control adapters** for ComfyUI's MOSS-Image Color/Depth Control node: turn on Use Control Images, and missing colour-region and depth maps are made before caching.
 - **🎥 Kandinsky 6 full fine-tuning and multi-reference (R2AV) training** — the whole Lite or Pro DiT in BF16 with GPU presets for 6 to 32 GB, and video + audio from a prompt plus up to 8 reference images.
