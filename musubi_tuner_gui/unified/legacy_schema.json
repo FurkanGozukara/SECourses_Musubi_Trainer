@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-20T23:54:15",
+ "generated": "2026-10-21T07:49:57",
  "gradio": "6.30.0",
  "backends": {
   "qwen_image": {
@@ -28563,8 +28563,8 @@
     "adafactor_triton": {
      "cls": "Checkbox",
      "label": "Triton Adafactor",
-     "info": "Triton kernels for the fused Adafactor update of BF16 matrices (needs Triton); other tensors use the standard update.",
-     "value": false,
+     "info": "Triton kernels for the fused Adafactor update of BF16 matrices (needs Triton); other tensors use the standard update. MOSS-Image (on by default): 2.67 instead of 3.5 s/step and 1.4 GB less; Kandinsky 6 video: about 1% faster, the same VRAM. Falls back to the standard update with a warning if the kernels cannot run.",
+     "value": true,
      "interactive": null,
      "visible": true,
      "parents": [
@@ -44671,7 +44671,7 @@
     "adafactor_triton": {
      "cls": "Checkbox",
      "label": "Triton Adafactor",
-     "info": "Triton kernels for the fused Adafactor update of BF16 matrices (needs Triton); other tensors use the standard update.",
+     "info": "Triton kernels for the fused Adafactor update of BF16 matrices (needs Triton); other tensors use the standard update. MOSS-Image (on by default): 2.67 instead of 3.5 s/step and 1.4 GB less; Kandinsky 6 video: about 1% faster, the same VRAM. Falls back to the standard update with a warning if the kernels cannot run.",
      "value": false,
      "interactive": null,
      "visible": true,

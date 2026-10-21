@@ -397,7 +397,9 @@ TRITON_ADAFACTOR_OPTION = ExtraOption(
     "Triton Adafactor",
     False,
     "full",
-    "Triton kernels for the fused Adafactor update of BF16 matrices (needs Triton); other tensors use the standard update.",
+    "Triton kernels for the fused Adafactor update of BF16 matrices (needs Triton); other tensors use the standard update. "
+    "MOSS-Image (on by default): 2.67 instead of 3.5 s/step and 1.4 GB less; Kandinsky 6 video: about 1% faster, the same VRAM. "
+    "Falls back to the standard update with a warning if the kernels cannot run.",
     full_only=True,
 )
 
@@ -711,6 +713,9 @@ MOSS_IMAGE = ImageArchSpec(
         # 8 captions per padded forward: 8.0 s instead of 62.7 s with the layer-streamed text encoder, 0.37 s instead of
         # 1.33 s resident, the same accuracy (moss_utils.encode_prompts)
         "caching_teo_batch_size": 8,
+        # fine-tuning: 2.67 instead of 3.5 s/step and 1.36 GiB less on the 32 GB preset (RTX A6000, 2026-10-21), as the
+        # fine-tuning presets; Kandinsky 6 keeps it off (about 1% on its video presets, the same VRAM)
+        "adafactor_triton": True,
     },
     lora_defaults=COMMON_LORA_DEFAULTS,
     full_defaults=COMMON_FULL_DEFAULTS,

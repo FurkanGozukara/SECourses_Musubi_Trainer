@@ -335,7 +335,7 @@ MODEL_HINTS: dict[str, dict] = {
         ],
         "full": [
             "Presets: every DiT weight trains in BF16 with fused-backward AdaFactor, LR 1e-5 (max grad norm 0), 1024 px, 200 epochs, a checkpoint every 25 epochs with only the newest training state kept; the VAE and the text encoder stay frozen.",
-            "The presets use Triton Adafactor: the same update in fused kernels, 1.4 GB less VRAM and 2.67 instead of 3.5 s/step than the standard update on an RTX A6000. Where Triton cannot build its kernels, the trainer warns and uses the standard update.",
+            "Triton Adafactor is on (the presets and the default): the same update in fused kernels, 1.4 GB less VRAM and 2.67 instead of 3.5 s/step than the standard update on an RTX A6000. Where Triton cannot build its kernels, the trainer warns and uses the standard update.",
             "With block swap, the Trainable Block-Swap Ring streams the swapped blocks through reusable GPU buffers from pinned CPU copies, written back after each update (it turns Pinned Memory for Block Swap on; about 10 GB of system RAM).",
             "The fine-tuned DiT is saved in the released layout (fused qkv), so it loads as the DiT for more training, in ComfyUI and in SwarmUI.",
             "2.64 s/step on an RTX A6000 without block swap (16 to 32 GB); 4.85, 6.49 and 7.93 s/step with 14, 24 and 33 swapped blocks (12, 10 and 8 GB), 11.10 s/step for the 6 GB preset with activation CPU offload.",
