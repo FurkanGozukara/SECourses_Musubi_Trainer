@@ -393,7 +393,8 @@ def _common_defaults(model_key: str) -> dict[str, Any]:
 
 def _flux_defaults(training_type: str) -> dict[str, Any]:
     values = {
-        # FLUX_LoRA_Training_LoRA_Tab_Configs/24GB_GPUs_21.61GB_Quality_1_LoRA.json
+        # FLUX_LoRA_Training_LoRA_Tab_Configs/24GB_GPUs_21.61GB_Quality_1_LoRA.json, with the shipped preset's H2D-only
+        # block swap (16 blocks instead of 13 swapped both ways, same VRAM: vram_lab/run_flux1_h2d_eqvram.sh)
         "output_name": "My_FLUX_1_Dev_LoRA",
         "learning_rate": 5e-05,
         "text_encoder_lr": 5e-05,
@@ -405,9 +406,9 @@ def _flux_defaults(training_type: str) -> dict[str, Any]:
         "train_blocks": "all",
         "train_double_block_indices": "all",
         "train_single_block_indices": "all",
-        "blocks_to_swap": 13,
+        "blocks_to_swap": 16,
         "cpu_offload_checkpointing": False,
-        "block_swap_h2d_only": False,
+        "block_swap_h2d_only": True,
         "fp8_base": False,
         "fp8_scaled": False,
         "fp8_fast": False,
@@ -437,6 +438,7 @@ def _flux_defaults(training_type: str) -> dict[str, Any]:
                 "max_grad_norm": 1.0,
                 "save_precision": "bf16",
                 "blocks_to_swap": 10,
+                "block_swap_h2d_only": False,  # fine-tuning trains the swapped weights
                 "highvram": False,
                 "apply_t5_attn_mask": False,
             }
@@ -863,7 +865,7 @@ def _build_specs(model_key: str) -> list[ParamSpec]:
         "slider",
         "Blocks to Swap",
         (
-            f"FLUX blocks kept in RAM and streamed to the GPU (0-{max_swap}). More = less VRAM, slower. 24 GB presets: 13 (LoRA), 10 (fine-tune)."
+            f"FLUX blocks kept in RAM and streamed to the GPU (0-{max_swap}). More = less VRAM, slower. 24 GB presets: 16 H2D-only (LoRA), 10 (fine-tune)."
             if flux
             else f"SDXL transformer blocks kept in RAM (0-{max_swap}). 0 on 16 GB+; 50-68 on 8-12 GB GPUs."
         ),
@@ -881,7 +883,8 @@ def _build_specs(model_key: str) -> list[ParamSpec]:
             "checkbox",
             "H2D-only Block Swap",
             "LoRA with block swap: the frozen swapped blocks stream to the GPU and are never copied back (no device-to-host "
-            "transfer, faster steps for a little more VRAM). Needs Gradient Checkpointing.",
+            "transfer). The same block count needs 1-2 GB more VRAM, so the 12-24 GB presets swap 3-4 more blocks with it "
+            "and still train 55-99% faster per step. Needs Gradient Checkpointing.",
             "memory",
             26,
             modes=LORA_ONLY,
@@ -2905,7 +2908,7 @@ KOHYA_HINTS: dict[str, dict[str, list[str]]] = {
             "Learning rate 5e-5 with Adafactor (fixed LR, constant schedule) at batch 1; the 4x GPU presets use 1e-4 and also 200 epochs, spread over the 4 GPUs.",
             "Rank 128 / alpha 128 in the 10 GB+ presets; 8 GB presets drop to rank 64 at 768 px and 6 GB to rank 48 at 512 px.",
             "Text Encoder LR 5e-5 also trains a CLIP-L LoRA; T5-XXL outputs are cached, so caption shuffle/dropout must stay off.",
-            "Block swap moves FLUX blocks to RAM: more blocks = less VRAM, slower steps. Keep 64 GB+ system RAM for the low-VRAM presets.",
+            "Block swap moves FLUX blocks to RAM: more blocks = less VRAM, slower steps; keep 64 GB+ system RAM for the low-VRAM presets. The 12-24 GB presets stream them H2D-only (frozen, so never copied back): 3-4 more blocks than swapping both ways at the same VRAM, 55-99% faster per step. The 10 GB and smaller presets swap 33-35 of the 35 blocks and keep the classic swap.",
             "Keep training images at the preset resolution (buckets are off): crop/resize them to 1024x1024 beforehand.",
         ],
         FULL: [

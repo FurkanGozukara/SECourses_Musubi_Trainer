@@ -177,9 +177,11 @@ def test_models_and_default_paths():
     assert kb.KOHYA_MODELS["flux1_dev"]["train_scripts"] == {"lora": "flux_train_network.py", "full": "flux_train.py"}
     assert kb.KOHYA_MODELS["sdxl"]["train_scripts"] == {"lora": "sdxl_train_network.py", "full": "sdxl_train.py"}
     # values of the measured 24 GB presets
-    assert (flux["learning_rate"], flux["blocks_to_swap"], flux["network_dim"], flux["max_grad_norm"]) == (5e-05, 13, 128, 1.0)
+    assert (flux["learning_rate"], flux["blocks_to_swap"], flux["network_dim"], flux["max_grad_norm"]) == (5e-05, 16, 128, 1.0)
+    assert flux["block_swap_h2d_only"] is True  # the 24 GB LoRA preset streams its 16 blocks H2D-only
     flux_full = kb.kohya_defaults("flux1_dev", "full")
     assert (flux_full["learning_rate"], flux_full["blocks_to_swap"], flux_full["fused_backward_pass"]) == (4e-06, 10, True)
+    assert flux_full["block_swap_h2d_only"] is False
     assert (sdxl["learning_rate"], sdxl["learning_rate_te1"], sdxl["max_grad_norm"]) == (8e-06, 3e-06, 0.0)
     assert kb.kohya_defaults("sdxl", "lora")["text_encoder_lr"] == 0.0  # U-Net only, so TE outputs can be cached
 
