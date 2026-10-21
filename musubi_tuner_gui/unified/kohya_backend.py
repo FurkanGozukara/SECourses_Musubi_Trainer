@@ -394,7 +394,7 @@ def _common_defaults(model_key: str) -> dict[str, Any]:
 def _flux_defaults(training_type: str) -> dict[str, Any]:
     values = {
         # FLUX_LoRA_Training_LoRA_Tab_Configs/24GB_GPUs_21.61GB_Quality_1_LoRA.json, with the shipped preset's H2D-only
-        # block swap (16 blocks instead of 13 swapped both ways, same VRAM: vram_lab/run_flux1_h2d_eqvram.sh)
+        # block swap (16 blocks instead of 13 swapped both ways, same VRAM, 41% faster steps: vram_lab/run_flux1_h2d_recheck.sh)
         "output_name": "My_FLUX_1_Dev_LoRA",
         "learning_rate": 5e-05,
         "text_encoder_lr": 5e-05,
@@ -884,7 +884,7 @@ def _build_specs(model_key: str) -> list[ParamSpec]:
             "H2D-only Block Swap",
             "LoRA with block swap: the frozen swapped blocks stream to the GPU and are never copied back (no device-to-host "
             "transfer). The same block count needs 1-2 GB more VRAM, so the 12-24 GB presets swap 3-4 more blocks with it "
-            "and still train 55-99% faster per step. Needs Gradient Checkpointing.",
+            "and still train 41-81% faster per step (RTX A6000; the gain depends on the PC). Needs Gradient Checkpointing.",
             "memory",
             26,
             modes=LORA_ONLY,
@@ -2908,7 +2908,7 @@ KOHYA_HINTS: dict[str, dict[str, list[str]]] = {
             "Learning rate 5e-5 with Adafactor (fixed LR, constant schedule) at batch 1; the 4x GPU presets use 1e-4 and also 200 epochs, spread over the 4 GPUs.",
             "Rank 128 / alpha 128 in the 10 GB+ presets; 8 GB presets drop to rank 64 at 768 px and 6 GB to rank 48 at 512 px.",
             "Text Encoder LR 5e-5 also trains a CLIP-L LoRA; T5-XXL outputs are cached, so caption shuffle/dropout must stay off.",
-            "Block swap moves FLUX blocks to RAM: more blocks = less VRAM, slower steps; keep 64 GB+ system RAM for the low-VRAM presets. The 12-24 GB presets stream them H2D-only (frozen, so never copied back): 3-4 more blocks than swapping both ways at the same VRAM, 55-99% faster per step. The 10 GB and smaller presets swap 33-35 of the 35 blocks and keep the classic swap.",
+            "Block swap moves FLUX blocks to RAM: more blocks = less VRAM, slower steps; keep 64 GB+ system RAM for the low-VRAM presets. The 12-24 GB presets stream them H2D-only (frozen, so never copied back): 3-4 more blocks than swapping both ways at the same VRAM, 41-81% faster per step on an RTX A6000. The 10 GB and smaller presets swap 33-35 of the 35 blocks and keep the classic swap.",
             "Keep training images at the preset resolution (buckets are off): crop/resize them to 1024x1024 beforehand.",
         ],
         FULL: [
