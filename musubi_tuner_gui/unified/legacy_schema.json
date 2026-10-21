@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-21T07:49:57",
+ "generated": "2026-10-21T16:35:41",
  "gradio": "6.30.0",
  "backends": {
   "qwen_image": {
@@ -26567,6 +26567,8 @@
     "caching_teo_skip_existing",
     "caching_teo_keep_cache",
     "caching_teo_text_encoder_dtype",
+    "convrot_int8",
+    "convrot_int8_bwd",
     "control_maps_generate",
     "control_maps_depth_model",
     "control_lr_ratio",
@@ -27206,7 +27208,7 @@
     "dit": {
      "cls": "Textbox",
      "label": "MOSS-Image DiT",
-     "info": "BF16 Base (recommended for training) or SFT (moss_image_sft_bf16); the INT8 ConvRot files are for inference. The LoRA works on both.",
+     "info": "BF16 Base (recommended for training) or SFT (moss_image_sft_bf16). LoRA training also takes the INT8 ConvRot files (their INT8 layers used as they are); fine-tuning needs BF16. The LoRA works on all of them.",
      "value": "",
      "lines": 1,
      "max_lines": null,
@@ -28465,6 +28467,41 @@
      "type": "value",
      "parents": [
       "Caching (Latents & Text Encoder)"
+     ]
+    },
+    "convrot_int8": {
+     "cls": "Checkbox",
+     "label": "ConvRot INT8 Base (LoRA)",
+     "info": "Quantize the frozen DiT's block projections to ConvRot INT8 while loading: about half their BF16 memory (fused INT8 GEMM with Triton, slower without it). An INT8 ConvRot DiT file is used as it is without this. Not combinable with FP8.",
+     "value": false,
+     "interactive": null,
+     "visible": true,
+     "parents": [
+      "MOSS-Image Model Files"
+     ]
+    },
+    "convrot_int8_bwd": {
+     "cls": "Dropdown",
+     "label": "ConvRot INT8 Backward",
+     "info": "bf16 = most accurate; int8 = faster gradients (needs Triton).",
+     "value": "bf16",
+     "choices": [
+      [
+       "bf16",
+       "bf16"
+      ],
+      [
+       "int8",
+       "int8"
+      ]
+     ],
+     "interactive": null,
+     "visible": true,
+     "multiselect": null,
+     "allow_custom_value": false,
+     "type": "value",
+     "parents": [
+      "MOSS-Image Model Files"
      ]
     },
     "control_maps_generate": {
@@ -50754,6 +50791,18 @@
    "sample_prompts": {
     "type": "str",
     "default": null
+   },
+   "convrot_int8": {
+    "type": "bool",
+    "default": false
+   },
+   "convrot_int8_bwd": {
+    "type": "str",
+    "default": "bf16",
+    "choices": [
+     "bf16",
+     "int8"
+    ]
    },
    "control_lr_ratio": {
     "type": "float",

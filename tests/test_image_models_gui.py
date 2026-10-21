@@ -155,6 +155,8 @@ def test_model_specific_validation(tmp_path):
         m.normalize_parameters(m.KANDINSKY_6, _parameters("kandinsky6", tmp_path, model_variant="lite", blocks_to_swap=40))
     with pytest.raises(ValueError, match="mutually exclusive"):
         m.normalize_parameters(m.KANDINSKY_6, _parameters("kandinsky6", tmp_path, convrot_int8=True, fp8_base=True))
+    with pytest.raises(ValueError, match="mutually exclusive"):
+        m.normalize_parameters(m.MOSS_IMAGE, _parameters("moss_image", tmp_path, convrot_int8=True, fp8_base=True, fp8_scaled=True))
     with pytest.raises(ValueError, match="i2i"):
         m.normalize_parameters(m.HIDREAM_O1, _parameters("hidream_o1", tmp_path, task="i2i", use_control_images=False))
     with pytest.raises(ValueError, match="between 0 and"):

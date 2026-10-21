@@ -306,6 +306,8 @@ def _control_dropout_shares(text: object) -> list[float]:
 
 
 def _moss_validate(params: dict, full_finetune: bool) -> None:
+    if not full_finetune and params.get("convrot_int8") and (params.get("fp8_base") or params.get("fp8_scaled")):
+        raise ValueError("MOSS-Image: ConvRot INT8 Base and FP8 Base are mutually exclusive; choose one base quantization.")
     if not params.get("use_control_images"):
         return
     if full_finetune:
@@ -616,7 +618,8 @@ MOSS_IMAGE = ImageArchSpec(
             "dit",
             "MOSS-Image DiT",
             "moss_image_base_bf16.safetensors",
-            "BF16 Base (recommended for training) or SFT (moss_image_sft_bf16); the INT8 ConvRot files are for inference. The LoRA works on both.",
+            "BF16 Base (recommended for training) or SFT (moss_image_sft_bf16). LoRA training also takes the INT8 ConvRot files (their INT8 "
+            "layers used as they are); fine-tuning needs BF16. The LoRA works on all of them.",
             frozenset({"train"}),
         ),
         ModelPath("vae", "FLUX.2 VAE", "flux2-vae.safetensors", "MOSS-Image uses the FLUX.2 VAE. Needed for latent caching and samples.", frozenset({"latent", "sample"})),
@@ -638,6 +641,17 @@ MOSS_IMAGE = ImageArchSpec(
     control_adapter=True,
     extras=(
         ExtraOption("caching_teo_text_encoder_dtype", "dropdown", "Text Encoder Dtype", "bfloat16", "caching", "Use float32 only for CPU caching.", choices=("bfloat16", "float32"), runtime=False),
+        ExtraOption(
+            "convrot_int8",
+            "checkbox",
+            "ConvRot INT8 Base (LoRA)",
+            False,
+            "model",
+            "Quantize the frozen DiT's block projections to ConvRot INT8 while loading: about half their BF16 memory (fused INT8 "
+            "GEMM with Triton, slower without it). An INT8 ConvRot DiT file is used as it is without this. Not combinable with FP8.",
+            lora_only=True,
+        ),
+        ExtraOption("convrot_int8_bwd", "dropdown", "ConvRot INT8 Backward", "bf16", "model", "bf16 = most accurate; int8 = faster gradients (needs Triton).", choices=("bf16", "int8"), lora_only=True),
         ExtraOption(
             "control_maps_generate",
             "checkbox",
@@ -722,7 +736,8 @@ MOSS_IMAGE = ImageArchSpec(
     gui_only_keys=frozenset({"caching_teo_text_encoder_dtype"}),
     notes=(
         "OpenMOSS MOSS-Image (5B DiT, Qwen3.5-9B text encoder, FLUX.2 VAE). LoRA or full fine-tuning on the BF16 Base or SFT "
-        "model; the LoRA loads on Base and SFT, BF16 or INT8 ConvRot, in ComfyUI and SwarmUI, a fine-tune is a BF16 DiT file. Training timesteps use shift 3 "
+        "model (LoRA also on the INT8 ConvRot files or with ConvRot INT8 Base, about half the DiT's memory); the LoRA loads on "
+        "Base and SFT, BF16 or INT8 ConvRot, in ComfyUI and SwarmUI, a fine-tune is a BF16 DiT file. Training timesteps use shift 3 "
         "(about the pre-training distribution); samples use the vendor's sampler (shift 5, 50 steps, CFG 3). With control images on, the LoRA run trains "
         "a colour / depth control adapter for ComfyUI's MOSS-Image Color/Depth Control node instead (maps <image>_0 / <image>_1, made where missing)."
     ),
