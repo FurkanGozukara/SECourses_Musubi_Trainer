@@ -233,6 +233,20 @@ def test_preset_library_families_tiers_and_recommendation(tmp_path, monkeypatch)
     assert preset_library.best_tier_for(wan21, None) == preset_library.ALL_TIERS
 
 
+def test_moss_image_lora_picker_pre_selects_int8_on_8_to_12_gb(monkeypatch):
+    """The user's decision of 2026-10-22: the INT8 preset leads the 8-12 GB tiers; BF16 stays first on 6 GB and from 16 GB."""
+    monkeypatch.delenv("MUSUBI_PRESETS_DIR", raising=False)
+    entries = preset_library.list_presets(["MOSS_Image_Training_Configs"], mode="LoRA")
+    if not entries:
+        pytest.skip("no shipped MOSS-Image presets next to the app")
+    picked = {}
+    for tier in ("6", "8", "10", "12", "16"):
+        best = preset_library.best_preset(preset_library.filter_presets(entries, tier=tier))
+        picked[tier] = os.path.basename(best.path)
+    assert all(picked[tier].endswith("_INT8.toml") for tier in ("8", "10", "12")), picked
+    assert not any(picked[tier].endswith("_INT8.toml") for tier in ("6", "16")), picked
+
+
 def test_preset_library_legacy_names_and_example_datasets(tmp_path, monkeypatch):
     """Qwen_Training_Configs: TierN_<MB>_MB names (Tier1 = best quality) and example datasets beside them."""
     monkeypatch.setenv("MUSUBI_PRESETS_DIR", str(tmp_path))
