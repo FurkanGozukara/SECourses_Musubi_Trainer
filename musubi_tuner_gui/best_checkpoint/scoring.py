@@ -8,10 +8,12 @@
   prompt                     SigLIP2 (Apache-2.0) image-text cosine with the trigger replaced by its class word
   saturation, colourfulness, gray_std, clipped, hf_energy   colour and sharpness statistics ("fried" look)
 Videos are scored on frames sampled across the clip (mean of the frame scores; temporal consistency = mean
-DINOv2 cosine of consecutive sampled frames). Scores are cached per sample file in the run's report folder."""
+DINOv2 cosine of consecutive sampled frames). Scores are cached per sample file, training set, subject and prompt in the
+run's report folder."""
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 import os
@@ -31,7 +33,9 @@ VIDEO_EXT = (".mp4", ".webm", ".mov", ".mkv", ".avi")
 VIDEO_FRAMES = 8
 SIGLIP_TOKENS = 64  # SigLIP2's text length
 PROMPT_CHUNKS = 4  # sentence groups of a long prompt that are scored (mean)
-SCORES_VERSION = 5  # raise when a signal changes: the cached scores of other versions are computed again
+SCORES_VERSION = 6  # raise when a signal changes: the cached scores of other versions are computed again
+# 6: the cache key holds the training set, subject and prompt (version 5 reused a sample's likeness scores when the run
+# was analyzed again against another dataset)
 # the person in a frame, for the background descriptor: the largest face's box widened to the shoulders and run down
 # to the bottom of the frame (head and body), as shares of the face box; fewer background patches than this: none
 PERSON_BOX = (0.4, 0.4, 1.4)  # left, above, right of the face box (x - 0.4 w, y - 0.4 h, x + 1.4 w)
@@ -288,6 +292,13 @@ def reference_set(scorer: Scorer, paths: list[str], batch: int = 16) -> dict:
     batches so a large dataset never sits in memory at once, their median face box area (the framing an
     overtrained model drifts towards) and their background descriptors (the surroundings it copies)."""
     faces, areas, dino, backgrounds, pending, boxes, count = [], [], [], [], [], [], 0
+    fingerprint = hashlib.sha1()  # the files' path, size and time: part of every cached sample score's key
+    for path in paths:
+        try:
+            stat = os.stat(path)
+            fingerprint.update(f"{os.path.abspath(path)}|{stat.st_size}|{int(stat.st_mtime)}\n".encode("utf-8"))
+        except OSError:
+            fingerprint.update(f"{os.path.abspath(path)}|missing\n".encode("utf-8"))
 
     def flush():
         pooled, found = scorer.dino_and_background(pending, boxes)
@@ -316,16 +327,21 @@ def reference_set(scorer: Scorer, paths: list[str], batch: int = 16) -> dict:
     import torch
 
     return {"count": count, "faces": faces, "mean_face": mean_face, "dino": torch.cat(dino) if dino else None,
-            "background": torch.stack(backgrounds) if backgrounds else None, "face_area": statistics.median(areas) if areas else None}
+            "background": torch.stack(backgrounds) if backgrounds else None, "face_area": statistics.median(areas) if areas else None,
+            "fingerprint": fingerprint.hexdigest()}
 
 
 def score_samples(scorer: Scorer, samples: list[dict], prompts: list[str], references: dict, subject: str, class_word: str,
                   cache: dict) -> list[dict]:
-    """Per-sample signals (cached by path + size + mtime in ``cache``); ``prompts[i]`` is the prompt of sample line i."""
+    """Per-sample signals (cached in ``cache`` by path + size + mtime and by what they were scored against: the training
+    set, subject and prompt); ``prompts[i]`` is the prompt of sample line i."""
     results = []
+    context = f"{references.get('fingerprint', '')}|{subject}|{class_word}"
     for item in samples:
         stat = os.stat(item["path"])
-        key = f"{item['path']}|{stat.st_size}|{int(stat.st_mtime)}"
+        prompt = prompts[item["prompt_index"]] if item["prompt_index"] < len(prompts) else ""
+        against = hashlib.sha1(f"{context}|{prompt}".encode("utf-8")).hexdigest()[:16]
+        key = f"{item['path']}|{stat.st_size}|{int(stat.st_mtime)}|{against}"
         if key not in cache:
             cache[key] = _score_one(scorer, item, prompts, references, subject, class_word)
         results.append({**item, **cache[key]})

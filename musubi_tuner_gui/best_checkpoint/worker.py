@@ -83,7 +83,7 @@ def analyze(output_dir: str, output_name: str, settings: dict, device: str = "au
     log(f"Scoring models: {scoring.models_dir()} (downloaded on first use, about 4.7 GB)")
     references_set = scoring.reference_set(scorer, references)
     log(f"Training set: {references_set['count']} images / frames, {len(references_set['faces'])} with a face")
-    cache_path = os.path.join(output_dir, FOLDER, "scores_cache.json")  # by sample file: shared by the folder's runs
+    cache_path = os.path.join(output_dir, FOLDER, "scores_cache.json")  # by sample file and training set: shared by the folder's runs
     cache = scoring.load_cache(cache_path)
     checkpoints = {}
     try:

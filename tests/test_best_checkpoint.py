@@ -418,6 +418,30 @@ def test_long_prompts_are_scored_in_sentence_groups_that_fit_the_text_encoder(tm
     assert scoring.load_cache(cache) == {}
 
 
+def test_cached_scores_belong_to_the_training_set_subject_and_prompt(tmp_path, monkeypatch):
+    # klein9b_dog_shipped_e400 (2026-10-22), first scored against the person photos: analyzed again against the dog's own
+    # photos, it kept every sample's likeness from the person photos
+    from musubi_tuner_gui.best_checkpoint import scoring
+
+    sample = tmp_path / "run_e000040_00_20261022120000_1001_000.png"
+    sample.touch()
+    calls = []
+    monkeypatch.setattr(scoring, "_score_one", lambda scorer, item, prompts, references, subject, word: calls.append(subject) or {"prompt": 0.2})
+    items, cache = [{"path": str(sample), "prompt_index": 0}], {}
+    for fingerprint, subject, prompt in (("a", "ohwx dog", "p"), ("a", "ohwx dog", "p"), ("b", "ohwx dog", "p"), ("b", "ohwx man", "p"),
+                                         ("b", "ohwx man", "q")):
+        scoring.score_samples(None, items, [prompt], {"fingerprint": fingerprint}, subject, subject.split()[-1], cache)
+    assert len(calls) == 4 and len(cache) == 4  # scored again for another training set, subject or prompt only
+    monkeypatch.setattr(scoring, "_frames_of", lambda path, count: [])
+    photo = tmp_path / "photo.png"
+    photo.write_bytes(b"1")
+    first = scoring.reference_set(None, [str(photo)])["fingerprint"]
+    assert scoring.reference_set(None, [str(photo)])["fingerprint"] == first
+    photo.write_bytes(b"12")
+    assert scoring.reference_set(None, [str(photo)])["fingerprint"] != first
+    assert scoring.reference_set(None, [str(tmp_path / "other.png")])["fingerprint"] != first
+
+
 def test_a_checkpoint_still_being_sampled_is_left_out(tmp_path, monkeypatch):
     from musubi_tuner_gui.best_checkpoint import scoring, worker
 
