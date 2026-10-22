@@ -430,6 +430,7 @@ MODEL_HINTS: dict[str, dict] = {
         ],
         "lora": [
             "LoRA presets: rank 128, AdaFactor LR 5e-5, 768x512, 33 frames, INT8 ConvRot base, 200 epochs, a checkpoint every 25; no block swap on 24 and 32 GB.",
+            "The 10, 12 and 16 GB presets stream their swapped blocks H2D-only (frozen, so never copied back): the same VRAM as swapping both ways, 1.9-2.4x faster per step and about 6x faster training samples with Sample With Offloading on an RTX A6000.",
             "Choose one base quantization: INT8 ConvRot (the presets' choice), FP8 Scaled, or NF4 (lowest VRAM and lowest fidelity).",
             "Video only builds a video-only transformer, so its LoRAs leave audio untouched; in Audio + Video, video_* target presets do the same.",
             "LoRAs are saved in musubi and ComfyUI (.comfy.safetensors) formats by default.",
@@ -441,7 +442,7 @@ MODEL_HINTS: dict[str, dict] = {
             "By default the final checkpoint is merged after training into a single-file LTX bundle (about 43 GB on disk, as Windows shows it).",
         ],
         "vram": {
-            "lora": "LoRA at 768x512, 33 frames, rank 128: 18.3 GB peak without block swap (24 and 32 GB), 14.2 GB with block swap 18 (16 GB), 10.3 GB with block swap 34 (12 GB), 8.3 GB with block swap 42 (10 GB), 5.9 GB at rank 64 with block swap 42, activation CPU offload and Low-VRAM Text Caching (8 GB); up to 47 of the 48 blocks can be swapped.",
+            "lora": "LoRA at 768x512, 33 frames, rank 128: 18.3 GB peak without block swap (24 and 32 GB), 14.2 GB with block swap 18 H2D-only (16 GB), 10.3 GB with block swap 34 H2D-only (12 GB), 8.3 GB with block swap 42 H2D-only (10 GB), 5.9 GB at rank 64 with block swap 42, activation CPU offload and Low-VRAM Text Caching (8 GB); up to 47 of the 48 blocks can be swapped.",
             "full": "Fine-tuning at 768x512, 33 frames: 30.4 GB with block swap 1 (32 GB), 21.9 GB with block swap 18 (24 GB), 13.9 GB with block swap 34 (16 GB), 9.9 GB with block swap 42 (12 GB), 7.9 GB with block swap 46 (10 GB); up to 47 of the 48 blocks can be swapped.",
         },
         "dataset": "Images (1-frame samples), videos or both at 768x512 in 32 px steps, 8k+1 frames (rounded down; presets: 33) resampled to 25 fps, .txt captions; Audio + Video uses each folder's videos and needs their sound described.",

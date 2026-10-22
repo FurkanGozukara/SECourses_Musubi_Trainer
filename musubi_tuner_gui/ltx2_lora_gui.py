@@ -1811,7 +1811,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                 gr.Checkbox(
                     label="H2D-only block swap",
                     value=get_value("block_swap_h2d_only"),
-                    info="Stream frozen LoRA base blocks Host-to-Device only. Requires block swap > 0 and gradient checkpointing.",
+                    info="LoRA only: the swapped base blocks stay frozen, so they are streamed to the GPU and never copied back (same VRAM, faster steps and samples). Needs block swap > 0 and gradient checkpointing; not with activation CPU offload.",
                 ),
             )
             block_swap_ring_size = reg(

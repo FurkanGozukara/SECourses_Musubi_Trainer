@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-21T16:35:41",
+ "generated": "2026-10-22T05:54:32",
  "gradio": "6.30.0",
  "backends": {
   "qwen_image": {
@@ -36911,7 +36911,7 @@
     "block_swap_h2d_only": {
      "cls": "Checkbox",
      "label": "H2D-only block swap",
-     "info": "Stream frozen LoRA base blocks Host-to-Device only. Requires block swap > 0 and gradient checkpointing.",
+     "info": "LoRA only: the swapped base blocks stay frozen, so they are streamed to the GPU and never copied back (same VRAM, faster steps and samples). Needs block swap > 0 and gradient checkpointing; not with activation CPU offload.",
      "value": false,
      "interactive": null,
      "visible": true,
