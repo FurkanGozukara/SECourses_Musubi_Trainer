@@ -233,6 +233,14 @@ class TestWorkflow:
         data = toml.load(config_path)
         assert data["int8_convrot_quality_report"].endswith("_int8_convrot_quality.json")
 
+    def test_low_vram_text_caching_also_encodes_the_sample_prompts_that_way(self, tmp_path):
+        config_path = str(tmp_path / "run.toml")
+        prepare_ltx2_workflow(_params(), config_path, validate_paths=False, python_cmd="python")
+        assert "low_vram_text_encoding" not in toml.load(config_path)
+        prepare_ltx2_workflow(_params(caching_teo_low_vram=True), config_path, validate_paths=False, python_cmd="python")
+        data = toml.load(config_path)
+        assert data["low_vram_text_encoding"] is True and "caching_teo_low_vram" not in data
+
     def test_workflow_commands_order(self, tmp_path):
         config_path = str(tmp_path / "run.toml")
         workflow = prepare_ltx2_workflow(_params(), config_path, validate_paths=False, python_cmd="python")

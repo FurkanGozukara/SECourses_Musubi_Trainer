@@ -1010,6 +1010,11 @@ def _run_config_parameters(param_dict: dict, parameters):
             continue
         filtered.append((name, value))
 
+    # Low-VRAM Text Caching also encodes the training's sample prompts that way: without it the 10 and 12 GB LoRA
+    # presets drew their samples at 11.6 GB allocated, above what those cards leave PyTorch
+    if bool(param_dict.get("caching_teo_low_vram")):
+        filtered.append(("low_vram_text_encoding", True))
+
     # Inject the ConvRot quality report path when requested.
     if bool(param_dict.get("int8_convrot_write_quality_report")) and bool(param_dict.get("int8_convrot_dynamic")):
         output_dir = str(param_dict.get("output_dir") or "").strip()
