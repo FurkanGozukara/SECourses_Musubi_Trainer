@@ -349,7 +349,15 @@ ENTRIES: tuple[ModelEntry, ...] = (
         },
         default_overrides={"task": "t2v-14B"},
         model_folder="Training_Models_Wan",
-        download_bundles=(("Wan 2.1 text-to-video models", "wan21_t2v"),),
+        download_bundles=(
+            ("Wan 2.1 text-to-video models", "wan21_t2v"),
+            ("Wan 2.1 text-to-video 1.3B models", "wan21_t2v_1_3b"),
+            ("Wan 2.1 image-to-video 480p models", "wan21_i2v_480p"),
+            ("Wan 2.1 image-to-video 720p models", "wan21_i2v_720p"),
+            ("Wan 2.1 first-last-frame models", "wan21_flf2v"),
+            ("Wan 2.1 Fun-Control 1.3B models", "wan21_fun_control_1_3b"),
+            ("Wan 2.1 Fun-Control 14B models", "wan21_fun_control_14b"),
+        ),
     ),
     ModelEntry(
         "ltx23",

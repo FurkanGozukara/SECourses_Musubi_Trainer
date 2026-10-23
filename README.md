@@ -17,7 +17,7 @@
 - **💫 FLUX.3 Klein training (new model)** — LoRA / DoRA on Black Forest Labs' undistilled FLUX.3 Klein Base (5.4B, Qwen3-VL 4B text encoder, FLUX.2 VAE), for text-to-image and, in its own **✏️ FLUX.3 Klein Edit** card with GPU presets measured on an editing dataset, for editing with reference images.
   - The trained file loads in ComfyUI (v0.41.0 or newer) and SwarmUI on the Base, the 16-step distilled and the INT8 ConvRot models (checked with ComfyUI's own LoRA loader).
   - Measured GPU presets for 6 to 32 GB (`FLUX_3_Klein_Training_Configs`): rank 128 at 1024 px down to 10 GB (8.2 GB peak), 768 px on 8 GB and 512 px with an FP8 base on 6 GB (4.3 GB).
-  - Downloader entry 29 fetches the Base model (gated on Hugging Face: accept its terms and run `hf auth login`), the FLUX.2 VAE and the Qwen3-VL 4B text encoder.
+  - Downloader entry 29 fetches the Base model (no Hugging Face login needed), the FLUX.2 VAE and the Qwen3-VL 4B text encoder.
 - **🌌 MOSS-Image training (new model)** — LoRA / DoRA on OpenMOSS MOSS-Image (5B, Qwen3.5-9B text encoder, FLUX.2 VAE), Base or SFT.
   - The trained file loads in ComfyUI (v0.42.0 or newer) and SwarmUI on Base and SFT, BF16 and INT8 ConvRot (checked with ComfyUI's own LoRA loader).
   - Uses the INT8 ConvRot Qwen3.5 text encoder SwarmUI already downloads; downloader entries 30 (Base) and 31 (SFT).
@@ -485,7 +485,7 @@ The most expensive failure in training is the one you discover 20 minutes in —
 
 ## Built-In Model Downloader — Never Hunt for Model Files Again
 
-- Run **Windows_Download_Training_Model_Files.bat** (or the cloud equivalents) and choose the bundle you need: all Qwen variants, Wan 2.1 / 2.2 T2V and I2V, FLUX 2 Dev, Klein 9B / 4B, Z-Image Base / Turbo, Ideogram 4, Krea 2, LTX 2.3 and **MiniMax H3 Training Models — Low VRAM**. Select several at once with comma lists or ranges — e.g. **1-3,5**.
+- Run **Windows_Download_Training_Model_Files.bat** (or the cloud equivalents) and choose the bundle you need, for every model the app trains: all Qwen variants and Qwen-Image 2.1, Wan 2.1 (T2V 14B / 1.3B, I2V 480p / 720p, first-last-frame, Fun-Control 1.3B / 14B) and Wan 2.2 T2V / I2V, FLUX.1 Dev, FLUX.2 Dev, Klein 9B / 4B, FLUX.3 Klein, Z-Image Base / Turbo, Ideogram 4, Krea 2, MOSS-Image, ERNIE-Image, Mage-Flow and Mage-Flow-Edit, HiDream-O1, LTX 2.3, **MiniMax H3 Training Models — Low VRAM**, Kandinsky 6 Lite and SDXL (RealVis v5). No bundle needs a Hugging Face login. Select several at once with comma lists or ranges — e.g. **1-3,5**.
 - The public MiniMax H3 low-VRAM bundle is approximately 42.5 GB and needs no gated-repository login. Optional entries provide the higher-quality ConvRot INT8 text encoder and Ref2VA transformer.
 - My own downloader engine (not the Hugging Face client): up to **16 parallel connections** reaching **~1 GB/s on cloud machines**, with an automatic **aria2 → Python range-downloader → Hugging Face hub fallback chain**, retry with exponential backoff, and resume that preserves partial downloads.
 - **Integrity you can trust**: SHA-256 (or Git-SHA) verification of every file, immutable Hugging Face revision pinning, and **atomic installation** — an incomplete file can never replace a good one. Already-verified local files are reused across model folders instead of re-downloading.
