@@ -1,4 +1,4 @@
-# SECourses Musubi Trainer V34 — The Only App You Need to Train Every Major Open Model: Qwen Image, Wan 2.1 / 2.2, FLUX 2, FLUX Klein, Z-Image, Ideogram 4, Krea 2, LTX 2.3 and MiniMax H3 Video + Audio
+# SECourses Musubi Trainer V37 — The Only App You Need to Train Every Major Open Model: Qwen Image, Wan 2.1 / 2.2, FLUX 2, FLUX Klein, Z-Image, Ideogram 4, Krea 2, LTX 2.3 and MiniMax H3 Video + Audio
 
 **One app. Fifteen tabs. State-of-the-art open image and video training, including joint audio — Full Fine-Tuning / DreamBooth for supported image families and LoRA across image and video families — with 1-click installers, researched ready-to-use presets, and speed the stock trainer simply cannot reach.**
 
