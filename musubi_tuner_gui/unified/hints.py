@@ -27,7 +27,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Every LoRA preset uses ConvRot INT8: FP8-class VRAM but faster and closer to BF16; it cannot be combined with FP8 or a Turbo sample DiT.",
             "Turbo sample generation cannot run with block swap, so leave the Turbo DiT empty when blocks are swapped.",
             "FP8 Base and Scaled FP8 must be enabled together on Krea 2; plain FP8 is rejected.",
-            "LoRA presets: rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs; 12 GB and below lower the rank (and the resolution on 10 and 8 GB).",
+            "LoRA presets: rank 128, AdaFactor LR 2e-4, 1024 px, 200 epochs, a checkpoint every 25 epochs; 12 GB and below lower the rank (and the resolution on 10 and 8 GB).",
         ],
         "full": [
             "Fine-tuning presets: full BF16 weights, fused-backward AdaFactor at LR 1e-5 with warmup, 1024 px (512 px on 12 GB), 200 epochs, a checkpoint every 25.",
@@ -51,7 +51,7 @@ MODEL_HINTS: dict[str, dict] = {
             "The presets cache the Mistral 3 text encoder on the CPU, which needs about 50 GB of free system RAM.",
         ],
         "lora": [
-            "LoRA presets: rank 128, AdaFactor LR 6e-5, 1024 px, FP8 Base with Scaled FP8, 200 epochs, a checkpoint every 25 epochs; 16 GB trains 768 px at rank 32 with activation CPU offload.",
+            "LoRA presets: rank 128, AdaFactor LR 3e-5, 1024 px, FP8 Base with Scaled FP8, 200 epochs, a checkpoint every 25 epochs; 16 GB trains 768 px at rank 32 with activation CPU offload.",
             "Enable Scaled FP8 together with FP8 Base, as the FLUX.2 docs recommend.",
         ],
         "full": [
@@ -177,7 +177,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Training samples default to about 25 steps at CFG 4.0.",
         ],
         "lora": [
-            "LoRA presets: rank 128, AdaFactor LR 6e-5, unquantized BF16 base, a checkpoint every 25 epochs; the 6 GB preset trains rank 32 at 768 px.",
+            "LoRA presets: rank 128, AdaFactor LR 3e-5, unquantized BF16 base, a checkpoint every 25 epochs; the 6 GB preset trains rank 32 at 768 px.",
             "No preset uses FP8 Base; as an optional VRAM saver enable it together with Scaled FP8 (the Z-Image docs note quality may drop slightly).",
         ],
         "full": [
@@ -200,7 +200,7 @@ MODEL_HINTS: dict[str, dict] = {
         ],
         "lora": [
             "Keep the training adapter (zimage_turbo_training_adapter_v2 from the Turbo bundle) at Training Adapter Strength 1.0; it is applied as base weights.",
-            "LoRA presets: rank 128, AdaFactor LR 4e-5 (Base uses 6e-5), unquantized BF16 base, 200 epochs, a checkpoint every 25; 1536 px on 32 to 12 GB, 1024 px with activation CPU offload on 10 and 8 GB, 512 px at rank 32 on 6 GB.",
+            "LoRA presets: rank 128, AdaFactor LR 5e-5 (Base uses 3e-5), unquantized BF16 base, 200 epochs, a checkpoint every 25; 1536 px on 32 to 12 GB, 1024 px with activation CPU offload on 10 and 8 GB, 512 px at rank 32 on 6 GB.",
         ],
         "full": [
             "No measured Z-Image Turbo fine-tuning preset yet: the defaults load AdamW8bit at LR 1e-4 with Fused Backward Pass and Full BF16 Training off, and empty model file fields.",
@@ -225,7 +225,7 @@ MODEL_HINTS: dict[str, dict] = {
         ],
         "lora": [
             "LoRA trains on the official FP8 conditional DiT as a frozen base, so no FP8 flags are needed.",
-            "LoRA presets: rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs; 12 GB and below lower the rank (and the resolution on 10 and 8 GB).",
+            "LoRA presets: rank 128, AdaFactor LR 1e-4, 1024 px, 200 epochs, a checkpoint every 25 epochs; 12 GB and below lower the rank (and the resolution on 10 and 8 GB).",
             "Training samples use single-DiT CFG unless you set the unconditional DiT and enable Use Official Asymmetric CFG for LoRA Samples.",
             "A LoRA cannot be merged back into the FP8 base weights.",
         ],
@@ -253,7 +253,7 @@ MODEL_HINTS: dict[str, dict] = {
             "With block swap, the i2i task or FlashAttention requires a dataset batch size of 1.",
         ],
         "lora": [
-            "LoRA presets: rank 128, AdaFactor LR 8e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs.",
+            "LoRA presets: rank 128, AdaFactor LR 1e-4, 1024 px, 200 epochs, a checkpoint every 25 epochs.",
             "The 32 GB preset turns off gradient checkpointing for speed (about 0.43 s/step on an RTX 5090).",
             "For i2i LoRAs, add network args conv_dim=4 conv_alpha=1 if the visual conv layers should adapt too.",
         ],
@@ -275,7 +275,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Training samples default to 50 steps at CFG 4.0 with the negative prompt low quality, blurry.",
         ],
         "lora": [
-            "Presets: rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs.",
+            "Presets: rank 128, AdaFactor LR 9e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs.",
             "8 GB and 6 GB tiers drop to rank 64 / 32 (6 GB at 768 px) and cache the text encoder on the CPU.",
         ],
         "vram": "24 GB trains without block swap (20.8 GB peak); 16, 12 and 10 GB tiers swap 18, 28 and 33 blocks (H2D-only); max swap 34.",
@@ -291,7 +291,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Up to 26 blocks can be swapped; two joint blocks always stay on the GPU.",
         ],
         "lora": [
-            "Presets: DoRA rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs; the 8 GB tier trains 768 px and the 6 GB tier 512 px with an FP8 scaled base, both at rank 32.",
+            "Presets: DoRA rank 128, AdaFactor LR 1.2e-4, 1024 px, 200 epochs, a checkpoint every 25 epochs; the 8 GB tier trains 768 px and the 6 GB tier 512 px with an FP8 scaled base, both at rank 32.",
             "The 32 GB preset turns off gradient checkpointing (1.59 s/step on an RTX 5090; 1.78 s/step with it on the 24 GB preset).",
             "10 GB and smaller tiers cache the text encoder on the CPU.",
             "These presets are for text-to-image datasets: reference images (editing) add their tokens and keep the reference stream on the GPU, so train editing LoRAs in the FLUX.3 Klein Edit card, whose presets were measured with one reference per image.",
@@ -311,7 +311,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Up to 26 blocks can be swapped; two joint blocks always stay on the GPU.",
         ],
         "lora": [
-            "Presets: one reference per image, DoRA rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs; the 10 GB tier trains 768 px and the 8 GB tier 512 px with an FP8 scaled base, both at rank 32. No configuration fits 6 GB.",
+            "Presets: one reference per image, DoRA rank 128, AdaFactor LR 1.2e-4, 1024 px, 200 epochs, a checkpoint every 25 epochs; the 10 GB tier trains 768 px and the 8 GB tier 512 px with an FP8 scaled base, both at rank 32. No configuration fits 6 GB.",
             "More references per target add their tokens and need more VRAM than the listed peak: pick a lower tier.",
             "5.96 s/step without block swap on an RTX A6000 (32 and 24 GB presets), 6.59 s/step with 13 blocks streamed H2D-only (16 GB).",
         ],
@@ -360,7 +360,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Training samples default to 30 steps at CFG 5.0.",
         ],
         "lora": [
-            "Presets: rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs.",
+            "Presets: rank 128, AdaFactor LR 1e-4, 1024 px, 200 epochs, a checkpoint every 25 epochs.",
             "The 24 and 32 GB Fast presets turn off gradient checkpointing (about 0.5 s/step on an RTX 5090).",
             "10 GB and smaller tiers cache the text encoder on the CPU; the 6 GB tier uses rank 64 with activation CPU offload.",
         ],
@@ -378,7 +378,7 @@ MODEL_HINTS: dict[str, dict] = {
             "It uses its own Edit DiT (mage_flow_edit_base_bf16) with uniform_shift timesteps at shift 6.",
         ],
         "lora": [
-            "Presets: rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs; the 6 GB tier trains 768 px at rank 32.",
+            "Presets: rank 128, AdaFactor LR 1e-4, 1024 px, 200 epochs; the 6 GB tier trains 768 px at rank 32.",
             "The 32 GB Fast preset turns off gradient checkpointing (28.6 GB peak, 1.24 s/step on an RTX 5090).",
         ],
         "vram": "16 and 24 GB train without block swap (12.6 GB peak); 12, 10 and 8 GB swap 7, 9 and 10 blocks (the maximum).",
@@ -413,7 +413,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Wan trains LoRAs only; the installed backend has no full-DiT Wan script.",
         ],
         "lora": [
-            "T2V 14B presets: rank 128, AdaFactor LR 1.2e-4, 960x960, sigma timesteps, flow shift 5, 200 epochs, a checkpoint every 10.",
+            "T2V 14B presets: rank 128, AdaFactor LR 6e-5, 960x960, sigma timesteps, flow shift 5, 200 epochs, a checkpoint every 10.",
             "The presets were measured on image datasets; video clips need more VRAM than the listed peaks.",
             "10 GB and 8 GB tiers drop to rank 64 / 32 with activation CPU offload (8 GB also trains at 512 px).",
         ],
@@ -429,7 +429,7 @@ MODEL_HINTS: dict[str, dict] = {
             "First-frame conditioning probability 0.1 (default) keeps frame 0 clean on some steps for image-to-video use; 0 trains pure text-to-video.",
         ],
         "lora": [
-            "LoRA presets: rank 128, AdaFactor LR 5e-5, 768x512, 33 frames, INT8 ConvRot base, 200 epochs, a checkpoint every 25; no block swap on 24 and 32 GB.",
+            "LoRA presets: rank 128, AdaFactor LR 2e-4, 768x512, 33 frames, INT8 ConvRot base, 200 epochs, a checkpoint every 25; no block swap on 24 and 32 GB.",
             "The 10, 12 and 16 GB presets stream their swapped blocks H2D-only (frozen, so never copied back): the same VRAM as swapping both ways, 1.9-2.4x faster per step and about 6x faster training samples with Sample With Offloading on an RTX A6000.",
             "Choose one base quantization: INT8 ConvRot (the presets' choice), FP8 Scaled, or NF4 (lowest VRAM and lowest fidelity).",
             "Video only builds a video-only transformer, so its LoRAs leave audio untouched; in Audio + Video, video_* target presets do the same.",

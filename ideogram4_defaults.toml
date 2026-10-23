@@ -102,7 +102,7 @@ caching_teo_text_cache_dtype = "bf16"
 
 optimizer_type = "AdaFactor"
 optimizer_args = [ "scale_parameter=False", "relative_step=False", "warmup_init=False", "weight_decay=0.01",]
-learning_rate = 6e-5
+learning_rate = 1e-4
 max_grad_norm = 0.0
 lr_scheduler = "constant"
 lr_warmup_steps = 0

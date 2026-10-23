@@ -493,7 +493,7 @@ ERNIE_IMAGE = ImageArchSpec(
         "max_train_epochs": 200,
         "save_every_n_epochs": 25,
     },
-    lora_defaults=COMMON_LORA_DEFAULTS,
+    lora_defaults={**COMMON_LORA_DEFAULTS, "learning_rate": 9e-5},
     notes=(
         "Baidu ERNIE-Image (8B DiT, Ministral 3 text encoder, FLUX.2 VAE). LoRA training only. The official "
         "scheduler uses flow shift 4.0, which is the recommended starting point."
@@ -539,7 +539,7 @@ MAGE_FLOW = ImageArchSpec(
         "max_train_epochs": 200,
         "save_every_n_epochs": 25,
     },
-    lora_defaults=COMMON_LORA_DEFAULTS,
+    lora_defaults={**COMMON_LORA_DEFAULTS, "learning_rate": 1e-4},
     gui_only_keys=frozenset({"caching_teo_text_encoder_dtype"}),
     notes=(
         "Microsoft Mage-Flow (4B, MIT): native-resolution T2I and instruction editing. LoRA only. The trainer "
@@ -592,7 +592,7 @@ FLUX_3_KLEIN = ImageArchSpec(
         "max_train_epochs": 200,
         "save_every_n_epochs": 25,
     },
-    lora_defaults=COMMON_LORA_DEFAULTS,
+    lora_defaults={**COMMON_LORA_DEFAULTS, "learning_rate": 1.2e-4},
     gui_only_keys=frozenset({"caching_teo_text_encoder_dtype"}),
     notes=(
         "Black Forest Labs FLUX.3 Klein (5.4B single-sequence DiT, Qwen3-VL 4B text encoder, FLUX.2 VAE). LoRA "
@@ -804,7 +804,7 @@ HIDREAM_O1 = ImageArchSpec(
         "max_train_epochs": 200,
         "save_every_n_epochs": 25,
     },
-    lora_defaults={**COMMON_LORA_DEFAULTS, "learning_rate": 4e-5},
+    lora_defaults={**COMMON_LORA_DEFAULTS, "learning_rate": 1e-4},
     full_defaults={**COMMON_FULL_DEFAULTS, "learning_rate": 5e-6},
     gui_only_keys=frozenset({"caching_teo_fp8_te"}),
     notes=(
