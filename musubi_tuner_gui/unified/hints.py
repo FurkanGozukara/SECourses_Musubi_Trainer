@@ -420,6 +420,28 @@ MODEL_HINTS: dict[str, dict] = {
         "vram": "T2V 14B: 29.2 GB with block swap 9 on 32 GB down to 4.9 GB (512 px, rank 32, block swap 38) on 8 GB.",
         "dataset": "Images, 16 fps videos or both at 960x960 (or 1280x720 / 720x1280), 4n+1 frames (81 = about 5 s), each with a same-name .txt caption; image-only folders work too.",
     },
+    "ltx25": {
+        "about": "Lightricks LTX 2.5 (22B) video model in separate files: the transformer, the Gemma 4 12B text encoder with the LTX text projections, the video VAE and the audio VAE with its vocoder, for video or joint audio+video.",
+        "all": [
+            "LTX 2.5 needs its own Gemma 4 text encoder and VAEs: the LTX 2.3 checkpoint and the Gemma 3 files do not work with it, and caches made for LTX 2.3 are encoded again.",
+            "Audio + Video learns sound from each clip's audio track or a same-stem .wav file; image samples give no audio signal.",
+            "Latent caching, text caching and training must use the same modality (Video only or Audio + Video).",
+            "Training samples run the dev transformer's full schedule (Sampling Preset ltx25_full, with CFG and STG) and decode with the diffusion video VAE, whose tiles overlap by 160 px and 40 frames.",
+        ],
+        "lora": [
+            "No presets yet: the defaults load rank 128 with AdaFactor LR 1e-4, INT8 ConvRot base, block swap 20, 100 epochs, a checkpoint every 10.",
+            "Video only builds a video-only transformer, so its LoRAs leave audio untouched; in Audio + Video, video_* target presets do the same.",
+        ],
+        "full": [
+            "No presets yet: the defaults follow the LTX fine-tuning recipe (dense BF16 weights, fused-backward Adafactor at LR 1e-5, max grad norm 0) with block swap 20, 100 epochs, a checkpoint every 10; it needs 64 GB+ system RAM.",
+            "The fine-tuned transformer is saved as its own file, in the form of the released LTX 2.5 transformer (no bundle merge).",
+        ],
+        "vram": {
+            "lora": "No presets yet, so no measured VRAM; up to 47 of the 48 blocks can be swapped, and LoRA can stream them H2D-only.",
+            "full": "No presets yet, so no measured VRAM; up to 47 of the 48 blocks can be swapped on the trainable ring.",
+        },
+        "dataset": "Images (1-frame samples), videos or both at 768x512 in 32 px steps, 8k+1 frames resampled to 25 fps, .txt captions; Audio + Video uses each folder's videos and needs their sound described.",
+    },
     "ltx23": {
         "about": "Lightricks LTX 2.3 (22B) video model whose single checkpoint also holds the video VAE, audio VAE and vocoder, for video or joint audio+video.",
         "all": [

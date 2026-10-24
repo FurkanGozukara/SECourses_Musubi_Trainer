@@ -155,6 +155,8 @@ def test_runtime_toml_has_the_trainer_types_and_clean_paths(entry, mode, dataset
     models = tmp_path / "models"
     models.mkdir()
     for spec in backend.specs:
+        if spec.key in entry.fixed:
+            continue  # the model card decides it (LTX 2.5 clears the Gemma 3 paths); the form never changes it
         if spec.key in OPTIONAL_MODEL_FILES:
             values[spec.key] = ""
         elif spec.kind == "file" and spec.section == "model":

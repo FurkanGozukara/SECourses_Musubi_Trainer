@@ -101,6 +101,43 @@ def _klein_sampling(values: dict) -> dict:
     return {"sample_steps": 4 if distilled else 50, "sample_guidance_scale": 1.0 if distilled else 4.0}
 
 
+def _ltx_version_files(values: dict) -> dict:
+    """LTX 2.5 is its own split pack (transformer, Gemma 4 text encoder, video VAE, audio VAE in Training_Models_LTX_2_5)
+    and samples the trained dev transformer with its full schedule; LTX 2.3 / 2.0 use the single-file checkpoint. A path
+    that names the other version's file switches to this version's file, or is cleared when that file is missing."""
+    from .. import ltx2_lora_gui as module
+
+    version = str(values.get("ltx_version") or "2.3").strip()
+    v23_dir = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(module.__file__)), "..", module.LTX2_MODEL_FOLDER))
+    v25_dir = module.ltx25_model_dir()
+    checkpoints = (module.LTX2_CHECKPOINT_FILENAME, module.LTX25_TRANSFORMER_FILENAME)
+    changes: dict = {}
+    if version == "2.5":
+        target = _variant_file(values.get("ltx2_checkpoint"), v25_dir, checkpoints, 1)
+        if target is not None:
+            changes["ltx2_checkpoint"] = target
+        for key, name in module.ltx25_default_files().items():
+            if key != "ltx2_checkpoint" and not str(values.get(key) or "").strip():
+                path = os.path.join(v25_dir, name)
+                if os.path.isfile(path):
+                    changes[key] = path
+        if str(values.get("sample_sampling_preset") or "defaults").strip() in ("", "defaults"):
+            changes["sample_sampling_preset"] = "ltx25_full"
+        # the DiffVAE decodes with a wider receptive field than the conv VAE (fork docs/ltx_2.md)
+        for key, minimum in (("sample_vae_tile_overlap", 160), ("sample_vae_temporal_tile_overlap", 40)):
+            try:
+                current = int(parse_number(values.get(key), whole=True) or 0)
+            except (ValueProblem, TypeError, ValueError):
+                current = 0
+            if current < minimum:
+                changes[key] = minimum
+    else:
+        target = _variant_file(values.get("ltx2_checkpoint"), v23_dir, checkpoints, 0)
+        if target is not None and str(values.get("ltx2_checkpoint") or "").strip():
+            changes["ltx2_checkpoint"] = target
+    return changes
+
+
 def _rounded(key: str, rounder_name: str) -> Callable[[dict], dict]:
     """A frame count rounded down to the grid the model's VAE needs, as the classic tab does on blur."""
 
@@ -128,6 +165,8 @@ LINKS: tuple[Link, ...] = (
     Link("flux", "model_version", ("sample_steps", "sample_guidance_scale"), _klein_sampling),
     Link("kandinsky6", "num_frames", ("num_frames",), _rounded("num_frames", "round_frames_to_4n_plus_1")),
     Link("ltx2", "dataset_num_frames", ("dataset_num_frames",), _rounded("dataset_num_frames", "round_frames_to_ltx2")),
+    Link("ltx2", "ltx_version", ("ltx2_checkpoint", "ltx2_text_encoder_checkpoint", "ltx2_video_vae", "ltx2_audio_vae", "sample_sampling_preset",
+                                 "sample_vae_tile_overlap", "sample_vae_temporal_tile_overlap"), _ltx_version_files, on_load=True),
     Link("minimax_h3", "dataset_num_frames", ("dataset_num_frames",), _rounded("dataset_num_frames", "round_frames_to_minimax_h3")),
     Link("minimax_h3", "sample_num_frames", ("sample_num_frames",), _rounded("sample_num_frames", "round_frames_to_minimax_h3")),
 )

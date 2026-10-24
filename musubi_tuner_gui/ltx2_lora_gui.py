@@ -80,7 +80,18 @@ LTX2_MODEL_FOLDER = "Training_Models_LTX_2"
 LTX2_CHECKPOINT_FILENAME = "ltx-2.3-22b-dev.safetensors"
 LTX2_GEMMA_SAFETENSORS_FILENAME = "gemma_3_12B_it_fp8_e4m3fn.safetensors"
 LTX2_GEMMA_ROOT_DIRNAME = "gemma-3-12b-it-qat-q4_0-unquantized"
-LTX2_MAX_BLOCKS_TO_SWAP = 47  # 48-block LTX-2.3 22B transformer
+LTX2_MAX_BLOCKS_TO_SWAP = 47  # 48-block LTX-2.3 22B transformer (LTX-2.5 22B has the same 48 blocks)
+LTX_VERSIONS = ("2.0", "2.3", "2.5")
+# LTX-2.5 ships split files (Lightricks/LTX-2.5): the transformer (with both embedding connectors), the Gemma 4 12B
+# text encoder packed with the LTX text projections, the video VAE (DiffVAE: the conv VAE's encoder with a one-step
+# diffusion decoder) and the audio VAE with its vocoder
+LTX25_MODEL_FOLDER = "Training_Models_LTX_2_5"
+LTX25_TRANSFORMER_FILENAME = "ltx-2.5-22b-dev-transformer-bf16.safetensors"
+LTX25_TEXT_ENCODER_FILENAME = "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors"
+LTX25_VIDEO_VAE_FILENAME = "ltx-2.5-video-vae-bf16.safetensors"
+LTX25_AUDIO_VAE_FILENAME = "ltx-2.5-audio-vae-bf16.safetensors"
+# settings only an LTX-2.5 split pack uses: never passed to an LTX 2.3 / 2.0 run
+LTX25_ONLY_KEYS = ("ltx2_text_encoder_checkpoint", "ltx2_video_vae", "ltx2_audio_vae")
 
 # ---------------------------------------------------------------------------
 # Canonical parameter list. Order MUST match the settings_list built in
@@ -106,6 +117,9 @@ LTX2_PARAM_KEYS = [
     "ltx2_checkpoint",
     "gemma_root",
     "gemma_safetensors",
+    "ltx2_text_encoder_checkpoint",
+    "ltx2_video_vae",
+    "ltx2_audio_vae",
     "ltx_version",
     "ltx_version_check_mode",
     "ltx2_mode",
@@ -389,6 +403,9 @@ LTX2_OPTIONAL_STRING_KEYS = {
     "w8a8_backend",
     "gemma_root",
     "gemma_safetensors",
+    "ltx2_text_encoder_checkpoint",
+    "ltx2_video_vae",
+    "ltx2_audio_vae",
     "lr_scheduler_type",
     "logging_dir",
     "log_prefix",
@@ -459,6 +476,9 @@ LTX2_DEFAULTS = {
     "ltx2_checkpoint": "",
     "gemma_root": "",
     "gemma_safetensors": "",
+    "ltx2_text_encoder_checkpoint": "",
+    "ltx2_video_vae": "",
+    "ltx2_audio_vae": "",
     "ltx_version": "2.3",
     "ltx_version_check_mode": "warn",
     "ltx2_mode": "video",
@@ -732,11 +752,105 @@ def _default_model_paths() -> dict:
     }
 
 
+def ltx25_model_dir() -> str:
+    return os.path.normpath(os.path.join(scriptdir, "..", LTX25_MODEL_FOLDER))
+
+
+def ltx25_default_files() -> dict:
+    """The LTX-2.5 split pack's file names, per setting (Download_Train_Models.py bundle "ltx25")."""
+    return {
+        "ltx2_checkpoint": LTX25_TRANSFORMER_FILENAME,
+        "ltx2_text_encoder_checkpoint": LTX25_TEXT_ENCODER_FILENAME,
+        "ltx2_video_vae": LTX25_VIDEO_VAE_FILENAME,
+        "ltx2_audio_vae": LTX25_AUDIO_VAE_FILENAME,
+    }
+
+
+def _ltx_version(param_dict: dict) -> str:
+    version = str(param_dict.get("ltx_version") or "2.3").strip()
+    return version if version in LTX_VERSIONS else "2.3"
+
+
+_SAFETENSORS_PREFIXES: dict = {}
+
+
+def _safetensors_key_prefixes(path: str) -> set:
+    """The first two dotted parts of every tensor name in a safetensors file (read from its header only)."""
+    import json
+    import struct
+
+    try:
+        stamp = (os.path.getsize(path), os.path.getmtime(path))
+    except OSError:
+        return set()
+    cached = _SAFETENSORS_PREFIXES.get(path)
+    if cached and cached[0] == stamp:
+        return cached[1]
+    prefixes = set()
+    try:
+        with open(path, "rb") as handle:
+            size = struct.unpack("<Q", handle.read(8))[0]
+            if 0 < size < 512 * 1024 * 1024:
+                for key in json.loads(handle.read(size)):
+                    parts = key.split(".")
+                    prefixes.add(parts[0])
+                    prefixes.add(".".join(parts[:2]))
+    except (OSError, ValueError, struct.error):
+        return set()
+    _SAFETENSORS_PREFIXES[path] = (stamp, prefixes)
+    return prefixes
+
+
+def _validate_ltx25_files(param_dict: dict, *, validate_paths: bool, needs_text_encoder: bool) -> None:
+    """LTX-2.5 split packs: the transformer, the packed Gemma 4 text encoder (or a Gemma 4 model directory), the video
+    VAE and, for audio, the audio VAE. A unified LTX-2.5 checkpoint (LTX-2.5-Pre-Trained) carries the VAEs itself."""
+    if str(param_dict.get("gemma_safetensors") or "").strip():
+        raise ValueError(
+            "LTX 2.5 uses the Gemma 4 12B text encoder: set LTX 2.5 Text Encoder (gemma4-12b-with-proj-ltx-2.5-bf16.safetensors) "
+            "and clear the Gemma 3 single-file path."
+        )
+    text_encoder = str(param_dict.get("ltx2_text_encoder_checkpoint") or "").strip()
+    gemma_root = str(param_dict.get("gemma_root") or "").strip()
+    if text_encoder and gemma_root:
+        raise ValueError("Set either the LTX 2.5 Text Encoder file or a Gemma 4 model directory (gemma_root), not both.")
+    if not validate_paths:
+        return
+    if needs_text_encoder and not text_encoder and not gemma_root:
+        raise ValueError(
+            "LTX 2.5 needs its Gemma 4 text encoder for text caching and training samples: set LTX 2.5 Text Encoder "
+            f"({LTX25_TEXT_ENCODER_FILENAME})."
+        )
+    if text_encoder and not os.path.isfile(text_encoder):
+        raise ValueError(f"LTX 2.5 text encoder file does not exist: {text_encoder}")
+    if gemma_root and not os.path.isdir(gemma_root):
+        raise ValueError(f"Gemma 4 model directory does not exist: {gemma_root}")
+    checkpoint = str(param_dict.get("ltx2_checkpoint") or "").strip()
+    prefixes = _safetensors_key_prefixes(checkpoint)
+    mode = str(param_dict.get("ltx2_mode") or "video")
+    video_vae = str(param_dict.get("ltx2_video_vae") or "").strip()
+    audio_vae = str(param_dict.get("ltx2_audio_vae") or "").strip()
+    if not video_vae and "vae" not in prefixes:
+        raise ValueError(
+            f"LTX 2.5 Video VAE is required: the transformer file holds no VAE (set {LTX25_VIDEO_VAE_FILENAME})."
+        )
+    if video_vae and not os.path.isfile(video_vae):
+        raise ValueError(f"LTX 2.5 video VAE file does not exist: {video_vae}")
+    if mode in ("av", "audio") and not audio_vae and "audio_vae" not in prefixes:
+        raise ValueError(
+            f"LTX 2.5 audio training needs the Audio VAE: the transformer file holds none (set {LTX25_AUDIO_VAE_FILENAME})."
+        )
+    if audio_vae and not os.path.isfile(audio_vae):
+        raise ValueError(f"LTX 2.5 audio VAE file does not exist: {audio_vae}")
+
+
 def _validate_ltx2_parameters(param_dict: dict, *, validate_paths: bool = True) -> None:
     """GUI-side validation mirroring the backend's mutual-exclusion rules."""
+    version = _ltx_version(param_dict)
     ltx2_checkpoint = str(param_dict.get("ltx2_checkpoint") or "").strip()
     if validate_paths:
         if not ltx2_checkpoint:
+            if version == "2.5":
+                raise ValueError(f"LTX 2.5 transformer path is required ({LTX25_TRANSFORMER_FILENAME}).")
             raise ValueError("LTX-2 checkpoint path is required (ltx-2.3-22b-dev.safetensors or an INT8 ConvRot/FP8 variant).")
         if not os.path.isfile(ltx2_checkpoint):
             raise ValueError(f"LTX-2 checkpoint does not exist: {ltx2_checkpoint}")
@@ -745,14 +859,16 @@ def _validate_ltx2_parameters(param_dict: dict, *, validate_paths: bool = True) 
     gemma_safetensors = str(param_dict.get("gemma_safetensors") or "").strip()
     if gemma_root and gemma_safetensors:
         raise ValueError("Set either the Gemma HF directory (gemma_root) or the single-file Gemma safetensors, not both.")
-    if validate_paths:
-        needs_gemma = bool(param_dict.get("cache_text_encoder_outputs", True))
-        sampling_active = (
-            _to_int(param_dict.get("sample_every_n_epochs")) > 0
-            or _to_int(param_dict.get("sample_every_n_steps")) > 0
-            or bool(param_dict.get("sample_at_first"))
-        )
-        needs_gemma = needs_gemma or sampling_active
+    sampling_active = (
+        _to_int(param_dict.get("sample_every_n_epochs")) > 0
+        or _to_int(param_dict.get("sample_every_n_steps")) > 0
+        or bool(param_dict.get("sample_at_first"))
+    )
+    needs_text_encoder = bool(param_dict.get("cache_text_encoder_outputs", True)) or sampling_active
+    if version == "2.5":
+        _validate_ltx25_files(param_dict, validate_paths=validate_paths, needs_text_encoder=needs_text_encoder)
+    elif validate_paths:
+        needs_gemma = needs_text_encoder
         if needs_gemma and not gemma_root and not gemma_safetensors:
             raise ValueError(
                 "A Gemma 3 12B text encoder is required for text encoder caching / sampling: set gemma_root (HF folder) "
@@ -857,9 +973,7 @@ def _normalize_ltx2_parameters(parameters, *, validate_paths: bool = True):
     param_dict["ltx2_mode"] = mode
     parameters = _replace_parameter(parameters, "ltx2_mode", mode)
 
-    ltx_version = str(param_dict.get("ltx_version") or "2.3").strip()
-    if ltx_version not in ("2.0", "2.3"):
-        ltx_version = "2.3"
+    ltx_version = _ltx_version(param_dict)
     param_dict["ltx_version"] = ltx_version
     parameters = _replace_parameter(parameters, "ltx_version", ltx_version)
 
@@ -902,6 +1016,7 @@ def build_ltx2_cache_commands(param_dict: dict, *, python_cmd: str | None = None
     dataset_config = str(param_dict["dataset_config"])
     gpu_ids = param_dict.get("gpu_ids")
     mode = str(param_dict.get("ltx2_mode") or "video")
+    version = _ltx_version(param_dict)
 
     latent_command = None
     if bool(param_dict.get("cache_latents", True)):
@@ -922,6 +1037,14 @@ def build_ltx2_cache_commands(param_dict: dict, *, python_cmd: str | None = None
         if mode in ("av", "audio"):
             audio_source = str(param_dict.get("ltx2_audio_source") or "video")
             latent_command.extend(["--ltx2_audio_source", audio_source])
+        if version == "2.5":
+            latent_command.extend(["--ltx_version", "2.5"])
+            video_vae = str(param_dict.get("ltx2_video_vae") or "").strip()
+            if video_vae:
+                latent_command.extend(["--vae", video_vae])
+            audio_vae = str(param_dict.get("ltx2_audio_vae") or "").strip()
+            if audio_vae and mode in ("av", "audio"):
+                latent_command.extend(["--ltx2_audio_vae", audio_vae])
         for key, flag in (
             ("caching_latent_batch_size", "--batch_size"),
             ("caching_latent_num_workers", "--num_workers"),
@@ -969,7 +1092,16 @@ def build_ltx2_cache_commands(param_dict: dict, *, python_cmd: str | None = None
         ]
         gemma_root = str(param_dict.get("gemma_root") or "").strip()
         gemma_safetensors = str(param_dict.get("gemma_safetensors") or "").strip()
-        if gemma_safetensors:
+        text_encoder = str(param_dict.get("ltx2_text_encoder_checkpoint") or "").strip()
+        if version == "2.5":
+            # the packed Gemma 4 file holds the text encoder, its tokenizer and the LTX text projections; a Gemma 4
+            # model directory goes with a unified checkpoint, which holds the projections itself
+            text_command.extend(["--ltx_version", "2.5"])
+            if text_encoder:
+                text_command.extend(["--ltx2_text_encoder_checkpoint", text_encoder])
+            elif gemma_root:
+                text_command.extend(["--gemma_root", gemma_root])
+        elif gemma_safetensors:
             text_command.extend(["--gemma_safetensors", gemma_safetensors])
         elif gemma_root:
             text_command.extend(["--gemma_root", gemma_root])
@@ -1004,10 +1136,13 @@ def build_ltx2_cache_commands(param_dict: dict, *, python_cmd: str | None = None
 
 def _run_config_parameters(param_dict: dict, parameters):
     """Produce the parameter list for the training run TOML."""
+    ltx25 = _ltx_version(param_dict) == "2.5"
     filtered = []
     for name, value in parameters:
         if name in LTX2_OPTIONAL_STRING_KEYS and isinstance(value, str) and value.strip() == "":
             continue
+        if name in LTX25_ONLY_KEYS and not ltx25:
+            continue  # an LTX-2.5 file left in a field must never reach a 2.3 / 2.0 run
         filtered.append((name, value))
 
     # Low-VRAM Text Caching also encodes the training's sample prompts that way: without it the 10 and 12 GB LoRA
@@ -1090,6 +1225,12 @@ def prepare_ltx2_workflow(parameters, config_path: str, *, validate_paths: bool 
     parameters = strip_path_parameters(parameters)  # quoted / padded paths (Explorer's "Copy as path")
     param_dict, parameters = _normalize_ltx2_parameters(parameters, validate_paths=validate_paths)
     python_cmd = python_cmd or sys.executable
+    if _ltx_version(param_dict) == "2.5" and str(param_dict.get("sample_sampling_preset") or "defaults").strip() in ("", "defaults"):
+        # the trainer resolves "defaults" to LTX-2.5's official distilled two-stage pipeline, which needs the distilled
+        # transformer (or the distilled LoRA) and the x2 spatial upsampler; the trained dev transformer samples with its
+        # full schedule. Only the run gets it: a saved preset keeps the "defaults" the user chose.
+        param_dict["sample_sampling_preset"] = "ltx25_full"
+        parameters = _replace_parameter(parameters, "sample_sampling_preset", "ltx25_full")
 
     if validate_paths:
         os.makedirs(str(param_dict["output_dir"]), exist_ok=True)
@@ -1139,7 +1280,10 @@ def prepare_ltx2_workflow(parameters, config_path: str, *, validate_paths: bool 
     train_command = run_cmd_advanced_training(run_cmd=train_command, additional_parameters=additional)
 
     post_train_commands = []
-    if full_finetune and bool(param_dict.get("ltx2_fft_merge_after_training", True)) and not bool(param_dict.get("save_merged_checkpoint")):
+    # LTX-2.5 ships the transformer as its own file: the fine-tuned transformer is already in that form, there is no
+    # single-file bundle to merge it into
+    if (full_finetune and _ltx_version(param_dict) != "2.5" and bool(param_dict.get("ltx2_fft_merge_after_training", True))
+            and not bool(param_dict.get("save_merged_checkpoint"))):
         # ltx2_train.py saves a transformer-only checkpoint; LTX loaders (ComfyUI, generation, LoRA training)
         # need the full single-file bundle, so merge the final checkpoint into a copy of the base bundle.
         output_dir = os.path.abspath(str(param_dict.get("output_dir") or "."))
@@ -1361,7 +1505,7 @@ def _config_value_for_component(key: str, value, default):
         return "networks.lora_ltx2"
     if key == "ltx_version":
         text = str(value).strip() if value is not None else "2.3"
-        return text if text in ("2.0", "2.3") else "2.3"
+        return text if text in LTX_VERSIONS else "2.3"
     if key == "ltx2_mode":
         text = str(value or "video").strip().lower()
         return {"v": "video", "a": "audio", "va": "av"}.get(text, text if text in ("video", "av", "audio") else "video")
@@ -1453,8 +1597,9 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
         return component
 
     gr.Markdown(
-        "Train LoRAs or **full fine-tunes** of **LTX-2 (19B)** and **LTX-2.3 (22B)** text-to-video / audio-video models. "
-        "The single LTX-2 checkpoint provides DiT + VAE + audio VAE + vocoder; Gemma 3 12B is the text encoder. "
+        "Train LoRAs or **full fine-tunes** of **LTX-2 (19B)**, **LTX-2.3 (22B)** and **LTX-2.5 (22B)** text-to-video / audio-video models. "
+        "The single LTX-2 / 2.3 checkpoint provides DiT + VAE + audio VAE + vocoder with Gemma 3 12B as the text encoder; "
+        "LTX-2.5 ships the transformer, the Gemma 4 12B text encoder, the video VAE and the audio VAE as separate files. "
         "Valid video frame counts are 8k+1 (1, 9, 17, 25, 33, 41, 49...) and training resolution steps are 32 px."
     )
     try:
@@ -1465,7 +1610,7 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
 
     with gr.Accordion("Configuration & GPU Presets", open=True, elem_classes=["config-presets"]):
         configuration = ConfigurationFile(headless=headless, config=config)
-        presets = PresetLibrary(("LTX_2.3_Training_Configs",), model_name="LTX 2.3", headless=headless)
+        presets = PresetLibrary(("LTX_2.5_Training_Configs", "LTX_2.3_Training_Configs"), model_name="LTX 2.5 / 2.3", headless=headless)
 
     training_mode = reg(
         "training_mode",
@@ -1570,14 +1715,27 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                 outputs=[gemma_root],
                 show_progress=False,
             )
+        ltx25_paths = {}
+        for key, label, placeholder, info, color in (
+            ("ltx2_text_encoder_checkpoint", "LTX 2.5 Text Encoder (Gemma 4 12B with projections)", LTX25_TEXT_ENCODER_FILENAME,
+             "LTX 2.5 only: the packed Gemma 4 text encoder with its tokenizer and the LTX text projections.", "mbtn-lime"),
+            ("ltx2_video_vae", "LTX 2.5 Video VAE", LTX25_VIDEO_VAE_FILENAME,
+             "LTX 2.5 only: encodes the training videos and decodes the training samples.", "mbtn-blue"),
+            ("ltx2_audio_vae", "LTX 2.5 Audio VAE", LTX25_AUDIO_VAE_FILENAME,
+             "LTX 2.5 only, for Audio + Video or audio training: the audio VAE with its vocoder.", "mbtn-fuchsia"),
+        ):
+            with gr.Row():
+                ltx25_paths[key] = reg(key, gr.Textbox(label=label, placeholder=f"Path to {placeholder}", value=get_value(key), info=info))
+                browse = gr.Button("📂", size="sm", scale=0, min_width=60, elem_classes=["mbtn", color], visible=(not headless))
+                browse.click(get_file_path, inputs=[ltx25_paths[key]], outputs=[ltx25_paths[key]], show_progress=False)
         with gr.Row():
             ltx_version = reg(
                 "ltx_version",
                 gr.Dropdown(
                     label="LTX Version",
-                    choices=["2.3", "2.0"],
+                    choices=["2.5", "2.3", "2.0"],
                     value=str(get_value("ltx_version")),
-                    info="2.3 = LTX-2.3 22B checkpoint, 2.0 = LTX-2 19B checkpoint. Must match the checkpoint file.",
+                    info="2.5 = LTX-2.5 22B split files, 2.3 = LTX-2.3 22B checkpoint, 2.0 = LTX-2 19B checkpoint. Must match the checkpoint file.",
                 ),
             )
             ltx_version_check_mode = reg(
@@ -2530,9 +2688,13 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                 "sample_sampling_preset",
                 gr.Dropdown(
                     label="Sampling Preset",
-                    choices=["defaults", "legacy", "ltx20", "ltx23", "ltx23_hq", "distilled_two_stage"],
+                    choices=["defaults", "legacy", "ltx20", "ltx23", "ltx23_hq", "ltx25_full", "ltx25", "distilled_two_stage"],
                     value=get_value("sample_sampling_preset"),
-                    info="'defaults' resolves per LTX version (LTX-2.3: 30 steps, 768x512, 121 frames).",
+                    info=(
+                        "'defaults' resolves per LTX version (LTX-2.3: 30 steps, 768x512, 121 frames). LTX-2.5 trains the "
+                        "dev transformer, which samples with 'ltx25_full' (30 steps with CFG and STG; 'defaults' becomes it); "
+                        "'ltx25' is the official distilled two-stage pipeline and needs the distilled model and the x2 upsampler."
+                    ),
                 ),
             )
             sample_sampler = reg(

@@ -46,6 +46,9 @@ PORTABLE_MODEL_PATH_KEYS = frozenset(
         "dit_high_noise",
         "gemma_safetensors",
         "ltx2_checkpoint",
+        "ltx2_text_encoder_checkpoint",
+        "ltx2_video_vae",
+        "ltx2_audio_vae",
         "network_weights",
         "t5",
         "text_encoder",
@@ -278,6 +281,7 @@ _PATH_KEYS = {
     "network_weights", "dataset_config", "sample_prompts", "resume", "log_tracker_config",
     "ltx2_checkpoint", "gemma_root", "gemma_safetensors", "video_vae", "audio_vae", "vocoder",
     "text_encoder_qwen", "text_encoder_clip", "h3_guidance_loss_uncond_cache", "image_encoder",
+    "ltx2_text_encoder_checkpoint", "ltx2_video_vae", "ltx2_audio_vae",
 }
 
 
@@ -2319,8 +2323,8 @@ def SaveConfigFileToRun(
         "network_weights", "base_weights", "dit", "vae", "text_encoder",
         "weights", "pretrained_model_name_or_path", "state_dict",
         "checkpoint", "ckpt", "safetensors", "model_path",
-        # LTX-2 model paths
-        "ltx2_checkpoint", "gemma_root", "gemma_safetensors",
+        # LTX-2 model paths (LTX-2.5 split pack: text encoder, video VAE, audio VAE)
+        "ltx2_checkpoint", "gemma_root", "gemma_safetensors", "ltx2_text_encoder_checkpoint", "ltx2_video_vae", "ltx2_audio_vae",
         # MiniMax H3 model paths
         "video_vae", "audio_vae", "h3_guidance_loss_uncond_cache",
         # Kandinsky 6 snapshot folders

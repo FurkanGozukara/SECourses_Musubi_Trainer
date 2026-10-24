@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-22T05:54:32",
+ "generated": "2026-10-24T06:10:04",
  "gradio": "6.30.0",
  "backends": {
   "qwen_image": {
@@ -14171,7 +14171,7 @@
      "cls": "Number",
      "label": "Learning Rate",
      "info": "Specify the learning rate (e.g., 2.0e-6)",
-     "value": 6e-05,
+     "value": 0.0002,
      "minimum": null,
      "maximum": null,
      "step": 1e-06,
@@ -17164,7 +17164,7 @@
      "cls": "Number",
      "label": "Learning Rate",
      "info": "Specify the learning rate (e.g., 2.0e-6)",
-     "value": 6e-05,
+     "value": 0.0001,
      "minimum": null,
      "maximum": null,
      "step": 1e-06,
@@ -19959,7 +19959,7 @@
      "cls": "Number",
      "label": "Learning Rate",
      "info": "Specify the learning rate (e.g., 2.0e-6)",
-     "value": 6e-05,
+     "value": 9e-05,
      "minimum": null,
      "maximum": null,
      "step": 1e-06,
@@ -22823,7 +22823,7 @@
      "cls": "Number",
      "label": "Learning Rate",
      "info": "Specify the learning rate (e.g., 2.0e-6)",
-     "value": 6e-05,
+     "value": 0.0001,
      "minimum": null,
      "maximum": null,
      "step": 1e-06,
@@ -25671,7 +25671,7 @@
      "cls": "Number",
      "label": "Learning Rate",
      "info": "Specify the learning rate (e.g., 2.0e-6)",
-     "value": 6e-05,
+     "value": 0.00012,
      "minimum": null,
      "maximum": null,
      "step": 1e-06,
@@ -31635,7 +31635,7 @@
      "cls": "Number",
      "label": "Learning Rate",
      "info": "Specify the learning rate (e.g., 2.0e-6)",
-     "value": 4e-05,
+     "value": 0.0001,
      "minimum": null,
      "maximum": null,
      "step": 1e-06,
@@ -35896,6 +35896,9 @@
     "ltx2_checkpoint",
     "gemma_root",
     "gemma_safetensors",
+    "ltx2_text_encoder_checkpoint",
+    "ltx2_video_vae",
+    "ltx2_audio_vae",
     "ltx_version",
     "ltx_version_check_mode",
     "ltx2_mode",
@@ -36414,12 +36417,61 @@
       "Model Settings"
      ]
     },
+    "ltx2_text_encoder_checkpoint": {
+     "cls": "Textbox",
+     "label": "LTX 2.5 Text Encoder (Gemma 4 12B with projections)",
+     "info": "LTX 2.5 only: the packed Gemma 4 text encoder with its tokenizer and the LTX text projections.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Path to gemma4-12b-with-proj-ltx-2.5-bf16.safetensors",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Model Settings"
+     ]
+    },
+    "ltx2_video_vae": {
+     "cls": "Textbox",
+     "label": "LTX 2.5 Video VAE",
+     "info": "LTX 2.5 only: encodes the training videos and decodes the training samples.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Path to ltx-2.5-video-vae-bf16.safetensors",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Model Settings"
+     ]
+    },
+    "ltx2_audio_vae": {
+     "cls": "Textbox",
+     "label": "LTX 2.5 Audio VAE",
+     "info": "LTX 2.5 only, for Audio + Video or audio training: the audio VAE with its vocoder.",
+     "value": "",
+     "lines": 1,
+     "max_lines": null,
+     "placeholder": "Path to ltx-2.5-audio-vae-bf16.safetensors",
+     "interactive": null,
+     "visible": true,
+     "type": "text",
+     "parents": [
+      "Model Settings"
+     ]
+    },
     "ltx_version": {
      "cls": "Dropdown",
      "label": "LTX Version",
-     "info": "2.3 = LTX-2.3 22B checkpoint, 2.0 = LTX-2 19B checkpoint. Must match the checkpoint file.",
+     "info": "2.5 = LTX-2.5 22B split files, 2.3 = LTX-2.3 22B checkpoint, 2.0 = LTX-2 19B checkpoint. Must match the checkpoint file.",
      "value": "2.3",
      "choices": [
+      [
+       "2.5",
+       "2.5"
+      ],
       [
        "2.3",
        "2.3"
@@ -38720,7 +38772,7 @@
     "sample_sampling_preset": {
      "cls": "Dropdown",
      "label": "Sampling Preset",
-     "info": "'defaults' resolves per LTX version (LTX-2.3: 30 steps, 768x512, 121 frames).",
+     "info": "'defaults' resolves per LTX version (LTX-2.3: 30 steps, 768x512, 121 frames). LTX-2.5 trains the dev transformer, which samples with 'ltx25_full' (30 steps with CFG and STG; 'defaults' becomes it); 'ltx25' is the official distilled two-stage pipeline and needs the distilled model and the x2 upsampler.",
      "value": "defaults",
      "choices": [
       [
@@ -38742,6 +38794,14 @@
       [
        "ltx23_hq",
        "ltx23_hq"
+      ],
+      [
+       "ltx25_full",
+       "ltx25_full"
+      ],
+      [
+       "ltx25",
+       "ltx25"
       ],
       [
        "distilled_two_stage",
@@ -52273,17 +52333,30 @@
     "type": "str",
     "default": null
    },
+   "ltx2_text_encoder_checkpoint": {
+    "type": "str",
+    "default": null
+   },
+   "ltx2_video_vae": {
+    "type": "str",
+    "default": null
+   },
+   "ltx2_audio_vae": {
+    "type": "str",
+    "default": null
+   },
    "ltx_version": {
     "type": "str",
     "default": "2.3",
     "choices": [
      "2.0",
-     "2.3"
+     "2.3",
+     "2.5"
     ]
    },
    "ltx_version_check_mode": {
     "type": "str",
-    "default": "warn",
+    "default": null,
     "choices": [
      "off",
      "warn",
@@ -52722,6 +52795,8 @@
      "ltx20",
      "ltx23",
      "ltx23_hq",
+     "ltx25",
+     "ltx25_full",
      "distilled_two_stage"
     ]
    },

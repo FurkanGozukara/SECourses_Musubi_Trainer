@@ -327,7 +327,8 @@ def _same(a, b) -> bool:
 PER_BACKEND_TEXT_KEYS = frozenset(
     {
         "dit", "dit_high_noise", "vae", "video_vae", "audio_vae", "vocoder", "text_encoder", "text_encoder_qwen",
-        "text_encoder_clip", "t5", "clip", "ltx2_checkpoint", "gemma_root", "gemma_safetensors", "training_adapter_path",
+        "text_encoder_clip", "t5", "clip", "ltx2_checkpoint", "gemma_root", "gemma_safetensors", "ltx2_text_encoder_checkpoint",
+        "ltx2_video_vae", "ltx2_audio_vae", "training_adapter_path",
         "turbo_dit", "unconditional_dit", "blocks_to_swap", "task", "model_type", "model_version", "model_variant",
         "ltx2_mode", "model_family", "zimage_variant", "pretrained_model_name_or_path", "ae", "clip_l", "t5xxl",
     }
