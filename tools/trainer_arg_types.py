@@ -110,7 +110,9 @@ def _json_safe(value):
 
 
 def describe_parser(parser: argparse.ArgumentParser) -> dict[str, dict]:
-    """dest -> {"type", "nargs", "choices", "default"} for every option of the parser."""
+    """dest -> {"type", "nargs", "choices", "default", "aliases"} for every option of the parser. ``aliases`` are the
+    option names that differ from the dest (``--ltx2_mode`` for ``ltx_mode``): a runtime TOML key with such a name is
+    ignored by ``parse_args(namespace=...)``, which fills dests only (Guardrail 20)."""
     described: dict[str, dict] = {}
     for action in parser._actions:
         if isinstance(action, argparse._HelpAction) or action.dest in (argparse.SUPPRESS, None):
@@ -120,6 +122,9 @@ def describe_parser(parser: argparse.ArgumentParser) -> dict[str, dict]:
             entry["nargs"] = action.nargs if isinstance(action.nargs, (int, str)) else repr(action.nargs)
         if action.choices is not None:
             entry["choices"] = _json_safe(list(action.choices))
+        aliases = sorted({option.lstrip("-") for option in action.option_strings} - {action.dest})
+        if aliases:
+            entry["aliases"] = aliases
         described[action.dest] = entry
     return described
 
@@ -135,7 +140,10 @@ def collect(backends=None) -> dict[str, dict[str, dict]]:
             for dest, entry in describe_parser(capture_parser(module_name)).items():
                 if dest in merged and merged[dest]["type"] != entry["type"]:
                     merged[dest]["type_" + mode] = entry["type"]
-                merged.setdefault(dest, {**entry, "modes": []})["modes"].append(mode)
+                record = merged.setdefault(dest, {**entry, "modes": []})
+                record["modes"].append(mode)
+                if entry.get("aliases"):
+                    record["aliases"] = sorted(set(record.get("aliases", [])) | set(entry["aliases"]))
         result[backend] = merged
     return result
 

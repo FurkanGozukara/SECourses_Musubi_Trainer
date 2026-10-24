@@ -322,3 +322,18 @@ FLUX.3 Klein conditions on every token of its 80-token-multiple context, pads in
 ### Regression check
 
 Compare the cached context with the reference recipe at the real and the pad positions separately (`flux3_utils.tokenize_prompt`, `tests/test_flux3_klein.py::test_tokenization_pads_to_multiples_of_80_with_pads_at_position_one`); after a transformers upgrade re-run the comparison for every model whose DiT reads pad states.
+
+## Guardrail 20: Runtime TOML keys are the trainer's argparse dests
+
+### Rule
+
+- A setting the trainer must read goes into the runtime TOML under its argparse `dest`. The trainers load that file with `parser.parse_args(namespace=Namespace(**toml))`, which fills only dests: a key named after another option string of the action (`ltx2_mode` for `--ltx2_mode` / `--ltx_mode` with `dest="ltx_mode"`, `no_convert_to_comfy` for a `store_false` into `convert_to_comfy`) is ignored without an error, and the dest keeps its default.
+- A GUI key that is such an alias keeps its name (presets, Load / Save) and is written once more under the dest, with the action's meaning (a `store_false` alias inverts: `convert_to_comfy = not no_convert_to_comfy`); for LTX in `ltx2_lora_gui._run_config_parameters`.
+
+### Why this exists
+
+The LTX tab wrote `ltx2_mode` and the trainers read `ltx_mode`, so every LTX 2.3 (and 2.5) Audio and Audio + Video run trained the video-only transformer on the video latents, with the audio caches written and never used: the LTX 2.5 audio + video library check found it on 2026-10-24 ("LTX-2 model variant: video-only", losses equal to the video run's). Skip ComfyUI export and Keep only ComfyUI file were ignored the same way. The schema's `arg_types` is keyed by dest, so the runtime-TOML type test had taken these keys for GUI-only bookkeeping.
+
+### Regression check
+
+`tools/generate_unified_schema.py` records every GUI key that is an option alias in the schema's `arg_aliases` (`schema.arg_alias_dest`); `tests/test_unified_runtime_toml.py::test_runtime_toml_has_the_trainer_types_and_clean_paths` fails for an alias key whose dest the runtime TOML lacks, and `tests/test_ltx25_gui.py::TestTrainerReadsTheRunToml` parses the LTX run TOML with the trainers' own parsers (`ltx_mode`, `convert_to_comfy`, `save_original_lora`).

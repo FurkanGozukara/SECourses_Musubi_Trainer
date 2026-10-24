@@ -30,7 +30,7 @@ from musubi_tuner_gui.unified import presets as P  # noqa: E402
 from musubi_tuner_gui.unified.backends import get_backend, install_quiet_toasts  # noqa: E402
 from musubi_tuner_gui.unified.registry import ENTRIES  # noqa: E402
 from musubi_tuner_gui.unified.runner import install_runner  # noqa: E402
-from musubi_tuner_gui.unified.schema import arg_type  # noqa: E402
+from musubi_tuner_gui.unified.schema import arg_alias_dest, arg_type  # noqa: E402
 
 OPTIONAL_MODEL_FILES = {"turbo_dit", "unconditional_dit", "training_adapter_path", "gemma_safetensors", "network_weights", "base_weights", "dit_high_noise", "resume"}
 NUMERIC = ("int", "float", "custom:_int_or_float", "custom:int_or_float")
@@ -196,6 +196,10 @@ def test_runtime_toml_has_the_trainer_types_and_clean_paths(entry, mode, dataset
     checked = 0
     for key, value in data.items():
         info = arg_type(entry.backend, key)
+        dest = arg_alias_dest(entry.backend, key)
+        if dest is not None and dest not in data:
+            # parse_args(namespace=...) fills only dests: the trainer would ignore this value (Guardrail 20)
+            problems.append(f"{key}={value!r}: an alias of the trainer's {dest!r}, which the runtime TOML lacks")
         if info is None:
             continue  # a GUI-only bookkeeping key (argparse ignores unknown keys)
         checked += 1

@@ -771,6 +771,24 @@ def _ltx_version(param_dict: dict) -> str:
     return version if version in LTX_VERSIONS else "2.3"
 
 
+def _ltx25_sample_prompts_cache(param_dict: dict) -> str | None:
+    """Where an LTX 2.5 run's text caching stores the embeddings of its sample prompts, or None when training encodes
+    them itself. Training then never loads the 24.5 GB Gemma 4: with the BF16 transformer moved to the CPU for the
+    sample prompts, the two peaked at 61 GB of RAM. Trained connectors (Train Connectors) change the embeddings during
+    training, so those runs keep encoding at sample time."""
+    if _ltx_version(param_dict) != "2.5" or not bool(param_dict.get("cache_text_encoder_outputs", True)):
+        return None
+    if bool(param_dict.get("train_connectors")) or bool(param_dict.get("cache_before_connector")):
+        return None
+    if not str(param_dict.get("sample_prompts") or "").strip():
+        return None
+    output_dir = str(param_dict.get("output_dir") or "").strip()
+    if not output_dir:
+        return None
+    output_name = str(param_dict.get("output_name") or "ltx2_lora")
+    return os.path.abspath(os.path.join(output_dir, f"{output_name}_sample_prompts_te_cache.pt"))
+
+
 _SAFETENSORS_PREFIXES: dict = {}
 
 
@@ -1130,6 +1148,12 @@ def build_ltx2_cache_commands(param_dict: dict, *, python_cmd: str | None = None
             text_command.append("--cache_before_connector")
         if param_dict.get("cpu_staged_checkpoint_loading"):
             text_command.append("--cpu_staged_checkpoint_loading")
+        sample_cache = _ltx25_sample_prompts_cache(param_dict)
+        if sample_cache:
+            # the sample prompts with the run's own sampling preset, which decides their default negative prompt
+            text_command.extend(["--precache_sample_prompts", "--sample_prompts", str(param_dict["sample_prompts"]).strip(),
+                                 "--sample_prompts_cache", sample_cache,
+                                 "--sample_sampling_preset", str(param_dict.get("sample_sampling_preset") or "defaults").strip()])
 
     return latent_command, text_command
 
@@ -1149,6 +1173,19 @@ def _run_config_parameters(param_dict: dict, parameters):
     # presets drew their samples at 11.6 GB allocated, above what those cards leave PyTorch
     if bool(param_dict.get("caching_teo_low_vram")):
         filtered.append(("low_vram_text_encoding", True))
+
+    # The trainers read these three under their argparse dests (Guardrail 20): parse_args(namespace=...) fills only
+    # dests, so the GUI keys, named after the options --ltx2_mode / --no_convert_to_comfy / --no_save_original_lora,
+    # were ignored and every Audio and Audio + Video run trained video only
+    filtered.append(("ltx_mode", str(param_dict.get("ltx2_mode") or "video").strip().lower()))
+    filtered.append(("convert_to_comfy", not bool(param_dict.get("no_convert_to_comfy"))))
+    filtered.append(("save_original_lora", not bool(param_dict.get("no_save_original_lora"))))
+
+    # LTX 2.5: the sample prompts' embeddings come from text caching (build_ltx2_cache_commands), Gemma 4 stays unloaded
+    sample_cache = _ltx25_sample_prompts_cache(param_dict)
+    if sample_cache:
+        filtered.append(("use_precached_sample_prompts", True))
+        filtered.append(("sample_prompts_cache", sample_cache))
 
     # Inject the ConvRot quality report path when requested.
     if bool(param_dict.get("int8_convrot_write_quality_report")) and bool(param_dict.get("int8_convrot_dynamic")):

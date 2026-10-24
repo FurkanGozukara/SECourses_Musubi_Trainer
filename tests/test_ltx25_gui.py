@@ -125,6 +125,78 @@ class TestCommands:
         assert len(workflow.post_train_commands) == 1
 
 
+@pytest.fixture(scope="module")
+def parsers():
+    """script -> run TOML path -> the trainer's arguments, as its read_config_from_file builds them."""
+    import argparse
+
+    sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "tools"))
+    from trainer_arg_types import capture_parser
+
+    parsers = {script: capture_parser(f"musubi_tuner.{script}") for script in ("ltx2_train_network", "ltx2_train")}
+    return lambda script, path: parsers[script].parse_args([], namespace=argparse.Namespace(**toml.load(path)))
+
+
+class TestTrainerReadsTheRunToml:
+    """The run TOML read as the trainers read it, parse_args(namespace=Namespace(**toml)) with their own parser: that
+    fills only argparse dests, and the GUI keys ltx2_mode / no_convert_to_comfy / no_save_original_lora are option
+    names whose dests are ltx_mode / convert_to_comfy / save_original_lora, so the run TOML writes the dests too
+    (Guardrail 20: every Audio and Audio + Video run had trained video only)."""
+
+    @pytest.mark.parametrize("version", ["2.3", "2.5"])
+    @pytest.mark.parametrize("mode", ["video", "av", "audio"])
+    def test_the_modality_reaches_the_trainer(self, parsers, tmp_path, version, mode):
+        params = _ltx25(ltx2_mode=mode) if version == "2.5" else _params(ltx2_mode=mode)
+        config_path = str(tmp_path / "run.toml")
+        prepare_ltx2_workflow(params, config_path, validate_paths=False, python_cmd="python")
+        args = parsers("ltx2_train_network", config_path)
+        assert args.ltx_mode == mode
+        assert args.convert_to_comfy is True and args.save_original_lora is True
+
+    def test_fine_tuning_reads_the_modality_too(self, parsers, tmp_path):
+        full = {"training_mode": "Full Fine-Tuning", "int8_convrot_dynamic": False, "optimizer_type": "AdaFactor",
+                "optimizer_args": "scale_parameter=False relative_step=False warmup_init=False", "max_grad_norm": 0.0}
+        config_path = str(tmp_path / "run.toml")
+        prepare_ltx2_workflow(_params(ltx2_mode="av", **full), config_path, validate_paths=False, python_cmd="python")
+        assert parsers("ltx2_train", config_path).ltx_mode == "av"
+
+    def test_ltx25_samples_use_the_prompts_cached_with_the_captions(self, parsers, tmp_path):
+        """LTX 2.5 text caching encodes the sample prompts too, so training never loads the 24.5 GB Gemma 4 (with the
+        BF16 transformer moved to the CPU for the samples the two peaked at 61 GB of RAM)."""
+        config_path = str(tmp_path / "run.toml")
+        prompts = str(tmp_path / "prompts.txt")
+        workflow = prepare_ltx2_workflow(_ltx25(sample_prompts=prompts, output_dir=str(tmp_path / "out")), config_path,
+                                         validate_paths=False, python_cmd="python")
+        cache = os.path.abspath(str(tmp_path / "out" / "test-lora_sample_prompts_te_cache.pt"))
+        text = workflow.text_cache_command
+        assert "--precache_sample_prompts" in text
+        assert text[text.index("--sample_prompts") + 1] == prompts
+        assert text[text.index("--sample_prompts_cache") + 1] == cache
+        assert text[text.index("--sample_sampling_preset") + 1] == "ltx25_full"  # its default negative prompt
+        args = parsers("ltx2_train_network", config_path)
+        assert args.use_precached_sample_prompts is True and args.sample_prompts_cache == cache
+
+    @pytest.mark.parametrize("case", ["ltx23", "train_connectors", "no_prompts"])
+    def test_runs_that_encode_their_sample_prompts_themselves(self, parsers, tmp_path, case):
+        overrides = {"sample_prompts": str(tmp_path / "prompts.txt"), "output_dir": str(tmp_path / "out")}
+        if case == "train_connectors":
+            overrides["train_connectors"] = True  # trained connectors change the embeddings during training
+        elif case == "no_prompts":
+            overrides["sample_prompts"] = ""
+        params = _params(**overrides) if case == "ltx23" else _ltx25(**overrides)
+        config_path = str(tmp_path / "run.toml")
+        workflow = prepare_ltx2_workflow(params, config_path, validate_paths=False, python_cmd="python")
+        assert "--precache_sample_prompts" not in workflow.text_cache_command
+        assert parsers("ltx2_train_network", config_path).use_precached_sample_prompts is False
+
+    def test_comfy_export_switches_reach_the_trainer(self, parsers, tmp_path):
+        config_path = str(tmp_path / "run.toml")
+        prepare_ltx2_workflow(_params(no_convert_to_comfy=True, no_save_original_lora=True), config_path, validate_paths=False,
+                              python_cmd="python")
+        args = parsers("ltx2_train_network", config_path)
+        assert args.convert_to_comfy is False and args.save_original_lora is False
+
+
 class TestValidation:
     def test_gemma3_file_is_refused_for_ltx25(self):
         with pytest.raises(ValueError, match="Gemma 4"):

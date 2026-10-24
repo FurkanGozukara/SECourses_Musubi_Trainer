@@ -1,5 +1,5 @@
 {
- "generated": "2026-10-24T06:10:04",
+ "generated": "2026-10-24T07:15:39",
  "gradio": "6.30.0",
  "backends": {
   "qwen_image": {
@@ -52798,6 +52798,9 @@
      "ltx25",
      "ltx25_full",
      "distilled_two_stage"
+    ],
+    "aliases": [
+     "sampling_preset"
     ]
    },
    "sample_sampler": {
@@ -53829,7 +53832,10 @@
    },
    "independent_time": {
     "type": "bool",
-    "default": true
+    "default": true,
+    "aliases": [
+     "no-independent_time"
+    ]
    },
    "audio_loss_weight": {
     "type": "float",
@@ -55221,6 +55227,13 @@
     "type": "bool",
     "default": false
    }
+  }
+ },
+ "arg_aliases": {
+  "ltx2": {
+   "ltx2_mode": "ltx_mode",
+   "no_convert_to_comfy": "convert_to_comfy",
+   "no_save_original_lora": "save_original_lora"
   }
  }
 }

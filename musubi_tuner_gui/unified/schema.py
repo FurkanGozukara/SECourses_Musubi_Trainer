@@ -741,6 +741,13 @@ def arg_type(backend: str, key: str) -> dict | None:
     return ARG_TYPE_OVERRIDES.get((backend, key)) or _arg_types(backend).get(key)
 
 
+def arg_alias_dest(backend: str, key: str) -> str | None:
+    """The argparse dest that the option named ``key`` sets on the command line (``ltx2_mode`` -> ``ltx_mode``), or
+    None when ``key`` is a dest itself or no option. The trainers fill only dests from the runtime TOML, so a key with
+    an alias name is ignored there (Guardrail 20). Recorded by tools/generate_unified_schema.py."""
+    return load_schema().get("arg_aliases", {}).get(backend, {}).get(key)
+
+
 def legacy_entry(backend: str, key: str) -> dict:
     return load_schema()["backends"][backend]["params"][key]
 

@@ -174,22 +174,28 @@ def build_backend(name: str) -> dict:
     return {"module": module.__name__, "keys": keys, "params": entries}
 
 
-def trainer_arg_types(schema: dict) -> dict:
-    """backend -> GUI key -> argparse description, for the keys the training scripts read."""
+def trainer_arg_types(schema: dict) -> tuple[dict, dict]:
+    """backend -> GUI key -> argparse description, for the keys the training scripts read; and backend -> GUI key ->
+    dest for the GUI keys named after another option string of a dest (``ltx2_mode`` for ``ltx_mode``), which the
+    trainers ignore in a runtime TOML (Guardrail 20)."""
     sys.path.insert(0, os.path.join(APP_DIR, "tools"))
     from trainer_arg_types import collect
 
     from musubi_tuner_gui.unified.backends import get_backend
 
-    result = {}
+    result, aliases = {}, {}
     for backend, dests in collect().items():
         if backend.startswith("kohya:"):
             keys = [spec.key for spec in get_backend(backend).specs]
         else:
             keys = schema["backends"][backend]["keys"]
         result[backend] = {key: {k: v for k, v in dests[key].items() if k != "modes"} for key in keys if key in dests}
+        alias_of = {alias: dest for dest, info in dests.items() for alias in info.get("aliases", ())}
+        found = {key: alias_of[key] for key in keys if key not in dests and key in alias_of}
+        if found:
+            aliases[backend] = found
         print(f"{backend:16s} {len(result[backend])} settings read by the trainer", flush=True)
-    return result
+    return result, aliases
 
 
 def _without_local_models() -> None:
@@ -213,7 +219,7 @@ def main() -> None:
     for name in LEGACY_BACKENDS:
         schema["backends"][name] = build_backend(name)
         print(f"{name:14s} {len(schema['backends'][name]['keys'])} settings", flush=True)
-    schema["arg_types"] = trainer_arg_types(schema)
+    schema["arg_types"], schema["arg_aliases"] = trainer_arg_types(schema)
     with open(OUTPUT, "w", encoding="utf-8", newline="\n") as handle:
         json.dump(schema, handle, indent=1, ensure_ascii=False, sort_keys=False)
         handle.write("\n")
