@@ -337,3 +337,17 @@ The LTX tab wrote `ltx2_mode` and the trainers read `ltx_mode`, so every LTX 2.3
 ### Regression check
 
 `tools/generate_unified_schema.py` records every GUI key that is an option alias in the schema's `arg_aliases` (`schema.arg_alias_dest`); `tests/test_unified_runtime_toml.py::test_runtime_toml_has_the_trainer_types_and_clean_paths` fails for an alias key whose dest the runtime TOML lacks, and `tests/test_ltx25_gui.py::TestTrainerReadsTheRunToml` parses the LTX run TOML with the trainers' own parsers (`ltx_mode`, `convert_to_comfy`, `save_original_lora`).
+
+## Guardrail 21: Every dataset class takes every field of its dataset params
+
+### Rule
+
+- `config_utils.generate_dataset_group_by_blueprint` builds each dataset with `dataset_class(**asdict(params))`, so a field added to `BaseDatasetParams` (or to `ImageDatasetParams` / `VideoDatasetParams` / `AudioDatasetParams`) must be a parameter of `ImageDataset`, `VideoDataset` and the fork-only `AudioDataset`, passed on to `BaseDataset` where it is shared. Check the fork-only classes after every upstream merge that touches the dataset params.
+
+### Why this exists
+
+The V35 merge of upstream #1088 (corrupted-cache handling, fork e8b47958) added `skip_corrupted_cache` to `BaseDatasetParams` and to the upstream classes; `AudioDataset` was not changed, so every LTX Audio run (and any LTX run with audio clips) stopped at latent caching with `AudioDataset.__init__() got an unexpected keyword argument 'skip_corrupted_cache'` until V38. No test built an audio dataset from a dataset config.
+
+### Regression check
+
+`musubi-tuner/tests/test_ltx2_mixed_audio_cache.py::test_every_dataset_class_takes_every_field_of_its_config_params` (each params dataclass against its class's `__init__`) and `::test_audio_dataset_builds_from_a_dataset_config` (the blueprint path the caching scripts use).
