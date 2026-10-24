@@ -371,7 +371,8 @@ ENTRIES: tuple[ModelEntry, ...] = (
         fixed={"ltx_version": "2.5", "gemma_safetensors": "", "gemma_root": ""},
         locked_keys=frozenset({"ltx_version", "gemma_safetensors", "gemma_root"}),
         choice_overrides={"ltx2_mode": (("Video only", "video"), ("Audio + Video", "av"))},
-        default_overrides={"ltx2_mode": "video"},
+        # an LTX 2.3 checkpoint picked here stops at start-up instead of training as 2.5 (the trainer's own 2.5 default)
+        default_overrides={"ltx2_mode": "video", "ltx_version_check_mode": "error"},
         badges=("New", "🔊 Audio"),
         model_folder="Training_Models_LTX_2_5",
         download_bundles=(("LTX 2.5 models", "ltx25"),),

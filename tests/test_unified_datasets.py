@@ -666,3 +666,23 @@ def test_unreadable_toml_values_never_crash_the_check(tmp_path):
     assert any("num_repeats" in text for _level, text, _examples in report.problems) and report.folders[0].repeats == 1
     (tmp_path / "list.json").write_text("[1, 2]", encoding="utf-8")
     assert inspect_dataset("", dataset_toml=str(tmp_path / "list.json")).error
+
+
+def test_lossless_jpegs_are_decoded_without_draft(tmp_path):
+    """Pillow <= 12.3 overflows the heap when draft() / thumbnail() decodes a lossless JPEG (GHSA-8g5g-8vmr-9782):
+    the dataset check decodes such files in full and keeps the 1/8 draft for every other JPEG."""
+    from PIL import Image
+
+    from musubi_tuner_gui.unified.dataset_inspector import _lossless_jpeg
+
+    baseline, progressive = tmp_path / "baseline.jpg", tmp_path / "progressive.jpg"
+    Image.new("RGB", (64, 48), (200, 50, 50)).save(baseline, "JPEG", quality=90)
+    Image.new("RGB", (64, 48), (50, 200, 50)).save(progressive, "JPEG", quality=90, progressive=True)
+    assert not _lossless_jpeg(str(baseline)) and not _lossless_jpeg(str(progressive))
+    # SOI, an APP1 segment, then a lossless (SOF3) frame header and a start of scan
+    app1 = b"\xff\xe1" + (8).to_bytes(2, "big") + b"Exif\x00\x00"
+    sof3 = b"\xff\xc3" + (11).to_bytes(2, "big") + bytes([8, 0, 48, 0, 64, 1, 1, 0x11, 0])
+    lossless = tmp_path / "lossless.jpg"
+    lossless.write_bytes(b"\xff\xd8" + app1 + sof3 + b"\xff\xda\x00\x08\x01\x01\x00\x01\x00\x00")
+    assert _lossless_jpeg(str(lossless))
+    assert not _lossless_jpeg(str(tmp_path / "missing.jpg"))

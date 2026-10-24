@@ -242,6 +242,35 @@ def _read_caption(path: str) -> tuple[str | None, str]:
         return None, f"cannot be read ({exc.strerror or exc})"
 
 
+LOSSLESS_JPEG_SOF = {0xC3, 0xC7, 0xCB, 0xCF}  # lossless start-of-frame markers (sequential, differential, arithmetic)
+
+
+def _lossless_jpeg(path: str, limit: int = 4 * 2**20) -> bool:
+    """Whether a JPEG's frame header (before its first scan) is lossless. Pillow <= 12.3 overflows the heap decoding a
+    lossless JPEG through draft() / thumbnail() with libjpeg-turbo >= 3.0 (GHSA-8g5g-8vmr-9782, fixed in Pillow 13,
+    which gradio 6.30 does not allow): those files are decoded in full instead."""
+    try:
+        with open(path, "rb") as handle:
+            data = handle.read(limit)
+    except OSError:
+        return False
+    index = 2
+    while index + 4 <= len(data) and data[index] == 0xFF:
+        marker = data[index + 1]
+        if marker == 0xFF:  # fill byte
+            index += 1
+            continue
+        if marker == 0x01 or 0xD0 <= marker <= 0xD8:  # markers without a length
+            index += 2
+            continue
+        if marker == 0xDA:  # start of scan: the frame header came before it
+            return False
+        if marker in LOSSLESS_JPEG_SOF:
+            return True
+        index += 2 + ((data[index + 2] << 8) | data[index + 3])
+    return False
+
+
 def _probe_image(item: MediaItem) -> None:
     """Size as stored, EXIF rotation, and whether the file decodes (a cut-off JPEG stops musubi)."""
     from PIL import Image
@@ -252,7 +281,8 @@ def _probe_image(item: MediaItem) -> None:
             item.rotated = image.getexif().get(0x0112) in (5, 6, 7, 8)
             image_format = image.format
             if image_format == "JPEG":
-                image.draft("RGB", (max(1, image.width // 8), max(1, image.height // 8)))  # decode at 1/8: fast
+                if not _lossless_jpeg(item.path):
+                    image.draft("RGB", (max(1, image.width // 8), max(1, image.height // 8)))  # decode at 1/8: fast
                 image.load()
             elif image_format != "PNG":
                 image.load()
