@@ -514,6 +514,29 @@ MODEL_HINTS: dict[str, dict] = {
         "dataset": "Clips with sound at 864x480 (16 px steps), 4n+1 frames (121 = about 5 s at 24 fps), images, or both in one folder, each with a same-name .txt caption.",
     },
     # ------------------------------------------------------------------ audio models
+    "ltx25_audio": {
+        "about": "Audio-only DoRA / LoRA or fine-tune of the LTX 2.5 audio branch for speech, music and sound effects, with no video target.",
+        "all": [
+            "Audio clips are used as they are, and videos with a sound track count too: Start extracts their audio to WAV (cache folder, extracted_audio) with the videos' captions; silent videos are skipped.",
+            "Latent caching, text caching and training all run in audio mode, and training samples are audio-only previews.",
+            "Caption each clip with a same-stem .txt that describes the sound: speech, music or ambient noise.",
+            "LTX 2.5 needs its own audio VAE with vocoder and the Gemma 4 12B text encoder: the LTX 2.3 files do not work with it.",
+        ],
+        "lora": [
+            "No presets yet: the defaults load rank 128 with AdaFactor LR 1e-4, INT8 ConvRot base, block swap 20, 100 epochs, a checkpoint every 10.",
+            "Keep the LoRA target preset on audio: it trains only the audio attention and FFN layers.",
+        ],
+        "full": [
+            "No presets yet: the defaults follow the LTX fine-tuning recipe (dense BF16 weights, fused-backward Adafactor at LR 1e-5, max grad norm 0) with block swap 20, 100 epochs, a checkpoint every 10; it needs 64 GB+ system RAM.",
+            "Keep every base quantization off (the defaults do) and use the BF16 LTX 2.5 dev transformer; mixed precision must be bf16.",
+            "The fine-tuned transformer is saved as its own file, in the form of the released LTX 2.5 transformer (no bundle merge).",
+        ],
+        "vram": {
+            "lora": "No presets yet, so no measured VRAM; the defaults swap 20 of the 48 blocks (up to 47 can be swapped, and LoRA can stream them H2D-only).",
+            "full": "No presets yet, so no measured VRAM; the defaults swap 20 of the 48 blocks on the trainable ring (up to 47 can be swapped).",
+        },
+        "dataset": "Sub-folders such as 1_my_voice with audio clips (.wav, .flac, .mp3, .ogg, .m4a, .aac, .opus, .wma) and/or videos with sound, each with a same-stem .txt caption describing the sound.",
+    },
     "ltx23_audio": {
         "about": "Audio-only LoRA or fine-tune of the LTX 2.3 audio branch for speech, music and sound effects, with no video target.",
         "all": [

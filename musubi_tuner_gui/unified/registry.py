@@ -419,6 +419,21 @@ ENTRIES: tuple[ModelEntry, ...] = (
     ),
     # ------------------------------------------------------------------ audio models
     ModelEntry(
+        "ltx25_audio",
+        AUDIO,
+        "LTX 2.5 Audio",
+        "🎵",
+        "Audio-only DoRA / LoRA or fine-tune on the LTX 2.5 audio branch (speech, music, sound effects).",
+        "ltx2",
+        preset_folders=("LTX_2.5_Audio_Training_Configs",),
+        fixed={"ltx2_mode": "audio", "ltx_version": "2.5", "gemma_safetensors": "", "gemma_root": ""},
+        locked_keys=frozenset({"ltx2_mode", "ltx_version", "gemma_safetensors", "gemma_root"}),
+        default_overrides={"lora_target_preset": "audio", "sample_audio_only": True, "ltx_version_check_mode": "error"},
+        badges=("New",),
+        model_folder="Training_Models_LTX_2_5",
+        download_bundles=(("LTX 2.5 models", "ltx25"),),
+    ),
+    ModelEntry(
         "ltx23_audio",
         AUDIO,
         "LTX 2.3 Audio",

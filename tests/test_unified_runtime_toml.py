@@ -166,7 +166,7 @@ def test_runtime_toml_has_the_trainer_types_and_clean_paths(entry, mode, dataset
         elif spec.kind == "folder" and spec.section == "model":
             (models / spec.key).mkdir()
             values[spec.key] = str(models / spec.key)
-    kind = "audio" if entry.key == "ltx23_audio" else "video" if entry.backend == "minimax_h3" else "image"
+    kind = "audio" if entry.fixed.get("ltx2_mode") == "audio" else "video" if entry.backend == "minimax_h3" else "image"
     out = tmp_path / "out dir"
     out.mkdir()
     values.update(dataset_config_mode="Generate from Folder Structure", parent_folder_path=str(datasets[kind]), output_dir=str(out), sample_prompts="")

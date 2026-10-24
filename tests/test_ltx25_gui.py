@@ -179,6 +179,11 @@ class TestUnified:
         for key in ("ltx23", "ltx23_audio"):
             assert set(LTX25_ONLY_KEYS) <= get_entry(key).locked_keys
             assert "2.5" not in [value for _label, value in get_entry(key).choice_overrides["ltx_version"]]
+        audio = get_entry("ltx25_audio")
+        assert audio.fixed["ltx_version"] == "2.5" and audio.fixed["ltx2_mode"] == "audio"
+        assert audio.model_folder == ltx.LTX25_MODEL_FOLDER and ("LTX 2.5 models", "ltx25") in audio.download_bundles
+        for key in ("ltx25", "ltx25_audio"):
+            assert get_entry(key).default_overrides["ltx_version_check_mode"] == "error"
 
     def test_version_link_switches_files_and_sampling(self, tmp_path, monkeypatch):
         from musubi_tuner_gui.unified import links as L
