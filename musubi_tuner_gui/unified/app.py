@@ -16,7 +16,7 @@ from .workspace import Workspace
 
 log = setup_logging()
 
-APP_VERSION = "V37 · DoRA"
+APP_VERSION = "V38 · LTX 2.5"
 
 
 def _hero() -> str:
@@ -162,16 +162,12 @@ def _unavailable_card(category: str) -> str:
 
 WHATS_NEW_HTML = """
 <div class="ud-whatsnew">
-  <h3>✨ V37 — DoRA for every model and the Best Checkpoint Finder</h3>
+  <h3>✨ V38 — LTX 2.5 training, LTX audio fixes and the latest libraries</h3>
   <ul>
-    <li><b>🏆 Best Checkpoint Finder</b> (image and video models, off by default): turn it on and keep or edit the test prompts. The run samples them with the base model and at every checkpoint save. When training ends, local models score likeness, prompt following, variety and over-training signs, and the finder names the checkpoint to use with its reasons and a side-by-side comparison.</li>
-    <li><b>🧬 DoRA training for every model</b> — <b>Adapter Type</b> (LoRA / DoRA) is the first setting of the LoRA Network section. DoRA is the default and every shipped LoRA preset trains it (Wan 2.2 runs that train both experts save &lt;name&gt;.safetensors for the low-noise model and &lt;name&gt;_high_noise.safetensors for the high-noise model); switch back to LoRA at any time. Measured on every model's 32 GB preset: about 10% more time per step than LoRA and the same VRAM within about half a GB.</li>
-    <li><b>Works in ComfyUI and SwarmUI</b> — DoRA files use the input-axis <code>dora_scale</code> that ComfyUI applies exactly; Z-Image, Qwen-Image 2.1 and HiDream-O1 need the updated <b>SECoursesAudioTools</b> nodes.</li>
-    <li><b>AutomagicEXPERIMENT optimizer</b> (from Ostris AI Toolkit) next to Automagic v1-v3 on every training pipeline, including FLUX.1 / SDXL.</li>
-    <li><b>Better training samples</b> — Krea 2 and Qwen-Image 2.1 samples use CFG like the official samplers, and samples show the trained weights without LoRA dropout.</li>
-    <li><b>🔍 Check dataset</b> — inner folders are listed instead of reported as skipped, a <b>🔁 Repeats &amp; steps</b> panel computes steps per epoch and total steps, and <b>🧹 Clean old caches</b> removes caches of other resolutions or models.</li>
-    <li><b>Arguments typed any way</b> — optimizer, scheduler and network arguments accept spaces, commas, new lines, quotes and <code>key = value</code>.</li>
-    <li><b>Linux</b> — paths pasted from Windows are normalized and the same seed trains the same batches as on Windows. The full version history is below.</li>
+    <li><b>🎬 LTX 2.5 training</b> — DoRA / LoRA and full fine-tuning on Lightricks' LTX-2.5 22B dev transformer: video in the <b>🎬 LTX 2.5</b> card (Audio + Video trains sound too) and sound in the <b>🔊 LTX 2.5 Audio</b> card. Measured presets: best-quality BF16 DoRA for 8 to 32 GB GPUs, faster INT8 presets one rung lower and full fine-tuning for 10 to 32 GB. Downloader entry 39 fetches the model files.</li>
+    <li><b>Less memory for LTX 2.5</b> — sample prompts are encoded with the captions, so training never loads the 24.5 GB text encoder, and <b>Low-VRAM Text Caching</b> streams it through the GPU one layer at a time (about 5.7 GB instead of 31.3 GB, identical results).</li>
+    <li><b>🔊 LTX Audio and Audio + Video fixed</b> (LTX 2.3 too) — Audio + Video runs had trained video only and Audio runs stopped while caching; both work now, with sound in the samples.</li>
+    <li><b>⬆️ Latest libraries</b> — transformers 5.20.2, diffusers 0.42.0, huggingface_hub 2.3, FastAPI 0.162, PyAV 19.0.2; every model was checked with real training steps on them. The full version history is below.</li>
   </ul>
 </div>
 """

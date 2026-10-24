@@ -371,8 +371,9 @@ ENTRIES: tuple[ModelEntry, ...] = (
         fixed={"ltx_version": "2.5", "gemma_safetensors": "", "gemma_root": ""},
         locked_keys=frozenset({"ltx_version", "gemma_safetensors", "gemma_root"}),
         choice_overrides={"ltx2_mode": (("Video only", "video"), ("Audio + Video", "av"))},
-        # an LTX 2.3 checkpoint picked here stops at start-up instead of training as 2.5 (the trainer's own 2.5 default)
-        default_overrides={"ltx2_mode": "video", "ltx_version_check_mode": "error"},
+        # an LTX 2.3 checkpoint picked here stops at start-up instead of training as 2.5 (the trainer's own 2.5 default);
+        # the Gemma 4 text encoder cached on the GPU as a whole peaked at 30.8 GiB, streamed layer by layer at 5.2 GiB (Linux)
+        default_overrides={"ltx2_mode": "video", "ltx_version_check_mode": "error", "caching_teo_low_vram": True},
         badges=("New", "🔊 Audio"),
         model_folder="Training_Models_LTX_2_5",
         download_bundles=(("LTX 2.5 models", "ltx25"),),
@@ -428,7 +429,8 @@ ENTRIES: tuple[ModelEntry, ...] = (
         preset_folders=("LTX_2.5_Audio_Training_Configs",),
         fixed={"ltx2_mode": "audio", "ltx_version": "2.5", "gemma_safetensors": "", "gemma_root": ""},
         locked_keys=frozenset({"ltx2_mode", "ltx_version", "gemma_safetensors", "gemma_root"}),
-        default_overrides={"lora_target_preset": "audio", "sample_audio_only": True, "ltx_version_check_mode": "error"},
+        default_overrides={"lora_target_preset": "audio", "sample_audio_only": True, "ltx_version_check_mode": "error",
+                           "caching_teo_low_vram": True},
         badges=("New",),
         model_folder="Training_Models_LTX_2_5",
         download_bundles=(("LTX 2.5 models", "ltx25"),),

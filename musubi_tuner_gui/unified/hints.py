@@ -427,18 +427,24 @@ MODEL_HINTS: dict[str, dict] = {
             "Audio + Video learns sound from each clip's audio track or a same-stem .wav file; image samples give no audio signal.",
             "Latent caching, text caching and training must use the same modality (Video only or Audio + Video).",
             "Training samples run the dev transformer's full schedule (Sampling Preset ltx25_full, with CFG and STG) and decode with the diffusion video VAE, whose tiles overlap by 160 px and 40 frames.",
+            "Use Lightricks' Gemma 4 text encoder file of 17 August 2026 or later: the trainer refuses the copy published before, whose encoder does not match the released transformer.",
+            "Every preset caches text with Low-VRAM Text Caching: the 24.5 GB Gemma 4 streams through the GPU one decoder layer at a time (5.7 GB caching peak, identical embeddings) and then sits in system RAM; the sample prompts are encoded in the same step, so training never loads the text encoder.",
         ],
         "lora": [
-            "No presets yet: the defaults load rank 128 with AdaFactor LR 1e-4, INT8 ConvRot base, block swap 20, 100 epochs, a checkpoint every 10.",
+            "Presets: DoRA rank 128, AdaFactor LR 2e-4, 768x512, 33 frames, 200 epochs, a checkpoint every 25 epochs; the 8 GB tier trains rank 64 with activation CPU offload.",
+            "The BF16 presets (Quality 1, pre-selected; 8 GB: Quality 2) train on the transformer as released, the best quality. The _INT8 presets one rung lower quantize it to ConvRot INT8 while loading: from 24 GB down they swap fewer blocks and need 27-59% less time per step on an RTX A6000 (24 GB 6.14 against 8.98 s/step, 10 GB 12.34 against 16.85, 8 GB 32.73 against 79.60); at 32 GB BF16 is the faster one (4.25 against 5.72). In a 50-epoch check on the same clips both learned the subject at the same pace, with the scenes intact.",
+            "Training samples are slow on the presets that swap blocks: 10 sampling steps took 2-5 minutes on the 8-12 GB INT8 presets and 5.5-10 minutes on the BF16 ones (RTX A6000 with other jobs running; samples default to 30 steps), so sample with few prompts and not too often.",
             "Video only builds a video-only transformer, so its LoRAs leave audio untouched; in Audio + Video, video_* target presets do the same.",
         ],
         "full": [
-            "No presets yet: the defaults follow the LTX fine-tuning recipe (dense BF16 weights, fused-backward Adafactor at LR 1e-5, max grad norm 0) with block swap 20, 100 epochs, a checkpoint every 10; it needs 64 GB+ system RAM.",
+            "Presets: every transformer weight trains in BF16 with fused-backward AdaFactor, LR 1e-5 (max grad norm 0), 768x512, 33 frames, 200 epochs, a checkpoint every 25 with only the newest training state kept; they need 64 GB+ system RAM.",
+            "With block swap the swapped blocks stream through the Trainable Block-Swap Ring from pinned CPU copies, written back after each update.",
             "The fine-tuned transformer is saved as its own file, in the form of the released LTX 2.5 transformer (no bundle merge).",
+            "6.44 s/step on an RTX A6000 with block swap 1 (32 GB); 12.79, 19.24, 22.41 and 24.42 s/step with 17, 33, 41 and 45 blocks on the ring (24, 16, 12 and 10 GB), measured one preset at a time.",
         ],
         "vram": {
-            "lora": "No presets yet, so no measured VRAM; up to 47 of the 48 blocks can be swapped, and LoRA can stream them H2D-only.",
-            "full": "No presets yet, so no measured VRAM; up to 47 of the 48 blocks can be swapped on the trainable ring.",
+            "lora": "BF16 presets: 32 GB without block swap (29.7 GB), 24, 16, 12 and 10 GB with 17, 33, 41 and 45 blocks H2D-only (22.2, 14.2, 10.2 and 8.2 GB), 8 GB at rank 64 with 46 blocks and activation CPU offload (6.4 GB). INT8 presets: 24 and 32 GB without block swap (17.8 GB), 16, 12 and 10 GB with 16, 32 and 40 blocks H2D-only (14.3, 10.3 and 8.2 GB), 8 GB at rank 64 with 40 blocks and activation CPU offload (6.4 GB). Text caching alone peaks at 5.7 GB, so no preset fits 6 GB; up to 47 of the 48 blocks can be swapped.",
+            "full": "32 GB with block swap 1 (30.2 GB); 24, 16, 12 and 10 GB swap 17, 33, 41 and 45 blocks through the trainable ring (22.2, 14.2, 10.2 and 8.2 GB); nothing fits 8 GB; up to 47 of the 48 blocks can be swapped on the trainable ring.",
         },
         "dataset": "Images (1-frame samples), videos or both at 768x512 in 32 px steps, 8k+1 frames resampled to 25 fps, .txt captions; Audio + Video uses each folder's videos and needs their sound described.",
     },
@@ -523,7 +529,7 @@ MODEL_HINTS: dict[str, dict] = {
             "LTX 2.5 needs its own audio VAE with vocoder and the Gemma 4 12B text encoder: the LTX 2.3 files do not work with it.",
         ],
         "lora": [
-            "No presets yet: the defaults load rank 128 with AdaFactor LR 1e-4, INT8 ConvRot base, block swap 20, 100 epochs, a checkpoint every 10.",
+            "No presets yet: the defaults load rank 128 with AdaFactor LR 1e-4, INT8 ConvRot base, block swap 20, Low-VRAM Text Caching, 100 epochs, a checkpoint every 10.",
             "Keep the LoRA target preset on audio: it trains only the audio attention and FFN layers.",
         ],
         "full": [
