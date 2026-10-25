@@ -140,7 +140,9 @@ def test_the_downloader_saves_next_to_itself_wherever_it_is_started(tmp_path, mo
     for config in module.MODEL_CONFIGS.values():
         target = real(module.default_download_dir(config))
         assert target == real(os.path.join(root, config["default_dir"])), target
-    assert all(os.path.commonpath([real(folder), root]) == root for folder in module.get_default_model_directories())
+    # resolved on both sides: a Training_Models_* folder may be a link to another drive (the server's dev install)
+    expected = {real(os.path.join(root, config["default_dir"])) for config in module.MODEL_CONFIGS.values()}
+    assert {real(folder) for folder in module.get_default_model_directories()} == expected
     assert real(module.normalize_path("my_models")) == real(tmp_path / "my_models")  # --dir: the console's folder
     assert real(module.normalize_path('"' + str(tmp_path / "with space") + '"')) == real(tmp_path / "with space")
     assert not any(name.startswith("Training_Models") for name in os.listdir(tmp_path))
