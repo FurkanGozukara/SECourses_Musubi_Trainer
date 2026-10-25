@@ -351,3 +351,19 @@ The V35 merge of upstream #1088 (corrupted-cache handling, fork e8b47958) added 
 ### Regression check
 
 `musubi-tuner/tests/test_ltx2_mixed_audio_cache.py::test_every_dataset_class_takes_every_field_of_its_config_params` (each params dataclass against its class's `__init__`) and `::test_audio_dataset_builds_from_a_dataset_config` (the blueprint path the caching scripts use).
+
+## Guardrail 22: Shipped presets name model files Training_Models_*/...
+
+### Rule
+
+- A shipped preset names every model file relative to the install folder (`Training_Models_LTX_2_5/ltx-2.5-22b-dev-transformer-bf16.safetensors`), the folder `Download_Train_Models.py` saves that bundle to, never by the path of the machine it was measured on (`G:/SECourses_Musubi_Trainer_v29/...`, `/home/Ubuntu/...`). The VRAM lab writes them that way (`autotune.write_preset`, and `fix_headers.py` after every pull, both through `dont_upload/vram_lab/preset_paths.py`).
+- A model path that does not exist as written is resolved to this install's file wherever the app hands it to a trainer: on load (`common_gui.resolve_portable_model_value`) and at Start / Print Command (`unified/backends._local_model_files`; the trainers run from the app folder, where a `Training_Models_*/...` path is not found). The Model Files status (`workspace._model_file_exists`) reads paths the same way.
+- `Download_Train_Models.py` makes each bundle's folder next to itself (`SCRIPT_DIR`), not in the console's current folder; an explicit `--dir` is taken from the current folder like any command-line path.
+
+### Why this exists
+
+On 2026-10-25 a user reported models going to a G: drive. 315 shipped presets carried the lab machines' paths, so a fresh install showed `G:/SECourses_Musubi_Trainer_v29/Training_Models_X/...` before its models were downloaded. ⬇️ Download put the files in the user's own install, but the fields kept the G: path: the status stayed "not found" and Start would have looked on G:. The standalone downloader also saved into whatever folder the console was in.
+
+### Regression check
+
+`tests/test_shipped_presets.py::test_no_shipped_preset_names_a_machine_specific_model_path` (every preset under `Training_Presets`), `tests/test_portable_model_paths.py::test_start_uses_this_installs_files_for_a_presets_paths` and `::test_model_files_status_finds_a_foreign_path_in_this_install`, and `tests/test_unified_app.py::test_the_downloader_saves_next_to_itself_wherever_it_is_started`.

@@ -79,3 +79,43 @@ def test_list_values_and_non_model_keys(models):
     resolved = resolve_portable_model_value("base_weights", value)
     assert _same(resolved[0], models / "unit_dit_7c1f.safetensors") and _same(resolved[1], models / "sub" / "unit_te_7c1f.safetensors")
     assert resolve_portable_model_value("output_dir", "/a/Training_Models_UnitTest/unit_dit_7c1f.safetensors").startswith("/a/")
+
+
+def test_start_uses_this_installs_files_for_a_presets_paths(models):
+    """A preset loaded before its models were downloaded keeps the paths it was written with; ⬇️ Download then puts the
+    files in this install, and Start / Print Command (unified backends._local_model_files) use them: the trainers run
+    from the app folder, where neither another PC's path nor a Training_Models_*/... path would be found."""
+    from musubi_tuner_gui.unified.backends import _local_model_files
+
+    payload = {
+        "dit": "G:/SECourses_Musubi_Trainer_v29/Training_Models_UnitTest/unit_dit_7c1f.safetensors",
+        "text_encoder": "Training_Models_UnitTest/sub/unit_te_7c1f.safetensors",
+        "vae": "/elsewhere/Training_Models_UnitTest/not_downloaded_7c1f.safetensors",
+        "output_dir": "G:/x/Training_Models_UnitTest/unit_dit_7c1f.safetensors",
+        "network_weights": "",
+    }
+    resolved = _local_model_files(dict(payload))
+    assert _same(resolved["dit"], models / "unit_dit_7c1f.safetensors")
+    assert _same(resolved["text_encoder"], models / "sub" / "unit_te_7c1f.safetensors")
+    assert resolved["vae"] == payload["vae"]  # not downloaded: the trainer names the missing file as written
+    assert resolved["output_dir"] == payload["output_dir"]  # not a model path
+    assert resolved["network_weights"] == ""
+
+
+def test_model_files_status_finds_a_foreign_path_in_this_install(tmp_path, monkeypatch):
+    from musubi_tuner_gui.unified import workspace
+
+    root = tmp_path / "install"
+    (root / "Training_Models_UnitTest" / "sub").mkdir(parents=True)
+    (root / "Training_Models_UnitTest" / "sub" / "m_7c1f.safetensors").write_bytes(b"x")
+    monkeypatch.setattr(workspace, "ROOT_DIR", str(root))
+    monkeypatch.setattr(workspace, "APP_DIR", str(root / "SECourses_Musubi_Trainer"))
+    for written in (
+        "G:/SECourses_Musubi_Trainer_v29/Training_Models_UnitTest/sub/m_7c1f.safetensors",
+        "/home/Ubuntu/Documents/SECourses_Musubi_Trainer_v35/Training_Models_UnitTest/sub/m_7c1f.safetensors",
+        "D:\Apps\Training_Models_UnitTest\sub\m_7c1f.safetensors",
+        "Training_Models_UnitTest/sub/m_7c1f.safetensors",
+    ):
+        assert workspace._model_file_exists(written), written
+    assert not workspace._model_file_exists("G:/a/Training_Models_UnitTest/sub/missing_7c1f.safetensors")
+    assert not workspace._model_file_exists("G:/a/sub/m_7c1f.safetensors")  # no Training_Models folder in it

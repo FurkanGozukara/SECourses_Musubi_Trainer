@@ -47,6 +47,20 @@ def _is_path(key: str, spec: ParamSpec | None = None) -> bool:
     return key in PATH_KINDS or key in PATH_TEXT_KEYS or (spec is not None and spec.kind in ("file", "folder"))
 
 
+def _local_model_files(payload: dict) -> dict:
+    """Model paths as this PC has the files, for Start and Print Command: a preset loaded before its models were
+    downloaded keeps the path it was written with (the presets' Training_Models_*/... convention, or another machine's
+    G:/.../Training_Models_X/file), and ⬇️ Download then puts the files in this install's Training_Models_* folders. The
+    trainers run from the app folder, so such a path is resolved here (common_gui.resolve_portable_model_value: existing
+    paths and Hugging Face ids stay as they are, a missing file stays as written and the trainer names it)."""
+    from ..common_gui import PORTABLE_MODEL_PATH_KEYS, resolve_portable_model_value
+
+    for key in PORTABLE_MODEL_PATH_KEYS & payload.keys():
+        if payload[key]:
+            payload[key] = resolve_portable_model_value(key, payload[key])
+    return payload
+
+
 def _fresh_dataset(payload: dict) -> dict:
     """Folder mode builds the dataset TOML from the current folder on every Start. The classic train code
     reuses ``generated_toml_path`` (and FLUX.2 ``dataset_config``) whenever that file exists, so a TOML a
@@ -560,7 +574,7 @@ class LegacyMusubiBackend(Backend):
     def print_command(self, values: dict) -> str:
         from .dataset_tools import prepare_dataset
 
-        payload = _fresh_dataset(self.normalized(values))
+        payload = _local_model_files(_fresh_dataset(self.normalized(values)))
         notes = prepare_dataset(self.name, payload)
         _hand_over_dataset(payload, notes)
         args = self.ordered_args(payload)
@@ -574,7 +588,7 @@ class LegacyMusubiBackend(Backend):
 
         from .dataset_tools import prepare_dataset
 
-        payload = _fresh_dataset(self.normalized(values))
+        payload = _local_model_files(_fresh_dataset(self.normalized(values)))
         meta = {**meta, "engine": self.engine}
         install_toml_type_gate()
 

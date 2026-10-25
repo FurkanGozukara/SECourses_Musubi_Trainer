@@ -24,6 +24,7 @@ FOLDERS = {
     "HiDream_O1_Training_Configs": ("image_models", "hidream_o1"),
     "Kandinsky_6_Training_Configs": ("image_models", "kandinsky6"),
     "LTX_2.3_Training_Configs": ("ltx2", None),
+    "LTX_2.5_Training_Configs": ("ltx2", None),
     "FLUX_2_Training_Configs": ("other", None),
     "FLUX_Klein_9B_Training_Configs": ("other", None),
     "FLUX_Klein_4B_Training_Configs": ("other", None),
@@ -108,6 +109,41 @@ def _load_through_tab(path):
     else:
         return  # Wan builds its parameter list inside the tab; covered by the generic checks above
     assert isinstance(result, tuple) and result, f"{path}: the tab returned nothing"
+
+
+def _all_preset_files():
+    root = preset_root()
+    if not os.path.isdir(root):
+        return []
+    found = []
+    for folder in sorted(os.listdir(root)):
+        if folder.endswith("_Training_Configs") and os.path.isdir(os.path.join(root, folder)):
+            for current, _dirs, files in os.walk(os.path.join(root, folder)):
+                found.extend(os.path.join(current, name) for name in sorted(files) if name.endswith(".toml"))
+    return found
+
+
+ALL_PRESET_FILES = _all_preset_files()
+
+
+@pytest.mark.skipif(not ALL_PRESET_FILES, reason="no shipped presets next to the app")
+def test_no_shipped_preset_names_a_machine_specific_model_path():
+    """Model files are named Training_Models_*/... (relative to the install folder), never by the measuring machine's
+    path: G:/SECourses_Musubi_Trainer_v29/Training_Models_X/... showed that folder on every PC, and after ⬇️ Download the
+    fields still named it (2026-10-25; dont_upload/vram_lab/preset_paths.py rewrites them)."""
+    from musubi_tuner_gui.common_gui import PORTABLE_MODEL_PATH_KEYS
+    from musubi_tuner_gui.unified.kohya_backend import MODEL_PATH_KEYS
+
+    keys = set(PORTABLE_MODEL_PATH_KEYS) | set(MODEL_PATH_KEYS)
+    bad = []
+    for path in ALL_PRESET_FILES:
+        data = toml.loads(open(path, "r", encoding="utf-8-sig").read())
+        for key in sorted(keys & data.keys()):
+            for value in data[key] if isinstance(data[key], list) else [data[key]]:
+                text = str(value or "").strip()
+                if re.match(r"^[A-Za-z]:[\\/]", text) or text.startswith(("/", "\\", "~")):
+                    bad.append(f"{os.path.relpath(path, preset_root())}: {key} = {text}")
+    assert not bad, f"{len(bad)} machine-specific model paths, e.g. " + "; ".join(bad[:5])
 
 
 def test_tier_pattern_matches_shipped_naming():

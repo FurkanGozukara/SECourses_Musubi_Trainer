@@ -115,3 +115,32 @@ def test_every_download_button_names_a_bundle_of_the_downloader():
     named = {bundle for entry in ENTRIES for _label, bundle in entry.download_bundles}
     assert named and named <= known, sorted(named - known)
     assert {"flux1_dev", "sdxl_realvis"} <= named  # the kohya models download like the others
+
+
+def test_the_downloader_saves_next_to_itself_wherever_it_is_started(tmp_path, monkeypatch):
+    """Every bundle's Training_Models_* folder is made next to Download_Train_Models.py (the install root, where the app
+    looks for its models), not in the folder the console happens to be in; an explicit --dir is taken from that folder
+    (user report 2026-10-25: models went to another drive)."""
+    import importlib.util
+
+    from musubi_tuner_gui.unified import downloads as D
+
+    if not os.path.isfile(D.DOWNLOADER):
+        pytest.skip("Download_Train_Models.py is not installed next to the app")
+    monkeypatch.setenv("HF_HUB_DOWNLOAD_TIMEOUT", os.environ.get("HF_HUB_DOWNLOAD_TIMEOUT", "300"))  # the module sets it
+    spec = importlib.util.spec_from_file_location("download_train_models_under_test", D.DOWNLOADER)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    monkeypatch.chdir(tmp_path)
+
+    def real(path) -> str:
+        return os.path.normcase(os.path.realpath(str(path)))
+
+    root = real(os.path.dirname(D.DOWNLOADER))
+    for config in module.MODEL_CONFIGS.values():
+        target = real(module.default_download_dir(config))
+        assert target == real(os.path.join(root, config["default_dir"])), target
+    assert all(os.path.commonpath([real(folder), root]) == root for folder in module.get_default_model_directories())
+    assert real(module.normalize_path("my_models")) == real(tmp_path / "my_models")  # --dir: the console's folder
+    assert real(module.normalize_path('"' + str(tmp_path / "with space") + '"')) == real(tmp_path / "with space")
+    assert not any(name.startswith("Training_Models") for name in os.listdir(tmp_path))

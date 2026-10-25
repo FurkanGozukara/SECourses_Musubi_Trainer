@@ -381,14 +381,18 @@ def canonical_text(key: str, specs: dict) -> tuple[str, str, dict]:
 
 
 def _model_file_exists(path: str) -> bool:
-    """A model path as training reads it: a relative one (the presets' Training_Models_*/... convention) is also found
-    under the app and install folders. A preset loaded before its models were downloaded keeps its relative paths, and
-    ⬇️ Download puts the files there."""
+    """A model path as Start reads it (backends._local_model_files): a relative one (the presets' Training_Models_*/...
+    convention) is also found under the app and install folders, and one written on another machine
+    (G:/.../Training_Models_X/file, /home/.../Training_Models_X/file) in this install's own Training_Models_X folder. A
+    preset loaded before its models were downloaded keeps its paths, and ⬇️ Download puts the files there."""
     if os.path.exists(path):
         return True
-    if os.path.isabs(os.path.expandvars(os.path.expanduser(path))):
-        return False
-    return any(os.path.exists(os.path.join(base, path)) for base in (APP_DIR, ROOT_DIR))
+    expanded = os.path.expandvars(os.path.expanduser(path))
+    if not (os.path.isabs(expanded) or re.match(r"^[A-Za-z]:", expanded) or expanded.startswith(("/", "\\"))):
+        return any(os.path.exists(os.path.join(base, path)) for base in (APP_DIR, ROOT_DIR))
+    parts = [part for part in re.split(r"[\\/]+", expanded) if part]
+    anchor = next((index for index in range(len(parts) - 2, -1, -1) if parts[index].casefold().startswith("training_models")), None)
+    return anchor is not None and any(os.path.exists(os.path.join(base, *parts[anchor:])) for base in (ROOT_DIR, APP_DIR))
 
 
 class Workspace:
