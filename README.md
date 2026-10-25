@@ -12,10 +12,10 @@
 
 ---
 
-## 24 October 2026 Version 38.0 Update
+## 25 October 2026 Version 38.0 Update
 
 - **🎬 LTX 2.5 training (new model)** — DoRA / LoRA and full fine-tuning on Lightricks' LTX-2.5 22B dev transformer: video in the **🎬 LTX 2.5** card (🎬 Video Models, Audio + Video trains sound too) and sound in the **🔊 LTX 2.5 Audio** card (🔊 Audio Models).
-  - **Best-quality presets**: DoRA rank 128 on the **BF16** transformer (the frozen base is not quantized), 768x512, 33 frames, AdaFactor LR 2e-4, 200 epochs — measured GPU presets for 8 to 32 GB: 32 GB without block swap (29.7 GB peak), 24, 16, 12 and 10 GB with 17, 33, 41 and 45 blocks streamed H2D-only (22.2, 14.2, 10.2 and 8.2 GB), 8 GB at rank 64 with activation CPU offload (6.4 GB). Text caching alone peaks at 5.7 GB, so nothing fits 6 GB.
+  - **Best-quality presets**: DoRA rank 128 on the **BF16** transformer (the frozen base is not quantized), 768x512, 33 frames, AdaFactor LR 9e-5 (chosen from 200-epoch test runs at 5e-5, 1e-4, 2e-4 and 4e-4), 200 epochs — measured GPU presets for 8 to 32 GB: 32 GB without block swap (29.7 GB peak), 24, 16, 12 and 10 GB with 17, 33, 41 and 45 blocks streamed H2D-only (22.2, 14.2, 10.2 and 8.2 GB), 8 GB at rank 64 with activation CPU offload (6.4 GB). Text caching alone peaks at 5.7 GB, so nothing fits 6 GB.
   - **INT8 presets** (`_INT8`, in the same folder; first on 8-12 GB GPUs, where the preset picker selects them, one rung below BF16 from 16 GB up) quantize the transformer to ConvRot INT8 while loading: 24 and 32 GB without block swap (17.8 GB), 16, 12 and 10 GB with 16, 32 and 40 blocks (14.3, 10.3 and 8.2 GB), 8 GB at rank 64 (6.4 GB). From 24 GB down they need 27-59% less time per step than the BF16 presets (10 GB: 12.34 against 16.85 s/step, 8 GB: 32.73 against 79.60 on an RTX A6000) and draw training samples 2-3x faster on 8-12 GB; at 32 GB the BF16 preset is the faster one. In a 50-epoch check on the same clips both families learned the subject at the same pace.
   - **Full fine-tuning presets** for 10 to 32 GB GPUs: every transformer weight in BF16 with fused Adafactor (LR 1e-5), 768x512, 33 frames, from block swap 1 on 32 GB (30.2 GB) to 45 blocks through the trainable ring on 10 GB (8.2 GB); they need 64 GB+ system RAM, and the fine-tuned transformer is saved as its own file in the released layout.
   - Downloader entry 39 fetches the four model files (about 65.5 GB): the BF16 dev transformer, the Gemma 4 12B text encoder with the LTX projections, the video VAE and the audio VAE with its vocoder.

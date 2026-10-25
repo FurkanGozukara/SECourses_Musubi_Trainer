@@ -4,12 +4,12 @@ import gradio as gr
 # Newest first. The newest entry is rendered open by default.
 CHANGELOG_ENTRIES = [
     (
-        "V38.0 — 24 October 2026 — LTX 2.5 Training, LTX Audio and Audio + Video Fixes, Latest Libraries",
+        "V38.0 — 25 October 2026 — LTX 2.5 Training, LTX Audio and Audio + Video Fixes, Latest Libraries",
         """
 **🎬 LTX 2.5 DoRA / LoRA and full fine-tuning with best-quality BF16 presets, LTX audio training that really trains audio, and the latest libraries checked on every model.**
 
 - **🎬 LTX 2.5 training** (🎬 Video Models and 🔊 Audio Models): DoRA / LoRA and full fine-tuning on Lightricks' LTX-2.5 22B dev transformer, for video, audio + video and audio. The model comes as four files (downloader entry 39, about 65.5 GB): the BF16 dev transformer, the Gemma 4 12B text encoder with the LTX projections, the diffusion video VAE and the audio VAE with its vocoder.
-- **Best-quality presets**: DoRA rank 128 on the BF16 transformer (the frozen base is not quantized), 768x512, 33 frames, AdaFactor LR 2e-4, 200 epochs. Measured GPU presets for 8 to 32 GB (32 GB without block swap, 8 GB at rank 64), INT8 presets that train faster where blocks are swapped (pre-selected on 8-12 GB, one rung below BF16 from 16 GB up), and full fine-tuning presets for 10 to 32 GB; the 8-12 GB presets were also run with training samples at those cards' memory limits.
+- **Best-quality presets**: DoRA rank 128 on the BF16 transformer (the frozen base is not quantized), 768x512, 33 frames, AdaFactor LR 9e-5 (chosen from 200-epoch test runs at 5e-5, 1e-4, 2e-4 and 4e-4), 200 epochs. Measured GPU presets for 8 to 32 GB (32 GB without block swap, 8 GB at rank 64), INT8 presets that train faster where blocks are swapped (pre-selected on 8-12 GB, one rung below BF16 from 16 GB up), and full fine-tuning presets for 10 to 32 GB; the 8-12 GB presets were also run with training samples at those cards' memory limits.
 - **Training samples** use the dev model's full schedule (30 steps, CFG with STG) and decode with the diffusion video VAE; the sample prompts are encoded together with your captions, so training never loads the 24.5 GB text encoder (with it, the BF16 presets' samples peaked at 61 GB of RAM).
 - **Low-VRAM Text Caching for LTX 2.5** streams the text encoder through the GPU one layer at a time: about 5.7 GB instead of 31.3 GB of VRAM (Audio + Video about 6.5 instead of 32.0, as Windows reports it), with identical caption embeddings.
 - **Works in ComfyUI and SwarmUI**: the trained DoRA file loads on LTX 2.5 (checked with ComfyUI's own LoRA loader: all 1152 keys as 384 DoRA patches).
