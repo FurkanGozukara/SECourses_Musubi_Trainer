@@ -181,6 +181,10 @@ def recommended_preset(entry: ModelEntry, mode: str, tier: str | None) -> str | 
             pool = matching
             break
     gpu = detected_gpu()
+    if concrete == ALL_TIERS and gpu:
+        # "All GPUs" lists every tier, but the preset it loads is still the one Auto picks for this GPU
+        # (it loaded the best-quality preset of any tier: FIBO 2.0's 24 GB one on a 32 GB card, a 22 GB one on 8 GB)
+        pool = preset_library.filter_presets(pool, tier=preset_library.best_tier_for(pool, gpu[1])) or pool
     best = preset_library.default_preset(pool, gpu[1] if gpu else None)
     return best.path if best else None
 

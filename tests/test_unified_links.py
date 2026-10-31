@@ -89,6 +89,45 @@ def test_mage_flow_edit_loads_the_edit_checkpoint(workspaces, tmp_path, monkeypa
     assert image.load_values(get_entry("mage_flow"), "lora", None).values["dit"] == str(tmp_path / L.MAGE_FLOW_FILES[0])
 
 
+def test_zimage_cards_without_a_preset_find_the_downloaded_model_files(workspaces, tmp_path, monkeypatch):
+    """Z-Image Turbo Fine-Tuning has no preset: its defaults left DiT, VAE and text encoder empty (V39)."""
+    from musubi_tuner_gui.unified.registry import get_entry
+
+    monkeypatch.setattr(L, "_zimage_model_dir", lambda: str(tmp_path))
+    image = workspaces["image"]
+    values = image.load_values(get_entry("zimage_turbo"), "full", None).values
+    assert values["dit"] == "" and values["vae"] == "" and values["text_encoder"] == ""  # not downloaded: nothing wrong is filled
+    for name in L.ZIMAGE_DIT_FILES + tuple(L.ZIMAGE_SHARED_FILES.values()):
+        (tmp_path / name).write_bytes(b"")
+    values = image.load_values(get_entry("zimage_turbo"), "full", None).values
+    assert values["dit"] == str(tmp_path / L.ZIMAGE_DIT_FILES[1])
+    assert values["vae"] == str(tmp_path / L.ZIMAGE_SHARED_FILES["vae"])
+    assert values["text_encoder"] == str(tmp_path / L.ZIMAGE_SHARED_FILES["text_encoder"])
+    assert image.load_values(get_entry("zimage_base"), "full", None).values["dit"] == str(tmp_path / L.ZIMAGE_DIT_FILES[0])
+    # a file the user picked stays; the other variant's file becomes this variant's
+    picked = {"zimage_variant": "turbo", "dit": "D:/my_models/z_finetune.safetensors", "vae": "D:/my.vae", "text_encoder": "D:/te"}
+    assert L.follow(_links("zimage", "zimage_variant"), picked) == {}
+    other = dict(picked, dit=str(tmp_path / L.ZIMAGE_DIT_FILES[0]))
+    assert L.follow(_links("zimage", "zimage_variant"), other) == {"dit": str(tmp_path / L.ZIMAGE_DIT_FILES[1])}
+
+
+def test_qwen_image_model_version_switches_to_the_edit_checkpoint(tmp_path, monkeypatch):
+    """V39: Model Version Edit 2509 / 2511 kept the text-to-image DiT, so the edit LoRA trained on the wrong model."""
+    monkeypatch.setattr(L, "_qwen_model_dir", lambda: str(tmp_path))
+    base = str(tmp_path / L.QWEN_DIT_FILES["original"][0])
+    follow = lambda **values: L.follow(_links("qwen_image", "model_version"), {"dit": base, **values})
+    assert follow(model_version="edit-2511") == {"dit": ""}  # not downloaded: cleared, never the wrong model
+    for names in L.QWEN_DIT_FILES.values():
+        for name in names:
+            (tmp_path / name).write_bytes(b"")
+    assert follow(model_version="edit-2511") == {"dit": str(tmp_path / "Qwen_Image_Edit_2511_BF16.safetensors")}
+    assert follow(model_version="edit-2509") == {"dit": str(tmp_path / "Qwen_Image_Edit_Plus_2509_bf16.safetensors")}
+    assert follow(model_version="original") == {}  # Qwen-Image or 2512: both train as original
+    edit = str(tmp_path / "Qwen_Image_Edit_2511_BF16.safetensors")
+    assert L.follow(_links("qwen_image", "model_version"), {"dit": edit, "model_version": "original"}) == {"dit": base}
+    assert L.follow(_links("qwen_image", "model_version"), {"dit": "D:/my/qwen_finetune.safetensors", "model_version": "edit-2511"}) == {}
+
+
 def test_a_switched_model_file_updates_its_status_chip(workspaces, tmp_path, monkeypatch):
     from musubi_tuner_gui.unified import presets as P
 

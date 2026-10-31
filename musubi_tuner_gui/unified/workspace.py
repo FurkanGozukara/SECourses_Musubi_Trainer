@@ -1011,6 +1011,12 @@ class Workspace:
             preset = None
         self.initial = (entry.key, mode, tier, preset, _signature(preset))
         values = loaded.values
+        if preset and P.is_read_only_preset(preset):
+            # as in apply(): a shipped preset's author paths (the Wan 2.2 and Qwen presets' /home/Ubuntu/...
+            # dataset folders) become this PC's defaults, also on the page a browser opens first
+            for key in STICKY_KEYS:
+                if _foreign_path(values.get(key)):
+                    values[key] = loaded.defaults.get(key, "")
         backend = self.backend_of(entry)
 
         with gr.Column(elem_classes=["ws", f"ws-{self.category}"], elem_id=self.root_id):
@@ -1622,6 +1628,9 @@ class Workspace:
         self.expand_btn.click(None, js=SECTIONS_JS.replace("__ROOT__", root).replace("__OPEN__", "true"))
         self.collapse_btn.click(None, js=SECTIONS_JS.replace("__ROOT__", root).replace("__OPEN__", "false"))
         self.search_tb.input(None, inputs=[self.search_tb], js=SEARCH_JS.replace("__ROOT__", root))
+        # Gradio 6.31 sends no input event when characters are deleted: without change, a cleared search kept the
+        # page filtered to the last typed word (nothing else sets this box, so change runs only for the user's edits)
+        self.search_tb.change(None, inputs=[self.search_tb], js=SEARCH_JS.replace("__ROOT__", root))
 
         # ------------------------------------------------------------ browse buttons
         from ..common_gui import get_file_path, get_folder_path
@@ -2265,6 +2274,9 @@ SEARCH_JS = """async (query) => {
   const root = document.getElementById('__ROOT__');
   if (!root) return;
   const q = (query || '').trim().toLowerCase();
+  // every word must appear, in any order and as part of a longer word: "block swap" finds "Blocks To Swap"
+  // (the whole phrase was searched as one string, so the placeholder's own example found nothing)
+  const terms = q.split(' ').filter(Boolean);
   const sections = Array.from(root.querySelectorAll('.ws-section')).filter((s) => getComputedStyle(s).display !== 'none' || s.classList.contains('ws-hide'));
   if (q) {
     // closed sections are not rendered yet: open them once so their settings can be searched
@@ -2278,7 +2290,8 @@ SEARCH_JS = """async (query) => {
   root.querySelectorAll('.vh').forEach((host) => {
     if (!q) { host.classList.remove('ws-hide'); return; }
     const words = (host.innerText || '') + ' ' + Array.from(host.querySelectorAll('[class*="f-"]')).concat([host]).map((n) => Array.from(n.classList).filter((c) => c.startsWith('f-')).join(' ')).join(' ').replace(/f-/g, ' ').replace(/_/g, ' ');
-    host.classList.toggle('ws-hide', !words.toLowerCase().includes(q));
+    const text = words.toLowerCase();
+    host.classList.toggle('ws-hide', !terms.every((term) => text.includes(term)));
   });
   for (const section of sections) {
     const button = section.querySelector('button.label-wrap');

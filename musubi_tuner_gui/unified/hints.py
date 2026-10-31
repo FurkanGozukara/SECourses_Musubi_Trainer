@@ -270,7 +270,7 @@ MODEL_HINTS: dict[str, dict] = {
             "LoRA presets: rank 128, AdaFactor LR 5e-5 (Base uses 3e-5), unquantized BF16 base, 200 epochs, a checkpoint every 25; 1536 px on 32 to 12 GB, 1024 px with activation CPU offload on 10 and 8 GB, 512 px at rank 32 on 6 GB.",
         ],
         "full": [
-            "No measured Z-Image Turbo fine-tuning preset yet: the defaults load AdamW8bit at LR 1e-4 with Fused Backward Pass and Full BF16 Training off, and empty model file fields.",
+            "No measured Z-Image Turbo fine-tuning preset yet: the defaults load AdamW8bit at LR 1e-4 with Fused Backward Pass and Full BF16 Training off; the DiT, VAE and text encoder come from Training_Models_Z_Image once the Turbo bundle is downloaded.",
             "Set yourself, as the Z-Image Base fine-tuning presets do: Full BF16 Training and Fused Backward Pass on, Optimizer Type AdaFactor with arguments scale_parameter=False relative_step=False warmup_init=False weight_decay=0.01.",
             "Then Learning Rate 9e-6, scheduler constant_with_warmup with 10 warmup steps, Max Gradient Norm 0, and Blocks To Swap as VRAM requires.",
             "The training adapter is LoRA-only: fine-tuning leaves base weights out and trains the Turbo DiT directly.",

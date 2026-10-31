@@ -38,6 +38,7 @@ SERIES_POINTS = 480  # loss / LR chart points kept (decimated, so any run length
 LOSS_WINDOW = 100  # steps averaged when a trainer shows only the per-step loss (LTX 2.3 fine-tuning)
 GPU_SAMPLE_SECONDS = 3.0
 PHASE_SAMPLE_SECONDS = 2.0
+LOADING_MODEL_DETAIL = "Loading the model"  # Training chip text between the trainer start and its first step
 
 STAGES: tuple[tuple[str, str, str], ...] = (
     ("prepare", "Preparing", "⚙️"),
@@ -778,6 +779,11 @@ class TrainingRunner:
         if _is_train_bar(progress):
             self._seen_train_progress = True
             self._advance("train")
+            if self.state.stage_detail.get("train") == LOADING_MODEL_DETAIL:
+                # the model is loaded once steps run (the Training chip read "Loading the model" until the run ended)
+                with self.lock:
+                    self.state.stage_detail.pop("train", None)
+                    self._touch()
             postfix = progress["postfix"]
             with self.lock:
                 state = self.state
@@ -969,7 +975,7 @@ class TrainingRunner:
                     # bar moves the pipeline to Training; musubi caches in separate processes before.
                     kohya = self.state.meta.get("engine") == "kohya"
                     if self._seen_train_progress or (not kohya and now - self._last_cache_cue > 20):
-                        self._advance("train", "" if self._seen_train_progress else "Loading the model")
+                        self._advance("train", "" if self._seen_train_progress else LOADING_MODEL_DETAIL)
                 elif phase:
                     self._advance(phase)
             if now - last_gpu >= GPU_SAMPLE_SECONDS:

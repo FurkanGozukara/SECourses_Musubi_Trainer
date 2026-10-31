@@ -172,6 +172,29 @@ def test_user_paths_survive_switches_but_shipped_machine_paths_do_not(workspaces
     assert not _foreign_path("../Training_Outputs_Krea_2") and not _foreign_path("")
 
 
+def test_the_page_a_browser_opens_has_no_shipped_machine_paths():
+    """build() loads the remembered (or automatic) shipped preset for the first page; the Wan 2.2 and Qwen presets
+    carry their author's /home/Ubuntu/... dataset folder, which must not reach the form (V39: it did until a switch)."""
+    from musubi_tuner_gui.unified.backends import install_quiet_toasts
+    from musubi_tuner_gui.unified.workspace import STICKY_KEYS, Workspace, _foreign_path
+
+    entry = ENTRY_BY_KEY["wan22"]
+    preset = next((item.path for item in P.shipped_presets(entry, LORA) if "parent_folder_path = \"/home/" in open(item.path, encoding="utf-8").read()), None)
+    if preset is None:
+        pytest.skip("no shipped Wan 2.2 preset with an author's dataset folder in this install")
+    P.remember_selection("video", "wan22", LORA, P.AUTO_TIER, preset)
+    install_quiet_toasts()
+    with gr.Blocks():
+        workspace = Workspace("video", headless=True)
+        workspace.build()
+    assert workspace.initial[3] == preset
+    backend = workspace.backend_of(entry)
+    for key in STICKY_KEYS:
+        item = workspace.fields.get(workspace.backend_uid[backend.name].get(key, ""))
+        if item is not None:
+            assert not _foreign_path(item.component.value), (key, item.component.value)
+
+
 # --------------------------------------------------------------------------------------------- presets
 def test_preset_name_or_path_targets(tmp_path, monkeypatch):
     monkeypatch.setenv("MUSUBI_USER_PRESETS_DIR", str(tmp_path / "user_presets"))
@@ -334,6 +357,23 @@ def test_a_gpu_tier_this_model_does_not_offer_falls_back_to_auto():
     assert P.offered_tier(wan21, LORA, "1234") == P.AUTO_TIER
     assert P.recommended_preset(wan21, LORA, "1234") == P.recommended_preset(wan21, LORA, P.AUTO_TIER) is not None
     assert P.preset_options(wan21, LORA, "1234")
+
+
+@pytest.mark.parametrize("vram", [8.0, 31.8])
+def test_all_gpus_lists_every_tier_but_loads_the_preset_that_fits(monkeypatch, vram):
+    """V39: "All GPUs" pre-loaded the best-quality preset of any tier (FIBO 2.0: the 24 GB one on a 32 GB card)."""
+    from musubi_tuner_gui import preset_library
+
+    entry = ENTRY_BY_KEY["fibo2"]
+    if not P.shipped_presets(entry, LORA):
+        pytest.skip("FIBO 2.0 presets are not installed")
+    monkeypatch.setattr(P, "detected_gpu", lambda: ("RTX test", vram))
+    monkeypatch.setattr(preset_library, "detect_gpus", lambda: [("RTX test", vram)])
+    picked = P.recommended_preset(entry, LORA, P.ALL_TIERS)
+    assert picked == P.recommended_preset(entry, LORA, P.AUTO_TIER)
+    tier = next(item.tier_gb for item in P.shipped_presets(entry, LORA) if item.path == picked)
+    assert tier <= vram + 0.5
+    assert len(P.preset_options(entry, LORA, P.ALL_TIERS)) > len(P.preset_options(entry, LORA, P.AUTO_TIER))
 
 
 def test_training_type_comes_from_the_preset_folders_not_the_install_path(tmp_path):
@@ -579,6 +619,18 @@ def test_runner_tracks_a_run_to_completion():
     assert all(stage["state"] in ("done", "skipped") for stage in snapshot["stages"])
     assert "saving checkpoint" in runner.log_tail(100)
     assert render_dashboard(snapshot)
+
+
+def test_training_chip_stops_saying_loading_the_model_once_steps_run():
+    """V39: the monitor's Training chip kept "Loading the model" from before the first step to the end of the run."""
+    from musubi_tuner_gui.unified.runner import LOADING_MODEL_DETAIL
+
+    runner = TrainingRunner()
+    runner._advance("train", LOADING_MODEL_DETAIL)  # what the monitor thread sets while the trainer loads
+    assert runner.snapshot()["stages"][[stage["id"] for stage in runner.snapshot()["stages"]].index("train")]["detail"] == LOADING_MODEL_DETAIL
+    runner._on_progress(parse_tqdm("steps:   1%|          | 3/2600 [00:07<1:48:12,  2.50s/it, avr_loss=0.369, lr=5e-05]"))
+    train = next(stage for stage in runner.snapshot()["stages"] if stage["id"] == "train")
+    assert train["state"] == "active" and train["detail"] == ""
 
 
 def test_runner_reports_failures_and_stops_runs():

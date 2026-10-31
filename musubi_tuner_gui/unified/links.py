@@ -137,6 +137,72 @@ def _krea2_variant(values: dict) -> dict:
     return _turbo_variant(values, _modern_model_dir("krea2"), KREA2_DIT_FILES, KREA2_TURBO_ADAPTER, {"sample_steps": 28, "sample_cfg_scale": 5.5})
 
 
+ZIMAGE_DIT_FILES = ("Z_Image_BF16.safetensors", "Z_Image_Turbo_BF16.safetensors")
+ZIMAGE_SHARED_FILES = {"vae": "Z_Image_Train_VAE.safetensors", "text_encoder": "Z_Image_Training_Text_Encoder.safetensors"}
+
+
+def _zimage_model_dir() -> str:
+    """Training_Models_Z_Image in the install folder, where both Z-Image bundles of Download_Train_Models.py go."""
+    from .schema import ROOT_DIR
+
+    return os.path.join(ROOT_DIR, "Training_Models_Z_Image")
+
+
+def _zimage_variant(values: dict) -> dict:
+    """Z-Image Base / Turbo: the variant's own DiT, and the bundles' VAE and text encoder where a path is empty. The
+    defaults leave all three empty, so the Turbo Fine-Tuning card, which has no preset, started without model files
+    although they were downloaded. The training adapter is a preset's choice and stays as it is."""
+    model_dir = _zimage_model_dir()
+    turbo = str(values.get("zimage_variant") or "").strip().lower() == "turbo"
+    changes: dict = {}
+    dit = _variant_file(values.get("dit"), model_dir, ZIMAGE_DIT_FILES, int(turbo))
+    if dit is not None:
+        changes["dit"] = dit
+    for key, name in ZIMAGE_SHARED_FILES.items():
+        if not str(values.get(key) or "").strip():
+            target = os.path.join(model_dir, name)
+            if os.path.isfile(target):
+                changes[key] = target
+    return changes
+
+
+# Download_Train_Models.py bundles 1-4 (Training_Models_Qwen): "original" trains Qwen-Image and 2512 alike
+QWEN_DIT_FILES = {
+    "original": ("qwen_image_bf16.safetensors", "Qwen_Image_2512_BF16.safetensors"),
+    "edit-2509": ("Qwen_Image_Edit_Plus_2509_bf16.safetensors",),
+    "edit-2511": ("Qwen_Image_Edit_2511_BF16.safetensors",),
+}
+
+
+def _qwen_model_dir() -> str:
+    from .schema import ROOT_DIR
+
+    return os.path.join(ROOT_DIR, "Training_Models_Qwen")
+
+
+def _qwen_model_version(values: dict) -> dict:
+    """Qwen-Image Model Version: Edit 2509 / 2511 train their own checkpoints. The classic tab left the DiT on the
+    text-to-image file, so picking an edit version trained the edit LoRA on the wrong model. Another version's file
+    (by its name) becomes this version's, next to it or in Training_Models_Qwen; a file the user picked stays, and a
+    missing target clears the path so the model file status and Start name it."""
+    from ..qwen_image_lora_gui import normalize_qwen_image_model_version
+
+    wanted = QWEN_DIT_FILES.get(normalize_qwen_image_model_version(values.get("model_version")))
+    if not wanted:
+        return {}
+    known = {name.lower() for names in QWEN_DIT_FILES.values() for name in names}
+    text = str(values.get("dit") or "").strip()
+    name = os.path.basename(text).lower() if text else ""
+    if text and (name not in known or name in {item.lower() for item in wanted}):
+        return {}
+    for folder in ([os.path.dirname(text)] if text else []) + [_qwen_model_dir()]:
+        for item in wanted:
+            target = os.path.normpath(os.path.join(folder, item))
+            if os.path.exists(target):
+                return {"dit": target}
+    return {"dit": ""}
+
+
 def _wan_fp8(values: dict) -> dict:
     """wan_lora_gui: FP8 Scaled follows FP8 Base (scaled needs the FP8 base; a plain FP8 cast loses quality)."""
     return {"fp8_scaled": _true(values.get("fp8_base"))}
@@ -227,6 +293,8 @@ LINKS: tuple[Link, ...] = (
     Link("mage_flow", "is_edit", ("dit",), _mage_flow_dit, on_load=True),
     Link("qwen_image_21", "dit_variant", ("dit", "training_adapter_path", "sample_steps", "sample_cfg_scale"), _qwen21_variant, on_load=True),
     Link("krea2", "dit_variant", ("dit", "training_adapter_path", "sample_steps", "sample_cfg_scale"), _krea2_variant, on_load=True),
+    Link("zimage", "zimage_variant", ("dit", "vae", "text_encoder"), _zimage_variant, on_load=True),
+    Link("qwen_image", "model_version", ("dit",), _qwen_model_version),
     Link("wan", "fp8_base", ("fp8_scaled",), _wan_fp8),
     Link("wan", "task", ("compile_resident_blocks_only",), _wan_compile_residency, on_load=True, keep_user=("compile_resident_blocks_only",)),
     Link("flux", "model_version", ("sample_steps", "sample_guidance_scale"), _klein_sampling),
