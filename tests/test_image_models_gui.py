@@ -25,6 +25,8 @@ def _parameters(spec_key, tmp_path, **overrides):
     defaults = m.architecture_defaults(spec, overrides.get("training_mode") == FULL_FINE_TUNING_MODE)
     values = {}
     for item in spec.model_paths:
+        if item.key == m.TRAINING_ADAPTER_KEY:
+            continue  # optional and Turbo-only (Qwen-Image 2.1 Turbo): a base-model run refuses it
         target = tmp_path / "models" / item.filename
         if item.is_dir:
             target.mkdir(parents=True, exist_ok=True)
@@ -398,6 +400,116 @@ def test_moss_control_adapter_settings_are_validated(tmp_path, overrides, messag
     params = _parameters("moss_image", tmp_path, use_control_images=True, **overrides)
     with pytest.raises(ValueError, match=message):
         m.prepare_workflow("moss_image", params, str(tmp_path / "run.toml"), python_cmd="python")
+
+
+def test_moss_edit_mode_trains_an_edit_lora_with_framed_references(tmp_path):
+    """MOSS-Image Edit: the control images are the references (no control adapter, no map step), they keep their framing
+    (control_resolution, batch size 1), text caching encodes them through the vision tower (--moss_edit) and the run
+    TOML carries the trainer's dests moss_edit / moss_edit_kv_cache (Guardrail 20)."""
+    target = tmp_path / "dataset" / "1_ohwx"
+    _touch(target / "image_0.png")
+    (target / "image_0.txt").write_text("make it winter", encoding="utf-8")
+    _touch(target / "control_images" / "image_0.png")
+    params = dict(_parameters("moss_image", tmp_path, use_control_images=True, moss_edit=True))
+    params.update({"parent_folder_path": str(tmp_path / "dataset"), "dataset_config_mode": "Generate from Folder Structure",
+                   "dataset_resolution_width": 1024, "dataset_resolution_height": 768, "dataset_batch_size": 1})
+    path, messages = m.create_dataset_config(m.MOSS_IMAGE, params)
+    assert toml.load(path)["datasets"][0]["control_resolution"] == [1024, 768]
+    assert not any("Control adapter maps" in message for message in messages)
+    params["dataset_batch_size"] = 2
+    with pytest.raises(ValueError, match="batch size to 1"):
+        m.create_dataset_config(m.MOSS_IMAGE, params)
+    # the classic tab's Generate button passes the edit switch last
+    keys_values = [params.get(key) for key in ("parent_folder_path", "dataset_resolution_width", "dataset_resolution_height", "dataset_caption_extension",
+                                               "create_missing_captions", "caption_strategy")] + [1, True, False, "cache_dir", str(tmp_path / "out"), True,
+                                                                                                  "control_images", 121, "head", 1, 1, 241, False, True]
+    generated, _same, _message = m.generate_dataset_toml("moss_image", *keys_values)
+    assert toml.load(generated)["datasets"][0]["control_resolution"] == [1024, 768]
+
+    config_path = tmp_path / "run.toml"
+    workflow = m.prepare_workflow("moss_image", _parameters("moss_image", tmp_path, use_control_images=True, moss_edit=True), str(config_path), python_cmd="python")
+    assert workflow.prepare_command is None and "--control_adapter" not in workflow.train_command
+    assert "--moss_edit" in workflow.text_cache_command
+    data = toml.load(config_path)
+    assert data["moss_edit"] is True and data["moss_edit_kv_cache"] is True and "use_control_images" not in data
+    off = m.prepare_workflow("moss_image", _parameters("moss_image", tmp_path, use_control_images=True, moss_edit=True, moss_edit_kv_cache=False),
+                             str(config_path), python_cmd="python")
+    assert toml.load(config_path)["moss_edit_kv_cache"] is False and off.prepare_command is None
+
+
+@pytest.mark.parametrize(
+    "overrides, message",
+    [
+        ({"moss_edit": True, "use_control_images": False}, "reference images"),
+        ({"moss_edit": True, "use_control_images": True, "training_mode": FULL_FINE_TUNING_MODE}, "trains a LoRA"),
+        ({"caption_dropout_rate": 1.0}, "out of range"),
+    ],
+)
+def test_moss_edit_settings_are_validated(tmp_path, overrides, message):
+    with pytest.raises(ValueError, match=message):
+        m.prepare_workflow("moss_image", _parameters("moss_image", tmp_path, **overrides), str(tmp_path / "run.toml"), python_cmd="python")
+
+
+def test_moss_extras_reach_the_trainer(tmp_path):
+    """Caption dropout, the text_embedder.proj LoRA and the truncated_logit_normal schedule are trainer settings under their
+    argparse dests; the caption separator goes to text caching only."""
+    config_path = tmp_path / "run.toml"
+    workflow = m.prepare_workflow(
+        "moss_image",
+        _parameters("moss_image", tmp_path, caption_dropout_rate=0.1, train_text_embedder_proj=True, timestep_sampling="truncated_logit_normal",
+                    caption_separator="###"),
+        str(config_path),
+        python_cmd="python",
+    )
+    data = toml.load(config_path)
+    assert data["caption_dropout_rate"] == 0.1 and data["train_text_embedder_proj"] is True
+    assert data["timestep_sampling"] == "truncated_logit_normal"
+    assert (data["logit_mean"], data["logit_std"], data["timestep_cutoff"], data["timestep_uniform_ratio"]) == (-1.09, 0.95, 0.95, 0.01)
+    assert "caption_separator" not in data
+    text = workflow.text_cache_command
+    assert "--caption_separator=###" in text and "--moss_edit" not in text
+    # the default separator starts with "-": as one "=" token the caching script's argparse reads it as the value
+    default = m.prepare_workflow("moss_image", _parameters("moss_image", tmp_path), str(config_path), python_cmd="python").text_cache_command
+    from musubi_tuner.moss_image_cache_text_encoder_outputs import moss_image_setup_parser
+    import argparse
+
+    parsed = moss_image_setup_parser(argparse.ArgumentParser()).parse_args([part for part in default if part.startswith("--caption_separator")] + ["--text_encoder", "x"])
+    assert parsed.caption_separator == "---===---"
+
+
+def test_moss_replica_gpus_launch_one_process_on_the_training_and_replica_gpus(tmp_path):
+    """Replica GPUs: accelerate makes the training GPU and the replica GPUs visible (CUDA_VISIBLE_DEVICES = gpu_ids), the
+    trainer addresses the replicas by their index among them; the caches stay on the training GPU."""
+    config_path = tmp_path / "run.toml"
+    workflow = m.prepare_workflow("moss_image", _parameters("moss_image", tmp_path, gpu_ids="3", replica_gpus="4"), str(config_path), python_cmd="python")
+    command = workflow.train_command
+    assert command[command.index("--gpu_ids") + 1] == "3,4" and command[command.index("--replica_devices") + 1] == "1"
+    assert workflow.latent_cache_command[workflow.latent_cache_command.index("--device") + 1] == "cuda:3"
+    assert "replica_gpus" not in toml.load(config_path)
+    assert m.replica_gpu_ids("0", "1, 2") == ("0,1,2", "1,2") and m.replica_gpu_ids("2", "") == ("2", "")
+    single = m.prepare_workflow("moss_image", _parameters("moss_image", tmp_path, gpu_ids="3"), str(config_path), python_cmd="python")
+    assert "--replica_devices" not in single.train_command
+
+
+@pytest.mark.parametrize(
+    "overrides, message",
+    [
+        ({"gpu_ids": "1", "replica_gpus": "1"}, "other GPUs"),
+        ({"replica_gpus": "cuda:1"}, "GPU numbers"),
+        ({"replica_gpus": "1", "convrot_int8": True}, "BF16 DiT"),
+        ({"replica_gpus": "1", "use_control_images": True}, "control adapter"),
+    ],
+)
+def test_moss_replica_gpus_are_validated(tmp_path, overrides, message):
+    with pytest.raises(ValueError, match=message):
+        m.prepare_workflow("moss_image", _parameters("moss_image", tmp_path, **overrides), str(tmp_path / "run.toml"), python_cmd="python")
+
+
+def test_moss_fine_tuning_ignores_the_lora_only_replica_gpus(tmp_path):
+    workflow = m.prepare_workflow(
+        "moss_image", _parameters("moss_image", tmp_path, replica_gpus="1", training_mode=FULL_FINE_TUNING_MODE), str(tmp_path / "run.toml"), python_cmd="python"
+    )
+    assert "--replica_devices" not in workflow.train_command
 
 
 def test_paths_after_download_keep_the_preset_file(tmp_path, monkeypatch):

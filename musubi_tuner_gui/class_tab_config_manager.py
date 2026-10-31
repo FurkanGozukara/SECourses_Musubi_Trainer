@@ -22,6 +22,8 @@ TAB_DEFAULT_FILES = {
     "mage_flow": None,
     "flux3_klein": None,
     "moss_image": None,
+    "fibo2": None,
+    "anima": None,
     "hidream_o1": None,
     "kandinsky6": None,
     "musubi_tuner": "musubi_tuner_defaults.toml",

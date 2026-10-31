@@ -1102,7 +1102,7 @@ def test_whole_number_settings_follow_sd_scripts_argparse():
 
 
 # --------------------------------------------------------------------------------------------- Automagic on sd-scripts
-@pytest.mark.parametrize("optimizer", ["Automagic3", "AutomagicEXPERIMENT"])
+@pytest.mark.parametrize("optimizer", ["Automagic3", "Automagic4", "AutomagicEXPERIMENT"])
 def test_automagic_reaches_sd_scripts_as_its_musubi_class(tmp_path, optimizer):
     values = _values(tmp_path, "flux1_dev", "lora", optimizer_type=optimizer, max_grad_norm=0, gradient_accumulation_steps=1)
     assert kb.kohya_validation_problems("flux1_dev", values) == []
@@ -1140,7 +1140,7 @@ print("OPTIMIZER", type(optimizer).__module__, type(optimizer).__name__, optimiz
 
 
 @pytest.mark.skipif(not (kb.SD_SCRIPTS_DIR / "flux_train_network.py").is_file(), reason="sd-scripts not installed")
-@pytest.mark.parametrize("optimizer", ["Automagic3", "AutomagicEXPERIMENT"])
+@pytest.mark.parametrize("optimizer", ["Automagic3", "Automagic4", "AutomagicEXPERIMENT"])
 def test_sd_scripts_constructs_the_musubi_automagic(optimizer):
     """sd-scripts' own get_optimizer imports the class from musubi-tuner (installed in the same venv)."""
     args = {"optimizer_type": f"musubi_tuner.optimizers.{optimizer}", "optimizer_args": ["weight_decay=0.01", "fused=False"], "learning_rate": 1e-4,

@@ -163,6 +163,8 @@ MODERN_IMAGE_PARAM_KEYS = [
     "dataset_bucket_no_upscale",
     "dataset_cache_directory",
     "generated_toml_path",
+    "use_control_images",
+    "control_directory_name",
     # Model
     "dit",
     "vae",
@@ -174,6 +176,7 @@ MODERN_IMAGE_PARAM_KEYS = [
     "turbo_dit",
     "turbo_dit_cache",
     "dit_variant",
+    "training_adapter_path",
     "fp8_base",
     "fp8_scaled",
     "convrot_int8",
@@ -475,6 +478,10 @@ def _normalize_modern_parameters(
             raise ValueError(f"{key} must be at least 1.")
 
     if spec.is_ideogram:
+        if validate_paths:  # a run (not a save): reference images and Turbo training adapters are Krea 2 features
+            for key, value in (("use_control_images", False), ("training_adapter_path", "")):
+                param_dict[key] = value
+                parameters = _replace_parameter(parameters, key, value)
         if str(param_dict.get("weighting_scheme") or "none") != "none":
             raise ValueError("Ideogram 4 supports weighting_scheme='none' only.")
         param_dict["fp8_base"] = False
@@ -539,6 +546,31 @@ def _normalize_modern_parameters(
             turbo_dit = ""
         elif param_dict.get("turbo_dit_cache") and not turbo_dit:
             raise ValueError("turbo_dit_cache requires a Krea 2 Turbo DiT path.")
+        dit_variant = str(param_dict.get("dit_variant") or "raw").strip().lower()
+        if dit_variant not in {"raw", "turbo"}:
+            raise ValueError("Krea 2 dit_variant must be 'raw' or 'turbo'.")
+        param_dict["dit_variant"] = dit_variant
+        parameters = _replace_parameter(parameters, "dit_variant", dit_variant)
+        # the variant picks the sampling schedule (Turbo: fixed mu 1.15) for LoRA and fine-tuning alike: a DiT file that
+        # names the other variant (a value kept from another mode or preset) would sample with the wrong schedule
+        dit_name = os.path.basename(strip_path_text(param_dict.get("dit"))).lower()
+        other = {"raw": "turbo", "turbo": "raw"}[dit_variant]
+        if other in dit_name and dit_variant not in dit_name:
+            raise ValueError(
+                f"Krea 2 DiT Variant is {dit_variant} but the DiT file looks like the {other} checkpoint ({os.path.basename(dit_name)}): "
+                f"set the DiT Variant to {other} or choose the {dit_variant} checkpoint."
+            )
+        if dit_variant == "turbo" and turbo_dit:
+            raise ValueError(
+                "The Krea 2 Turbo DiT for samples belongs to RAW training: training on the Turbo DiT itself (DiT Variant "
+                "turbo) samples the Turbo model already; clear the Turbo DiT field."
+            )
+        if bool(param_dict.get("use_control_images")) and int(param_dict.get("dataset_batch_size") or 1) > 1:
+            # each reference keeps its own framing: references of different shapes cannot share a batch
+            raise ValueError(
+                "Krea 2 Edit keeps each reference image's own framing, so references of different shapes cannot share a "
+                "batch: set the dataset batch size to 1 and raise Gradient Accumulation Steps instead."
+            )
         if turbo_dit and blocks_to_swap:
             raise ValueError("Krea 2 Turbo sample generation cannot be combined with blocks_to_swap.")
         if turbo_dit and convrot_int8:
@@ -549,6 +581,23 @@ def _normalize_modern_parameters(
 
     base_weights = _coerce_cli_list(param_dict.get("base_weights"))
     base_weight_multipliers = _coerce_float_list(param_dict.get("base_weights_multiplier"))
+    # only for a run: a saved preset keeps the adapter in its own field (folded there, a later switch to Raw would keep it)
+    adapter = strip_path_text(param_dict.get("training_adapter_path")) if spec.is_krea and validate_paths else ""
+    if adapter and not full_finetune:
+        # the Turbo training adapter: merged for training (the last base weights, strength 1), left out of the training
+        # samples (base_weights_sample_multiplier 0), as ai-toolkit samples Krea 2 Turbo and ComfyUI runs the LoRA on it
+        if str(param_dict.get("dit_variant") or "raw") != "turbo":
+            raise ValueError("The Krea 2 Turbo Training Adapter belongs to the Turbo DiT: clear it, or set the DiT Variant to turbo.")
+        if validate_paths:
+            if not os.path.isfile(adapter):
+                raise ValueError(f"Krea 2 Turbo Training Adapter does not exist: {adapter}")
+            adapter = os.path.abspath(adapter)
+        others = [path for path in base_weights if os.path.normcase(os.path.abspath(str(path))) != os.path.normcase(os.path.abspath(adapter))]
+        strengths = [float(value) for value in base_weight_multipliers[: len(others)]] + [1.0] * max(0, len(others) - len(base_weight_multipliers))
+        base_weights, base_weight_multipliers = others + [adapter], strengths + [1.0]
+        param_dict["base_weights_sample_multiplier"] = strengths + [0.0]
+        parameters = [(key, value) for key, value in parameters if key != "base_weights_sample_multiplier"]
+        parameters.append(("base_weights_sample_multiplier", strengths + [0.0]))
     param_dict["base_weights"] = base_weights or None
     param_dict["base_weights_multiplier"] = base_weight_multipliers or None
     parameters = _replace_parameter(parameters, "base_weights", base_weights or None)
@@ -720,8 +769,14 @@ def _run_config_exclusions(spec: ModernImageArchitecture, parameters: list[tuple
         "sample_seed",
         "sample_negative_prompt",
         "sample_cfg_scale",
+        # the dataset TOML carries the control images; the adapter is folded into base_weights
+        "use_control_images",
+        "control_directory_name",
+        "training_adapter_path",
     }
     exclusions.update(training_mode_runtime_exclusions(param_dict.get("training_mode")))
+    if spec.is_krea:
+        exclusions.discard("dit_variant")  # Krea 2 LoRA reads it too (a Turbo DiT samples with the fixed mu 1.15 schedule)
     exclusions.update(
         key
         for key, _ in parameters
@@ -854,6 +909,8 @@ def _create_dataset_config(
     bucket_no_upscale: object,
     cache_directory: object,
     output_dir: object,
+    use_control_images: object = False,
+    control_directory_name: object = "control_images",
 ) -> tuple[str, list[str]]:
     parent = strip_path_text(parent_folder_path)
     if not parent or not os.path.isdir(parent):
@@ -861,9 +918,14 @@ def _create_dataset_config(
     save_dir = str(output_dir or "").strip() or parent
     os.makedirs(save_dir, exist_ok=True)
 
+    # Krea 2 Edit: reference images in <folder>/<control dir>, named like their target (photo.png, photo_0.png ...);
+    # each keeps its own framing at the training pixel count (control_resolution), as ComfyUI's edit node sizes them
+    use_controls = spec.is_krea and bool(use_control_images)
+    control_dir = str(control_directory_name or "control_images").strip() if use_controls else f"__{spec.slug}_no_control__"
+    width, height = int(resolution_width), int(resolution_height)
     config, messages = generate_dataset_config_from_folders(
         parent_folder=parent,
-        resolution=(int(resolution_width), int(resolution_height)),
+        resolution=(width, height),
         caption_extension=str(caption_extension or ".txt"),
         create_missing_captions=bool(create_missing_captions),
         caption_strategy=str(caption_strategy or "folder_name"),
@@ -871,8 +933,17 @@ def _create_dataset_config(
         enable_bucket=bool(enable_bucket),
         bucket_no_upscale=bool(bucket_no_upscale),
         cache_directory_name=str(cache_directory or "cache_dir"),
-        control_directory_name=f"__{spec.slug}_no_control__",
+        control_directory_name=control_dir,
+        control_resolution=(width, height) if use_controls else None,
     )
+    if use_controls:
+        missing = [entry.get("image_directory", "?") for entry in config.get("datasets", []) if not entry.get("control_directory")]
+        if missing:
+            raise ValueError(
+                f"Reference images are enabled (Krea 2 Edit) but these dataset folders have no '{control_dir}' sub-folder: "
+                f"{', '.join(missing)}. Put the reference images in <dataset folder>/{control_dir}, named like their target "
+                "image (image.png or image_0.png, image_1.png ...), or turn reference images off."
+            )
     timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     path = os.path.join(save_dir, f"{spec.slug}_dataset_{timestamp}.toml")
     save_dataset_config(config, path)
@@ -880,8 +951,22 @@ def _create_dataset_config(
     messages.extend(validation_messages)
     if not valid:
         raise ValueError("\n".join(messages))
+    if use_controls:
+        messages.append(f"Reference images: '{control_dir}' sub-folders are paired with the targets.")
     messages.append(f"Saved dataset TOML: {path}")
     return os.path.abspath(path), messages
+
+
+def _toml_has_controls(path: str) -> bool:
+    """Whether a generated dataset TOML pairs control (reference) images with its targets."""
+    import toml
+
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            config = toml.load(handle)
+    except Exception:
+        return False
+    return any(entry.get("control_directory") for entry in config.get("datasets", []))
 
 
 def generate_modern_dataset_toml(
@@ -897,6 +982,8 @@ def generate_modern_dataset_toml(
     dataset_bucket_no_upscale,
     dataset_cache_directory,
     output_dir,
+    use_control_images=False,
+    control_directory_name="control_images",
 ):
     spec = get_architecture(spec_key)
     try:
@@ -913,6 +1000,8 @@ def generate_modern_dataset_toml(
             bucket_no_upscale=dataset_bucket_no_upscale,
             cache_directory=dataset_cache_directory,
             output_dir=output_dir,
+            use_control_images=use_control_images,
+            control_directory_name=control_directory_name,
         )
         return path, path, "\n".join(messages)
     except Exception as exc:
@@ -1137,11 +1226,12 @@ def train_modern_image_model(
 
     if str(param_dict.get("dataset_config_mode") or "") == "Generate from Folder Structure":
         generated = str(param_dict.get("generated_toml_path") or "").strip()
-        # reuse the generated TOML only while it still describes the chosen folder and resolution
+        use_controls = spec.is_krea and bool(param_dict.get("use_control_images"))
+        # reuse the generated TOML only while it still describes the chosen folder, resolution and reference images
         if not generated or not os.path.isfile(generated) or not dataset_toml_matches(
             generated, param_dict.get("parent_folder_path"),
             (param_dict.get("dataset_resolution_width"), param_dict.get("dataset_resolution_height")),
-        ):
+        ) or _toml_has_controls(generated) != use_controls:
             generated, _ = _create_dataset_config(
                 spec,
                 parent_folder_path=param_dict.get("parent_folder_path"),
@@ -1155,6 +1245,8 @@ def train_modern_image_model(
                 bucket_no_upscale=param_dict.get("dataset_bucket_no_upscale"),
                 cache_directory=param_dict.get("dataset_cache_directory"),
                 output_dir=param_dict.get("output_dir"),
+                use_control_images=use_controls,
+                control_directory_name=param_dict.get("control_directory_name"),
             )
         param_dict["dataset_config"] = generated
         parameters = _replace_parameter(parameters, "dataset_config", generated)
@@ -1279,6 +1371,9 @@ def _architecture_defaults(spec: ModernImageArchitecture) -> dict[str, object]:
         "block_swap_h2d_only": True,
         "block_swap_ring_size": 1,
         "dit_variant": "raw",
+        "training_adapter_path": "",
+        "use_control_images": False,
+        "control_directory_name": "control_images",
         "compile": False,
         "compile_backend": "inductor",
         "compile_mode": "default",
@@ -1549,6 +1644,22 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                 value=config.get("generated_toml_path", ""),
                 interactive=False,
             )
+            if spec.is_krea:
+                with gr.Row():
+                    use_control_images = gr.Checkbox(
+                        label="Use Reference Images (Krea 2 Edit)",
+                        value=bool(config.get("use_control_images", False)),
+                        info="Train an edit LoRA: each target gets its reference image(s) from the control sub-folder (image.png or "
+                        "image_0.png, image_1.png ...). They reach the text encoder and the DiT as in ComfyUI's Krea 2 edit workflow.",
+                    )
+                    control_directory_name = gr.Textbox(
+                        label="Reference Image Sub-Folder",
+                        value=config.get("control_directory_name", "control_images"),
+                        info="Name of the sub-folder inside each dataset folder that holds the reference images.",
+                    )
+            else:  # Ideogram 4 takes no reference images
+                use_control_images = gr.Checkbox(value=False, visible=False)
+                control_directory_name = gr.Textbox(value="control_images", visible=False)
             dataset_status = gr.Textbox(
                 label="Dataset Status",
                 lines=5,
@@ -1569,6 +1680,8 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
                     dataset_bucket_no_upscale,
                     dataset_cache_directory,
                     save_load.output_dir,
+                    use_control_images,
+                    control_directory_name,
                 ],
                 outputs=[dataset_config, generated_toml_path, dataset_status],
             )
@@ -1716,6 +1829,33 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         if not spec.is_krea:
             turbo_dit = gr.Textbox(value="", visible=False)
             turbo_dit_cache = gr.Checkbox(value=False, visible=False)
+
+        if spec.is_krea:
+            with gr.Row():
+                training_adapter_path = gr.Textbox(
+                    label="Krea 2 Turbo Training Adapter",
+                    value=config.get("training_adapter_path", ""),
+                    info="DiT Variant turbo only: ostris' krea2_turbo_training_adapter, merged into the Turbo DiT for LoRA training "
+                    "(it keeps the step distillation intact) and left out of the training samples, as at inference.",
+                )
+                training_adapter_button = gr.Button(
+                    "📁",
+                    size="lg",
+                    scale=0,
+                    min_width=60,
+                    elem_classes=["mbtn", "mbtn-fuchsia"],
+                    visible=not headless,
+                )
+                training_adapter_button.click(
+                    fn=lambda: get_file_path(
+                        file_path="",
+                        default_extension=".safetensors",
+                        extension_name="Model files",
+                    ),
+                    outputs=[training_adapter_path],
+                )
+        else:  # Ideogram 4 has no Turbo training adapter
+            training_adapter_path = gr.Textbox(value="", visible=False)
 
         with gr.Row():
             fp8_base = gr.Checkbox(
@@ -2118,14 +2258,15 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
             block_swap_optimizer_patch_params = gr.Checkbox(
                 label="Patch Optimizer for Block Swap",
                 value=bool(config.get("block_swap_optimizer_patch_params", False)),
-                info="Full fine-tuning only. Use with block swap and Adafactor, AdamW, Automagic, or non-fused Automagic3 / AutomagicEXPERIMENT. Automagic handles this automatically when needed. Do not combine with fused backward.",
+                info="Full fine-tuning only. Use with block swap and Adafactor, AdamW, Automagic, or non-fused Automagic3 / Automagic4 / AutomagicEXPERIMENT. Automagic handles this automatically when needed. Do not combine with fused backward.",
             )
             dit_variant = gr.Dropdown(
                 label="Krea 2 DiT Variant",
                 choices=["raw", "turbo"],
                 value=config.get("dit_variant", "raw"),
                 visible=spec.is_krea,
-                info="Must match the primary Krea 2 checkpoint selected above.",
+                info="Must match the primary Krea 2 checkpoint selected above. Turbo samples with the fixed mu 1.15 schedule; "
+                "LoRA on the Turbo DiT also takes the Turbo Training Adapter.",
             )
 
     network_accordion = gr.Accordion(
@@ -2203,6 +2344,8 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         dataset_bucket_no_upscale,
         dataset_cache_directory,
         generated_toml_path,
+        use_control_images,
+        control_directory_name,
         # Model
         dit,
         vae,
@@ -2214,6 +2357,7 @@ def modern_image_lora_tab(spec_key: str, headless: bool = False, config: GUIConf
         turbo_dit,
         turbo_dit_cache,
         dit_variant,
+        training_adapter_path,
         fp8_base,
         fp8_scaled,
         convrot_int8,

@@ -2988,6 +2988,10 @@ def setup_environment(
     env["TF_ENABLE_ONEDNN_OPTS"] = "0"
     env["PYTHONIOENCODING"] = SUBPROCESS_PYTHONIOENCODING
     env["PYTHONUTF8"] = "1"
+    # torch 2.13 puts cuDNN attention first for SDPA on compute capability 9.x / 10.x (H100, H200, B200) with
+    # cuDNN > 9.15, and cuDNN SDPA can return NaN gradients from finite inputs (cudnn-frontend #1072 / #160;
+    # SimpleTuner disabled it on 2026-10-26). Deprioritized, SDPA takes flash / memory-efficient attention there too.
+    env.setdefault("TORCH_CUDNN_SDPA_DEPRIORITIZED", "1")
 
     if allow_distributed is False:
         env = _sanitize_distributed_env(env)

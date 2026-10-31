@@ -90,8 +90,15 @@ LTX25_TRANSFORMER_FILENAME = "ltx-2.5-22b-dev-transformer-bf16.safetensors"
 LTX25_TEXT_ENCODER_FILENAME = "gemma4-12b-with-proj-ltx-2.5-bf16.safetensors"
 LTX25_VIDEO_VAE_FILENAME = "ltx-2.5-video-vae-bf16.safetensors"
 LTX25_AUDIO_VAE_FILENAME = "ltx-2.5-audio-vae-bf16.safetensors"
+# LTX-2.5 Pre-Trained (Lightricks/LTX-2.5-Pre-Trained: the checkpoint before supervised fine-tuning and post-training,
+# for specialized fine-tunes) differs from the dev pack only in its transformer: the VAEs, vocoder and text projections
+# in its bundle are byte-identical to the dev files and its Gemma 4 is the same (gemma4-12b-ltx-v1). Its transformer,
+# taken out of the bundle in the dev transformer's layout, sits next to the dev one.
+LTX25_PT_TRANSFORMER_FILENAME = "ltx-2.5-22b-pt-transformer-bf16.safetensors"
+LTX25_VARIANTS = (("Dev (the released model)", "dev"), ("Pre-Trained (before post-training)", "pretrained"))
 # settings only an LTX-2.5 split pack uses: never passed to an LTX 2.3 / 2.0 run
 LTX25_ONLY_KEYS = ("ltx2_text_encoder_checkpoint", "ltx2_video_vae", "ltx2_audio_vae")
+LTX25_ONLY_SETTINGS = LTX25_ONLY_KEYS + ("ltx25_variant",)
 
 # ---------------------------------------------------------------------------
 # Canonical parameter list. Order MUST match the settings_list built in
@@ -120,6 +127,7 @@ LTX2_PARAM_KEYS = [
     "ltx2_text_encoder_checkpoint",
     "ltx2_video_vae",
     "ltx2_audio_vae",
+    "ltx25_variant",
     "ltx_version",
     "ltx_version_check_mode",
     "ltx2_mode",
@@ -479,6 +487,7 @@ LTX2_DEFAULTS = {
     "ltx2_text_encoder_checkpoint": "",
     "ltx2_video_vae": "",
     "ltx2_audio_vae": "",
+    "ltx25_variant": "dev",
     "ltx_version": "2.3",
     "ltx_version_check_mode": "warn",
     "ltx2_mode": "video",
@@ -756,14 +765,36 @@ def ltx25_model_dir() -> str:
     return os.path.normpath(os.path.join(scriptdir, "..", LTX25_MODEL_FOLDER))
 
 
-def ltx25_default_files() -> dict:
-    """The LTX-2.5 split pack's file names, per setting (Download_Train_Models.py bundle "ltx25")."""
+def ltx25_transformer_filename(variant=None) -> str:
+    """The LTX-2.5 transformer file of a Transformer Variant ("dev", the default, or "pretrained")."""
+    return LTX25_PT_TRANSFORMER_FILENAME if str(variant or "").strip().lower() == "pretrained" else LTX25_TRANSFORMER_FILENAME
+
+
+def ltx25_default_files(variant=None) -> dict:
+    """The LTX-2.5 split pack's file names, per setting (Download_Train_Models.py bundles "ltx25" / "ltx25_pt")."""
     return {
-        "ltx2_checkpoint": LTX25_TRANSFORMER_FILENAME,
+        "ltx2_checkpoint": ltx25_transformer_filename(variant),
         "ltx2_text_encoder_checkpoint": LTX25_TEXT_ENCODER_FILENAME,
         "ltx2_video_vae": LTX25_VIDEO_VAE_FILENAME,
         "ltx2_audio_vae": LTX25_AUDIO_VAE_FILENAME,
     }
+
+
+def switch_ltx25_variant_checkpoint(variant, checkpoint) -> str | None:
+    """The transformer path for a Transformer Variant change: an empty path or the other variant's file (by its name,
+    next to it or in Training_Models_LTX_2_5) becomes this variant's file; any other file the user picked stays (None).
+    A missing target clears the path, so Start names the file to download instead of training the other variant."""
+    names = (LTX25_TRANSFORMER_FILENAME, LTX25_PT_TRANSFORMER_FILENAME)
+    wanted = ltx25_transformer_filename(variant)
+    text = str(checkpoint or "").strip()
+    name = os.path.basename(text).lower()
+    if text and (name not in [n.lower() for n in names] or name == wanted.lower()):
+        return None
+    for folder in ([os.path.dirname(text)] if text else []) + [ltx25_model_dir()]:
+        target = os.path.normpath(os.path.join(folder, wanted))
+        if os.path.exists(target):
+            return target
+    return ""
 
 
 def _ltx_version(param_dict: dict) -> str:
@@ -868,7 +899,7 @@ def _validate_ltx2_parameters(param_dict: dict, *, validate_paths: bool = True) 
     if validate_paths:
         if not ltx2_checkpoint:
             if version == "2.5":
-                raise ValueError(f"LTX 2.5 transformer path is required ({LTX25_TRANSFORMER_FILENAME}).")
+                raise ValueError(f"LTX 2.5 transformer path is required ({ltx25_transformer_filename(param_dict.get('ltx25_variant'))}).")
             raise ValueError("LTX-2 checkpoint path is required (ltx-2.3-22b-dev.safetensors or an INT8 ConvRot/FP8 variant).")
         if not os.path.isfile(ltx2_checkpoint):
             raise ValueError(f"LTX-2 checkpoint does not exist: {ltx2_checkpoint}")
@@ -1165,8 +1196,8 @@ def _run_config_parameters(param_dict: dict, parameters):
     for name, value in parameters:
         if name in LTX2_OPTIONAL_STRING_KEYS and isinstance(value, str) and value.strip() == "":
             continue
-        if name in LTX25_ONLY_KEYS and not ltx25:
-            continue  # an LTX-2.5 file left in a field must never reach a 2.3 / 2.0 run
+        if name in LTX25_ONLY_SETTINGS and not ltx25:
+            continue  # an LTX-2.5 file (or variant) left in a field must never reach a 2.3 / 2.0 run
         filtered.append((name, value))
 
     # Low-VRAM Text Caching also encodes the training's sample prompts that way: without it the 10 and 12 GB LoRA
@@ -1765,6 +1796,23 @@ def ltx2_lora_tab(headless=False, config: GUIConfig = {}):
                 ltx25_paths[key] = reg(key, gr.Textbox(label=label, placeholder=f"Path to {placeholder}", value=get_value(key), info=info))
                 browse = gr.Button("📂", size="sm", scale=0, min_width=60, elem_classes=["mbtn", color], visible=(not headless))
                 browse.click(get_file_path, inputs=[ltx25_paths[key]], outputs=[ltx25_paths[key]], show_progress=False)
+        with gr.Row():
+            ltx25_variant = reg(
+                "ltx25_variant",
+                gr.Dropdown(
+                    label="LTX 2.5 Transformer Variant",
+                    choices=list(LTX25_VARIANTS),
+                    value=get_value("ltx25_variant") or "dev",
+                    info="LTX 2.5 only. Dev is the released model. Pre-Trained is Lightricks' checkpoint before supervised "
+                    "fine-tuning and post-training, for specialized fine-tunes; it uses the same text encoder, VAEs and presets.",
+                ),
+            )
+
+        def _on_ltx25_variant(variant, checkpoint):
+            target = switch_ltx25_variant_checkpoint(variant, checkpoint)
+            return gr.update() if target is None else gr.update(value=target)
+
+        ltx25_variant.change(_on_ltx25_variant, inputs=[ltx25_variant, ltx2_checkpoint], outputs=[ltx2_checkpoint], show_progress=False)
         with gr.Row():
             ltx_version = reg(
                 "ltx_version",

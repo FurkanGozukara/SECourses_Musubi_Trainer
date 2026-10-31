@@ -184,6 +184,9 @@ class ImageArchSpec:
     # control images train a colour / depth control adapter (MOSS-Image): the trainer gets --control_adapter, the maps
     # (<image>_0 colour regions, <image>_1 depth) are made before caching where missing, LoRA training only
     control_adapter: bool = False
+    # the extra option that makes the control images edit references instead (MOSS-Image's moss_edit): they keep their
+    # framing like references_keep_framing, and neither --control_adapter nor the map step runs
+    edit_option: str = ""
     extras: tuple = ()
     sample_flags: tuple = ("w", "h", "s", "d", "l", "n")
     defaults: dict = field(default_factory=dict)
@@ -283,12 +286,50 @@ def _flux3_text_args(params: dict) -> list[str]:
 
 
 def _moss_text_args(params: dict) -> list[str]:
-    return [
+    args = [
         "--text_encoder",
         str(params["text_encoder"]),
         "--text_encoder_dtype",
         str(params.get("caching_teo_text_encoder_dtype") or "bfloat16"),
     ]
+    if _moss_edit_run(params):
+        args.append("--moss_edit")  # each caption after its reference images, through Qwen3.5's vision tower
+    separator = params.get("caption_separator")
+    if separator is not None:
+        # one token with "=": argparse takes a value starting with "-" (the default ---===---) for another option
+        args.append(f"--caption_separator={separator}")
+    return args
+
+
+def _moss_edit_run(params: dict) -> bool:
+    """A MOSS-Image edit LoRA run: Edit mode with its reference (control) images."""
+    return bool(params.get("moss_edit")) and bool(params.get("use_control_images"))
+
+
+def validate_replica_run(params: dict) -> None:
+    """Start / Print Command of a LoRA run with Replica GPUs (a saved preset keeps any text: Save does not run this)."""
+    replica_gpu_ids(params.get("gpu_ids"), params.get("replica_gpus"))
+    if params.get("fp8_base") or params.get("fp8_scaled") or params.get("convrot_int8"):
+        raise ValueError("Replica GPUs trains on the BF16 DiT: turn FP8 Base / ConvRot INT8 Base off (each GPU holds its own copy).")
+    if params.get("use_control_images") and not params.get("moss_edit"):
+        raise ValueError("Replica GPUs does not train a colour / depth control adapter (its embedder trains outside the LoRA).")
+    if str(params.get("mixed_precision") or "bf16") == "fp16":
+        raise ValueError("Replica GPUs trains in BF16 (or FP32) mixed precision, not FP16.")
+
+
+def replica_gpu_ids(gpu_ids: object, replica_gpus: object) -> tuple[str, str]:
+    """Replica training (one process, several GPUs): the launch's visible GPUs (the training GPU first, then the replica
+    GPUs, as physical IDs) and the trainer's --replica_devices (the replicas' indices among the visible GPUs)."""
+    master = str(gpu_ids or "").split(",")[0].strip() or "0"
+    replicas = [part.strip() for part in str(replica_gpus or "").replace(";", ",").split(",") if part.strip()]
+    if not replicas:
+        return master, ""
+    bad = [part for part in replicas if not part.isdigit()]
+    if bad:
+        raise ValueError(f"Replica GPUs takes GPU numbers such as 1 or 1,2 (got {', '.join(bad)}).")
+    if master in replicas or len(set(replicas)) != len(replicas):
+        raise ValueError(f"Replica GPUs must name other GPUs than the training GPU {master}, each once (got {replica_gpus}).")
+    return ",".join([master] + replicas), ",".join(str(index) for index in range(1, len(replicas) + 1))
 
 
 MOSS_DEPTH_MODELS = ("depth-anything/Depth-Anything-V2-Large-hf", "depth-anything/Depth-Anything-V2-Small-hf")
@@ -308,6 +349,15 @@ def _control_dropout_shares(text: object) -> list[float]:
 def _moss_validate(params: dict, full_finetune: bool) -> None:
     if not full_finetune and params.get("convrot_int8") and (params.get("fp8_base") or params.get("fp8_scaled")):
         raise ValueError("MOSS-Image: ConvRot INT8 Base and FP8 Base are mutually exclusive; choose one base quantization.")
+    rate = params.get("caption_dropout_rate")
+    if rate not in (None, "") and not 0.0 <= float(rate) < 1.0:
+        raise ValueError(f"Caption Dropout Rate is out of range: {rate}.")
+    if params.get("moss_edit"):
+        if full_finetune:
+            raise ValueError("MOSS-Image editing trains a LoRA / DoRA: switch to LoRA Training.")
+        if not params.get("use_control_images"):
+            raise ValueError("MOSS-Image Edit needs its reference images: turn on the control / reference images.")
+        return  # the control adapter's settings below do not apply to edit references
     if not params.get("use_control_images"):
         return
     if full_finetune:
@@ -325,6 +375,13 @@ def _moss_validate(params: dict, full_finetune: bool) -> None:
         number = float(value)
         if (key == "control_lr_ratio" and not number > low) or (high is not None and not low <= number < high):
             raise ValueError(f"{label} is out of range: {value}.")
+
+
+def _fibo2_validate(params: dict, full_finetune: bool) -> None:
+    if params.get("fp8_base") and not params.get("fp8_scaled"):
+        raise ValueError("FIBO 2.0 rejects plain FP8 Base (it would also cast the embedders and norms); enable Scaled FP8 together with FP8 Base.")
+    if not full_finetune and params.get("convrot_int8") and (params.get("fp8_base") or params.get("fp8_scaled")):
+        raise ValueError("FIBO 2.0: ConvRot INT8 Base and FP8 Base are mutually exclusive; choose one base quantization.")
 
 
 def _hidream_latent_args(params: dict) -> list[str]:
@@ -419,6 +476,14 @@ QWEN_IMAGE_21 = ImageArchSpec(
         ModelPath("dit", "Qwen-Image 2.1 DiT", "qwen_image_2.1_bf16.safetensors", "BF16 DiT (ComfyUI or Diffusers single file).", frozenset({"train"})),
         ModelPath("vae", "Qwen-Image 2.1 RGBA VAE", "qwen_image_2.1_vae.safetensors", "Diffusers-key VAE file. Needed for latent caching and samples.", frozenset({"latent", "sample"})),
         ModelPath("text_encoder", "Qwen3-VL 8B Text Encoder", "qwen3vl_8b_bf16.safetensors", "BF16/FP32 Qwen3-VL-8B-Instruct. Needed for text caching and samples.", frozenset({"text", "sample"})),
+        ModelPath(
+            "training_adapter_path",
+            "Turbo Training Adapter",
+            "qwen_image_2_turbo_training_adapter_v1.safetensors",
+            "Turbo only: ostris' training adapter, merged into the Turbo DiT for LoRA training (it keeps the 8-step distillation "
+            "intact while the LoRA learns) and left out of the training samples, as at inference. Empty for the base model.",
+            frozenset(),
+        ),
     ),
     max_blocks_to_swap=30,  # 32 blocks; backward needs 2 resident blocks (31 fails in full fine-tuning)
     max_blocks_to_swap_full=30,
@@ -432,6 +497,16 @@ QWEN_IMAGE_21 = ImageArchSpec(
         ExtraOption("fp8_vl", "checkbox", "FP8 Text Encoder for Samples", False, "sample", "Store Qwen3-VL language blocks in FP8 while generating training samples."),
         ExtraOption("caching_teo_fp8_vl", "checkbox", "FP8 Text Encoder for Caching", False, "caching", "Quantize Qwen3-VL language blocks to FP8 while caching (~8 GB less VRAM).", runtime=False),
         ExtraOption("caching_teo_text_encoder_dtype", "dropdown", "Text Encoder Dtype", "bfloat16", "caching", "Use float32 only for CPU caching.", choices=("bfloat16", "float32"), runtime=False),
+        ExtraOption(
+            "dit_variant",
+            "dropdown",
+            "DiT Variant",
+            "base",
+            "model",
+            "base, or Qwen-Image 2.1 Turbo (8 steps, CFG 1): its training samples use the Turbo checkpoint's own 8-step "
+            "schedule, and LoRA training merges the Turbo Training Adapter for training only.",
+            choices=("base", "turbo"),
+        ),
     ),
     defaults={
         "dataset_resolution_width": 1328,
@@ -452,7 +527,7 @@ QWEN_IMAGE_21 = ImageArchSpec(
     },
     lora_defaults=COMMON_LORA_DEFAULTS,
     full_defaults={**COMMON_FULL_DEFAULTS, "learning_rate": 9e-6},
-    gui_only_keys=frozenset({"caching_teo_fp8_vl", "caching_teo_text_encoder_dtype"}),
+    gui_only_keys=frozenset({"caching_teo_fp8_vl", "caching_teo_text_encoder_dtype", "training_adapter_path"}),
     notes=(
         "Qwen-Image 2.1 (Sept 2026) has its own DiT, RGBA VAE and Qwen3-VL 8B text encoder - Qwen-Image 1.x "
         "models and caches cannot be reused. Image sides are aligned to multiples of 32. Enable control images "
@@ -636,11 +711,110 @@ MOSS_IMAGE = ImageArchSpec(
     preset_folders=("MOSS_Image_Training_Configs",),
     download_bundles=("moss_image", "moss_image_sft", "moss_image_te_bf16"),
     supported_attention=frozenset({"sdpa"}),  # PyTorch attention, as the vendor (text masks)
+    timestep_choices=tuple(TIMESTEP_CHOICES) + ("truncated_logit_normal",),  # the MOSS-Image pre-training schedule
     supports_control_images=True,
-    control_label="Train a colour / depth control adapter (ComfyUI's MOSS-Image Color/Depth Control)",
+    control_label="Use control images: a colour / depth control adapter (ComfyUI's MOSS-Image Color/Depth Control), or the edit references in Edit mode",
     control_adapter=True,
+    edit_option="moss_edit",
     extras=(
         ExtraOption("caching_teo_text_encoder_dtype", "dropdown", "Text Encoder Dtype", "bfloat16", "caching", "Use float32 only for CPU caching.", choices=("bfloat16", "float32"), runtime=False),
+        ExtraOption(
+            "moss_edit",
+            "checkbox",
+            "MOSS-Image Edit (reference images)",
+            False,
+            "model",
+            "Train an edit LoRA (ai-toolkit's MOSS-Image edit layout): each image's control images are its references, seen by "
+            "the text encoder and by the DiT. In ComfyUI use Text Encode MOSS-Image Edit with edit_format 'ai-toolkit'.",
+            lora_only=True,
+        ),
+        ExtraOption(
+            "moss_edit_kv_cache",
+            "checkbox",
+            "References Attend Only to Each Other (kv_cache)",
+            True,
+            "model",
+            "Edit: on = ComfyUI edit_format 'ai-toolkit' (the references are computed once per image, faster); off = "
+            "'ai-toolkit (kv_cache off)' (they also attend to the image, every step). The LoRA needs the matching format.",
+            lora_only=True,
+        ),
+        ExtraOption(
+            "caption_dropout_rate",
+            "number",
+            "Caption Dropout Rate",
+            0.0,
+            "advanced",
+            "Share of samples trained with the empty caption (an edit sample keeps its references); 0 = off. The control "
+            "adapter's own Caption Dropout applies while this is 0.",
+            minimum=0.0,
+            maximum=0.9,
+            step=0.01,
+        ),
+        ExtraOption(
+            "caption_separator",
+            "textbox",
+            "Caption Separator Line",
+            "---===---",
+            "caching",
+            "A caption file can hold several captions separated by lines starting with this; text caching encodes all and "
+            "training uses one per step. Empty: a caption file is one caption.",
+            runtime=False,
+        ),
+        ExtraOption(
+            "train_text_embedder_proj",
+            "checkbox",
+            "LoRA on text_embedder.proj",
+            False,
+            "advanced",
+            "Also train a LoRA on the projection of the Qwen3.5 text states into the DiT (text_embedder.proj); ComfyUI loads it "
+            "with the LoRA.",
+            lora_only=True,
+        ),
+        ExtraOption(
+            "timestep_cutoff",
+            "number",
+            "Timestep Cutoff (truncated_logit_normal)",
+            0.95,
+            "schedule",
+            "truncated_logit_normal: the sigma distribution is cut here and rescaled to (0, 1] (0.95 in the MOSS-Image pre-training).",
+            minimum=0.05,
+            maximum=1.0,
+            step=0.01,
+        ),
+        ExtraOption(
+            "timestep_uniform_ratio",
+            "number",
+            "Uniform Share (truncated_logit_normal)",
+            0.01,
+            "schedule",
+            "truncated_logit_normal: share of timesteps drawn uniformly (0.01 in the MOSS-Image pre-training).",
+            minimum=0.0,
+            maximum=1.0,
+            step=0.01,
+        ),
+        ExtraOption(
+            "logit_mean",
+            "number",
+            "Logit Mean",
+            -1.09,
+            "schedule",
+            "truncated_logit_normal (also logit_normal weighting and logsnr): mean of the normal draw; the MOSS-Image "
+            "pre-training used -1.09 with std 0.95 and Discrete Flow Shift 1.",
+            step=0.01,
+        ),
+        ExtraOption("logit_std", "number", "Logit Std", 0.95, "schedule", "Standard deviation of the normal draw (0.95 in the MOSS-Image pre-training).", minimum=0.01, step=0.01),
+        ExtraOption(
+            "replica_gpus",
+            "textbox",
+            "Replica GPUs",
+            "",
+            "advanced",
+            "LoRA on several GPUs in one process (no DDP, works on Windows): the extra GPUs' numbers, e.g. 1 or 1,2; the "
+            "training GPU is the first of GPU IDs. Each step trains one batch per GPU: the steps per epoch shrink by the GPU "
+            "count, as a single-GPU run with Gradient Accumulation Steps x GPUs. BF16 DiT only (no FP8 / INT8 base).",
+            runtime=False,
+            lora_only=True,
+        ),
         ExtraOption(
             "convrot_int8",
             "checkbox",
@@ -670,7 +844,7 @@ MOSS_IMAGE = ImageArchSpec(
             "Depth Map Model",
             MOSS_DEPTH_MODELS[0],
             "dataset",
-            "Large: the published adapter's (licensed CC-BY-NC-4.0, non-commercial). Small: Apache-2.0.",
+            "Large: the depth model the published adapter was trained with. Small: a smaller, faster depth model.",
             choices=MOSS_DEPTH_MODELS,
             runtime=False,
             lora_only=True,
@@ -739,11 +913,209 @@ MOSS_IMAGE = ImageArchSpec(
         "model (LoRA also on the INT8 ConvRot files or with ConvRot INT8 Base, about half the DiT's memory); the LoRA loads on "
         "Base and SFT, BF16 or INT8 ConvRot, in ComfyUI and SwarmUI, a fine-tune is a BF16 DiT file. Training timesteps use shift 3 "
         "(about the pre-training distribution); samples use the vendor's sampler (shift 5, 50 steps, CFG 3). With control images on, the LoRA run trains "
-        "a colour / depth control adapter for ComfyUI's MOSS-Image Color/Depth Control node instead (maps <image>_0 / <image>_1, made where missing)."
+        "a colour / depth control adapter for ComfyUI's MOSS-Image Color/Depth Control node instead (maps <image>_0 / <image>_1, made where missing), "
+        "or, in Edit mode, an edit LoRA with the control images as references (ComfyUI: Text Encode MOSS-Image Edit)."
     ),
     build_latent_cache_args=_flux3_latent_args,
     build_text_cache_args=_moss_text_args,
     validate=_moss_validate,
+)
+
+FIBO_2 = ImageArchSpec(
+    key="fibo2",
+    display_name="FIBO 2.0",
+    slug="fibo2",
+    network_module="networks.lora_fibo2",
+    train_script="fibo2_train_network.py",
+    full_train_script="fibo2_train.py",
+    latent_cache_script="fibo2_cache_latents.py",
+    text_cache_script="fibo2_cache_text_encoder_outputs.py",
+    model_folder="Training_Models_FIBO_2",
+    model_paths=(
+        ModelPath(
+            "dit",
+            "FIBO 2.0 Dev DiT",
+            "fibo2_dev_bf16.safetensors",
+            "The BF16 Dev model (Comfy-Org/Fibo-2.0), for text-to-image and editing LoRAs. LoRA training also takes the INT8 ConvRot "
+            "Dev file (fibo2_dev_int8_convrot, its INT8 layers used as they are). Edit-Turbo is an inference model; the LoRA loads on all of them.",
+            frozenset({"train"}),
+        ),
+        ModelPath("vae", "FLUX.2 VAE", "flux2-vae.safetensors", "FIBO 2.0 uses the FLUX.2 VAE. Needed for latent caching and samples.", frozenset({"latent", "sample"})),
+        ModelPath(
+            "text_encoder",
+            "Qwen3-VL 4B Text Encoder",
+            "qwen3vl_4b_bf16.safetensors",
+            "BF16 Qwen3-VL-4B-Instruct with its vision tower (the same file as FLUX.3 Klein and Krea 2). Needed for text caching and samples.",
+            frozenset({"text", "sample"}),
+        ),
+    ),
+    max_blocks_to_swap=42,  # 44 blocks; backward needs 2 resident (the noise refiner and the Perceiver stay resident)
+    max_blocks_to_swap_full=42,
+    preset_folders=("FIBO_2.0_Training_Configs", "FIBO_2.0_Edit_Training_Configs"),
+    download_bundles=("fibo2",),
+    supports_control_images=True,
+    control_label="Use reference images (FIBO 2.0 editing, 1+ ordered references per target)",
+    # Bria's rules (ai-toolkit match_target_res): a single reference is cropped to the target's size, so the edit lines up
+    # with it pixel for pixel; several each keep their own aspect ratio at the target's pixel count (the dataset loader's
+    # FIBO 2.0 branch, so no control_resolution here)
+    references_keep_framing=False,
+    extras=(
+        ExtraOption("caching_teo_text_encoder_dtype", "dropdown", "Text Encoder Dtype", "bfloat16", "caching", "Use float32 only for CPU caching.", choices=("bfloat16", "float32"), runtime=False),
+        ExtraOption(
+            "convrot_int8",
+            "checkbox",
+            "ConvRot INT8 Base (LoRA)",
+            False,
+            "model",
+            "Quantize the frozen DiT's block linears to ConvRot INT8 while loading: about half their BF16 memory (fused INT8 "
+            "GEMM with Triton, slower without it). An INT8 ConvRot DiT file is used as it is without this. Not combinable with FP8.",
+            lora_only=True,
+        ),
+        ExtraOption("convrot_int8_bwd", "dropdown", "ConvRot INT8 Backward", "bf16", "model", "bf16 = most accurate; int8 = faster gradients (needs Triton).", choices=("bf16", "int8"), lora_only=True),
+        TRAINABLE_RING_OPTION,
+        TRITON_ADAFACTOR_OPTION,
+    ),
+    defaults={
+        # Bria's scheduler shift by image size (FLUX's calculate_shift: mu 0.5 at 256 to 1.15 at 4096 16-px tokens)
+        "timestep_sampling": "flux2_shift",
+        "weighting_scheme": "none",
+        "discrete_flow_shift": 3.16,  # used by timestep sampling "shift" only; e^1.15, ComfyUI's sampling shift
+        "sigmoid_scale": 1.0,
+        "sample_steps": 30,
+        "sample_cfg_scale": 5.0,  # Bria's and ComfyUI's: 30 steps, CFG 5 against the null caption (empty negative)
+        "sample_negative_prompt": "",
+        "max_train_epochs": 200,
+        "save_every_n_epochs": 25,
+        "caching_teo_batch_size": 8,  # text-only captions per padded forward (edit captions run one by one)
+        "adafactor_triton": True,  # fine-tuning: the fused Adafactor update in Triton kernels, as MOSS-Image
+    },
+    lora_defaults={**COMMON_LORA_DEFAULTS, "learning_rate": 1e-4},
+    full_defaults=COMMON_FULL_DEFAULTS,
+    gui_only_keys=frozenset({"caching_teo_text_encoder_dtype"}),
+    notes=(
+        "Bria FIBO 2.0 (8.1B DiT, Qwen3-VL 4B text encoder with its vision tower, FLUX.2 VAE). LoRA / DoRA on the Dev model (BF16, "
+        "or its block linears in ConvRot INT8) for text-to-image, or editing with reference images on the same model (as ai-toolkit); "
+        "the LoRA loads on Dev and Edit-Turbo, BF16 or INT8 ConvRot, in ComfyUI. Full fine-tuning trains every DiT weight in BF16 "
+        "(a DiT file in the released layout). Timesteps use Bria's size-dependent shift; samples use ComfyUI's sampler (shift 1.15, "
+        "30 steps, CFG 5 against the null caption)."
+    ),
+    build_latent_cache_args=_flux3_latent_args,
+    build_text_cache_args=_flux3_text_args,
+    validate=_fibo2_validate,
+)
+
+
+def _anima_text_args(params: dict) -> list[str]:
+    return [
+        "--text_encoder",
+        str(params["text_encoder"]),
+        "--text_encoder_dtype",
+        str(params.get("caching_teo_text_encoder_dtype") or "bfloat16"),
+    ]
+
+
+def _anima_validate(params: dict, full_finetune: bool) -> None:
+    if params.get("fp8_base") and not params.get("fp8_scaled"):
+        raise ValueError("Anima rejects plain FP8 Base (it would also cast the norms and embedders); enable Scaled FP8 together with FP8 Base.")
+    if not full_finetune and params.get("convrot_int8") and (params.get("fp8_base") or params.get("fp8_scaled")):
+        raise ValueError("Anima: ConvRot INT8 Base and FP8 Base are mutually exclusive; choose one base quantization.")
+
+
+ANIMA_NEGATIVE_PROMPT = "worst quality, low quality, score_1, score_2, score_3, blurry, jpeg artifacts, sepia"
+ANIMA = ImageArchSpec(
+    key="anima",
+    display_name="Anima",
+    slug="anima",
+    network_module="networks.lora_anima",
+    train_script="anima_train_network.py",
+    full_train_script="anima_train.py",
+    latent_cache_script="anima_cache_latents.py",
+    text_cache_script="anima_cache_text_encoder_outputs.py",
+    model_folder="Training_Models_Anima",
+    model_paths=(
+        ModelPath(
+            "dit",
+            "Anima Base DiT",
+            "anima-base-v1.0.safetensors",
+            "The BF16 Anima-Base model (circlestone-labs/Anima), which the model card names for LoRA training; the LoRA also loads on "
+            "Anima-Aesthetic and Anima-Turbo. LoRA training also takes the INT8 ConvRot file (ruwwww/Anima-ConvRot) as it is; "
+            "fine-tuning needs the BF16 file and saves a DiT in the same layout.",
+            frozenset({"train"}),
+        ),
+        ModelPath("vae", "Qwen-Image VAE", "qwen_image_vae.safetensors", "Anima uses the Qwen-Image VAE. Needed for latent caching and samples.", frozenset({"latent", "sample"})),
+        ModelPath("text_encoder", "Qwen3 0.6B Text Encoder", "qwen_3_06b_base.safetensors", "Qwen3-0.6B base. Needed for text caching and samples.", frozenset({"text", "sample"})),
+    ),
+    max_blocks_to_swap=26,  # 28 blocks; backward needs 2 resident
+    max_blocks_to_swap_full=26,
+    preset_folders=("Anima_Training_Configs",),
+    download_bundles=("anima", "anima_int8"),
+    extras=(
+        ExtraOption("caching_teo_text_encoder_dtype", "dropdown", "Text Encoder Dtype", "bfloat16", "caching", "Use float32 only for CPU caching.", choices=("bfloat16", "float32"), runtime=False),
+        ExtraOption(
+            "sample_solver",
+            "dropdown",
+            "Sample Sampler",
+            "er_sde",
+            "sample",
+            "er_sde = ComfyUI's default Anima workflow (and the model card's default); euler = plain Euler. Both on ComfyUI's simple schedule with shift 3.",
+            choices=("er_sde", "euler"),
+        ),
+        ExtraOption(
+            "convrot_int8",
+            "checkbox",
+            "ConvRot INT8 Base (LoRA)",
+            False,
+            "model",
+            "Quantize the frozen DiT's block projections (blocks 2-26 as the published INT8 ConvRot file, every block with block swap) to ConvRot INT8 while "
+            "loading: about half their BF16 memory (fused INT8 GEMM with Triton, slower without it). An INT8 ConvRot DiT file is "
+            "used as it is without this. Not combinable with FP8.",
+            lora_only=True,
+        ),
+        ExtraOption("convrot_int8_bwd", "dropdown", "ConvRot INT8 Backward", "bf16", "model", "bf16 = most accurate; int8 = faster gradients (needs Triton).", choices=("bf16", "int8"), lora_only=True),
+        ExtraOption(
+            "train_llm_adapter",
+            "checkbox",
+            "Train the LLM Adapter",
+            False,
+            "full",
+            "Also train the LLM adapter between the text encoder and the DiT. The model card advises against it: the adapter "
+            "holds much of the model's knowledge and degrades easily (LoRA: Network Arguments train_llm_adapter=True).",
+            full_only=True,
+        ),
+        TRAINABLE_RING_OPTION,
+        TRITON_ADAFACTOR_OPTION,
+    ),
+    defaults={
+        "dataset_resolution_width": 1024,
+        "dataset_resolution_height": 1024,
+        "timestep_sampling": "sigmoid",  # kohya's Anima default (logit-normal), discrete flow shift 1
+        "weighting_scheme": "none",
+        "discrete_flow_shift": 1.0,
+        "sigmoid_scale": 1.0,
+        "sample_width": 1024,
+        "sample_height": 1024,
+        "sample_steps": 30,
+        "sample_cfg_scale": 4.0,  # ComfyUI's default Anima workflow: er_sde, simple, 30 steps, CFG 4, this negative
+        "sample_negative_prompt": ANIMA_NEGATIVE_PROMPT,
+        "max_train_epochs": 200,
+        "save_every_n_epochs": 25,
+        "caching_teo_batch_size": 8,
+    },
+    lora_defaults={**COMMON_LORA_DEFAULTS, "learning_rate": 2e-5},  # the model card: rank 32 LoRA, start at 2e-5
+    # fine-tuning at 1e-5 (MOSS-Image's rate) drifted to a blurry, semi-realistic sample after 4 steps on a photo dataset;
+    # 2e-6 kept the image (server smoke 2026-10-29): a starting point for the learning-rate study
+    full_defaults={**COMMON_FULL_DEFAULTS, "learning_rate": 2e-6},
+    gui_only_keys=frozenset({"caching_teo_text_encoder_dtype"}),
+    notes=(
+        "CircleStone Labs / Comfy Org Anima (2B Cosmos-Predict2 DiT with an LLM adapter, Qwen3-0.6B text encoder, Qwen-Image VAE), "
+        "for anime and illustration. LoRA / DoRA or full fine-tuning on Anima-Base; the LoRA loads on Base, Aesthetic and Turbo in "
+        "ComfyUI, a fine-tune is a BF16 DiT in the released layout. The LLM adapter stays frozen (the model card: training it "
+        "degrades the model; LoRA Network Arguments train_llm_adapter=True or the fine-tuning option add it). "
+        "Samples use ComfyUI's default workflow (er_sde, simple, 30 steps, CFG 4)."
+    ),
+    build_latent_cache_args=_flux3_latent_args,
+    build_text_cache_args=_anima_text_args,
+    validate=_anima_validate,
 )
 
 HIDREAM_O1 = ImageArchSpec(
@@ -1009,7 +1381,7 @@ KANDINSKY_6 = ImageArchSpec(
 )
 
 ARCHITECTURES: dict[str, ImageArchSpec] = {
-    spec.key: spec for spec in (QWEN_IMAGE_21, ERNIE_IMAGE, MAGE_FLOW, FLUX_3_KLEIN, MOSS_IMAGE, HIDREAM_O1, KANDINSKY_6)
+    spec.key: spec for spec in (QWEN_IMAGE_21, ERNIE_IMAGE, MAGE_FLOW, FLUX_3_KLEIN, MOSS_IMAGE, FIBO_2, ANIMA, HIDREAM_O1, KANDINSKY_6)
 }
 
 
@@ -1274,7 +1646,8 @@ def _default_model_paths(spec: ImageArchSpec) -> dict[str, str]:
     defaults = {}
     for item in spec.model_paths:
         candidate = os.path.join(model_dir, item.filename)
-        defaults[item.key] = candidate if os.path.exists(candidate) else ""
+        # a Turbo training adapter belongs to the Turbo variant only (links.py fills it in with the variant)
+        defaults[item.key] = candidate if os.path.exists(candidate) and item.key != TRAINING_ADAPTER_KEY else ""
     return defaults
 
 
@@ -1452,6 +1825,32 @@ def _set(param_dict: dict, parameters: list, key: str, value):
     return _replace_parameter(parameters, key, value)
 
 
+TRAINING_ADAPTER_KEY = "training_adapter_path"
+
+
+def fold_training_adapter(spec, param_dict: dict, base_weights: list, multipliers: list, full_finetune: bool, validate_paths: bool):
+    """A Turbo training adapter (``training_adapter_path`` of a spec with ``dit_variant`` turbo) becomes the last base-weights
+    file at strength 1 for LoRA training and is left out of the training samples (``base_weights_sample_multiplier`` 0; the
+    other base weights keep their strength), as ai-toolkit samples its Turbo models and ComfyUI runs the LoRA on the plain
+    Turbo DiT. Returns (base weights, multipliers, sample multipliers or None)."""
+    adapter = strip_path_text(param_dict.get(TRAINING_ADAPTER_KEY)) if spec.model_path(TRAINING_ADAPTER_KEY) else ""
+    if not adapter or full_finetune or not validate_paths:
+        # fine-tuning trains the Turbo DiT itself (the adapter is LoRA-only); a save keeps the adapter in its own field
+        # (folded there, a later switch to the base model would keep merging it)
+        return base_weights, multipliers, None
+    if str(param_dict.get("dit_variant") or "base").strip().lower() != "turbo":
+        raise ValueError(
+            f"The {spec.model_path(TRAINING_ADAPTER_KEY).label} belongs to the Turbo DiT: clear it, or set the DiT Variant to turbo."
+        )
+    if validate_paths:
+        if not os.path.isfile(adapter):
+            raise ValueError(f"{spec.model_path(TRAINING_ADAPTER_KEY).label} does not exist: {adapter}")
+        adapter = os.path.abspath(adapter)
+    others = [path for path in base_weights if os.path.normcase(os.path.abspath(str(path))) != os.path.normcase(os.path.abspath(adapter))]
+    strengths = [float(value) for value in multipliers[: len(others)]] + [1.0] * max(0, len(others) - len(multipliers))
+    return others + [adapter], strengths + [1.0], strengths + [0.0]
+
+
 def _require_path(param_dict: dict, key: str, label: str) -> str:
     value = str(param_dict.get(key) or "").strip()
     if not value:
@@ -1530,8 +1929,13 @@ def normalize_parameters(
 
     base_weights = _coerce_cli_list(param_dict.get("base_weights"))
     multipliers = _coerce_float_list(param_dict.get("base_weights_multiplier"))
+    base_weights, multipliers, sample_multipliers = fold_training_adapter(spec, param_dict, base_weights, multipliers, full_finetune, validate_paths)
     parameters = _set(param_dict, parameters, "base_weights", base_weights or None)
     parameters = _set(param_dict, parameters, "base_weights_multiplier", multipliers or None)
+    if sample_multipliers is not None:
+        param_dict["base_weights_sample_multiplier"] = sample_multipliers
+        parameters = [(key, value) for key, value in parameters if key != "base_weights_sample_multiplier"]
+        parameters.append(("base_weights_sample_multiplier", sample_multipliers))
 
     debug_mode = str(param_dict.get("debug_mode") or "")
     if debug_mode in DEBUG_LOGGING_MODES and not str(param_dict.get("log_with") or "").strip():
@@ -1643,6 +2047,8 @@ def run_config_exclusions(spec: ImageArchSpec, parameters: list[tuple[str, objec
     exclusions = set(GUI_ONLY_KEYS)
     exclusions.update(spec.gui_only_keys)
     exclusions.update(training_mode_runtime_exclusions(param_dict.get("training_mode")))
+    if any(extra.key == "dit_variant" for extra in spec.extras):
+        exclusions.discard("dit_variant")  # LoRA reads it too (Qwen-Image 2.1 Turbo samples with its own schedule)
     exclusions.update(key for key, _ in parameters if key.startswith("caching_") or key in {"cache_latents", "cache_text_encoder_outputs"})
     for extra in spec.extras:
         if not extra.runtime or (extra.lora_only and full_finetune) or (extra.full_only and not full_finetune):
@@ -1698,6 +2104,12 @@ def prepare_workflow(
     )
     latent_command, text_command = build_cache_commands(spec, param_dict, python_cmd=python_cmd)
 
+    launch_gpu_ids, replica_devices = param_dict.get("gpu_ids"), ""
+    if not full_finetune and str(param_dict.get("replica_gpus") or "").strip():
+        # one process sees the training GPU and the replica GPUs (accelerate sets CUDA_VISIBLE_DEVICES to gpu_ids); the
+        # trainer addresses the replicas by their index among them (a LoRA-only setting: fine-tuning ignores it)
+        validate_replica_run(param_dict)
+        launch_gpu_ids, replica_devices = replica_gpu_ids(param_dict.get("gpu_ids"), param_dict.get("replica_gpus"))
     train_command = AccelerateLaunch.run_cmd(
         run_cmd=_find_accelerate_launch(python_cmd),
         dynamo_backend=param_dict.get("dynamo_backend"),
@@ -1707,7 +2119,7 @@ def prepare_workflow(
         num_processes=param_dict.get("num_processes"),
         num_machines=param_dict.get("num_machines"),
         multi_gpu=param_dict.get("multi_gpu"),
-        gpu_ids=param_dict.get("gpu_ids"),
+        gpu_ids=launch_gpu_ids,
         main_process_port=param_dict.get("main_process_port"),
         num_cpu_threads_per_process=param_dict.get("num_cpu_threads_per_process"),
         mixed_precision=param_dict.get("mixed_precision"),
@@ -1715,8 +2127,11 @@ def prepare_workflow(
     )
     script = spec.full_train_script if full_finetune else spec.train_script
     train_command.extend([_trainer_script_path(script), "--config_file", config_path])
+    if replica_devices:
+        train_command.extend(["--replica_devices", replica_devices])
     prepare_command = None
-    if spec.control_adapter and bool(param_dict.get("use_control_images")) and not full_finetune:
+    edit_run = bool(spec.edit_option and param_dict.get(spec.edit_option))
+    if spec.control_adapter and bool(param_dict.get("use_control_images")) and not full_finetune and not edit_run:
         train_command.append("--control_adapter")
         if bool(param_dict.get("control_maps_generate", True)):
             prepare_command = control_maps_command(spec, param_dict, python_cmd=python_cmd)
@@ -1758,14 +2173,18 @@ def create_dataset_config(spec: ImageArchSpec, param_dict: dict) -> tuple[str, l
     height = int(param_dict.get("dataset_resolution_height") or 1024)
     width, height = max(step, width - width % step), max(step, height - height % step)
     use_controls = bool(param_dict.get("use_control_images")) and spec.supports_control_images
-    if use_controls and spec.references_keep_framing and int(param_dict.get("dataset_batch_size") or 1) > 1:
+    # edit references (MOSS-Image Edit) keep their framing like references_keep_framing; they are not adapter maps
+    edit_references = use_controls and bool(spec.edit_option and param_dict.get(spec.edit_option))
+    keep_framing = use_controls and (spec.references_keep_framing or edit_references)
+    control_adapter = use_controls and spec.control_adapter and not edit_references
+    if keep_framing and int(param_dict.get("dataset_batch_size") or 1) > 1:
         # cached latents of a batch are stacked: references of different shapes cannot share one
         raise ValueError(
             f"{spec.display_name} editing keeps each reference image's own framing, so references of different shapes "
             "cannot share a batch: set the dataset batch size to 1 and raise Gradient Accumulation Steps instead."
         )
     control_dir = str(param_dict.get("control_directory_name") or "control_images").strip() if use_controls else f"__{spec.slug}_no_control__"
-    make_maps = use_controls and spec.control_adapter and bool(param_dict.get("control_maps_generate", True))
+    make_maps = control_adapter and bool(param_dict.get("control_maps_generate", True))
     if make_maps:
         # the workflow's first step fills these (moss_image_control_maps.py); the dataset TOML must name them already
         for name in sorted(os.listdir(parent)):
@@ -1807,12 +2226,12 @@ def create_dataset_config(spec: ImageArchSpec, param_dict: dict) -> tuple[str, l
         bucket_no_upscale=bool(param_dict.get("dataset_bucket_no_upscale", False)),
         cache_directory_name=str(param_dict.get("dataset_cache_directory") or "cache_dir"),
         control_directory_name=control_dir,
-        control_resolution=(width, height) if use_controls and spec.references_keep_framing else None,
+        control_resolution=(width, height) if keep_framing else None,
     )
     if use_controls:
         # an edit / i2i run without reference images would only fail later, while caching or training
         missing = [entry.get("image_directory", "?") for entry in config.get("datasets", []) if not entry.get("control_directory")]
-        if missing and spec.control_adapter:
+        if missing and control_adapter:
             raise ValueError(
                 f"The control adapter needs colour / depth maps but these dataset folders have no '{control_dir}' sub-folder: "
                 f"{', '.join(missing)}. Turn on 'Make Missing Colour / Depth Maps', or put <image>_0.png (one flat colour per "
@@ -1831,7 +2250,7 @@ def create_dataset_config(spec: ImageArchSpec, param_dict: dict) -> tuple[str, l
     messages.extend(validation_messages)
     if not valid:
         raise ValueError("\n".join(messages))
-    if use_controls and spec.control_adapter:
+    if control_adapter:
         made = " (missing maps are made before caching)" if make_maps else ""
         messages.append(f"Control adapter maps: '{control_dir}' sub-folders, <image>_0.png colour and <image>_1.png depth{made}.")
     elif use_controls:
@@ -1862,8 +2281,12 @@ def generate_dataset_toml(spec_key: str, *values):
         "frame_sample",
         "max_frames",
         "control_maps_generate",
+        "__edit_option__",  # the spec's edit switch (MOSS-Image Edit): its references keep their framing
     ]
     param_dict = dict(zip(keys, values))
+    edit_value = param_dict.pop("__edit_option__", False)
+    if spec.edit_option:
+        param_dict[spec.edit_option] = edit_value
     try:
         path, messages = create_dataset_config(spec, param_dict)
         return path, path, "\n".join(messages)
@@ -2609,6 +3032,7 @@ def image_model_tab(spec_key: str, headless: bool = False, config: GUIConfig | d
             components.get("frame_sample", gr.Number(value=1, visible=False)),
             components.get("max_frames", gr.Number(value=241, visible=False)),
             components.get("control_maps_generate", dummy_false),
+            components.get(spec.edit_option, dummy_false) if spec.edit_option else dummy_false,
         ],
         outputs=[dataset_config, generated_toml_path, dataset_status],
         show_progress=False,
@@ -2789,6 +3213,14 @@ def flux3_klein_tab(headless: bool = False, config: GUIConfig | dict = {}):
 
 def moss_image_tab(headless: bool = False, config: GUIConfig | dict = {}):
     return image_model_tab("moss_image", headless=headless, config=config)
+
+
+def fibo2_tab(headless: bool = False, config: GUIConfig | dict = {}):
+    return image_model_tab("fibo2", headless=headless, config=config)
+
+
+def anima_tab(headless: bool = False, config: GUIConfig | dict = {}):
+    return image_model_tab("anima", headless=headless, config=config)
 
 
 def hidream_o1_tab(headless: bool = False, config: GUIConfig | dict = {}):

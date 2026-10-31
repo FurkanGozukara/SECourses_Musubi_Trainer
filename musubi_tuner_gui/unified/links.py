@@ -84,6 +84,59 @@ def _mage_flow_dit(values: dict) -> dict:
     return {} if dit is None else {"dit": dit}
 
 
+QWEN21_DIT_FILES = ("qwen_image_2.1_bf16.safetensors", "qwen_image_2.1_turbo_bf16.safetensors")
+QWEN21_TURBO_ADAPTER = "qwen_image_2_turbo_training_adapter_v1.safetensors"
+KREA2_DIT_FILES = ("Krea_2_Raw_Base.safetensors", "Krea_2_Turbo_BF16.safetensors")
+KREA2_TURBO_ADAPTER = "krea2_turbo_training_adapter_v1.safetensors"
+# Turbo samples: 8 steps without CFG (Qwen/Qwen-Image-2.1-Turbo and krea/Krea-2-Turbo, ComfyUI's Turbo templates, ai-toolkit)
+TURBO_SAMPLING = {"sample_steps": 8, "sample_cfg_scale": 1.0}
+
+
+def _turbo_variant(values: dict, model_dir: str, dit_files: tuple[str, str], adapter_file: str, base_sampling: dict) -> dict:
+    """The DiT variant switch of Qwen-Image 2.1 / Krea 2: the variant's own checkpoint (a missing file clears the path),
+    the Turbo training adapter with Turbo (cleared otherwise: merged into the base model it would train the wrong
+    weights), and Turbo's 8 steps without CFG; back to the base model, sample settings still at Turbo's return to the
+    base model's defaults (a user's own settings stay)."""
+    turbo = str(values.get("dit_variant") or "").strip().lower() == "turbo"
+    changes: dict = {}
+    dit = _variant_file(values.get("dit"), model_dir, dit_files, int(turbo))
+    if dit is not None:
+        changes["dit"] = dit
+    if turbo:
+        adapter = str(values.get("training_adapter_path") or "").strip()
+        if not adapter or not os.path.isfile(adapter):
+            target = os.path.join(model_dir, adapter_file)
+            changes["training_adapter_path"] = target if os.path.isfile(target) else ""
+        changes.update(TURBO_SAMPLING)
+    else:
+        changes["training_adapter_path"] = ""
+        try:
+            at_turbo = all(float(values.get(key)) == float(value) for key, value in TURBO_SAMPLING.items())
+        except (TypeError, ValueError):
+            at_turbo = False
+        if at_turbo:
+            changes.update(base_sampling)
+    return changes
+
+
+def _qwen21_variant(values: dict) -> dict:
+    """image_models_gui Qwen-Image 2.1 DiT Variant (base / turbo)."""
+    return _turbo_variant(values, _model_dir("qwen_image_21"), QWEN21_DIT_FILES, QWEN21_TURBO_ADAPTER, {"sample_steps": 30, "sample_cfg_scale": 4.0})
+
+
+def _modern_model_dir(spec_key: str) -> str:
+    """Where the Ideogram 4 / Krea 2 tab looks for its default files (``modern_image_lora_gui`` architectures)."""
+    from .. import modern_image_lora_gui as module
+
+    spec = module.get_architecture(spec_key)
+    return os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(module.__file__)), "..", spec.model_folder))
+
+
+def _krea2_variant(values: dict) -> dict:
+    """modern_image_lora_gui Krea 2 DiT Variant (raw / turbo)."""
+    return _turbo_variant(values, _modern_model_dir("krea2"), KREA2_DIT_FILES, KREA2_TURBO_ADAPTER, {"sample_steps": 28, "sample_cfg_scale": 5.5})
+
+
 def _wan_fp8(values: dict) -> dict:
     """wan_lora_gui: FP8 Scaled follows FP8 Base (scaled needs the FP8 base; a plain FP8 cast loses quality)."""
     return {"fp8_scaled": _true(values.get("fp8_base"))}
@@ -110,10 +163,12 @@ def _ltx_version_files(values: dict) -> dict:
     version = str(values.get("ltx_version") or "2.3").strip()
     v23_dir = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(module.__file__)), "..", module.LTX2_MODEL_FOLDER))
     v25_dir = module.ltx25_model_dir()
-    checkpoints = (module.LTX2_CHECKPOINT_FILENAME, module.LTX25_TRANSFORMER_FILENAME)
+    checkpoints = (module.LTX2_CHECKPOINT_FILENAME, module.LTX25_TRANSFORMER_FILENAME, module.LTX25_PT_TRANSFORMER_FILENAME)
     changes: dict = {}
     if version == "2.5":
-        target = _variant_file(values.get("ltx2_checkpoint"), v25_dir, checkpoints, 1)
+        # either LTX 2.5 transformer (Dev or Pre-Trained) stays: only the Transformer Variant switches between them
+        wanted = module.ltx25_transformer_filename(values.get("ltx25_variant"))
+        target = _variant_file(values.get("ltx2_checkpoint"), v25_dir, (module.LTX2_CHECKPOINT_FILENAME, wanted), 1)
         if target is not None:
             changes["ltx2_checkpoint"] = target
         for key, name in module.ltx25_default_files().items():
@@ -138,6 +193,16 @@ def _ltx_version_files(values: dict) -> dict:
     return changes
 
 
+def _ltx25_variant_file(values: dict) -> dict:
+    """ltx2_lora_gui's Transformer Variant switch (Dev / Pre-Trained LTX 2.5 transformer), for LTX 2.5 only."""
+    from .. import ltx2_lora_gui as module
+
+    if str(values.get("ltx_version") or "").strip() != "2.5":
+        return {}
+    target = module.switch_ltx25_variant_checkpoint(values.get("ltx25_variant"), values.get("ltx2_checkpoint"))
+    return {} if target is None else {"ltx2_checkpoint": target}
+
+
 def _rounded(key: str, rounder_name: str) -> Callable[[dict], dict]:
     """A frame count rounded down to the grid the model's VAE needs, as the classic tab does on blur."""
 
@@ -160,6 +225,8 @@ LINKS: tuple[Link, ...] = (
     Link("hidream_o1", "model_type", ("dit", "noise_scale_start", "noise_scale_end", "noise_clip_std", "sample_cfg_scale"), _hidream_model_type),
     Link("hidream_o1", "task", ("use_control_images",), _hidream_task),
     Link("mage_flow", "is_edit", ("dit",), _mage_flow_dit, on_load=True),
+    Link("qwen_image_21", "dit_variant", ("dit", "training_adapter_path", "sample_steps", "sample_cfg_scale"), _qwen21_variant, on_load=True),
+    Link("krea2", "dit_variant", ("dit", "training_adapter_path", "sample_steps", "sample_cfg_scale"), _krea2_variant, on_load=True),
     Link("wan", "fp8_base", ("fp8_scaled",), _wan_fp8),
     Link("wan", "task", ("compile_resident_blocks_only",), _wan_compile_residency, on_load=True, keep_user=("compile_resident_blocks_only",)),
     Link("flux", "model_version", ("sample_steps", "sample_guidance_scale"), _klein_sampling),
@@ -167,6 +234,7 @@ LINKS: tuple[Link, ...] = (
     Link("ltx2", "dataset_num_frames", ("dataset_num_frames",), _rounded("dataset_num_frames", "round_frames_to_ltx2")),
     Link("ltx2", "ltx_version", ("ltx2_checkpoint", "ltx2_text_encoder_checkpoint", "ltx2_video_vae", "ltx2_audio_vae", "sample_sampling_preset",
                                  "sample_vae_tile_overlap", "sample_vae_temporal_tile_overlap"), _ltx_version_files, on_load=True),
+    Link("ltx2", "ltx25_variant", ("ltx2_checkpoint",), _ltx25_variant_file),
     Link("minimax_h3", "dataset_num_frames", ("dataset_num_frames",), _rounded("dataset_num_frames", "round_frames_to_minimax_h3")),
     Link("minimax_h3", "sample_num_frames", ("sample_num_frames",), _rounded("sample_num_frames", "round_frames_to_minimax_h3")),
 )

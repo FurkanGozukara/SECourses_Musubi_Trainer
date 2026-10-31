@@ -1,4 +1,4 @@
-# SECourses Musubi Trainer V38 — The Only App You Need to Train Every Major Open Model: Qwen Image, Wan 2.1 / 2.2, FLUX 2, FLUX Klein, Z-Image, Ideogram 4, Krea 2, LTX 2.3 / 2.5 and MiniMax H3 Video + Audio
+# SECourses Musubi Trainer V39 — The Only App You Need to Train Every Major Open Model: Qwen Image, Wan 2.1 / 2.2, FLUX 2, FLUX Klein, Z-Image, Ideogram 4, Krea 2, LTX 2.3 / 2.5 and MiniMax H3 Video + Audio
 
 **One app. Fifteen tabs. State-of-the-art open image and video training, including joint audio — Full Fine-Tuning / DreamBooth for supported image families and LoRA across image and video families — with 1-click installers, researched ready-to-use presets, and speed the stock trainer simply cannot reach.**
 
@@ -9,6 +9,31 @@
   - Wan 2.2 training tutorial : https://youtu.be/ocEkhAsPOs4
   - SwarmUI (for inference of your trained models) : https://www.patreon.com/posts/114517862
   - ComfyUI : https://www.patreon.com/posts/105023709
+
+---
+
+## 31 October 2026 Version 39.0 Update
+
+- **🌸 FIBO 2.0 and FIBO 2.0 Edit (new models)** — DoRA / LoRA and full fine-tuning on Bria's FIBO 2.0 Dev (8.1B), for text-to-image or for editing with reference images (the way ai-toolkit trains it). The trained LoRA loads in ComfyUI on FIBO 2.0 Dev, Edit-Turbo and the INT8 ConvRot model. A ConvRot INT8 base option trains in 13.9 GB instead of 21.5 GB at 1024 px, its predictions within 1.5% of the BF16 model's. Training samples follow ComfyUI's FIBO 2.0 workflow. Downloader entry `fibo2` (about 25.7 GB; the Qwen3-VL 4B text encoder and the FLUX.2 VAE it shares with FLUX.3 Klein, Krea 2 and MOSS-Image are linked, not downloaded twice).
+- **🎎 Anima (new model)** — DoRA / LoRA and full fine-tuning on CircleStone Labs' Anima-Base, the 2B anime and illustration model built on NVIDIA Cosmos-Predict2 (Qwen3-0.6B text encoder, Qwen-Image VAE). The LoRA loads in ComfyUI on Anima-Base, Anima-Aesthetic and Anima-Turbo; a ConvRot INT8 base option is there for small GPUs. Training samples follow ComfyUI's default Anima workflow. Downloader entry `anima` (about 5.6 GB, not gated) and the optional INT8 model.
+- **🪞 MOSS-Image Edit (new model card)** — editing LoRAs on MOSS-Image Base with reference images (each target's references in `control_images`). Use the LoRA in ComfyUI with **Text Encode MOSS-Image Edit**, edit_format **ai-toolkit**, with the same reference images.
+- **✏️ Krea 2 Edit, ⚡ Krea 2 Turbo and ⚡ Qwen-Image 2.1 Turbo** — Turbo LoRA / DoRA training on the 8-step Turbo models with ostris' training adapters (as ai-toolkit trains them); the adapter is used only while training, so samples and the LoRA show Turbo at 8 steps without CFG. Krea 2 Edit trains image-editing LoRAs with reference images, fed exactly as ComfyUI's Krea 2 edit workflow does. Downloader entries `krea2_turbo` (our mirror of the gated Krea 2 Turbo, byte-identical) and `qwen_image_21_turbo`.
+- **📊 Measured GPU presets for the new models** (RTX A6000; every preset keeps at least 1.5 GB of its tier free):
+  - **FIBO 2.0** LoRA for 6 to 32 GB: BF16 trains without block swap on 24 and 32 GB (21.9 GB); the INT8 presets lead 8-12 GB, where they step about 1.5x as fast as BF16 (12 GB: 10.3 GB peak), and 6 GB (4.4 GB at 768 px). Fine-tuning for 8 to 32 GB: 20.2 GB without block swap, 6.2 GB on 8 GB with all 42 swappable blocks swapped and activation CPU offload.
+  - **FIBO 2.0 Edit** (one reference image per target) for 8 to 32 GB: BF16 25.1 GB without block swap on 32 GB, INT8 17.4 GB without block swap on 24 and 32 GB.
+  - **Anima** LoRA without block swap from 10 GB (7.4 GB; the INT8 presets 5.9 GB, about a quarter slower), 4.3 GB on 6 GB; fine-tuning 5.9 GB without block swap from 8 GB, 4.4 GB on 6 GB.
+  - **Krea 2 Turbo** for 8 to 32 GB (23.4 GB without block swap on 32 GB, 6.1 GB at 512 px on 8 GB) and **Krea 2 Edit** for 10 to 32 GB (30.2 GB without block swap on 32 GB), all on the ConvRot INT8 DiT.
+  - **Qwen-Image 2.1 Turbo** for 6 to 32 GB: 20.3 GB without block swap on 24 and 32 GB, 4.2 GB at 768 px on 6 GB.
+  - **MOSS-Image Edit** (one reference image per target) for 6 to 32 GB: 16.6 GB without block swap on 24 and 32 GB; the INT8 presets lead 8-12 GB and step faster there (10 GB: 6.7 instead of 13.1 s/step), 4.3 GB at 768 px on 6 GB.
+  - **Learning rates** chosen from 200-epoch DoRA test runs: FIBO 2.0 and FIBO 2.0 Edit 1e-4, Anima 5e-5, Krea 2 Turbo and Krea 2 Edit 1e-4, Qwen-Image 2.1 Turbo 6e-5, MOSS-Image Edit 6e-5; LTX 2.5 Pre-Trained trains at the LTX 2.5 presets' 9e-5. Each preset's s/step was measured one preset at a time on an otherwise idle GPU.
+- **🎬 LTX 2.5 Pre-Trained** — a new **Transformer Variant** on the LTX 2.5 cards: Lightricks' LTX-2.5 Pre-Trained, the checkpoint before supervised fine-tuning and post-training, for specialized fine-tunes. Only its transformer is new (downloader entry `ltx25_pt`, our mirror of the gated file); it uses the same text encoder, VAEs and presets as Dev.
+- **🌌 MOSS-Image extras** — several captions per caption file (lines `---===---` separate them; each step trains one), Caption Dropout Rate, LoRA on the text embedder, the MOSS-Image pre-training timestep schedule (`truncated_logit_normal`) and training samples whose noise matches ComfyUI's for the same seed. **Replica GPUs** (experimental): MOSS-Image LoRA on several GPUs from one process, without DDP, Windows included; it trains exactly like one GPU with the matching gradient accumulation, but it is faster only where the GPUs, not the CPU, set the pace (on our test server it was not).
+- **⚡ ConvRot INT8 training compiles** — the INT8 layers now run inside torch.compile (MOSS-Image, MiniMax H3, Kandinsky 6, Krea 2), with a faster backward pass (ported from kohya-ss sd-scripts 0.12.3): with Compile on, MOSS-Image INT8 trains 1.5x and Krea 2 INT8 1.3x faster on an RTX A6000. Without Compile the speed is unchanged, and the results are the same.
+- **🧪 Automagic4 optimizer** (from ai-toolkit) next to Automagic v1-v3 and AutomagicEXPERIMENT: sensitivity-balanced updates, so very sensitive layers no longer overshoot at the learning rate the rest needs.
+- **🛡️ Cloud GPUs (H100, H200, B200)** — training no longer uses cuDNN attention, which PyTorch picks first on these GPUs and which can return NaN gradients from valid inputs.
+- **🔧 FLUX.1 / SDXL on PCs with several GPUs** — training with GPU IDs left empty stopped at once ("Default process group has not been initialized"); it now trains on the first GPU.
+- **🧰 Model Quantizer** — MiniMax H3 layer filter and an INT8 ConvRot fallback (group 64) for layers whose width group 256 cannot divide.
+- **⬆️ Latest libraries** — transformers 5.21.0, diffusers 0.42.1 (security release), Gradio 6.31.0, Starlette 1.10.0, pytorch-optimizer 4.1.0. OpenCV stays 4.14: OpenCV 5 works with every part of the trainer but its current build lacks an FFmpeg security fix.
 
 ---
 
@@ -50,7 +75,7 @@
   - Turn it on in its section, keep or edit the test prompts (preset from our `Grid_Find_Best_Checkpoint` tutorial prompts; add, change or delete any), set your subject (trigger word and class, read from your `10_ohwx man` folder with one click) and press Start.
   - The run renders the prompts with the base model before training and at every checkpoint save, with the same seeds. When training ends, every checkpoint is scored with local models: likeness to your training photos (face recognition; image similarity for subjects without faces), prompt following, variety between prompts, and over-training signs such as copies of training photos, colour or sharpness drift, and the subject appearing in prompts without its trigger.
   - The finder names the checkpoint to use and explains why, with a trend chart of the scores, a score table, a base / best / last comparison gallery and a full HTML report with every sample side by side. A run whose likeness never rose above the base model is called undertrained (train longer or with a higher learning rate). Works for every image and video model, FLUX.1 and SDXL included. **🔍 Analyze** scores any finished run that saved samples, also one trained without the finder.
-  - Off by default. The scoring models (about 4.7 GB, permissive licenses) download on first use to `Training_Models_Checkpoint_Finder`. Edit models are skipped: their samples need control images.
+  - Off by default. The scoring models (about 4.7 GB) download on first use to `Training_Models_Checkpoint_Finder`. Edit models are skipped: their samples need control images.
 - **🧬 DoRA training for every model** — Qwen-Image, Qwen-Image 2.1, FLUX.2 Dev / Klein, FLUX.3 Klein, Z-Image, Krea 2, Ideogram 4, ERNIE-Image, Mage-Flow, HiDream-O1, Wan 2.1 / 2.2, LTX 2.3, MiniMax H3, Kandinsky 6, FLUX.1 and SDXL.
   - **Adapter Type (LoRA / DoRA)** is the first setting of the LoRA Network section and defaults to DoRA. Every shipped LoRA preset now trains DoRA; switch back to LoRA with one click at any time.
   - DoRA (Weight-Decomposed LoRA) learns a magnitude for every input channel next to the LoRA matrices, which usually follows the trained subject more faithfully at the same rank. Measured on every model's 32 GB preset: about 10% more time per step than LoRA (median of 18 models; the small fast Mage-Flow, HiDream-O1 and LTX 2.3 presets 29-43%) and the same VRAM within about half a GB.

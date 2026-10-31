@@ -23,6 +23,7 @@ from musubi_tuner_gui.image_models_gui import (
     kandinsky6_tab,
     mage_flow_tab,
     moss_image_tab,
+    fibo2_tab,
     qwen_image_21_tab,
 )
 from musubi_tuner_gui.image_captioning_gui import image_captioning_tab
@@ -126,6 +127,8 @@ def initialize_ui_interface(config_manager, headless, release_info, readme_conte
                         flux3_klein_tab(headless=headless, config=config_manager.get_config_for_tab("flux3_klein"))
                     with gr.Tab("MOSS-Image ✨"):
                         moss_image_tab(headless=headless, config=config_manager.get_config_for_tab("moss_image"))
+                    with gr.Tab("FIBO 2.0 ✨"):
+                        fibo2_tab(headless=headless, config=config_manager.get_config_for_tab("fibo2"))
                     with gr.Tab("HiDream-O1 ✨"):
                         hidream_o1_tab(headless=headless, config=config_manager.get_config_for_tab("hidream_o1"))
 

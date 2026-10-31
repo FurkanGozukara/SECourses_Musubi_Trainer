@@ -41,6 +41,50 @@ MODEL_HINTS: dict[str, dict] = {
         },
         "dataset": "1024x1024 images in Kohya folders such as 1_ohwx, each with a same-name .txt caption.",
     },
+    "krea2_turbo": {
+        "about": (
+            "Krea 2 Turbo, the distilled 8-step Krea 2: LoRAs train on it through ostris' training adapter, as ai-toolkit trains "
+            "Krea 2 Turbo, and the LoRA runs on Turbo at 8 steps without CFG in ComfyUI."
+        ),
+        "all": [
+            "The training adapter (krea2_turbo_training_adapter_v1 from the Krea 2 Turbo bundle) de-distills Turbo while the LoRA trains: it is merged into the DiT for training only, left out of the training samples and not part of the saved LoRA, so the samples show Turbo with your LoRA.",
+            "Training samples use Turbo's own sampler: a fixed shift (mu 1.15), 8 steps, CFG 1, as Krea's reference code and ComfyUI's Krea-2 Turbo templates run it.",
+            "Keep runs short (styles, concepts, characters): the adapter's author notes that a long run still wears the distillation down, and artifacts can then appear without the adapter.",
+            "DoRA learns its magnitudes on the merged weights: the adapter moves their column norms by 0.003% on average (at most 1.5% in a few columns of the last block), so the LoRA loads on plain Turbo as trained.",
+            "Up to 26 blocks can be swapped; lowering block swap is where most of the speed comes from when VRAM allows.",
+        ],
+        "lora": [
+            "LoRA presets: DoRA rank 128 on the ConvRot INT8 DiT, AdaFactor LR 1e-4, 1024 px, 200 epochs, a checkpoint every 25 epochs; 12 GB lowers the rank to 64 with activation CPU offload, 10 and 8 GB train 768 and 512 px at rank 32.",
+            "ConvRot INT8 (every preset) is faster than FP8 and closer to BF16; FP8 Base and Scaled FP8 must be enabled together, and only one base quantization runs at a time. The adapter is merged before either quantization.",
+            "About 6.1 s/step on an RTX A6000 without block swap (32 GB) and with 4 blocks H2D-only (24 GB), 12.05 with 24 (16 GB); activation CPU offload on 8-12 GB takes 20-25 s/step.",
+            "10 GB and smaller tiers cache the text encoder on the CPU.",
+        ],
+        "vram": "LoRA at 1024 px, rank 128: 23.4 GB without block swap (32 GB), 22.3 GB with block swap 4 and 14.1 GB with block swap 24, both H2D-only (24 / 16 GB); 10.1 GB at rank 64 with activation CPU offload (12 GB); 8.1 and 6.1 GB at 768 and 512 px, rank 32 (10 / 8 GB); no preset fits 6 GB.",
+        "dataset": "1024x1024 images in Kohya folders such as 1_ohwx, each with a same-name .txt caption.",
+    },
+    "krea2_edit": {
+        "about": (
+            "Krea 2 editing LoRAs: the model learns an edit from each target image (the result) and its reference images (the source), "
+            "trained on Raw; the LoRA also runs on Turbo. The references reach the model the way ComfyUI's Krea 2 edit workflow feeds "
+            "them."
+        ),
+        "all": [
+            "Every dataset folder needs a control_images sub-folder with each target's reference: photo.png -> control_images/photo.png or photo_0.png (more references: photo_1.png ...); the tab refuses to start without it.",
+            "As in ComfyUI's Image Style Reference template: the text encoder reads each reference (about 384 x 384 pixels) after a Picture N marker with the Text Encode Qwen Image Edit Plus template, and the DiT takes its latents at timestep 0 (Edit Model Reference Method index_timestep_zero).",
+            "Each reference keeps its own framing at the training pixel count, so a batch holds one target: raise Gradient Accumulation Steps instead of the batch size.",
+            "Sample prompts take their reference images with --ci (one per reference, in order); a sample's references are sized to its pixel count.",
+            "In ComfyUI: Text Encode Qwen Image Edit Plus with the references and the VAE, Edit Model Reference Method index_timestep_zero, then the Krea 2 Raw or Turbo model with the LoRA.",
+            "🔍 Check dataset in 📁 Dataset shows every target beside its references and lists images without one.",
+            "Up to 26 blocks can be swapped; lowering block swap is where most of the speed comes from when VRAM allows.",
+        ],
+        "lora": [
+            "Presets: one reference per target, DoRA rank 128 on the ConvRot INT8 DiT, AdaFactor LR 1e-4, 1024 px, 200 epochs, a checkpoint every 25 epochs; 16 GB adds activation CPU offload, 12 and 10 GB train 768 and 512 px at rank 32. No configuration fits 8 GB or less.",
+            "Each reference adds its latent tokens to the image and its vision tokens to the text, so editing needs more VRAM than text-to-image; more references per target need more than the listed peak: pick a lower tier.",
+            "11.53 s/step without block swap on an RTX A6000 (32 GB), 15.42 with 21 blocks H2D-only (24 GB); activation CPU offload makes the smaller tiers much slower (16 GB 42.26 s/step).",
+        ],
+        "vram": "One reference per target at 1024 px, rank 128: 30.2 GB without block swap (32 GB), 22.1 GB with block swap 21, H2D-only (24 GB), 14.2 GB with block swap 26 and activation CPU offload (16 GB); 10.1 GB at 768 px, rank 32 (12 GB); 10 GB trains 512 px; nothing fits 8 GB or less.",
+        "dataset": "1024x1024 target images with same-name .txt captions (the edit instruction) plus one reference per target in control_images (photo_0.png).",
+    },
     "flux2_dev": {
         "about": "Black Forest Labs FLUX.2 dev text-to-image model with the Mistral 3 text encoder and strong prompt adherence.",
         "all": [
@@ -167,6 +211,29 @@ MODEL_HINTS: dict[str, dict] = {
             "full": "Fine-tuning: 20.3 GB without block swap (24 GB tier), 8.1 GB at 1328 px with block swap 30 (10 GB), 4.2 GB at 512 px (6 GB); max block swap 30 of 32.",
         },
         "dataset": "Images at 1328x1328 (sides in multiples of 32) with same-name .txt captions; editing adds a control_images sub-folder.",
+    },
+    "qwen_image_21_turbo": {
+        "about": (
+            "Qwen-Image 2.1 Turbo, the distilled 8-step Qwen-Image 2.1: LoRAs train on it through ostris' training adapter, as "
+            "ai-toolkit trains it, and run on Turbo at 8 steps with CFG 1 in ComfyUI."
+        ),
+        "all": [
+            "The training adapter (qwen_image_2_turbo_training_adapter_v1 from the Turbo bundle) de-distills Turbo while the LoRA trains: it is merged into the DiT for training only, left out of the training samples and not part of the saved LoRA, so the samples show Turbo with your LoRA.",
+            "Training samples use the 8-step schedule the Turbo checkpoint ships, at CFG 1, as ComfyUI's Turbo templates and Diffusers run it; the step count does not change it.",
+            "Editing works as on Qwen-Image 2.1: turn on control images and add ordered references in control_images (image1.png -> image1_0.png).",
+            "DoRA learns its magnitudes on the merged weights: the adapter moves their column norms by 0.004% on average (at most 1% in a few columns of the last block), so the LoRA loads on plain Turbo as trained.",
+            "Keep runs short (styles, concepts, characters): the adapter's author notes that a long run still wears the distillation down, and artifacts can then appear without the adapter.",
+            "Up to 30 blocks can be swapped; image sides snap to multiples of 32.",
+        ],
+        "lora": [
+            "LoRA presets: DoRA rank 128, AdaFactor LR 6e-5, 1328 px, 200 epochs, a checkpoint every 25 epochs; 8 GB lowers the rank to 64 with activation CPU offload, 6 GB trains 768 px at rank 32.",
+            "Each checkpoint also gets <name>.comfy.safetensors for ComfyUI and SwarmUI, on qwen_image_2.1_turbo_bf16 or its INT8 ConvRot file.",
+            "Tiers of 16 GB and below cache the Qwen3-VL text encoder on the CPU in full precision (slower, lossless); on 24 and 32 GB text caching on the GPU peaks at 16.2 GB.",
+            "6.53-6.58 s/step without block swap on an RTX A6000 (24 and 32 GB), 7.13 and 8.70 with 17 and 27 blocks H2D-only (16 / 12 GB); 10 GB and below take 19-28 s/step.",
+            "Measured with a text-to-image dataset: editing (control images) adds every reference's tokens to each step, so pick a lower tier for editing LoRAs.",
+        ],
+        "vram": "LoRA at 1328 px, rank 128: 20.3 GB without block swap (24 and 32 GB), 14.2 GB with block swap 17 and 10.2 GB with block swap 27, both H2D-only (16 / 12 GB), 8.1 GB with block swap 30 (10 GB); 6.3 GB at rank 64 with activation CPU offload (8 GB); 4.2 GB at 768 px, rank 32 (6 GB).",
+        "dataset": "1328x1328 images in folders like 1_name with same-name .txt captions; for editing, a control_images sub-folder with each target's references.",
     },
     "zimage_base": {
         "about": "Z-Image Base, the quality-first 6B Z-Image model and the recommended base for LoRAs that should also work on Z-Image Turbo.",
@@ -327,6 +394,10 @@ MODEL_HINTS: dict[str, dict] = {
             "Training samples default to 50 steps at CFG 3 with an empty negative prompt; their negative branch skips block 22, as the vendor's sampler does.",
             "The text encoder is the INT8 ConvRot Qwen3.5-9B file SwarmUI downloads, read in BF16 for caching. The unquantized BF16 file (Model Files: MOSS-Image BF16 text encoder, 19 GB on disk) loaded in 5 s instead of 49 s on an A6000 server, and its caption embeddings differ from the INT8 file's by about 3% (cosine 0.999): cache with the file you generate with.",
             "Up to 40 blocks can be swapped; two blocks always stay on the GPU.",
+            "A caption file can hold several captions, separated by lines starting with ---===--- (Caption Separator Line): text caching encodes them all and each step trains one of them.",
+            "Caption Dropout Rate (Advanced) trains that share of steps with the empty caption; while it is 0 a control adapter keeps its own Caption Dropout.",
+            "Timestep sampling truncated_logit_normal is the MOSS-Image pre-training schedule: with Logit Mean -1.09, Logit Std 0.95 (the defaults here), Discrete Flow Shift 1, Timestep Cutoff 0.95 and Uniform Share 0.01 it reproduces it.",
+            "Training samples draw their noise on the CPU, as ComfyUI does: a sample's seed gives the same starting noise as ComfyUI's KSampler with that seed.",
         ],
         "lora": [
             "Presets: DoRA rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs; the 6 GB tier trains 768 px at rank 32 with activation CPU offload.",
@@ -337,6 +408,8 @@ MODEL_HINTS: dict[str, dict] = {
             "Use Control Images trains a colour / depth control adapter for ComfyUI's MOSS-Image Color/Depth Control node (ComfyUI v0.42.2 or newer) instead of a subject LoRA: every image needs <image>_0.png (one flat colour per region) and <image>_1.png (depth, near = white) in its control_images sub-folder, and Make Missing Colour / Depth Maps creates them before caching (Mask2Former regions, Depth Anything V2 depth). An adapter learns layouts, not a subject: give it a large, varied image set.",
             "The control adapter follows the published recipe: the patch embedder's new colour / depth columns train at 10x the learning rate, each step keeps the colour map only, the depth map only, both or neither (35 / 35 / 20 / 10 %), 10% of the captions are dropped, and the text refiner's two blocks train with the LoRA. Every checkpoint is the file ComfyUI's node loads (load it with LoRA Loader Model Only).",
             "Control adapter sample prompts take the maps with --ci: the colour map, then the depth map; --ci none leaves one out (--ci none --ci depth.png samples with depth only).",
+            "LoRA on text_embedder.proj (Advanced) also trains the projection of the text encoder's states into the DiT; ComfyUI loads it with the rest of the LoRA.",
+            "Replica GPUs (Advanced) trains the LoRA on several GPUs from one process, without DDP, also on Windows: each GPU holds its own BF16 DiT and each step trains one batch per GPU, so with 2 GPUs an epoch has half the steps, the same steps and learning-rate schedule as a single-GPU run with Gradient Accumulation Steps x 2. It saves time only where the GPUs, not the CPU, set the pace: on two RTX A6000 of a busy Linux server a MOSS-Image DoRA step took 5.2 s against 5.6 s on one GPU, and 3.8 s on both with torch.compile, so compare the s/step of a short run first.",
         ],
         "full": [
             "Presets: every DiT weight trains in BF16 with fused-backward AdaFactor, LR 1e-5 (max grad norm 0), 1024 px, 200 epochs, a checkpoint every 25 epochs with only the newest training state kept; the VAE and the text encoder stay frozen.",
@@ -351,8 +424,113 @@ MODEL_HINTS: dict[str, dict] = {
         },
         "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions; for a control adapter, a control_images sub-folder with <image>_0.png colour and <image>_1.png depth maps (made when missing).",
     },
+    "moss_image_edit": {
+        "about": "MOSS-Image editing LoRAs: the model learns an edit from each target image (the result) and its reference images (the source), trained on MOSS-Image Base, LoRA training only.",
+        "all": [
+            "Every dataset folder needs a control_images sub-folder with each target's reference: photo.png -> control_images/photo_0.png (more references: photo_1.png ...); the tab refuses to start without it. Each reference keeps its own framing at the training resolution's pixel count, so the dataset batch size stays 1.",
+            "The text encoder sees every reference before the caption ('Picture 1: <image>' and your instruction, through Qwen3.5's vision tower at up to 384 x 384 pixels), and the DiT sees its latent beside the image it denoises, as ai-toolkit trains MOSS-Image edit LoRAs.",
+            "In ComfyUI load the LoRA with LoRA Loader Model Only on MOSS-Image Base or SFT and encode the prompt and the negative prompt with Text Encode MOSS-Image Edit (with the VAE and the same reference images): edit_format 'ai-toolkit' when References Attend Only to Each Other is on (the default, the references are computed once per image), 'ai-toolkit (kv_cache off)' when it is off.",
+            "ChenkinLab's Moss-Image-Edit is another layout (its references sit at the text start and the text encoder does not see them): it is not a base for these LoRAs, and they do not load with its edit_format.",
+            "Sample prompts take their reference images with --ci (one per reference, in order); each is fitted to the sample size as the training references are.",
+            "A caption file can hold several captions (lines starting with ---===--- separate them); Caption Dropout Rate keeps the references and drops only the instruction, as the negative prompt does in ComfyUI.",
+            "Up to 40 blocks can be swapped; two blocks always stay on the GPU.",
+        ],
+        "lora": [
+            "Presets: one reference per target, DoRA rank 128, AdaFactor LR 6e-5, 1024 px, 200 epochs, a checkpoint every 25 epochs, timestep sampling shift 3; 8 GB lowers the rank to 64 with activation CPU offload, 6 GB trains 768 px at rank 32.",
+            "Two families as on MOSS-Image: the _INT8 presets (ConvRot INT8 block projections) come first on 8-12 GB (pre-selected), the BF16 presets on the other tiers. INT8 swaps fewer blocks, so it steps faster wherever BF16 swaps (RTX A6000: 10 GB 6.65 against 13.08 s/step, 8 GB 15.01 against 21.41, 6 GB 9.42 against 15.72).",
+            "24 and 32 GB cache the text encoder on the GPU (16.5 GB caching peak); 16 GB and smaller cache it on the CPU.",
+            "More references per target add their tokens to each step and need more VRAM than the listed peak: pick a lower tier.",
+            "🔍 Check dataset in 📁 Dataset shows every target beside its references and lists images without one.",
+        ],
+        "vram": "One reference per target at 1024 px, rank 128: 16.6 GB without block swap on 24 and 32 GB (text caching; training 16.4 GB); 16 GB 14.2 GB with block swap 13, H2D-only (its INT8 preset 12.1 GB without block swap); on 12 and 10 GB the INT8 presets come first with 20 and 38 blocks H2D-only (10.3 and 8.3 GB); 8 GB 6.3 GB at rank 64 with activation CPU offload; 6 GB 4.3 GB at 768 px, rank 32.",
+        "dataset": "Target images with same-name .txt captions (the edit instruction) plus each target's reference in control_images (photo_0.png).",
+    },
+    "fibo2": {
+        "about": (
+            "Bria FIBO 2.0, an 8.1B text-to-image DiT (44 blocks, a Perceiver over the text) with the Qwen3-VL 4B text encoder and the "
+            "FLUX.2 VAE (LoRA or full fine-tuning); editing LoRAs train in the FIBO 2.0 Edit card."
+        ),
+        "all": [
+            "Train on the BF16 Dev model (fibo2_dev_bf16 from Comfy-Org/Fibo-2.0); the LoRA also loads on Edit-Turbo and on the INT8 ConvRot files in ComfyUI.",
+            "Captions: plain text is encoded as written, Bria's structured JSON captions are cleaned and compacted as in Bria's training, an empty caption is the null caption.",
+            "Timestep sampling flux2_shift is Bria's own shift by image size (mu 0.5 at 256 tokens of 16 px up to 1.15 at 4096, which is 1024 x 1024).",
+            "Training samples use ComfyUI's sampler: shift 1.15 at every size, 30 steps, CFG 5 against the null caption (an empty negative prompt); a negative prompt you write is put into the chat template as it is.",
+            "Up to 42 blocks can be swapped; two of the 44 blocks, the noise refiner and the Perceiver always stay on the GPU.",
+        ],
+        "lora": [
+            "LoRA presets: DoRA rank 128, AdaFactor LR 1e-4, 1024 px, 200 epochs, a checkpoint every 25 epochs; below 12 GB most presets lower the rank and add activation CPU offload (the 8 GB BF16 and the 6 GB INT8 preset also train 768 px at rank 32).",
+            "Two families share the folder: the BF16 presets train the DiT as released, the _INT8 presets keep its block linears in ConvRot INT8 (quantized while loading). From 16 GB up BF16 leads its tier and INT8 follows one rung lower; on 8-12 GB the INT8 preset comes first (pre-selected) and BF16 follows; 6 GB has only the INT8 preset.",
+            "INT8 swaps fewer blocks, so it steps faster wherever BF16 swaps (RTX A6000): 16 GB 5.09 against 6.57 s/step, 12 GB 5.60 against 9.18; without block swap (24 and 32 GB) both take about 5.1 s/step.",
+            "ConvRot INT8 Base (Model) turns INT8 on for any preset (Comfy-Org's fibo2_dev_int8_convrot file holds the same values and also trains as it is).",
+            "10 GB and smaller tiers cache the text encoder on the CPU.",
+        ],
+        "full": [
+            "Fine-tuning presets: every DiT weight in BF16 with fused-backward AdaFactor at LR 1e-5 (Triton kernels), 1024 px, 200 epochs, a checkpoint every 25 epochs with only the newest training state kept.",
+            "With block swap, the Trainable Block-Swap Ring streams the swapped blocks through reusable GPU buffers from pinned CPU copies, written back after each update.",
+            "The fine-tuned DiT is saved in the released layout (fused qkv), so it loads as the DiT for more training and in ComfyUI.",
+            "4.17-4.18 s/step without block swap on an RTX A6000 (24 and 32 GB); 8.56, 11.46, 12.69 and 17.16 s/step with 20, 33, 39 and 42 swapped blocks (16, 12, 10 and 8 GB).",
+        ],
+        "vram": {
+            "lora": "LoRA at 1024 px, rank 128: BF16 21.9 GB without block swap (24 and 32 GB) and 14.2 GB with block swap 28, H2D-only (16 GB); INT8 14.4 GB without block swap, 10.3 GB with block swap 29, H2D-only (12 GB) and 8.3 GB with block swap 42 (10 GB); 6.3 GB at rank 64 with activation CPU offload (8 GB, INT8); 4.4 GB at 768 px, rank 32 (6 GB, INT8).",
+            "full": "Fine-tuning at 1024 px: 20.2 GB without block swap (24 and 32 GB), 14.1 GB with block swap 20 (16 GB), 10.2 GB with 33 (12 GB), 8.3 GB with 39 (10 GB) and 6.2 GB with 42 and activation CPU offload (8 GB); no preset fits 6 GB.",
+        },
+        "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions (plain text or Bria's JSON captions).",
+    },
+    "fibo2_edit": {
+        "about": (
+            "FIBO 2.0 editing LoRAs: the model learns an edit from each target image (the result) and its reference images (the source), "
+            "on the Dev model with the references as ai-toolkit trains it (LoRA training only)."
+        ),
+        "all": [
+            "Every dataset folder needs a control_images sub-folder with each target's reference: photo.png -> control_images/photo_0.png (more references: photo_1.png ...); the tab refuses to start without it.",
+            "A caption is the edit instruction (or Bria's JSON caption of the result with an edit_instruction key); Qwen3-VL reads it together with the reference images, as Bria's pipeline encodes an edit.",
+            "A single reference is cropped to its target's size (the edit lines up with it pixel for pixel); several references each keep their own aspect ratio at the target's pixel count, Bria's rules.",
+            "🔍 Check dataset in 📁 Dataset shows every target beside its references and lists images without one.",
+            "Train on the BF16 Dev model (fibo2_dev_bf16); the LoRA also loads on Edit-Turbo, the step-distilled edit model, in ComfyUI.",
+            "Sample prompts take their reference images with --ci (one per reference, in order): one reference is cropped to the sample's size, several to their own 1 MP sizes, as ComfyUI's TextEncodeFibo2 node does.",
+            "Up to 42 blocks can be swapped; two of the 44 blocks, the noise refiner and the Perceiver always stay on the GPU.",
+        ],
+        "lora": [
+            "Presets: one reference per target, DoRA rank 128, AdaFactor LR 1e-4, 1024 px, 200 epochs, a checkpoint every 25 epochs; 12 GB and below add activation CPU offload, and the lower tiers step down in rank and resolution (8 GB: INT8 768 px, BF16 512 px, both rank 32). No configuration fits 6 GB.",
+            "Two families as on FIBO 2.0: from 16 GB up the BF16 preset leads its tier and the _INT8 preset (ConvRot INT8 block linears) follows one rung lower; on 8-12 GB the INT8 preset comes first (pre-selected).",
+            "Each reference adds its latent tokens to the image and its vision tokens to the text, so editing needs more VRAM than text-to-image; more references per target need more than the listed peak: pick a lower tier.",
+            "On an RTX A6000 about 9.7-10 s/step on 24 and 32 GB, 9.65 with INT8 and 11.61 with BF16 on 16 GB; activation CPU offload on 8-12 GB takes 15-31 s/step.",
+            "ConvRot INT8 Base (Model) turns INT8 on for any preset (Comfy-Org's fibo2_dev_int8_convrot file holds the same values and also trains as it is).",
+        ],
+        "vram": "One reference per target at 1024 px, rank 128: BF16 25.1 GB without block swap (32 GB), 22.1 GB with block swap 12 and 14.3 GB with block swap 38, both H2D-only (24 / 16 GB); INT8 17.4 GB without block swap (24 and 32 GB), 14.3 GB with block swap 23, H2D-only (16 GB) and 10.2 GB with activation CPU offload (12 GB); 8.3 and 6.4 GB on 10 and 8 GB (INT8); nothing fits 6 GB.",
+        "dataset": "1024x1024 target images with same-name .txt captions (the edit instruction) plus one reference per target in control_images (photo_0.png).",
+    },
+    "anima": {
+        "about": (
+            "CircleStone Labs Anima, a 2B anime and illustration text-to-image DiT (NVIDIA Cosmos-Predict2 with an LLM adapter) "
+            "with the Qwen3-0.6B text encoder and the Qwen-Image VAE (LoRA or full fine-tuning)."
+        ),
+        "all": [
+            "Train on Anima-Base (anima-base-v1.0, the model card's choice for LoRAs); the LoRA also loads on Anima-Aesthetic and Anima-Turbo in ComfyUI.",
+            "The LLM adapter between the text encoder and the DiT stays frozen: the model card warns that training it degrades the model. Network Arguments train_llm_adapter=True adds it to a LoRA, Train the LLM Adapter to a fine-tune.",
+            "Captions can be danbooru-style tags, natural language or both; the model card orders tags as quality / meta / year / safety, 1girl / 1boy, character, series, @artist, then general tags.",
+            "Training samples follow ComfyUI's default Anima workflow: er_sde on the simple schedule (shift 3), 30 steps, CFG 4 with its negative prompt.",
+            "Up to 26 blocks can be swapped; two blocks always stay on the GPU.",
+        ],
+        "lora": [
+            "LoRA presets: DoRA rank 128, AdaFactor LR 5e-5 (picked from 200-epoch tests of 2e-5 to 2e-4; the model card starts at 2e-5), 1024 px, 200 epochs, a checkpoint every 25 epochs, on every tier.",
+            "BF16 trains without block swap from 10 GB (2.54-2.70 s/step on an RTX A6000); 8 GB streams 10 blocks H2D-only at the same speed (2.64 s/step), 6 GB 26 blocks (3.05 s/step).",
+            "The _INT8 presets (ConvRot INT8 DiT) follow BF16 one rung lower: Anima's blocks are small, so INT8 saves VRAM but costs time, about a quarter slower (3.21-3.45 against 2.54-2.70 s/step without block swap).",
+        ],
+        "full": [
+            "Fine-tuning presets: every DiT weight in BF16 with fused-backward AdaFactor at LR 2e-6 (max grad norm 0, Triton kernels), 1024 px, 200 epochs, a checkpoint every 25 epochs with only the newest training state kept.",
+            "Every weight moves at once: at LR 1e-5 a short test on photos turned the samples blurry within 4 steps, at 2e-6 they stayed clean, so start low.",
+            "The fine-tuned DiT is saved in the released layout (anima-base-v1.0's tensors, BF16), so it loads as the DiT for more training, in ComfyUI and in SwarmUI.",
+            "1.04-1.15 s/step without block swap on an RTX A6000 (8 GB and up); the 6 GB preset swaps 12 blocks through the Trainable Block-Swap Ring (2.24 s/step).",
+        ],
+        "vram": {
+            "lora": "LoRA at 1024 px, rank 128: 7.4 GB without block swap (10-32 GB), 6.4 GB with block swap 10 and 4.3 GB with block swap 26, both H2D-only (8 / 6 GB); INT8 5.9 GB without block swap (8-32 GB), 4.4 GB with block swap 22, H2D-only (6 GB).",
+            "full": "Fine-tuning at 1024 px: 5.9 GB without block swap (8-32 GB), 4.4 GB with block swap 12 (6 GB).",
+        },
+        "dataset": "1024x1024 images in folders like 1_name with same-name .txt captions (tags, natural language or both).",
+    },
     "mage_flow": {
-        "about": "Microsoft Mage-Flow (4B, MIT license), a native-resolution text-to-image model (LoRA training only).",
+        "about": "Microsoft Mage-Flow (4B), a native-resolution text-to-image model (LoRA training only).",
         "all": [
             "The trainer uses uniform_shift timesteps with static shift 6, matching the released inference scheduler.",
             "Only SDPA and FlashAttention attention backends are supported.",
@@ -429,6 +607,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Training samples run the dev transformer's full schedule (Sampling Preset ltx25_full, with CFG and STG) and decode with the diffusion video VAE, whose tiles overlap by 160 px and 40 frames.",
             "Use Lightricks' Gemma 4 text encoder file of 17 August 2026 or later: the trainer refuses the copy published before, whose encoder does not match the released transformer.",
             "Every preset caches text with Low-VRAM Text Caching: the 24.5 GB Gemma 4 streams through the GPU one decoder layer at a time (5.7 GB caching peak, identical embeddings) and then sits in system RAM; the sample prompts are encoded in the same step, so training never loads the text encoder.",
+            "Transformer Variant Pre-Trained trains Lightricks' LTX-2.5 Pre-Trained checkpoint, the model before supervised fine-tuning and post-training, meant for specialized fine-tunes; it shares the Dev text encoder, VAEs and presets, and only its transformer is a separate download (LTX 2.5 Pre-Trained transformer). A 200-epoch DoRA test on it (4.5e-5 to 3.6e-4) kept the presets' 9e-5.",
         ],
         "lora": [
             "Presets: DoRA rank 128, AdaFactor LR 9e-5, 768x512, 33 frames, 200 epochs, a checkpoint every 25 epochs; the 8 GB tier trains rank 64 with activation CPU offload.",
@@ -527,6 +706,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Latent caching, text caching and training all run in audio mode, and training samples are audio-only previews.",
             "Caption each clip with a same-stem .txt that describes the sound: speech, music or ambient noise.",
             "LTX 2.5 needs its own audio VAE with vocoder and the Gemma 4 12B text encoder: the LTX 2.3 files do not work with it.",
+            "Transformer Variant Pre-Trained trains Lightricks' LTX-2.5 Pre-Trained checkpoint (before supervised fine-tuning and post-training) with the same audio VAE and text encoder; only its transformer is a separate download.",
         ],
         "lora": [
             "No presets yet: the defaults load rank 128 with AdaFactor LR 1e-4, INT8 ConvRot base, block swap 20, Low-VRAM Text Caching, 100 epochs, a checkpoint every 10.",

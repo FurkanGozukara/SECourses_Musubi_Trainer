@@ -299,7 +299,7 @@ The unified UI shipped without any of these couplings. Choosing HiDream-O1 "dev"
 - A new base-weight format (quantization, packing, rotation) must be readable by `DoRABaseWeight` in the original basis; its one-time check against the layer's own output must pass (`tests/test_dora_input_axis.py`).
 - A DoRA magnitude belongs to one base model's column norms. Training that shares a network between several base models (Wan 2.2 high + low noise experts, swapped in with `load_state_dict(assign=True)`) keeps one magnitude per expert: `LoRANetwork.enable_dora_experts` adds them (`dora_scale` is expert 0, the low-noise model), the trainer's `on_network_applied` hook initializes each expert's from its own weights and every swap selects that expert's (`set_dora_expert`, between steps, never in a traced forward), and each save writes one file per expert (`<name>.safetensors`, `<name>_high_noise.safetensors`; the save-last-N cleanup and the Hugging Face upload follow `dora_expert_files`). Never save shared magnitudes for two base models: ComfyUI applies a file's `dora_scale` as absolute magnitudes. A replaced base weight re-reads its cached column norms (`DoRAInputModule._dora_base_norm_sq`).
 - A DoRA (or LoRA) forward sets no attributes while `torch.compile` traces it. Dynamo refuses side effects inside an activation-checkpointed region and then runs that block eagerly for the rest of the run, without an error: Z-Image DoRA trained at 2.27 s/step instead of 1.46. Per-call values go through arguments (`_add_lora_output(x, org_forwarded, down_factor)`), caches are stored only when `torch.compiler.is_compiling()` is false, and one-time work runs before the compiled blocks (`run_dora_base_checks`, a forward pre-hook of the model; one layer per storage format checks the others).
-- Base weights merged before the network is created (`--base_weights`, the Z-Image Turbo training adapter) are part of the base whose column norms DoRA learns, so a training-only adapter leaves its share in the saved magnitudes. Check its size before adding such an adapter: the Turbo adapter changes the column norms by 0.01% on average (fused q / k / v 0.001%, at most 2.7% in a few adaLN columns).
+- Base weights merged before the network is created (`--base_weights`, the Z-Image Turbo training adapter) are part of the base whose column norms DoRA learns, so a training-only adapter leaves its share in the saved magnitudes. Check its size before adding such an adapter: the Turbo adapter changes the column norms by 0.01% on average (fused q / k / v 0.001%, at most 2.7% in a few adaLN columns). The Qwen-Image 2.1 Turbo and Krea 2 Turbo adapters (ostris, V39) change them by 0.0037% / 0.0029% on average, at most 1.0% / 1.48% in a few last-block columns (`dont_upload/vram_lab/turbo_adapter_colnorm.py`); their training samples leave the adapter out (`--base_weights_sample_multiplier 0`), exact for LoRA and, for DoRA, off by the adapter's share of the norms.
 
 ### Why this exists
 
@@ -367,3 +367,61 @@ On 2026-10-25 a user reported models going to a G: drive. 315 shipped presets ca
 ### Regression check
 
 `tests/test_shipped_presets.py::test_no_shipped_preset_names_a_machine_specific_model_path` (every preset under `Training_Presets`), `tests/test_portable_model_paths.py::test_start_uses_this_installs_files_for_a_presets_paths` and `::test_model_files_status_finds_a_foreign_path_in_this_install`, and `tests/test_unified_app.py::test_the_downloader_saves_next_to_itself_wherever_it_is_started`.
+
+## Guardrail 23: Quantized Linears and per-block code stay compile-friendly
+
+### Rule
+
+- A quantized Linear's patched forward calls a `torch.library` custom op (fake implementation, registered backward, the backward an op too), never a `torch.autograd.Function` around Triton launches. Excluding Linears from `torch.compile` (`disable_linear`) is for block swap only.
+- Per-block code (attention, modulation) reads no tensor values (`.item()`, `torch.all(...)` in an `if`): compute the Python ints once per model forward (`modules/attention.py` `AttentionParams.seqlens`, `uniform_seqlen`).
+
+### Why this exists
+
+The ConvRot INT8 Linear was an `autograd.Function`, which broke every compiled block at every INT8 Linear, so MOSS-Image, MiniMax H3, Kandinsky 6 and Krea 2 excluded those Linears and `--compile` did nothing for INT8 training. As a custom op (kohya-ss sd-scripts a4aaa20, ported in V39) the blocks compile whole: MOSS-Image INT8 with Compile 3.8 -> 2.5 s/step, Krea 2 INT8 5.9-6.4 -> 4.7 on an RTX A6000. `attention()`'s `torch.all(seqlens == seqlens[0])` / `.item()` broke each compiled block two to three times per call.
+
+### Regression check
+
+`musubi-tuner/tests/test_convrot_int8_custom_op.py::test_compiled_block_with_patched_linear_has_no_graph_breaks` and `::test_compiled_block_aot_eager_matches_eager_forward_and_backward`, `tests/test_attention_compile_graph_breaks.py::test_attention_has_no_graph_breaks`, and `tests/test_minimax_h3_training.py` (the trainer compiles INT8 Linears).
+
+## Guardrail 24: Base weights merge in the load that quantizes
+
+### Rule
+
+- A trainer that quantizes the DiT while loading (scaled FP8, ConvRot INT8) merges `--base_weights` in that load (`load_safetensors_with_lora_and_fp8` with the LoRA weight hook) and sets `_base_weights_merged_at_load`, so the training loop's post-load merge is skipped.
+- Every module of a base-weights file must match a layer of the DiT (keys converted to the trainer's names first); the load-time merge alone only warns about unused keys.
+
+### Why this exists
+
+Krea 2 merged `--base_weights` after loading, into FP8 weights with separate scales or into ConvRot INT8 values in the rotated basis: the delta would have landed unscaled or in the wrong basis. No run used base weights on Krea 2 before V39; the Krea 2 Turbo training adapter is the first. Qwen-Image 2.1 merged at load already but passed the adapter's ai-toolkit keys unconverted, so nothing would have merged (one warning).
+
+### Regression check
+
+`musubi-tuner/tests/test_turbo_training_adapters.py` (key conversion, the layer-match check, samples without the merged adapter), `tests/test_turbo_edit_variants_gui.py`, and a smoke with `--base_weights` on an FP8 or INT8 base.
+
+## Guardrail 25: Every swapped block has one tensor layout
+
+### Rule
+
+- Block swap (classic, H2D-only streaming and the Trainable Block-Swap Ring) copies every swapped block through buffers of one layout. A model whose blocks differ swaps a common unit and keeps the extra modules on the GPU (FIBO 2.0: each swapped block moves without its cross-attention, which stays resident, and the forward runs the block through that unit so the offloader's hooks fire), or makes every block alike while block swap is on (Anima INT8: every block quantized, though the published file keeps blocks 0, 1 and 27 in BF16).
+
+### Why this exists
+
+FIBO 2.0's five cross-attention blocks carry extra weights: full fine-tuning stopped with "block 23 is incompatible with the trainable ring layout", and LoRA with classic, H2D-only and INT8 swap then failed with "mat2 is on cpu" in the backward pass. Anima INT8 with block swap failed on its mixed BF16 / INT8 blocks.
+
+### Regression check
+
+`musubi-tuner/tests/test_fibo2.py::test_block_swap_moves_units_of_one_layout` and `::test_a_swap_unit_runs_its_block_so_backward_hooks_fire`, `tests/test_anima.py::test_block_swap_gets_one_int8_layout_for_every_block`; a real step with block swap on every new model (Guardrail 7).
+
+## Guardrail 26: Control images that mean two things say which
+
+### Rule
+
+- A model whose control images can mean two things (MOSS-Image: the colour / depth control-adapter maps, or edit references) tells the dataset which: `control_resolution` (written for edit cards, `ImageArchSpec.references_keep_framing`) selects the edit rule, any number of references per image; without it the adapter's fixed count applies (exactly two maps).
+
+### Why this exists
+
+The per-architecture control count refused every MOSS-Image edit dataset ("Not enough control images ... expected 2") until `control_resolution` selected the edit rule.
+
+### Regression check
+
+`musubi-tuner/tests/test_moss_image_edit.py::test_an_edit_dataset_takes_any_number_of_references`.

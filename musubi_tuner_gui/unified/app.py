@@ -16,7 +16,7 @@ from .workspace import Workspace
 
 log = setup_logging()
 
-APP_VERSION = "V38 · LTX 2.5"
+APP_VERSION = "V39 · FIBO 2.0 & Anima"
 
 
 def _hero() -> str:
@@ -162,13 +162,13 @@ def _unavailable_card(category: str) -> str:
 
 WHATS_NEW_HTML = """
 <div class="ud-whatsnew">
-  <h3>✨ V38 — LTX 2.5 training, LTX audio fixes and the latest libraries</h3>
+  <h3>✨ V39 — FIBO 2.0, Anima, three edit cards, Turbo LoRAs and faster INT8</h3>
   <ul>
-    <li><b>🎬 LTX 2.5 training</b> — DoRA / LoRA and full fine-tuning on Lightricks' LTX-2.5 22B dev transformer: video in the <b>🎬 LTX 2.5</b> card (Audio + Video trains sound too) and sound in the <b>🔊 LTX 2.5 Audio</b> card. Measured presets: best-quality BF16 DoRA first on 16 to 32 GB GPUs, faster INT8 DoRA first on 8 to 12 GB (each family also on every other tier) and full fine-tuning for 10 to 32 GB. Downloader entry 39 fetches the model files.</li>
-    <li><b>Less memory for LTX 2.5</b> — sample prompts are encoded with the captions, so training never loads the 24.5 GB text encoder, and <b>Low-VRAM Text Caching</b> streams it through the GPU one layer at a time (about 5.7 GB instead of 31.3 GB, identical results).</li>
-    <li><b>📥 Model downloader and presets on every PC</b> — models are saved next to the downloader (your install folder), wherever it is started from, and presets name their model files relative to it, so ⬇️ Download and Start find them.</li>
-    <li><b>🔊 LTX Audio and Audio + Video fixed</b> (LTX 2.3 too) — Audio + Video runs had trained video only and Audio runs stopped while caching; both work now, with sound in the samples.</li>
-    <li><b>⬆️ Latest libraries</b> — transformers 5.20.2, diffusers 0.42.0, huggingface_hub 2.3, FastAPI 0.162, PyAV 19.0.2; every model was checked with real training steps on them. The full version history is below.</li>
+    <li><b>🌸 FIBO 2.0 and 🎎 Anima</b> — DoRA / LoRA and full fine-tuning on Bria's FIBO 2.0 Dev (8.1B) and CircleStone Labs' Anima-Base (2B, anime and illustration), with measured presets from 6 to 32 GB.</li>
+    <li><b>✏️ Edit cards</b> — FIBO 2.0 Edit, Krea 2 Edit and MOSS-Image Edit train image-editing LoRAs from target images and their references in <code>control_images</code>, fed the way ComfyUI's edit workflows feed them.</li>
+    <li><b>⚡ Turbo LoRAs</b> — Krea 2 Turbo and Qwen-Image 2.1 Turbo train through ostris' training adapters, so the samples and the LoRA show the 8-step Turbo models.</li>
+    <li><b>🎬 LTX 2.5 Pre-Trained</b> — a new Transformer Variant on the LTX 2.5 cards for specialized fine-tunes, with the same presets (9e-5).</li>
+    <li><b>⚡ ConvRot INT8 compiles</b> (1.3-1.5x faster with Compile), the <b>Automagic4</b> optimizer and the <b>latest libraries</b> (transformers 5.21, diffusers 0.42.1, Gradio 6.31). The full version history is below.</li>
   </ul>
 </div>
 """

@@ -285,6 +285,8 @@ NETWORK_MODULE_BACKENDS = {
     "networks.lora_flux_2": "flux",
     "networks.lora_flux_3": "flux3_klein",
     "networks.lora_moss_image": "moss_image",
+    "networks.lora_fibo2": "fibo2",
+    "networks.lora_anima": "anima",
     "networks.lora_zimage": "zimage",
     "networks.lora_ernie_image": "ernie_image",
     "networks.lora_mage_flow": "mage_flow",
@@ -310,6 +312,18 @@ def _entry_for_backend(backend: str, data: dict) -> str | None:
         return "mage_flow_edit" if bool(data.get("is_edit")) else "mage_flow"
     if backend == "flux3_klein":
         return "flux3_klein_edit" if bool(data.get("use_control_images")) else "flux3_klein"
+    if backend == "moss_image":  # control images alone are the text-to-image card's control adapter
+        return "moss_image_edit" if bool(data.get("moss_edit")) else "moss_image"
+    if backend == "qwen_image_21":
+        return "qwen_image_21_turbo" if str(data.get("dit_variant") or "").lower() == "turbo" else "qwen_image_21"
+    if backend == "krea2":
+        if bool(data.get("use_control_images")):
+            return "krea2_edit"
+        # a Turbo fine-tune stays on the Krea 2 card (its Fine-Tuning mode trains either variant)
+        lora = bool(data.get("network_module")) or "lora" in str(data.get("training_mode") or "").lower()
+        return "krea2_turbo" if str(data.get("dit_variant") or "").lower() == "turbo" and lora else "krea2"
+    if backend == "fibo2":
+        return "fibo2_edit" if bool(data.get("use_control_images")) else "fibo2"
     if backend == "wan":
         task = str(data.get("task") or "")
         return "wan22" if "A14B" in task else "wan21"
@@ -418,7 +432,11 @@ _NAME_HINTS = (
     (r"mage.?flow", "mage_flow"),
     (r"flux.?3.?(?:klein.?)?edit", "flux3_klein_edit"),
     (r"flux.?3", "flux3_klein"),
+    (r"moss.?(?:image.?)?edit", "moss_image_edit"),
     (r"moss", "moss_image"),
+    (r"fibo.?2.?(?:0.?)?edit", "fibo2_edit"),
+    (r"fibo", "fibo2"),
+    (r"anima(?![a-z])", "anima"),  # not "animate" / "animal"
     (r"klein.?4b|4b.?klein", "flux2_klein_4b"),
     (r"klein", "flux2_klein_9b"),
     (r"flux.?2", "flux2_dev"),

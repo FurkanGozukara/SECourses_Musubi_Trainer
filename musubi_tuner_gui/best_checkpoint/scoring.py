@@ -1,4 +1,4 @@
-"""Signals the best-checkpoint finder computes for every sample (all models local, permissive licenses):
+"""Signals the best-checkpoint finder computes for every sample (all models local):
 
   face_mean / face_nearest   cosine of the largest face (OpenCV Zoo YuNet MIT + SFace Apache-2.0) to the mean training
                              face / to the nearest single training face; face_found

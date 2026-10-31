@@ -33,6 +33,8 @@ TRAINING_SCRIPTS: dict[str, dict[str, str]] = {
     "mage_flow": {"lora": "musubi_tuner.mage_flow_train_network"},
     "flux3_klein": {"lora": "musubi_tuner.flux_3_train_network"},
     "moss_image": {"lora": "musubi_tuner.moss_image_train_network"},
+    "fibo2": {"lora": "musubi_tuner.fibo2_train_network", "full": "musubi_tuner.fibo2_train"},
+    "anima": {"lora": "musubi_tuner.anima_train_network", "full": "musubi_tuner.anima_train"},
     "hidream_o1": {"lora": "musubi_tuner.hidream_o1_train_network", "full": "musubi_tuner.hidream_o1_train"},
     "wan": {"lora": "musubi_tuner.wan_train_network"},
     "ltx2": {"lora": "musubi_tuner.ltx2_train_network", "full": "musubi_tuner.ltx2_train"},

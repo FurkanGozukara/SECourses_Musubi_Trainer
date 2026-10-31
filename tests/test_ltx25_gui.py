@@ -280,6 +280,82 @@ class TestUnified:
         changes = L.on_load("ltx2", {"ltx_version": "2.5"}, {}, picked, preset_loaded=True)
         assert "ltx2_checkpoint" not in changes and "ltx2_video_vae" not in changes
 
+    def test_transformer_variant_switches_between_dev_and_pretrained(self, tmp_path, monkeypatch):
+        from musubi_tuner_gui.unified import links as L
+
+        v25 = tmp_path / "Training_Models_LTX_2_5"
+        v25.mkdir()
+        for name in (ltx.LTX25_TRANSFORMER_FILENAME, ltx.LTX25_PT_TRANSFORMER_FILENAME):
+            (v25 / name).write_bytes(b"x")
+        monkeypatch.setattr(ltx, "ltx25_model_dir", lambda: str(v25))
+        dev, pt = str(v25 / ltx.LTX25_TRANSFORMER_FILENAME), str(v25 / ltx.LTX25_PT_TRANSFORMER_FILENAME)
+        link = next(link for link in L.LINKS if link.backend == "ltx2" and link.trigger == "ltx25_variant")
+        assert link.apply({"ltx_version": "2.5", "ltx25_variant": "pretrained", "ltx2_checkpoint": dev}) == {"ltx2_checkpoint": pt}
+        assert link.apply({"ltx_version": "2.5", "ltx25_variant": "dev", "ltx2_checkpoint": pt}) == {"ltx2_checkpoint": dev}
+        assert link.apply({"ltx_version": "2.5", "ltx25_variant": "pretrained", "ltx2_checkpoint": ""}) == {"ltx2_checkpoint": pt}
+        # a file the user picked stays, and LTX 2.3 is never touched
+        assert link.apply({"ltx_version": "2.5", "ltx25_variant": "pretrained", "ltx2_checkpoint": "E:/mine/ft.safetensors"}) == {}
+        assert link.apply({"ltx_version": "2.3", "ltx25_variant": "pretrained", "ltx2_checkpoint": dev}) == {}
+        # without the Pre-Trained file the path is cleared (Start names it) instead of training Dev
+        only_dev = tmp_path / "only_dev"
+        only_dev.mkdir()
+        (only_dev / ltx.LTX25_TRANSFORMER_FILENAME).write_bytes(b"x")
+        monkeypatch.setattr(ltx, "ltx25_model_dir", lambda: str(only_dev))
+        dev_only_path = str(only_dev / ltx.LTX25_TRANSFORMER_FILENAME)
+        assert link.apply({"ltx_version": "2.5", "ltx25_variant": "pretrained", "ltx2_checkpoint": dev_only_path}) == {"ltx2_checkpoint": ""}
+
+    def test_version_link_keeps_the_pretrained_transformer_on_load(self, tmp_path, monkeypatch):
+        """Loading a Pre-Trained run on the LTX 2.5 card (the version link runs on load) keeps its transformer; an LTX 2.3
+        file or an empty path becomes the selected variant's file."""
+        from musubi_tuner_gui.unified import links as L
+
+        v25 = tmp_path / "Training_Models_LTX_2_5"
+        v25.mkdir()
+        for name in list(ltx.ltx25_default_files().values()) + [ltx.LTX25_PT_TRANSFORMER_FILENAME]:
+            (v25 / name).write_bytes(b"x")
+        monkeypatch.setattr(ltx, "ltx25_model_dir", lambda: str(v25))
+        pt = str(v25 / ltx.LTX25_PT_TRANSFORMER_FILENAME)
+        base = {"ltx_version": "2.5", "ltx2_text_encoder_checkpoint": "", "ltx2_video_vae": "", "ltx2_audio_vae": "",
+                "sample_sampling_preset": "ltx25_full", "sample_vae_tile_overlap": 160, "sample_vae_temporal_tile_overlap": 40}
+        changes = L.on_load("ltx2", {"ltx_version": "2.5"}, {}, {**base, "ltx25_variant": "dev", "ltx2_checkpoint": pt}, preset_loaded=True)
+        assert "ltx2_checkpoint" not in changes
+        changes = L.on_load("ltx2", {"ltx_version": "2.5"}, {}, {**base, "ltx25_variant": "pretrained",
+                                                                  "ltx2_checkpoint": "D:/x/ltx-2.3-22b-dev.safetensors"}, preset_loaded=True)
+        assert changes["ltx2_checkpoint"] == pt
+
+    def test_variant_setting_reaches_only_ltx25_runs(self, tmp_path):
+        assert "ltx25_variant" in LTX2_PARAM_KEYS and LTX2_DEFAULTS["ltx25_variant"] == "dev"
+        run23 = str(tmp_path / "run23.toml")
+        prepare_ltx2_workflow(_params(ltx25_variant="pretrained"), run23, validate_paths=False, python_cmd="python")
+        assert "ltx25_variant" not in toml.load(run23)
+        run25 = str(tmp_path / "run25.toml")
+        prepare_ltx2_workflow(_ltx25(ltx25_variant="pretrained", ltx2_checkpoint=f"C:/models/{ltx.LTX25_PT_TRANSFORMER_FILENAME}"),
+                              run25, validate_paths=False, python_cmd="python")
+        data = toml.load(run25)
+        assert data["ltx25_variant"] == "pretrained" and data["ltx2_checkpoint"].endswith(ltx.LTX25_PT_TRANSFORMER_FILENAME)
+
+    def test_pretrained_download_bundle(self):
+        import importlib.util
+
+        from musubi_tuner_gui.unified import downloads as D
+        from musubi_tuner_gui.unified.registry import get_entry
+
+        for key in ("ltx25", "ltx25_audio"):
+            assert ("LTX 2.5 Pre-Trained transformer", "ltx25_pt") in get_entry(key).download_bundles
+            assert "ltx25_variant" not in get_entry(key).locked_keys
+        for key in ("ltx23", "ltx23_audio"):
+            assert "ltx25_variant" in get_entry(key).locked_keys
+        if not os.path.isfile(D.DOWNLOADER):
+            pytest.skip("Download_Train_Models.py is not installed next to the app")
+        spec = importlib.util.spec_from_file_location("download_train_models_ltx25_pt", D.DOWNLOADER)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        pretrained, dev = module.MODEL_CONFIGS["ltx25_pt"], module.MODEL_CONFIGS["ltx25"]
+        names = [f["local"] for f in pretrained["files"]]
+        assert names[0] == ltx.LTX25_PT_TRANSFORMER_FILENAME
+        # the shared Gemma 4 pack and VAEs are the dev bundle's own files, in the same folder
+        assert names[1:] == [f["local"] for f in dev["files"]][1:] and pretrained["default_dir"] == dev["default_dir"]
+
     def test_ltx23_card_does_not_run_the_version_link_on_load(self):
         from musubi_tuner_gui.unified import links as L
         from musubi_tuner_gui.unified.registry import get_entry

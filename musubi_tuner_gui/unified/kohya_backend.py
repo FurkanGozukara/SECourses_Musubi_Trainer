@@ -171,10 +171,15 @@ OPTIMIZER_CHOICES = (
     "SGDNesterov",
     "SGDNesterov8bit",
     "Automagic3",
+    "Automagic4",
     "AutomagicEXPERIMENT",
 )
 # musubi-tuner's adaptive-lr optimizers (installed in the same venv); sd-scripts imports any "module.Class" optimizer
-AUTOMAGIC_KOHYA_CLASSES = {"automagic3": "musubi_tuner.optimizers.Automagic3", "automagicexperiment": "musubi_tuner.optimizers.AutomagicEXPERIMENT"}
+AUTOMAGIC_KOHYA_CLASSES = {
+    "automagic3": "musubi_tuner.optimizers.Automagic3",
+    "automagic4": "musubi_tuner.optimizers.Automagic4",
+    "automagicexperiment": "musubi_tuner.optimizers.AutomagicEXPERIMENT",
+}
 _ADAFACTOR_ONLY_ARGS = ("scale_parameter", "relative_step", "warmup_init")
 LR_SCHEDULER_CHOICES = (
     "constant",

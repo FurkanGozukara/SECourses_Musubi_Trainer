@@ -6,9 +6,10 @@ import ast
 import shlex
 from collections.abc import Callable, Mapping
 
-AUTOMAGIC_OPTIMIZER_CHOICES = ("Automagic", "Automagic2", "Automagic3", "AutomagicEXPERIMENT")
+AUTOMAGIC_OPTIMIZER_CHOICES = ("Automagic", "Automagic2", "Automagic3", "Automagic4", "AutomagicEXPERIMENT")
 # Automagic3-style optimizers: fused automatically when safe, else their compatible non-fused mode
-AUTOMATIC_FUSED_TYPES = frozenset({"automagic3", "automagicexperiment"})
+AUTOMATIC_FUSED_TYPES = frozenset({"automagic3", "automagic4", "automagicexperiment"})
+_AUTOMATIC_FUSED_NAMES = {"automagic3": "Automagic3", "automagic4": "Automagic4", "automagicexperiment": "AutomagicEXPERIMENT"}
 
 _OPTIMIZER_GUIDANCE = {
     "adamw": (
@@ -54,6 +55,19 @@ _OPTIMIZER_GUIDANCE = {
         "(`scale_parameter`, `relative_step`, and `warmup_init`) are ignored automatically. Keep the separate Fused Backward Pass option "
         "off; that option is only for Adafactor. Block swapping is supported. In full fine-tuning, selecting Patch Optimizer for Block Swap "
         "forces Automagic3 into its compatible non-fused mode; otherwise its normal automatic fused-mode decision is used."
+    ),
+    "automagic4": (
+        "**Automagic v4 (experimental):** Automagic3 with sensitivity-balanced updates (ai-toolkit, 2026-10). Each element's "
+        "step is scaled by min(1, reference / sensitivity), where sensitivity is the square root of its second moment and the "
+        "reference is the 90% quantile of the tensors' sensitivities, so the few very sensitive weights (heads, shared "
+        "modulations) no longer overshoot at the learning rate the bulk needs. The learning-rate controller targets a fixed "
+        "sign-flip rate (`step_target`, default 0.1) instead of annealing once the signal runs out. The first step only "
+        "measures (no weight change). Same optimizer state as Automagic3. The Learning Rate field is its starting rate and "
+        "external LR schedulers are bypassed. Fused or non-fused mode is chosen exactly like Automagic3 (set `fused=False` / "
+        "`fused=True` to force it). Useful arguments: `min_lr`, `max_lr`, `beta2`, `eps`, `clip_threshold`, `weight_decay`, "
+        "`polarity_history`, `sensitivity_quantile` (0-1, default 0.9) and `step_target` (0-2, default 0.1). Adafactor-only "
+        "preset arguments are ignored automatically. Keep the separate Fused Backward Pass option off; that option is only for "
+        "Adafactor. Block swapping is supported."
     ),
     "automagicexperiment": (
         "**AutomagicEXPERIMENT (experimental):** Automagic3's learning-rate controller with a full per-element second moment "
@@ -224,7 +238,7 @@ def validate_automagic_configuration(
         )
     elif optimizer_type in AUTOMATIC_FUSED_TYPES and not fused_configured and conflicts:
         reason = "; ".join(conflicts)
-        name = "AutomagicEXPERIMENT" if optimizer_type == "automagicexperiment" else "Automagic3"
+        name = _AUTOMATIC_FUSED_NAMES[optimizer_type]
         warnings.append(
             f"{name} will use its safe non-fused mode for this run because "
             f"{reason}. This preserves the selected training behavior. Set `fused=False` in Optimizer Arguments to make that intent explicit."

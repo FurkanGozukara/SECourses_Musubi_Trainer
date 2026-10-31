@@ -48,6 +48,8 @@ FAMILY_NAMES = {
     "FLUX 3 Klein": "FLUX.3 Klein",
     "FLUX 3 Klein Edit": "FLUX.3 Klein Edit",
     "MOSS Image": "MOSS-Image",
+    "MOSS Image Edit": "MOSS-Image Edit",
+    "Qwen Image 2.1 Turbo": "Qwen-Image 2.1 Turbo",
     "Wan 21": "Wan 2.1",
     "Wan22": "Wan 2.2",
     "Z Image Base": "Z-Image Base",

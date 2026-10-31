@@ -216,14 +216,14 @@ def match_controls(targets: list, controls: list) -> tuple[dict, list, list]:
 def control_settings(backend: str, values: dict) -> tuple[str, bool]:
     """(control folder name, whether every image needs one) the way the selected model's dataset generator uses
     control images. "" when it takes none: the generators then ignore a control folder like any other inner
-    folder (Krea 2, Ideogram 4, Z-Image pass a dummy name); its images are not trained."""
+    folder (Krea 2 without Use Control Images, Ideogram 4, Z-Image pass a dummy name); its images are not trained."""
     from .dataset_tools import qwen_control_directory
 
     if backend == "qwen_image":  # paired whenever the folder exists; the Edit versions train with them
         return qwen_control_directory(values), str(values.get("model_version") or "").startswith("edit")
     if backend == "flux":  # FLUX.2: reference images whenever the folder exists
         return str(values.get("control_directory_name") or "control_images"), False
-    if "use_control_images" in values:  # Qwen-Image 2.1, Mage-Flow (Edit), HiDream-O1: only with Use Control Images on
+    if "use_control_images" in values:  # Qwen-Image 2.1, Mage-Flow (Edit), HiDream-O1, Krea 2 (Edit): only with Use Control Images on
         if str(values.get("use_control_images")).strip().lower() not in ("true", "1", "yes", "on"):
             return "", False
         return str(values.get("control_directory_name") or "control_images"), True

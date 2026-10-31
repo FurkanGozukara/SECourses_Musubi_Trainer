@@ -118,6 +118,7 @@ SECTION_KEYS: dict[str, list[str]] = {
         "model_variant",
         "ltx2_mode",
         "ltx_version",
+        "ltx25_variant",
         "pretrained_model_name_or_path",
         "dit",
         "dit_high_noise",
