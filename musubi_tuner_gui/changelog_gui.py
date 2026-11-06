@@ -4,6 +4,16 @@ import gradio as gr
 # Newest first. The newest entry is rendered open by default.
 CHANGELOG_ENTRIES = [
     (
+        "V39.1 — 6 November 2026 — Preset Saving Keeps Your Edits",
+        """
+**💾 Your edited settings are saved again: leaving the preset selector no longer resets them.**
+
+- Clicking into the **Preset** or **GPU VRAM** selector and then anywhere else (for example the preset name box, to save) reloaded the selected preset, so every setting you had changed (model paths, learning rate, …) went back to the preset's values and **💾 Save** stored those. The selectors now load only when you pick a different option.
+- Picking the preset that is already shown still reloads it, so you can still reset your edits that way.
+- If you saved a preset with V39.0 after editing, check it: it may hold the preset's values instead of your changes. Make the changes again and save.
+""",
+    ),
+    (
         "V39.0 — 31 October 2026 — FIBO 2.0, Anima, MOSS-Image Edit, Krea 2 Turbo / Edit, Qwen-Image 2.1 Turbo, LTX 2.5 Pre-Trained, Faster INT8 with Compile, Automagic4",
         """
 **🆕 Seven new model cards with measured GPU presets (FIBO 2.0, FIBO 2.0 Edit, Anima, MOSS-Image Edit, Krea 2 Turbo, Krea 2 Edit, Qwen-Image 2.1 Turbo), LTX 2.5 Pre-Trained as a base, ConvRot INT8 that compiles, Automagic4 and the latest libraries.**

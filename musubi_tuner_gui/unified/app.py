@@ -16,7 +16,7 @@ from .workspace import Workspace
 
 log = setup_logging()
 
-APP_VERSION = "V39 · FIBO 2.0 & Anima"
+APP_VERSION = "V39.1 · FIBO 2.0 & Anima"
 
 
 def _hero() -> str:
@@ -164,6 +164,7 @@ WHATS_NEW_HTML = """
 <div class="ud-whatsnew">
   <h3>✨ V39 — FIBO 2.0, Anima, three edit cards, Turbo LoRAs and faster INT8</h3>
   <ul>
+    <li><b>🛠️ V39.1</b> — clicking into the Preset or GPU VRAM selector and then elsewhere (the preset name box, to save) no longer reloads the preset and resets your edits.</li>
     <li><b>🌸 FIBO 2.0 and 🎎 Anima</b> — DoRA / LoRA and full fine-tuning on Bria's FIBO 2.0 Dev (8.1B) and CircleStone Labs' Anima-Base (2B, anime and illustration), with measured presets from 6 to 32 GB.</li>
     <li><b>✏️ Edit cards</b> — FIBO 2.0 Edit, Krea 2 Edit and MOSS-Image Edit train image-editing LoRAs from target images and their references in <code>control_images</code>, fed the way ComfyUI's edit workflows feed them.</li>
     <li><b>⚡ Turbo LoRAs</b> — Krea 2 Turbo and Qwen-Image 2.1 Turbo train through ostris' training adapters, so the samples and the LoRA show the 8-step Turbo models.</li>

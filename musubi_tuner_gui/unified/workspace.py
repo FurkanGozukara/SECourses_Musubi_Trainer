@@ -1521,9 +1521,19 @@ class Workspace:
                 preset = P.remembered_preset(self.category, entry.key, mode) or P.recommended_preset(entry, mode, tier)
                 return self.apply(request, client, entry.key, mode, tier, preset, show_adv)
 
-        def on_tier(request: gr.Request, *args):
+        def shown(request, component):
+            """The value this session's selector shows (what was last loaded or saved)."""
+            return self._mirror(request).get(component._id, {}).get("value", _MISSING)
+
+        # Gradio 6.31's Dropdown sends ``input`` on every blur, not only when an option is picked: clicking
+        # into the Preset or GPU VRAM selector and then anywhere else (the preset name box, to save) reloaded
+        # the preset and threw away every edit. ``input`` therefore acts only on a value that differs from
+        # the one shown; picking the shown option again (to reset the edits) arrives as ``select``.
+        def on_tier(request: gr.Request, *args, repick: bool = False):
             (entry_key, mode, tier, _preset, show_adv), client = selection(args)
             with self.session(request):
+                if _same(shown(request, self.tier_dd), tier) != repick:
+                    return self.nothing()
                 entry = self.entry(entry_key)
                 tier = P.offered_tier(entry, mode, tier)
                 recommended = P.recommended_preset(entry, mode, tier)
@@ -1534,11 +1544,20 @@ class Workspace:
                     return self.emit(request, desired, client)
                 return self.apply(request, client, entry.key, mode, tier, recommended, show_adv)
 
-        def on_preset(request: gr.Request, *args):
+        def on_preset(request: gr.Request, *args, repick: bool = False):
             (entry_key, mode, tier, preset, show_adv), client = selection(args)
             if not preset:
                 return self.nothing()
-            return self.load_with_guardrails(request, client, entry_key, mode, tier, preset, show_adv)
+            with self.session(request):
+                if _same(shown(request, self.preset_dd), preset) != repick:
+                    return self.nothing()
+                return self.load_with_guardrails(request, client, entry_key, mode, tier, preset, show_adv)
+
+        def on_tier_repick(request: gr.Request, *args):
+            return on_tier(request, *args, repick=True)
+
+        def on_preset_repick(request: gr.Request, *args):
+            return on_preset(request, *args, repick=True)
 
         def on_refresh(request: gr.Request, *args):
             (entry_key, mode, tier, preset, _show_adv), client = selection(args)
@@ -1550,6 +1569,8 @@ class Workspace:
             # always_last: a second quick click waits for the running switch and then applies (the default
             # "once" would drop it, leaving the selector on one model and the settings on another)
             component.input(handler, inputs=selection_inputs, outputs=tracked_outputs, queue=False, trigger_mode="always_last", **quiet).then(None, js=unbusy_js)
+        for component, handler in ((self.tier_dd, on_tier_repick), (self.preset_dd, on_preset_repick)):
+            component.select(handler, inputs=selection_inputs, outputs=tracked_outputs, queue=False, trigger_mode="always_last", **quiet)
         self.refresh_btn.click(on_refresh, inputs=selection_inputs, outputs=[self.tier_dd, self.preset_dd, self.preset_desc], queue=False, **quiet)
 
         # ------------------------------------------------------------ save / load by name or path

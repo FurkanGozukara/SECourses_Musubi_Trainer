@@ -92,12 +92,22 @@ def workspaces():
 
     install_quiet_toasts()
     built = {}
-    with gr.Blocks():
+    with gr.Blocks() as demo:
         for category in CATEGORIES:
             workspace = Workspace(category, headless=True)
             workspace.build()
             built[category] = workspace
+    for workspace in built.values():
+        workspace._test_blocks = demo  # tests call the wired event handlers through it (_event_fn)
     return built
+
+
+def _event_fn(workspace, component, event: str):
+    """The Python handler wired to ``component``'s ``event`` (the one with a server function)."""
+    for block_fn in workspace._test_blocks.fns.values():
+        if block_fn.fn is not None and (component._id, event) in block_fn.targets:
+            return block_fn.fn
+    raise AssertionError(f"no {event} handler on {component}")
 
 
 class _Request:
@@ -301,6 +311,42 @@ def test_every_switch_resends_the_rule_state(workspaces):
     first = workspace.apply(request, {}, "krea2", LORA, P.AUTO_TIER, None, False)
     second = workspace.apply(request, {}, "krea2", LORA, P.AUTO_TIER, None, False)
     assert workspace.state_html in first and workspace.state_html in second
+
+
+def test_leaving_a_preset_selector_keeps_the_edits(workspaces):
+    """Gradio 6.31's Dropdown sends ``input`` on every blur. Clicking into the Preset or GPU VRAM selector
+    and then into the preset name box (to save) reloaded the preset and reset every edit (user report,
+    2026-11-06: "go to save a preset - all the settings revert back to default")."""
+    workspace = workspaces["image"]
+    request = _Request("selector-blur")
+    workspace.forget(request)
+    entry = ENTRY_BY_KEY["krea2"]
+    preset = P.recommended_preset(entry, LORA, P.AUTO_TIER)
+    assert preset, "krea2 ships LoRA presets"
+    workspace.apply(request, {}, "krea2", LORA, P.AUTO_TIER, preset, False)
+    mirror = workspace._mirror(request)
+    tier = mirror[workspace.tier_dd._id]["value"]
+    assert mirror[workspace.preset_dd._id]["value"] == preset
+    lr = next(item for item in workspace.fields.values() if item.key == "learning_rate" and entry.backend in item.per_backend)
+    mirror[lr.component._id].update(value=0.123, user=True)  # the user's edit (recorded on blur)
+
+    args = ["krea2", LORA, tier, preset, False]  # the selectors' values as the browser sends them
+    for component in (workspace.preset_dd, workspace.tier_dd):
+        updates = _event_fn(workspace, component, "input")(request, *args)
+        assert list(updates) == [workspace.state_html], "a blur without a new pick changed the workspace"
+        assert workspace._mirror(request)[lr.component._id]["value"] == 0.123
+
+    # picking the shown preset again on purpose (select) still reloads it, dropping the edits
+    updates = _event_fn(workspace, workspace.preset_dd, "select")(request, *args)
+    assert workspace._mirror(request)[lr.component._id]["value"] != 0.123
+    # a select of another option does nothing itself: its input event loads it, once
+    other = next((option.path for option in P.preset_options(entry, LORA, P.AUTO_TIER) if option.path != preset), None)
+    if other:
+        moved = ["krea2", LORA, tier, other, False]
+        assert list(_event_fn(workspace, workspace.preset_dd, "select")(request, *moved)) == [workspace.state_html]
+        assert workspace._mirror(request)[workspace.preset_dd._id]["value"] == preset
+        _event_fn(workspace, workspace.preset_dd, "input")(request, *moved)
+        assert workspace._mirror(request)[workspace.preset_dd._id]["value"] == other
 
 
 def test_unreadable_presets_are_refused_or_replaced_by_the_defaults(tmp_path, monkeypatch, workspaces):
