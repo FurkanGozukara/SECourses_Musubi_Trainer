@@ -27,7 +27,7 @@ MODEL_HINTS: dict[str, dict] = {
             "Every LoRA preset uses ConvRot INT8: FP8-class VRAM but faster and closer to BF16; it cannot be combined with FP8 or a Turbo sample DiT.",
             "Turbo sample generation cannot run with block swap, so leave the Turbo DiT empty when blocks are swapped.",
             "FP8 Base and Scaled FP8 must be enabled together on Krea 2; plain FP8 is rejected.",
-            "LoRA presets: rank 128, AdaFactor LR 2e-4, 1024 px, 200 epochs, a checkpoint every 25 epochs; 12 GB and below lower the rank (and the resolution on 10 and 8 GB).",
+            "LoRA presets: rank 128, AdaFactor LR 9e-5 (picked from 200-epoch DoRA tests of 6e-5 to 4e-4), 1024 px, 200 epochs, a checkpoint every 25 epochs; 12 GB and below lower the rank (and the resolution on 10 and 8 GB).",
         ],
         "full": [
             "Fine-tuning presets: full BF16 weights, fused-backward AdaFactor at LR 1e-5 with warmup, 1024 px (512 px on 12 GB), 200 epochs, a checkpoint every 25.",

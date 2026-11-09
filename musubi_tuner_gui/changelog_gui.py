@@ -4,6 +4,16 @@ import gradio as gr
 # Newest first. The newest entry is rendered open by default.
 CHANGELOG_ENTRIES = [
     (
+        "V39.2 — 9 November 2026 — Krea 2 LoRA Presets Train at 9e-5",
+        """
+**🎯 The Krea 2 LoRA / DoRA presets now use learning rate 9e-5 (was 2e-4).**
+
+- Chosen from a 200-epoch DoRA study on the 32 GB preset with a 28-photo person dataset, comparing eight learning rates from 6e-5 to 4e-4 at epochs 150, 175 and 200 (likeness, body, prompt following and over-training signs).
+- All six Krea 2 LoRA tiers (8 to 32 GB) change; Krea 2 Turbo and Krea 2 Edit keep their 1e-4, and the fine-tuning presets are unchanged.
+- Your own saved presets keep the learning rate you set. To use the new rate, apply a shipped Krea 2 preset again or type 9e-5 into Learning Rate.
+""",
+    ),
+    (
         "V39.1 — 6 November 2026 — Preset Saving Keeps Your Edits",
         """
 **💾 Your edited settings are saved again: leaving the preset selector no longer resets them.**
