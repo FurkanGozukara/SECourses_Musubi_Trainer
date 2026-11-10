@@ -11,6 +11,7 @@ CHANGELOG_ENTRIES = [
 - Chosen from a 200-epoch DoRA study on the 32 GB preset with a 28-photo person dataset, comparing eight learning rates from 6e-5 to 4e-4 at epochs 150, 175 and 200 (likeness, body, prompt following and over-training signs).
 - All six Krea 2 LoRA tiers (8 to 32 GB) change; Krea 2 Turbo and Krea 2 Edit keep their 1e-4, and the fine-tuning presets are unchanged.
 - Your own saved presets keep the learning rate you set. To use the new rate, apply a shipped Krea 2 preset again or type 9e-5 into Learning Rate.
+- Training Krea 2 at 2048 px: keep Compile off. In the same study, torch.compile made a 2048 px DoRA diverge (loss up from step 30, NaN by step 607, black samples), while the same run without Compile trained normally; 1024 to 1536 px trained fine with Compile on.
 """,
     ),
     (
